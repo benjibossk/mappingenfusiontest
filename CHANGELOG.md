@@ -13,6 +13,10 @@ Versions stay below 1.0.0 while the tool is a work in progress.
   everyone in the room and each mapper's cursor is shown with their name.
 - `CONTRIBUTING.md`, issue templates and a pull request template.
 
+### Security
+- Collab server: password required before anything is sent (map, cursors, names), listens on the local
+  machine by default, wrong passwords blocked after 5 tries, room and size limits, rooms erased when empty.
+
 ## [0.3.0] - 2026-10-16
 
 ### Added

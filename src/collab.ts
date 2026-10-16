@@ -17,18 +17,15 @@ export class Collab {
   private id = 0
   private lastCursor = 0
 
-  constructor(url: string, room: string, name: string, on: CollabEvents) {
+  constructor(url: string, room: string, name: string, key: string, on: CollabEvents) {
     this.ws = new WebSocket(`${url.replace(/\/+$/, '')}/${encodeURIComponent(room)}`)
-    this.ws.onopen = () => {
-      this.ws.send(JSON.stringify({ type: 'hello', name }))
-      on.status('connected')
-    }
+    this.ws.onopen = () => this.ws.send(JSON.stringify({ type: 'hello', name, key }))
     this.ws.onclose = (e) => on.status('closed', e.reason || undefined)
     this.ws.onerror = () => on.status('closed', url)
     this.ws.onmessage = (e) => {
       let m: any
       try { m = JSON.parse(e.data) } catch { return }
-      if (m.type === 'welcome') this.id = m.id
+      if (m.type === 'welcome') { this.id = m.id; on.status('connected') }
       else if (m.type === 'peers') on.peers((m.peers as Peer[]).filter((p) => p.id !== this.id))
       else if (m.type === 'project' && m.from !== this.id) on.project(m.project, m.name)
       else if (m.type === 'cursor') {

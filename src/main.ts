@@ -56,6 +56,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <label>${t('collab.server')} <input id="collabUrl" type="text"></label>
     <label>${t('collab.room')} <input id="collabRoom" type="text"></label>
     <label>${t('collab.name')} <input id="collabName" type="text"></label>
+    <label>${t('collab.key')} <input id="collabKey" type="password" autocomplete="off"></label>
     <button id="collabGo" type="button">${t('collab.join')}</button>
     <div class="info">${t('collab.hint')}</div>
   </div>
@@ -781,6 +782,7 @@ const collabField = (id: string, key: string, def: string) => {
 const collabUrl = collabField('collabUrl', 'reforger-mapper.collab.url', `ws://${location.hostname || 'localhost'}:5790`)
 const collabRoom = collabField('collabRoom', 'reforger-mapper.collab.room', 'map1')
 const collabName = collabField('collabName', 'reforger-mapper.collab.name', 'mapper')
+const collabKey = $<HTMLInputElement>('collabKey') // the password is never stored
 $<HTMLButtonElement>('collab').addEventListener('click', () => { collabBox.hidden = !collabBox.hidden })
 function leaveRoom() {
   collab?.close()
@@ -792,7 +794,7 @@ function leaveRoom() {
 $<HTMLButtonElement>('collabGo').addEventListener('click', () => {
   if (collab) return leaveRoom()
   let received = false
-  collab = new Collab(collabUrl.value.trim(), collabRoom.value.trim() || 'map1', collabName.value.trim() || 'mapper', {
+  collab = new Collab(collabUrl.value.trim(), collabRoom.value.trim() || 'map1', collabName.value.trim() || 'mapper', collabKey.value, {
     project: (p, from) => {
       received = true
       quietUntil = performance.now() + 1500

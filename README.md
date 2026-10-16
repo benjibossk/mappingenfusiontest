@@ -13,7 +13,7 @@ Web tool to map quickly for **Arma Reforger** (Enfusion engine) and auto-fill a 
 **It is a planning and teamwork layer on top of it**, to:
 
 - 🎯 **Focus the work**: rough out the big picture fast (relief, road network, rivers, lakes, where villages and fields go) and let generators do the repetitive filling, so mappers spend their Workbench time on what matters.
-- 👥 **Build a map with several people**: a shared, lightweight view of the map that anyone can open, draw on and discuss, without each person needing the whole project in the Workbench. Run `npm run collab` on one machine (port **5790**), then each mapper clicks 👥, enters the server address and the same room name: the map syncs and everyone's cursor shows. *(LAN / VPN for now; the last change wins. Online site: on the roadmap.)*
+- 👥 **Build a map with several people**: a shared, lightweight view of the map that anyone can open, draw on and discuss, without each person needing the whole project in the Workbench. Run `npm run collab` on one machine (port **5790**): it prints a password. Each mapper clicks 👥, enters the server address, the room name and that password: the map syncs and everyone's cursor shows. Nothing is sent before the right password; the server only listens on its own machine unless `MAPGEN_COLLAB_HOST` is set; rooms are erased when the last mapper leaves. *(Share over a LAN or a private VPN such as Tailscale, never openly on the internet; the last change wins. Online site: on the roadmap.)*
 - 🔁 **Go back and forth**: import a world in progress from the Workbench, change the plan, send it back — the Workbench stays the source of truth.
 
 <p align="center">
