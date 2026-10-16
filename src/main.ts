@@ -28,7 +28,7 @@ let existing: Existing = { objects: [], shapes: [] }
 interface Removed { f: 'ROAD_' | 'WATER_' | 'ANY'; x: number; z: number }
 let removed: Removed[] = []
 /** forests and field areas brought from OpenStreetMap (realWorld.ts): forests are sent as forest generators */
-interface MapArea { id: string; kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; pts: number[] }
+interface MapArea { id: string; kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; tall?: 'low' | 'mid' | 'high'; pts: number[] }
 let areas: MapArea[] = []
 /** data sources of the terrain (licences asking for attribution) */
 let credits: string[] = []
@@ -1791,10 +1791,13 @@ $<HTMLButtonElement>('setSend').addEventListener('click', () =>
 )
 
 // --- start from a real place (realWorld.ts): terrain from a DEM, roads / water / forests / fields / places from OSM ---
-const FOREST_GEN: Record<NonNullable<MapArea['leaf']>, string> = {
-  needle: GENERATORS.forestPine,
-  broad: 'Prefabs/WEGenerators/Forest/FG_Forest_Hornbeam.et',
-  mixed: 'Prefabs/WEGenerators/Forest/FG_Forest_MixedBirchPine.et',
+// vanilla forest generators by leaf type and tree height (young / normal / mature): Reforger has no
+// tree-height setting, the height comes from the generator chosen
+const FG = 'Prefabs/WEGenerators/Forest/'
+const FOREST_GEN: Record<NonNullable<MapArea['leaf']>, Record<NonNullable<MapArea['tall']>, string>> = {
+  needle: { low: FG + 'FG_Forest_NurseryPine.et', mid: GENERATORS.forestPine, high: FG + 'FG_Forest_Pine3.et' },
+  broad: { low: FG + 'FG_Forest_Birch.et', mid: FG + 'FG_Forest_Hornbeam.et', high: FG + 'FG_Forest_HornBeam3.et' },
+  mixed: { low: FG + 'FG_Forest_NurseryPicea.et', mid: FG + 'FG_Forest_MixedBirchPine.et', high: FG + 'FG_Forest_PineSpruce1.et' },
 }
 function applyRealPlace(r: RealPlace) {
   let bSkipped = 0
@@ -1810,7 +1813,7 @@ function applyRealPlace(r: RealPlace) {
     for (const x of o.rivers) waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, depth: 1.5 })
     for (const x of o.lakes) waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x, width: 0, depth: 2 })
     for (const s of o.sites) sites.push({ id: nextSiteId(s.kind), x: s.x, z: s.z, kind: s.kind })
-    o.forests.forEach((f, k) => areas.push({ id: `FOREST_OSM_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
+    o.forests.forEach((f, k) => areas.push({ id: `FOREST_OSM_${k + 1}`, kind: 'forest', leaf: f.leaf, ...(f.tall ? { tall: f.tall } : {}), pts: f.pts }))
     o.fields.forEach((f, k) => areas.push({ id: `FIELD_OSM_${k + 1}`, kind: 'field', pts: f }))
     if (o.buildings.length) { const b = osmBuildings(o.buildings); settled = b.placed; bSkipped = b.skipped; setInfo() }
   }
@@ -1890,6 +1893,11 @@ function openAreaMenu(e: MouseEvent) {
     menu.append(b)
   }
   if (a.kind === 'field') item(t('menu.areaZone'), () => { setZone(a.pts); draw() })
+  if (a.kind === 'forest') {
+    const mark = (on: boolean, s: string) => (on ? '✓ ' : '\u2003') + s
+    for (const l of ['broad', 'needle', 'mixed'] as const) item(mark((a.leaf ?? 'mixed') === l, t(`menu.leaf.${l}`)), () => { a.leaf = l; recompose(true); draw(); autosave() })
+    for (const h of ['low', 'mid', 'high'] as const) item(mark((a.tall ?? 'mid') === h, t(`menu.tall.${h}`)), () => { a.tall = h; draw(); autosave() })
+  }
   item(t('menu.areaDel'), () => { areas = areas.filter((x) => x !== a); recompose(true); draw(); autosave() })
   const box = map.getBoundingClientRect()
   menu.style.left = `${e.clientX - box.left + map.offsetLeft}px`
@@ -1902,7 +1910,7 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   run(t('run.l.forests'), async () => {
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
-    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'] })) })
+    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid'] })) })
   }),
 )
 $<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; recompose(true); draw(); autosave() })

@@ -8,6 +8,7 @@ import {
   type Area, type Dem, CRS_CHOICES, areaLonLat, buildWorld, copernicusTile, crsKnown, defaultArea, demRange,
   isGeographic, lonLatToLocal, readDem, readTiff, toSource,
 } from './modules/dem'
+import { canopyClasses } from './modules/canopy'
 import { OSM_ATTRIBUTION, type OsmOptions, type OsmResult, fetchOverpass, osmToMap, overpassQuery } from './modules/osm'
 
 export interface RealPlace {
@@ -73,6 +74,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
           <div class="pc-row">
             <label>${L('rw.minForest')} <input id="rwMinForest" type="number" value="1" min="0" step="0.5"></label>
             <label class="pc-file">${L('rw.osmFile')}<input id="rwOsmFile" type="file" accept=".json" hidden></label>
+            <label class="pc-file" title="${L('hint.chm')}">${L('rw.chm')}<input id="rwChm" type="file" accept=".tif,.tiff,.asc" hidden></label>
           </div>
           <div class="hint">${L('rw.osmNote')}</div>
           <div class="pc-row"><button id="rwGo" type="button">${L('rw.apply')}</button></div>
@@ -223,6 +225,13 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     try { osmFile = JSON.parse(await f.text()); msg.textContent = t('rw.osmFileOk', { name: f.name }) } catch (e) { msg.textContent = (e as Error).message }
   })
 
+  let chm: Dem | null = null
+  $<HTMLInputElement>('rwChm').addEventListener('change', async (ev) => {
+    const f = (ev.target as HTMLInputElement).files?.[0]
+    if (!f) return
+    try { chm = await readDem(f); msg.textContent = t('rw.chmOk', { name: f.name }) } catch (e) { msg.textContent = (e as Error).message }
+  })
+
   // --- build ---
   $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
     const d = effective()
@@ -254,6 +263,11 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
           data = await fetchOverpass(overpassQuery(areaLonLat(d, area), o))
         }
         osm = osmToMap(data, lonLatToLocal(d, area), area.size, o)
+        if (chm) {
+          if (chm.crs && d.crs && chm.crs !== d.crs) throw new Error(t('rw.chmCrs', { a: chm.crs, b: d.crs }))
+          const ar = area
+          canopyClasses(osm.forests, chm, (x, z) => toSource(d, ar, x - ar.size / 2, z - ar.size / 2))
+        }
         credits.push(OSM_ATTRIBUTION)
       }
       onApply({ world, osm, name: d.name, credits })

@@ -28,7 +28,7 @@ export interface OsmResult {
   roads: { type: RoadType; pts: number[]; width?: number }[]
   rivers: { pts: number[]; width: number }[]
   lakes: number[][]
-  forests: { pts: number[]; leaf: 'broad' | 'needle' | 'mixed' }[]
+  forests: { pts: number[]; leaf: 'broad' | 'needle' | 'mixed'; tall?: 'low' | 'mid' | 'high' }[]
   fields: number[][]
   sites: { x: number; z: number; kind: SiteKind; name: string }[]
   buildings: number[][] // footprints, open rings, local metres

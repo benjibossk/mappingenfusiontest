@@ -149,7 +149,7 @@ Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `
 | **5. Fill the map** | Rocks on slopes, automatic forests, paths, field zones, power lines | ⬜ to do |
 | **6. Complete import** | Ground surfaces of an existing world, generator settings (road width…) | ⬜ to do |
 | **7. Together** | Shared rooms ✅ (first version) → online site, accounts, SHP / CSV export, real-time merging | 🟡 started |
-| **8. Real-world import** | Start from a real place: elevation (DEM, LiDAR), roads, water, forests, fields and land cover, then edit it like a base mesh | 🟡 well advanced (elevation, LiDAR GeoTIFF, OpenStreetMap roads / water / forests / fields / buildings, forest and field ground, tracing image) — canopy height and land-cover rasters to do |
+| **8. Real-world import** | Start from a real place: elevation (DEM, LiDAR), roads, water, forests, fields and land cover, then edit it like a base mesh | 🟡 well advanced (elevation, LiDAR GeoTIFF, OpenStreetMap roads / water / forests / fields / buildings, forest and field ground, tracing image) — land-cover rasters to do |
 
 What changed and when: [CHANGELOG.md](CHANGELOG.md).
 
@@ -176,7 +176,7 @@ The table shows what is done (✅) and what is still planned (⬜).
 | ✅ **Elevation** | 16-bit PNG / GeoTIFF heightmap of your own; Copernicus DEM GLO-30 (30 m, worldwide); national LiDAR terrain models (e.g. IGN LiDAR HD, 1 m, France) | Heightmap: pick the area, rotate, crop, rescale to the Reforger terrain size and grid, choose the sea level; then sculpt on top |
 | ✅ **Roads, tracks, paths** | OpenStreetMap | Road shapes with the matching road generator (asphalt, dirt, trail…), pieces of the same road joined |
 | ✅ **Rivers, lakes, sea** | OpenStreetMap, Copernicus water layers | River and lake shapes, laid on the relief; the sea is wherever the real relief is at or below 0 m |
-| ✅ **Forests** (OSM) · ⬜ land cover, canopy height | OpenStreetMap woods, ESA WorldCover / CORINE land cover; LiDAR canopy height (surface minus terrain) | Forest areas sent as forest generators (broadleaved / needleleaved / mixed from the OSM tag); later density and tree height |
+| ✅ **Forests** (OSM), **tree height** (LiDAR) · ⬜ land-cover rasters | OpenStreetMap woods, ESA WorldCover / CORINE land cover; LiDAR canopy height (surface minus terrain) | Forest areas sent as vanilla forest generators: leaf type from the OSM tag, tree height (young / normal / mature) from a LiDAR canopy height file or set by hand (right-click). Reforger has no tree-height setting, so the height only picks the generator |
 | ✅ **Fields, places, forest / field ground** | OpenStreetMap land use and places, land-cover rasters | Field areas (usable as field zones), village sites from towns / villages / hamlets; forest floor and crop field surfaces painted under them |
 | ✅ **Buildings** | OpenStreetMap footprints | Each footprint replaced by the closest-sized vanilla building, turned to match (big blocks with no match are skipped) |
 | ✅ **Satellite / ortho photo** | Imagery you are allowed to use | Tracing image in the Layers panel, stretched over the terrain with an opacity slider (not sent to the game, not saved) |
