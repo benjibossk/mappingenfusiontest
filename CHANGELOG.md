@@ -12,6 +12,12 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - Work with several people: shared rooms on a small server (`npm run collab`), the map is synced between
   everyone in the room and each mapper's cursor is shown with their name.
 - `CONTRIBUTING.md`, issue templates and a pull request template.
+- Start from a real place (Island tab, 🌍): elevation from GeoTIFF, `.asc`, `.hgt` or greyscale PNG, or a
+  Copernicus DEM 30 m tile downloaded by latitude / longitude; area picked on a shaded preview (move, size,
+  rotation), grid 513 / 1025 / 2049, vertical scale, sea level. OpenStreetMap roads, tracks, paths, rivers,
+  lakes, forests, fields and places come with it (Overpass API or JSON file); forests are sent as forest
+  generators, field areas can become the field zone. Data credits are kept in the project.
+- Bridge: `GET /dem?tile=` fetches and caches a Copernicus DEM tile.
 - Parcel library (Villages tab, 📦): gallery and editor of ready-made lots (house + garden, flats + parking,
   farm yard...), JSON export / import, community parcels in `public/parcels/`; the village generator
   uses them, and a new "flats + parking" type fills town centres.

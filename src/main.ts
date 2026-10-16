@@ -1,7 +1,8 @@
 import './style.css'
 import { external, fr, getLang, t } from './i18n'
 import { Collab } from './collab'
-import type { Project, ProjectEntity, ProjectShape } from './project'
+import { GENERATORS, type Project, type ProjectEntity, type ProjectShape } from './project'
+import { openRealWorld, type RealPlace } from './realWorld'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
 import { computeSurfaces, generateIsland, overfullBlocks, type Island } from './modules/island'
@@ -11,7 +12,7 @@ import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
+const LAYERS = ['existing', 'areas', 'fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
 let collab: Collab | null = null // shared room, see src/collab.ts
@@ -24,6 +25,11 @@ let existing: Existing = { objects: [], shapes: [] }
 //! family: deleted only by a send that rebuilds it (ROAD_ / WATER_), ANY = deleted by hand, on any send
 interface Removed { f: 'ROAD_' | 'WATER_' | 'ANY'; x: number; z: number }
 let removed: Removed[] = []
+/** forests and field areas brought from OpenStreetMap (realWorld.ts): forests are sent as forest generators */
+interface MapArea { id: string; kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; pts: number[] }
+let areas: MapArea[] = []
+/** data sources of the terrain (licences asking for attribution) */
+let credits: string[] = []
 const toWb = async (p: Project) => {
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
@@ -117,6 +123,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="tGen" type="button">${t('btn.tGen')}</button>
         <button id="tReroll" type="button" class="secondary">${t('btn.tReroll')}</button>
         <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
+        <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
       </div>
       <div class="row">
         <button id="pSave" type="button" class="secondary">${t('btn.pSave')}</button>
@@ -287,6 +294,11 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="generate" type="button">${t('btn.generate')}</button>
         <button id="clearZone" type="button" class="secondary">${t('btn.clearZone')}</button>
       </div>
+      <div class="row">
+        <button id="forestSend" type="button">${t('btn.forestSend')}</button>
+        <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
+      </div>
+      <p class="hint">${t('hint.areas')}</p>
       <details>
         <summary>${t('sum.project')} <code>mapgen.json</code></summary>
         <textarea id="project" spellcheck="false"></textarea>
@@ -371,6 +383,7 @@ function draw() {
   }
 
   if (layer('existing')) drawExisting()
+  if (layer('areas')) drawAreas()
   if (layer('water')) drawWater()
   if (layer('roads')) for (const r of [...roads, ...(roadDraft ? [roadDraft] : [])]) {
     const ring: number[][] = []
@@ -505,6 +518,7 @@ map.addEventListener('contextmenu', (e) => {
     if (roadDrawing) return void finishRoad()
     return void openRoadMenu(e)
   }
+  if (tool() === 'zone' && !zonePoints().length && openAreaMenu(e)) return
   setZone(zonePoints().slice(0, -2))
   draw()
 })
@@ -955,6 +969,8 @@ function useWorld(w: WorldExport) {
   noBridge.clear()
   existing = { objects: [], shapes: [] }
   removed = []
+  areas = []
+  credits = []
   waterInfo()
   view.x = minX + (cols * step) / 2
   view.z = minZ + (rows * step) / 2
@@ -1088,6 +1104,8 @@ function islandProject() {
     imported: imported && { ...imported, heights: b64(new Uint8Array(new Float32Array(imported.heights).buffer)) },
     existing,
     removed,
+    areas,
+    credits,
   }
 }
 function autosave() {
@@ -1122,6 +1140,8 @@ function loadProject(p: any) {
   noBridge.clear()
   for (const k of Array.isArray(p.noBridge) ? p.noBridge : []) noBridge.add(k)
   if (p.existing?.objects) existing = p.existing
+  areas = Array.isArray(p.areas) ? p.areas : []
+  credits = Array.isArray(p.credits) ? p.credits : []
   removed = Array.isArray(p.removed) ? p.removed : []
   waterInfo()
   recompose(true)
@@ -1760,6 +1780,92 @@ $<HTMLButtonElement>('setSend').addEventListener('click', () =>
     return toWb({ version: 0, shapes: settlementShapes({ lanes: setLanes, paths: setPaths }), entities: settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined) })
   }),
 )
+
+// --- start from a real place (realWorld.ts): terrain from a DEM, roads / water / forests / fields / places from OSM ---
+const FOREST_GEN: Record<NonNullable<MapArea['leaf']>, string> = {
+  needle: GENERATORS.forestPine,
+  broad: 'Prefabs/WEGenerators/Forest/FG_Forest_Hornbeam.et',
+  mixed: 'Prefabs/WEGenerators/Forest/FG_Forest_MixedBirchPine.et',
+}
+function applyRealPlace(r: RealPlace) {
+  useWorld(r.world)
+  const o = r.osm
+  if (o) {
+    for (const x of o.roads) roads.push({ id: nextRoadId(x.type), type: x.type, pts: x.pts, ...(x.width ? { width: x.width } : {}) })
+    for (const x of o.rivers) waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, depth: 1.5 })
+    for (const x of o.lakes) waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x, width: 0, depth: 2 })
+    for (const s of o.sites) sites.push({ id: nextSiteId(s.kind), x: s.x, z: s.z, kind: s.kind })
+    o.forests.forEach((f, k) => areas.push({ id: `FOREST_OSM_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
+    o.fields.forEach((f, k) => areas.push({ id: `FIELD_OSM_${k + 1}`, kind: 'field', pts: f }))
+  }
+  credits = r.credits
+  waterInfo()
+  roadInfo()
+  recompose(true)
+  draw()
+  autosave()
+  const g = r.world
+  logEl.textContent = t('log.real', {
+    name: r.name, km: ((g.cols - 1) * g.step / 1000).toFixed(2), step: g.step.toFixed(2),
+    roads: o?.roads.length ?? 0, waters: (o?.rivers.length ?? 0) + (o?.lakes.length ?? 0), forests: o?.forests.length ?? 0,
+    fields: o?.fields.length ?? 0, sites: o?.sites.length ?? 0,
+  }) + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
+}
+$<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
+function drawAreas() {
+  for (const a of areas) {
+    ctx.beginPath()
+    for (let k = 0; k < a.pts.length; k += 2) { const [sx, sy] = toScreen(a.pts[k], a.pts[k + 1]); if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+    ctx.closePath()
+    ctx.fillStyle = a.kind === 'forest' ? 'rgba(40,110,40,0.38)' : 'rgba(200,180,80,0.18)'
+    ctx.fill()
+    ctx.setLineDash(a.kind === 'forest' ? [] : [5, 4])
+    ctx.strokeStyle = a.kind === 'forest' ? 'rgba(70,160,70,0.9)' : 'rgba(220,200,110,0.8)'
+    ctx.lineWidth = 1.2
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+}
+function hitArea(x: number, z: number): MapArea | null {
+  for (let i = areas.length - 1; i >= 0; i--) {
+    const p = areas[i].pts
+    let inside = false
+    for (let a = 0, b = p.length - 2; a < p.length; b = a, a += 2) {
+      if (p[a + 1] > z !== p[b + 1] > z && x < ((p[b] - p[a]) * (z - p[a + 1])) / (p[b + 1] - p[a + 1]) + p[a]) inside = !inside
+    }
+    if (inside) return areas[i]
+  }
+  return null
+}
+/** right-click on an OpenStreetMap area while the field zone is empty */
+function openAreaMenu(e: MouseEvent) {
+  const [wx, wz] = toWorld(...eventPos(e))
+  const a = layer('areas') ? hitArea(wx, wz) : null
+  if (!a) return false
+  menu.innerHTML = ''
+  const item = (label: string, fn: () => void) => {
+    const b = document.createElement('button')
+    b.textContent = label
+    b.addEventListener('click', () => { hideMenu(); fn() })
+    menu.append(b)
+  }
+  if (a.kind === 'field') item(t('menu.areaZone'), () => { setZone(a.pts); draw() })
+  item(t('menu.areaDel'), () => { areas = areas.filter((x) => x !== a); draw(); autosave() })
+  const box = map.getBoundingClientRect()
+  menu.style.left = `${e.clientX - box.left + map.offsetLeft}px`
+  menu.style.top = `${e.clientY - box.top + map.offsetTop}px`
+  menu.hidden = false
+  return true
+}
+// forests: one closed shape per area with the forest generator matching the OSM leaf type (FOREST_ family)
+$<HTMLButtonElement>('forestSend').addEventListener('click', () =>
+  run(t('run.l.forests'), async () => {
+    const f = areas.filter((a) => a.kind === 'forest')
+    if (!f.length) throw new Error(t('err.noForest'))
+    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'] })) })
+  }),
+)
+$<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; draw(); autosave() })
 
 // --- water: rivers and lakes drawn by hand (tab Eau) ---
 function nextWaterId(type: WaterType) {

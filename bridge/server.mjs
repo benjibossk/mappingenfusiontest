@@ -242,6 +242,25 @@ const server = createServer(async (req, res) => {
       return send(res, result.status === "error" ? 500 : 200, result);
     }
 
+    // Copernicus DEM GLO-30 tile for the "Real place" window (the public bucket may refuse the browser: CORS).
+    // Only this host and this tile name pattern are fetched; tiles are kept in <profile>/MapGen/dem/.
+    if (req.method === "GET" && req.url.startsWith("/dem?")) {
+      const id = new URL(req.url, "http://x").searchParams.get("tile") ?? "";
+      if (!/^Copernicus_DSM_COG_10_[NS]d{2}_00_[EW]d{3}_00_DEM$/.test(id)) return send(res, 400, { error: "bad tile name" });
+      const dir = join(PROFILE_DIR, "MapGen", "dem");
+      const file = join(dir, id + ".tif");
+      let buf;
+      try { buf = readFileSync(file); } catch {
+        const r = await fetch(`https://copernicus-dem-30m.s3.amazonaws.com/${id}/${id}.tif`);
+        if (!r.ok) return send(res, r.status === 404 ? 404 : 502, { error: r.status === 404 ? "no tile here (sea or outside the coverage)" : "download failed " + r.status });
+        buf = Buffer.from(await r.arrayBuffer());
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(file, buf);
+      }
+      res.writeHead(200, { "Content-Type": "image/tiff", "Content-Length": buf.length, "Access-Control-Allow-Origin": "*" });
+      return res.end(buf);
+    }
+
     send(res, 404, { error: "unknown route" });
   } catch (e) {
     send(res, 502, { error: e.message });

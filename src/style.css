@@ -151,3 +151,11 @@ html, body, #app { height: 100%; overflow: hidden; }
 .pc-row { display: flex; gap: .4rem; flex-wrap: wrap; }
 .pc-row button, .pc-side button, .pc-file { padding: .35rem .7rem; font-size: .85rem; }
 .pc-file { background: #3d6fd8; border-radius: 6px; cursor: pointer; }
+
+/* real place window */
+.rw-left { display: flex; flex-direction: column; gap: .4rem; }
+.rw-left canvas { width: min(520px, 90vw); aspect-ratio: 1; border-radius: 6px; cursor: grab; }
+.rw-cop { align-items: flex-end; font-size: .85rem; }
+.rw-cop input { width: 7rem; }
+.rw-checks { display: grid; grid-template-columns: 1fr 1fr; gap: .15rem .6rem; }
+.rw-checks .check { flex-direction: row; align-items: center; gap: .3rem; }

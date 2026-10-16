@@ -149,28 +149,42 @@ Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `
 | **5. Fill the map** | Rocks on slopes, automatic forests, paths, field zones, power lines | ⬜ to do |
 | **6. Complete import** | Ground surfaces of an existing world, generator settings (road width…) | ⬜ to do |
 | **7. Together** | Shared rooms ✅ (first version) → online site, accounts, SHP / CSV export, real-time merging | 🟡 started |
-| **8. Real-world import** | Start from a real place: elevation (DEM, LiDAR), roads, water, forests, fields and land cover, then edit it like a base mesh | ⬜ to do |
+| **8. Real-world import** | Start from a real place: elevation (DEM, LiDAR), roads, water, forests, fields and land cover, then edit it like a base mesh | 🟡 first version (elevation + OpenStreetMap) |
 
 What changed and when: [CHANGELOG.md](CHANGELOG.md).
 
-### Planned: start from a real place
+### Start from a real place
 
 The idea: load a real area as a **starting shape**, then reshape it with the brush, the generators and the
-parcel library, like a primitive mesh in 3D modelling. Everything below is planned, nothing is built yet.
+parcel library, like a primitive mesh in 3D modelling.
+
+**How (Island tab → 🌍 Real place…):**
+1. Open an elevation file — GeoTIFF (Copernicus, national LiDAR terrain models…), ESRI ASCII grid `.asc`
+   (e.g. IGN LiDAR HD / RGE ALTI), SRTM `.hgt` or a greyscale PNG (8 or 16 bits) — **or** type a latitude and a
+   longitude to download the Copernicus DEM 30 m tile (through the bridge if the browser is refused).
+2. Pick the area on the shaded preview: drag to move, wheel to resize, Shift + wheel to turn; the white edge
+   becomes the north of the map. Set the grid (513 / 1025 / 2049), the vertical scale and the sea level.
+3. Tick the OpenStreetMap features to bring (downloaded from the public Overpass API, or from an Overpass JSON
+   file), then **Build the terrain**.
+4. Sculpt, fix and generate as usual. Forests are sent with **Send forests** (Fields tab); right-click an
+   OpenStreetMap field area to use it as the field zone.
+
+The table shows what is done (✅) and what is still planned (⬜).
 
 | Data | Source (open data) | Becomes in the tool |
 |---|---|---|
-| **Elevation** | 16-bit PNG / GeoTIFF heightmap of your own; Copernicus DEM GLO-30 (30 m, worldwide); national LiDAR terrain models (e.g. IGN LiDAR HD, 1 m, France) | Heightmap: pick the area, rotate, crop, rescale to the Reforger terrain size and grid, choose the sea level; then sculpt on top |
-| **Roads, tracks, paths** | OpenStreetMap | Road shapes with the matching road generator (asphalt, dirt, trail…), crossing roads joined |
-| **Rivers, lakes, coast** | OpenStreetMap, Copernicus water layers | River and lake shapes, laid on the relief |
-| **Forests** | OpenStreetMap woods, ESA WorldCover / CORINE land cover; LiDAR canopy height (surface minus terrain) | Forest areas with density and tree height, then the forest generator |
-| **Fields, meadows, villages** | OpenStreetMap land use, land-cover rasters | Field zones, surface masks (grass, soil, rock…), village sites |
-| **Buildings** | OpenStreetMap footprints | Village sites and plots, filled with parcels of the right size |
-| **Satellite / ortho photo** | Imagery you are allowed to use | A tracing layer under the map (not sent to the game) |
+| ✅ **Elevation** | 16-bit PNG / GeoTIFF heightmap of your own; Copernicus DEM GLO-30 (30 m, worldwide); national LiDAR terrain models (e.g. IGN LiDAR HD, 1 m, France) | Heightmap: pick the area, rotate, crop, rescale to the Reforger terrain size and grid, choose the sea level; then sculpt on top |
+| ✅ **Roads, tracks, paths** | OpenStreetMap | Road shapes with the matching road generator (asphalt, dirt, trail…), pieces of the same road joined |
+| ✅ **Rivers, lakes** · ⬜ coast | OpenStreetMap, Copernicus water layers | River and lake shapes, laid on the relief |
+| ✅ **Forests** (OSM) · ⬜ land cover, canopy height | OpenStreetMap woods, ESA WorldCover / CORINE land cover; LiDAR canopy height (surface minus terrain) | Forest areas sent as forest generators (broadleaved / needleleaved / mixed from the OSM tag); later density and tree height |
+| ✅ **Fields, places** · ⬜ surface masks | OpenStreetMap land use and places, land-cover rasters | Field areas (usable as field zones), village sites from towns / villages / hamlets; later surface masks (grass, soil, rock…) |
+| ⬜ **Buildings** | OpenStreetMap footprints | Village sites and plots, filled with parcels of the right size |
+| ⬜ **Satellite / ortho photo** | Imagery you are allowed to use | A tracing layer under the map (not sent to the game) |
 
 Limits to keep in mind: real data rarely fits the Reforger size and the entity budget as is (it will be
 scaled and simplified); a 30 m DEM is smooth and needs sculpting for small details; every source has its own
-licence (OpenStreetMap: ODbL, attribution and share-alike) — the tool will show it with the import.
+licence (OpenStreetMap: ODbL, attribution and share-alike; Copernicus: attribution) — the tool writes it in the log
+and keeps it in the project. A busy town can bring hundreds of roads: untick small roads and paths for a first pass.
 
 ### Known issues / not finished
 
@@ -199,6 +213,7 @@ This project stands on the work of many people — thank you to all of them. Wha
 | [BARNMAP (v1.48)](https://ustorie.github.io/BARNARMA/) | Barnaber / LEBARNABER | None (closed exe) |
 | [Map-generator ("Map Generator Pro" v7)](https://github.com/giorbev/Map-generator) | giorbev | MIT (© 2026 Giorbev) |
 | [mapgen4](https://github.com/redblobgames/mapgen4) | Amit Patel (Red Blob Games) | Apache-2.0 |
+| [geotiff.js](https://github.com/geotiffjs/geotiff.js) (library, reads GeoTIFF) | geotiff.js contributors | MIT |
 | [AgriFieldGenerator (v1.2.0)](https://github.com/Tanin69/AgriFieldGenerator) | Tanin69 (Didier ALAIN) | MIT (© 2024) |
 | Benchmark_Tools_reforger | giorbev | None (© 2025, all rights reserved) |
 | Lou's tools (`SCR_WorldEditorToolHelper.c`, `SCR_ImageHelper.c`) | Lou | not specified |
