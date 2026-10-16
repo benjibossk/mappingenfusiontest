@@ -24,10 +24,15 @@ Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `
 2. **Local bridge**: `npm run bridge` (Node, port **5780**), which links the site to the Workbench.
 3. **Workbench plugin**: copy `workbench/Mapgenerator/` as an addon into
    `Documents/My Games/ArmaReforgerWorkbench/addons/`, then add it in the Workbench.
+4. **Enable the Workbench NET API**: Workbench > Options, NET API enabled (port **5775**). The bridge talks to the
+   plugin's own handlers (`MG_*`); nothing else is needed (no AI tool, no MCP server).
+
    The plugins appear in the World Editor **MapGen** menu:
    - `MapGen - Apply project`: applies the project sent by the site
    - `MapGen - Apply heightmap`
-   - `MapGen - Labels` (**Ctrl+Shift+L**): debug labels
+   - `MapGen - Labels`: debug labels
+   - `MapGen - Entity budget`: entity count per cell, terrain occlusion, suspects (duplicates, buried objects)
+   - `MapGen - Capture templates`: captures building parcels (house + garden) from any world, for the village generator
    - `MapGen - Measure prefabs`
    - `MapGen - Regenerate MG_ shapes`
    - `MapGen - Register surfaces`
