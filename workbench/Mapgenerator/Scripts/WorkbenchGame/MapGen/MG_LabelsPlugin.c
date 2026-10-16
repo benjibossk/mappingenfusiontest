@@ -1,8 +1,8 @@
 #ifdef WORKBENCH
 //! Debug for screenshots: the name of every object sent by the web tool floats over it.
-//! Only the objects closer than Range to the camera get a label; Run (Ctrl+Shift+L) redraws them
+//! Only the objects closer than Range to the camera get a label; Run (Ctrl+Alt+Shift+L) redraws them
 //! around the current camera. Labels come from $profile:MapGen/labels.txt, written on Apply.
-[WorkbenchPluginAttribute(name: "MapGen - Labels", category: "MapGen", shortcut: "Ctrl+Shift+L", wbModules: { "WorldEditor" }, awesomeFontCode: 0xF02B)]
+[WorkbenchPluginAttribute(name: "MapGen - Labels", category: "MapGen", shortcut: "Ctrl+Alt+Shift+L", wbModules: { "WorldEditor" }, awesomeFontCode: 0xF02B)]
 class MG_LabelsPlugin : WorldEditorPlugin
 {
 	[Attribute("400", UIWidgets.Slider, "Labels for objects closer than this to the camera (m)", "0 10000 10")]
@@ -14,8 +14,9 @@ class MG_LabelsPlugin : WorldEditorPlugin
 	[Attribute("1", desc: "Show the labels")]
 	protected bool m_bShow;
 
-	// last settings used (Apply and script reloads redraw with them); kept in a file because a
-	// script reload resets the statics and the plugin instance is not rebuilt until it is used
+	// last settings used (Apply redraws with them); kept in a file because a script reload resets
+	// the statics and the plugin instance is not rebuilt until it is used. No redraw on script reload:
+	// it ran while the world was being reloaded and is suspected of the Workbench crashes.
 	protected static const string SETTINGS = "$profile:MapGen/labels.cfg";
 	protected static float s_fRange = 400;
 	protected static float s_fSize = 14;
@@ -44,7 +45,6 @@ class MG_LabelsPlugin : WorldEditorPlugin
 	static void Refresh()
 	{
 		LoadSettings();
-		// at Workbench start-up the boot object runs before the class statics are set
 		if (!s_aTexts)
 			s_aTexts = {};
 		s_aTexts.Clear();
@@ -103,19 +103,10 @@ class MG_LabelsPlugin : WorldEditorPlugin
 	//------------------------------------------------------------------------------------------------
 	override void Configure()
 	{
-		Workbench.ScriptDialog("MapGen labels", "Range, size, show/hide. Run (Ctrl+Shift+L) redraws around the camera.", this);
+		Workbench.ScriptDialog("MapGen labels", "Range, size, show/hide. Run (Ctrl+Alt+Shift+L) redraws around the camera.", this);
 		Store();
 		Refresh();
 	}
 }
 
-//! redraws the labels right after a script reload (the debug texts die with the old VM)
-class MG_LabelsBoot
-{
-	void MG_LabelsBoot()
-	{
-		MG_LabelsPlugin.Refresh();
-	}
-}
-static ref MG_LabelsBoot g_MG_LabelsBoot = new MG_LabelsBoot();
 #endif
