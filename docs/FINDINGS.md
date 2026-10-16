@@ -78,7 +78,7 @@ Mesures faites avec le plugin « MapGen - Measure prefabs » (844 prefabs → `p
 Par ordre utilité / effort :
 
 1. Validation avant envoi (routes sur l'eau sans pont, pentes, bâtiments mal placés, villages isolés).
-2. Budget d'entités par plateforme (Xbox S/X, PS5, PC) avec alerte, et carte de chaleur de densité.
+2. ~~Budget d'entités par plateforme~~ : plugin « MapGen - Entity budget » (Ctrl+Shift+B), avec doublons, objets enterrés et occlusion par le terrain (cases chargées plates ou en crête).
 3. Lisières de forêt et couloirs dégagés autour des routes.
 4. Forêts selon altitude / pente / biome.
 5. Clôtures et murs de villages, lignes électriques.
@@ -86,3 +86,10 @@ Par ordre utilité / effort :
 7. Remplacement / suppression en masse dans une zone.
 8. Bench FPS réel sur un parcours caméra (CSV), croisé avec la carte de densité.
 9. Exports de débogage (GeoJSON, CSV d'inventaire).
+
+## 6. Occlusion
+
+- Le principal occluder d'Enfusion est le **relief** (Terrain Occlusion) : une grande zone plate couverte de
+  forêt fait tout dessiner d'un coup ; les forêts en crête se voient de loin (tutoriel terrain du BIKI).
+- Les occluders des bâtiments sont des maillages `OCC_` dans les modèles (alignés sur les axes, 4-5 m
+  minimum, 3-4 par bâtiment, 1-2 m sous le sol), pas des entités qu'on place dans le monde.

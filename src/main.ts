@@ -10,10 +10,11 @@ import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges'] as const
+const LAYERS = ['fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
 import { SITE_RADIUS, buildNetwork, pickSites, type Site, type SiteKind } from './modules/network'
+import { validate, type Issue } from './modules/validate'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 
@@ -225,6 +226,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </ol>
       <p class="hint">${t('hint.wbImport')}</p>
       <button id="loadTerrain" type="button" class="secondary">${t('btn.loadTerrain')}</button>
+      <fieldset class="test">
+        <legend>${t('legend.check')}</legend>
+        <p class="hint">${t('hint.check')}</p>
+        <button id="checkRun" type="button">${t('btn.check')}</button>
+        <ul id="checkList" class="issues"></ul>
+      </fieldset>
     </div>
 
     <div class="tab" data-tab="camp" hidden>
@@ -380,6 +387,7 @@ function draw() {
     })
   }
   if (layer('bridges')) drawBridges()
+  if (layer('issues')) drawIssues()
   drawBrush()
 }
 
@@ -1480,6 +1488,7 @@ $<HTMLButtonElement>('setClear').addEventListener('click', () => { settled = [];
 $<HTMLButtonElement>('setSend').addEventListener('click', () =>
   run(t('run.l.set'), async () => {
     if (!settled.length) throw new Error(t('err.setNone'))
+    runChecks()
     return sendToWorkbench({ version: 0, shapes: settlementShapes({ lanes: setLanes, paths: setPaths }), entities: settlementEntities(settled) })
   }),
 )
@@ -1709,6 +1718,7 @@ $<HTMLButtonElement>('wGen').addEventListener('click', () => {
 $<HTMLButtonElement>('wTest').addEventListener('click', () =>
   run(t('run.l.waterTest'), async () => {
     if (!island || !waters.length) throw new Error(t('err.noWater'))
+    runChecks() // markers only, never blocks
     const out: string[] = []
     logEl.textContent = t('test.p1')
     out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights })).message }))
@@ -1774,3 +1784,49 @@ document.querySelectorAll<HTMLInputElement>('#layers [data-layer]').forEach((el)
   else hiddenLayers.add(el.dataset.layer!)
   draw()
 }))
+
+// --- checks before sending: markers on the map + list in the Workbench tab; never blocks a send ---
+let issues: Issue[] = []
+function runChecks() {
+  if (!island) return (issues = [])
+  const ids = new Set(roads.map((r) => r.id))
+  issues = validate({
+    roads, sites, settled, heights: island.heights, grid: island.grid,
+    refusedGaps: roadGaps().filter((g) => ids.has(g.id) && noBridge.has(gapKey(g))),
+  })
+  const list = $<HTMLUListElement>('checkList')
+  list.innerHTML = ''
+  for (const it of issues) {
+    const li = document.createElement('li')
+    li.textContent = t(('check.' + it.kind) as Parameters<typeof t>[0], { id: it.id, v: it.value ?? '' })
+    li.addEventListener('click', () => { view.x = it.x; view.z = it.z; view.mpp = Math.min(view.mpp, 1.5); draw() })
+    list.append(li)
+  }
+  if (!issues.length) list.innerHTML = `<li class="ok">${t('check.none')}</li>`
+  draw()
+  return issues
+}
+function drawIssues() {
+  for (const it of issues) {
+    const [x, y] = toScreen(it.x, it.z)
+    ctx.beginPath()
+    ctx.moveTo(x, y - 11)
+    ctx.lineTo(x + 10, y + 7)
+    ctx.lineTo(x - 10, y + 7)
+    ctx.closePath()
+    ctx.fillStyle = 'rgba(255,150,0,0.92)'
+    ctx.fill()
+    ctx.strokeStyle = '#000'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.fillStyle = '#000'
+    ctx.font = 'bold 12px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('!', x, y + 1)
+  }
+}
+$<HTMLButtonElement>('checkRun').addEventListener('click', () => {
+  const n = runChecks().length
+  logEl.textContent = n ? t('log.checkIssues', { n }) : t('check.none')
+})
