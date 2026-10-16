@@ -94,6 +94,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
           </div>
           <div class="hint">${L('rw.osmNote')}</div>
           <div class="pc-row"><button id="rwGo" type="button">${L('rw.apply')}</button></div>
+          <progress id="rwBar" class="rw-bar" hidden></progress>
           <div id="rwMsg" class="hint"></div>
         </div>
       </div>
@@ -369,9 +370,26 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     if (d.crs && !crsKnown(d.crs)) return void (msg.textContent = t('rw.badCrs', { crs: d.crs }))
     const btn = $<HTMLButtonElement>('rwGo')
     btn.disabled = true
+    const ck = (id: string) => $<HTMLInputElement>(id).checked
+    // progress: numbered steps, a bar and the time spent (the slow steps are remote servers, no honest estimate)
+    const geo = !!d.crs
+    const steps = 2 + (geo && (ck('rwWc') || ck('rwWcForest')) ? 1 : 0) + (ck('rwOsm') ? (osmFile ? 1 : 2) : 0) + (geo && ck('rwSat') ? 1 : 0)
+    const bar = $<HTMLProgressElement>('rwBar')
+    const t0 = Date.now()
+    let at = 0, label = '', since = t0
+    const show = () => {
+      const s = Math.round((Date.now() - since) / 1000), all = Math.round((Date.now() - t0) / 1000)
+      msg.textContent = t('rw.progress', { i: at, n: steps, label, s, all })
+    }
+    const step = async (k: Key) => {
+      at++; label = t(k); since = Date.now()
+      bar.max = steps; bar.value = at - 1; bar.hidden = false
+      show()
+      await new Promise((r) => setTimeout(r, 30)) // let the page paint before heavy work
+    }
+    const tick = setInterval(show, 1000)
     try {
-      msg.textContent = t('rw.building')
-      await new Promise((r) => setTimeout(r, 30))
+      await step('rw.building')
       const world = buildWorld(d, area, {
         cols: num('rwCols'), exaggeration: Math.max(0.1, num('rwExag') || 1), sea: num('rwSea'),
         pngRange: d.normalized ? [num('rwBlack'), num('rwWhite')] : undefined,
@@ -381,7 +399,6 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       if (fromCop) credits.push('Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA')
       let osm: OsmResult | null = null
       let adapted: RealPlace['adapted']
-      const ck = (id: string) => $<HTMLInputElement>(id).checked
       const ar = area
       const toLL = d.crs ? localToLonLat(d, ar) : null
       // ESA WorldCover: ground surfaces for every terrain vertex, forests outlined from the tree class
@@ -389,7 +406,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       let warn = ''
       let wcForests: number[][] = []
       if ((ck('rwWc') || ck('rwWcForest')) && toLL) {
-        msg.textContent = t('rw.wcFetching')
+        await step('rw.wcFetching')
         const [s, w, n, e] = areaLonLat(d, ar)
         const wc = await fetchWorldCover(s, w, n, e, Math.min(2048, Math.ceil((ar.size * 1.45) / 10))).catch((err: Error) => { warn = t('rw.wcFail', { msg: err.message }); return null })
         if (wc) {
@@ -420,9 +437,10 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
         }
         let data = osmFile
         if (!data) {
-          msg.textContent = t('rw.osmFetching')
+          await step('rw.osmFetching')
           data = await fetchOverpass(overpassQuery(areaLonLat(d, area), o))
         }
+        await step('rw.osmProcessing')
         // adapted: keep small woods for now, they may weld into a forest; the size limit applies after
         const adapt = ck('rwAdapt')
         osm = osmToMap(data, lonLatToLocal(d, area), area.size, adapt || wcForests.length ? { ...o, minForest: Math.min(o.minForest, 1000) } : o)
@@ -439,17 +457,20 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       }
       let trace: HTMLCanvasElement | undefined
       if (ck('rwSat') && toLL) {
-        msg.textContent = t('rw.satFetching')
+        await step('rw.satFetching')
         const [s, w, n, e] = areaLonLat(d, ar)
         trace = areaPicture(await fetchImagery(s, w, n, e, 2048), [s, w, n, e], toLL, ar.size)
         credits.push(CREDITS.esri)
       }
+      await step('rw.applying')
       onApply({ world, osm, name: d.name, credits, adapted, cover, trace, warn })
       root!.hidden = true
       msg.textContent = ''
     } catch (e) {
       msg.textContent = t('err.generic', { msg: (e as Error).message })
     } finally {
+      clearInterval(tick)
+      bar.hidden = true
       btn.disabled = false
     }
   })

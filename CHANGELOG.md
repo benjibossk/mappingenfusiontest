@@ -8,6 +8,11 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-17
+
+### Added
+- Real place: building now shows numbered steps (Step 2/5…), a progress bar and the time spent, plus a typical duration for the OpenStreetMap download.
+
 ## [0.4.3] - 2026-10-17
 
 ### Changed
@@ -108,6 +113,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.4.4]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.4
 [0.4.3]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.3
 [0.4.2]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.2
 [0.4.1]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.1
