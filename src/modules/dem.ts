@@ -184,6 +184,11 @@ export function lonLatToLocal(dem: Dem, a: Area): (lon: number, lat: number) => 
     return [e * c - n * s, e * s + n * c]
   }
 }
+/** WGS84 of a source coordinate */
+export function sourceToLonLat(dem: Dem): (x: number, y: number) => [number, number] {
+  const inv = !dem.crs || isGeographic(dem.crs) ? null : proj4(def(dem.crs), 'EPSG:4326')
+  return (x, y) => (inv ? (inv.forward([x, y]) as [number, number]) : [x, y])
+}
 /** WGS84 of a point of the area's local frame (metres from the centre) */
 export function localToLonLat(dem: Dem, a: Area): (lx: number, lz: number) => [number, number] {
   const inv = !dem.crs || isGeographic(dem.crs) ? null : proj4(def(dem.crs), 'EPSG:4326')

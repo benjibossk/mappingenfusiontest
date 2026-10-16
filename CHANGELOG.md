@@ -8,6 +8,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+- Real place: optional satellite background under the area picker.
 - Real place: relief from Terrarium tiles and IGN (RGE ALTI, LiDAR HD with the tree height); ESA WorldCover land cover paints ground surfaces (forest floor, crops, heath, concrete, dirt) and can outline forests; Esri satellite photo of the area as tracing image. Bridge: `GET /landcover?tile=` forwards WorldCover byte ranges.
 - Real place: search by place name, Copernicus tiles joined into one relief (areas across tile borders), 4 / 8 / 16 / 32 km size buttons, 4 favourite areas, warning over 2046 m of height.
 - Real place: "Adapt for gameplay and performance" (on by default) welds nearby woods into forests, drops small woods and short road pieces, thins dense town centres.

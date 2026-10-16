@@ -6,7 +6,7 @@ import { BRIDGE_URL, type WorldExport } from './bridge'
 import { t, type Key } from './i18n'
 import {
   type Area, type Dem, CRS_CHOICES, areaLonLat, buildWorld, copernicusTiles, mosaic, crsKnown, defaultArea, demRange,
-  isGeographic, localToLonLat, lonLatToLocal, readDem, readTiff, toSource,
+  isGeographic, localToLonLat, sourceToLonLat, lonLatToLocal, readDem, readTiff, toSource,
 } from './modules/dem'
 import { canopyClasses } from './modules/canopy'
 import { CREDITS, coverage, fetchIgn, fetchImagery, fetchTerrarium, fetchWorldCover } from './modules/sources'
@@ -55,6 +55,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
             <button id="rwCopGo" type="button">${L('rw.download')}</button>
           </div>
           <canvas id="rwCv" width="520" height="520"></canvas>
+          <label class="check" title="${L('hint.satBg')}"><input id="rwSatBg" type="checkbox"> ${L('rw.satBg')}</label>
           <div id="rwInfo" class="hint"></div>
         </div>
         <div class="pc-side">
@@ -105,6 +106,21 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
   let dem: Dem | null = null
   let area: Area | null = null
   let shade: ImageData | null = null
+  // satellite picture under the preview (display only). It is laid on the file's own grid edges: exact
+  // for lon / lat files, a little turned for projected ones (Lambert, UTM), fine for finding one's way
+  let satBg: { img: HTMLCanvasElement; of: Dem } | null = null
+  async function loadSatBg() {
+    const d = effective()
+    if (!$<HTMLInputElement>('rwSatBg').checked || !d || !d.crs) { satBg = null; redraw(); return }
+    if (satBg?.of === dem) return redraw()
+    const ll = sourceToLonLat(d)
+    const xe = d.x0 + (d.w - 1) * d.dx, ye = d.y0 + (d.h - 1) * d.dy
+    const pts = [ll(d.x0, d.y0), ll(xe, d.y0), ll(xe, ye), ll(d.x0, ye)]
+    const s = Math.min(...pts.map((p) => p[1])), n = Math.max(...pts.map((p) => p[1])), w = Math.min(...pts.map((p) => p[0])), e = Math.max(...pts.map((p) => p[0]))
+    msg.textContent = t('rw.satFetching')
+    try { satBg = { img: await fetchImagery(s, w, n, e, 1024), of: dem! }; msg.textContent = '' } catch (err) { msg.textContent = (err as Error).message }
+    redraw()
+  }
   let osmFile: unknown = null
   let fromCop = false
   let srcCredit = '' // credit of the relief source other than Copernicus
@@ -133,6 +149,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     $<HTMLInputElement>('rwSea').value = String(lo <= 0.5 ? 0 : Math.floor(lo) - 1)
     $<HTMLDivElement>('rwInfo').textContent = t('rw.info', { name: d.name, w: d.w, h: d.h, crs: d.crs ?? '—', lo: Math.round(lo), hi: Math.round(hi) })
     shade = makeShade(d)
+    if ($<HTMLInputElement>('rwSatBg').checked) void loadSatBg()
     fill()
     redraw()
   }
@@ -281,6 +298,12 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     const d = effective()
     if (!d || !area) { g.fillStyle = '#aaa'; g.fillText(t('rw.empty'), 20, 30); return }
     if (shade) g.putImageData(shade, 0, 0)
+    if (satBg && satBg.of === dem) {
+      const [x0, y0] = toCanvas(d, d.x0, d.y0), [x1, y1] = toCanvas(d, d.x0 + (d.w - 1) * d.dx, d.y0 + (d.h - 1) * d.dy)
+      g.globalAlpha = 0.85
+      g.drawImage(satBg.img, Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0))
+      g.globalAlpha = 1
+    }
     const h = area.size / 2
     g.beginPath()
     for (const [lx, lz] of [[-h, -h], [h, -h], [h, h], [-h, h]]) g.lineTo(...toCanvas(d, ...toSource(d, area, lx, lz)))
@@ -301,6 +324,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
   $<HTMLInputElement>('rwSize').addEventListener('change', () => { if (area) { area.size = Math.max(256, Math.min(40960, num('rwSize'))); redraw() } })
   $<HTMLInputElement>('rwRot').addEventListener('change', () => { if (area) { area.rot = num('rwRot') || 0; redraw() } })
   $<HTMLSelectElement>('rwCols').addEventListener('change', redraw)
+  $<HTMLInputElement>('rwSatBg').addEventListener('change', () => void loadSatBg())
   let drag: [number, number] | null = null
   cv.addEventListener('mousedown', (e) => { drag = [e.offsetX, e.offsetY] })
   window.addEventListener('mouseup', () => { drag = null })
