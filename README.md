@@ -46,8 +46,9 @@ flowchart LR
 | ⛰️ | **Sculpt**: interactive terrain brush (approach inspired by mapgen4) | ✅ |
 | 🎨 | **Surfaces and masks**: surface masks from altitude, slope… + satellite image | ✅ |
 | 🛣️ | **Roads**: drawing, road network (graph), furniture and signs along roads | ✅ |
-| 🌊 | **Water**: rivers (flow accumulation), lakes, banks | ✅ banks still rough |
-| 🌉 | **Bridges** at road / river crossings | ✅ |
+| 🌊 | **Water**: rivers (flow accumulation), lakes, banks | ⚠️ placement not right yet |
+| 🌉 | **Bridges** at road / river crossings | ⚠️ placement to fix |
+| ⚡ | **Power lines**: pylons and poles linking villages | ⬛ to do |
 | 🏘️ | **Villages** built from house + garden parcels captured on the vanilla maps | 🧪 testing |
 | 🌾 | **Countryside**: farm plots (Voronoi, inspired by AgriFieldGenerator) | ✅ |
 | 📥 | **Import a world in progress**: relief, roads, rivers, lakes become editable; buildings and signs stay locked | 🧪 testing |
@@ -136,7 +137,8 @@ flowchart LR
     classDef todo fill:#455a64,color:#fff,stroke:#263238
     A[Terrain · roads · water · bridges]:::done --> B[World import + editing]:::wip
     B --> C[Villages from captured parcels]:::wip
-    C --> D[Banks · rocks · forests · paths · fields]:::todo
+    C --> X[Fix bridges · rivers · lakes]:::wip
+    X --> D[Banks · rocks · forests · paths · fields · power lines]:::todo
     D --> E[Ground surfaces import]:::todo
     E --> F[Online site + SHP/CSV export]:::todo
     F --> G[Real-time collaboration]:::todo
@@ -144,7 +146,17 @@ flowchart LR
 
 <sub>🟩 done · 🟨 in progress · ⬛ to do</sub>
 
-Help is welcome on: riverbank / lake shore generation, rocks on steep slopes, automatic forests, paths and field zones, ground surface import, and FPS bench data per platform (Xbox Series S/X, PS5, PC) to calibrate the entity budget.
+### Known issues / not finished
+
+- 🌉 **Bridges**: deck height, length and alignment with the road are often off; some crossings get no bridge or a misplaced one.
+- 🌊 **Rivers**: the course and bed do not always sit right in the relief (water floating above or sunk under the banks); banks are still rough.
+- 💧 **Lakes**: shore and water level not always matched to the terrain; lake placement needs work.
+- ⚡ **Power lines**: no electric network yet (pylons, poles and wires between villages and along roads).
+- 🪨 Rocks, 🌲 automatic forests, 🛤️ paths and 🌾 field zones: not generated yet.
+- 🧱 Ground surfaces are not imported from an existing world (relief only).
+- 📊 Entity budget limits per platform are provisional (no measured FPS data yet).
+
+Help is welcome on: bridge, river and lake placement, power lines, riverbank / lake shore generation, rocks on steep slopes, automatic forests, paths and field zones, ground surface import, and FPS bench data per platform (Xbox Series S/X, PS5, PC) to calibrate the entity budget.
 
 - **Vanilla assets** only: no third-party content is required or redistributed.
 - **No AI tool required**: the site, the bridge and the plugin are all you need.
