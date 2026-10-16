@@ -1,5 +1,5 @@
 import './style.css'
-import { fr, getLang, t } from './i18n'
+import { external, fr, getLang, t } from './i18n'
 import type { Project, ProjectEntity, ProjectShape } from './project'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
@@ -828,7 +828,7 @@ const txt = (id: string) => $<HTMLInputElement>(id).value.trim()
 async function run(label: string, f: () => Promise<string>) {
   logEl.textContent = t('run.progress', { label })
   try {
-    logEl.textContent = await f()
+    logEl.textContent = external(await f())
   } catch (e) {
     logEl.textContent = t('run.error', { label, msg: (e as Error).message })
   }
@@ -932,7 +932,7 @@ async function refreshStatus() {
 sendEl.addEventListener('click', async () => {
   sendEl.disabled = true
   try {
-    logEl.textContent = await toWb(JSON.parse(projectEl.value) as Project)
+    logEl.textContent = external(await toWb(JSON.parse(projectEl.value) as Project))
   } catch (e) {
     logEl.textContent = t('err.generic', { msg: (e as Error).message })
   } finally {

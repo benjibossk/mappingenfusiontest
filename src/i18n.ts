@@ -579,5 +579,40 @@ export function setLang(code: string) {
 
 export function t(key: Key, vars?: Record<string, string | number>): string {
   const s: string = langs[lang]?.[key] ?? en[key]
-  return vars ? s.replace(/\{(\w+)\}/g, (m, n: string) => (n in vars ? String(vars[n]) : m)) : s
+  // {msg} carries text from the Workbench or the bridge: rewritten for the UI language
+  return vars ? s.replace(/\{(\w+)\}/g, (m, n: string) => (n in vars ? (n === 'msg' ? external(String(vars[n])) : String(vars[n])) : m)) : s
+}
+
+// Messages written in English by the Workbench plugin and the bridge, rewritten for the UI language.
+// Unknown messages are shown as they are.
+const EXTERNAL_FR: [RegExp, string][] = [
+  [/^project v(\d+): (\d+) old objects removed, (\d+)\/(\d+) shapes, (\d+)\/(\d+) objects from .*$/, 'projet v$1 : $2 anciens objets supprimés, $3/$4 formes, $5/$6 objets'],
+  [/^(\d+) x (\d+) grid \(step ([\d.]+) m\) on (\d+) x (\d+) vertices \(cell ([\d.]+) m\), (\d+) stamps, heights (\S+) \.\. (\S+) m$/, 'grille $1 × $2 (pas $3 m) sur $4 × $5 sommets (maille $6 m), $7 tampons, hauteurs $8 à $9 m'],
+  [/^expected (\d+) heights, read (\d+)$/, '$1 hauteurs attendues, $2 lues'],
+  [/^(?:error: )?WorldEditor module not loaded$/, 'module World Editor non chargé'],
+  [/^(?:error: )?World Editor not in edit mode$/, 'World Editor pas en mode édition'],
+  [/^(?:error: )?no world \/ terrain open in edit mode$/, 'aucun monde / terrain ouvert en mode édition'],
+  [/^(?:error: )?project file not found: (.*)$/, 'fichier projet introuvable : $1'],
+  [/^(?:error: )?terrain resolution unknown$/, 'résolution du terrain inconnue'],
+  [/^cannot write (.*)$/, 'impossible d’écrire $1'],
+  [/^cannot read (.*)$/, 'impossible de lire $1'],
+  [/^bad header: (.*)$/, 'en-tête invalide : $1'],
+  [/^Workbench unreachable on (\S+) \((.*)\)$/, 'Workbench injoignable sur $1 ($2) : NET API activée et addon Mapgenerator chargé ?'],
+  [/^Workbench call (\S+) timed out$/, 'le Workbench n’a pas répondu à temps ($1)'],
+  [/^Workbench error: (.*)$/, 'erreur du Workbench : $1'],
+  [/^empty response from Workbench$/, 'réponse vide du Workbench'],
+  [/^Failed to fetch$/, 'relais injoignable (npm run bridge)'],
+  [/^project too large$/, 'projet trop gros'],
+  [/^project\.shapes missing$/, 'project.shapes manquant'],
+  [/^grid invalid \(cols, rows, step, heights\)$/, 'grille invalide (cols, rows, step, heights)'],
+  [/^addon \/ world invalid$/, 'addon / monde invalide'],
+  [/^terrainSize \/ surfaces missing$/, 'terrainSize / surfaces manquants'],
+  [/^not a terrain file \(FORM\/TERR\)$/, 'ce n’est pas un fichier terrain (FORM/TERR)'],
+  [/^(\d+) objects, (\d+) shapes$/, '$1 objets, $2 formes'],
+  [/^HTTP (\d+)$/, 'erreur HTTP $1'],
+]
+export function external(msg: string): string {
+  if (lang !== 'fr') return msg
+  for (const [re, fr] of EXTERNAL_FR) if (re.test(msg)) return msg.replace(re, fr)
+  return msg
 }
