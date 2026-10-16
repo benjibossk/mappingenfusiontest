@@ -56,7 +56,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <strong>reforger-mapper</strong>
     <button id="undo" class="hist" title="${t('app.undo')}">↶</button>
     <button id="redo" class="hist" title="${t('app.redo')}">↷</button>
-    <button id="lang" class="hist" title="Language / Langue">${getLang() === 'fr' ? 'EN' : 'FR'}</button>
+    <button id="lang" class="hist" title="${getLang() === 'fr' ? 'Interface en français — clic : passer en anglais' : 'Interface in English — click: switch to French'}">🌐 ${getLang() === 'fr' ? 'FR' : 'EN'}</button>
     <button id="collab" class="hist" title="${t('collab.tip')}">👥</button>
     <span id="collabInfo" class="hint"></span>
     <span id="status" class="status" title="${t('app.refresh')}">…</span>

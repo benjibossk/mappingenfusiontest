@@ -8,6 +8,12 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-17
+
+### Changed
+- Real place: **Find** now downloads the relief straight away, so the preview shows without another click.
+- The language button shows the current language (🌐 FR / 🌐 EN) with a clear tooltip.
+
 ## [0.4.2] - 2026-10-17
 
 ### Fixed
@@ -102,6 +108,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.4.3]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.3
 [0.4.2]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.2
 [0.4.1]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.1
 [0.4.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.0

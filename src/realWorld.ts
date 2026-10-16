@@ -229,6 +229,8 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       $<HTMLInputElement>('rwLat').value = Number(js[0].lat).toFixed(4)
       $<HTMLInputElement>('rwLon').value = Number(js[0].lon).toFixed(4)
       msg.textContent = t('rw.found', { name: js[0].display_name })
+      // straight to the preview: fetch the relief of the place found
+      await copDownload()
     } catch (e) { msg.textContent = (e as Error).message }
   })
   $<HTMLInputElement>('rwPlace').addEventListener('keydown', (e) => { if (e.key === 'Enter') $<HTMLButtonElement>('rwFind').click() })
