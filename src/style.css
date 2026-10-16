@@ -133,3 +133,21 @@ html, body, #app { height: 100%; overflow: hidden; }
 .issues li.ok { cursor: default; list-style: none; opacity: .7; }
 .collabbox { position: absolute; top: 48px; left: 12px; z-index: 20; display: flex; flex-direction: column; gap: 4px; }
 .collabbox input { width: 180px; }
+
+/* parcel library */
+.parcels { position: fixed; inset: 0; background: #000a; z-index: 50; display: flex; align-items: center; justify-content: center; }
+.pc-box { background: #1b1d21; border: 1px solid #444; border-radius: 10px; width: min(1180px, 96vw); max-height: 94vh; display: flex; flex-direction: column; overflow: hidden; }
+.pc-head { display: flex; gap: 1rem; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid #333; }
+.pc-head button { margin-left: auto; padding: .2rem .6rem; background: #444; }
+.pc-body { display: flex; gap: .8rem; padding: .8rem; overflow: auto; flex-wrap: wrap; }
+.pc-gallery { width: 280px; display: flex; flex-direction: column; gap: .5rem; }
+.pc-list { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; overflow: auto; max-height: 70vh; }
+.pc-card { display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: .3rem; background: #262a30; font-size: .72rem; }
+.pc-edit { display: flex; gap: .8rem; flex: 1; flex-wrap: wrap; }
+.pc-edit canvas#pcCv { width: min(520px, 90vw); aspect-ratio: 1; border-radius: 6px; cursor: move; }
+.pc-side { display: flex; flex-direction: column; gap: .4rem; min-width: 240px; flex: 1; font-size: .85rem; }
+.pc-side label { display: flex; flex-direction: column; gap: .15rem; }
+.pc-side input, .pc-side select { background: #111; color: inherit; border: 1px solid #444; border-radius: 4px; padding: .25rem; }
+.pc-row { display: flex; gap: .4rem; flex-wrap: wrap; }
+.pc-row button, .pc-side button, .pc-file { padding: .35rem .7rem; font-size: .85rem; }
+.pc-file { background: #3d6fd8; border-radius: 6px; cursor: pointer; }

@@ -7,13 +7,25 @@ import { BUILDINGS, type Building, type BuildingCat } from '../data/buildings'
 import type { ProjectEntity } from '../project'
 import type { ParcelItems, Placed } from './settlements'
 
-export interface ParcelItem { p: string; x: number; z: number; y: number; yaw: number; pitch: number; roll: number }
-export interface Parcel { name: string; anchor: string; bounds: [number, number, number, number]; items: ParcelItem[] }
+export interface ParcelItem { p: string; x: number; z: number; y: number; yaw: number; pitch: number; roll: number; w?: number; d?: number }
+/** captured parcels: positions in the anchor building's frame. Library parcels (`free`): positions in the
+ *  parcel's own frame, the street on the +Z side, the main building is items[0] and may be turned. */
+export interface Parcel {
+  name: string
+  anchor: string
+  bounds: [number, number, number, number]
+  items: ParcelItem[]
+  cat?: BuildingCat
+  free?: boolean
+  source?: 'captured' | 'library' | 'community'
+  tags?: string[]
+}
 
 const REACH = 30 // objects further than this from the building are dropped (stray forest trees)
 const ON_GROUND = 0.3 // below this height above the ground an object is snapped to the terrain
 
 function category(p: Parcel): BuildingCat | null {
+  if (p.cat) return p.cat
   const a = p.anchor
   // small structures join parcels, they never lead one (same list as the capture plugin)
   if (/Pipeline|Container|Crane|FuelTank|Shed|Garage|Booth|Kiosk|Toilet/i.test(a)) return null
@@ -25,10 +37,11 @@ function category(p: Parcel): BuildingCat | null {
   return area < 90 ? 'houseS' : area < 180 ? 'houseM' : 'houseL'
 }
 
-const isAnchor = (p: Parcel, i: ParcelItem) => i.p === p.anchor && Math.abs(i.x) < 0.05 && Math.abs(i.z) < 0.05
+const isAnchor = (p: Parcel, i: ParcelItem) => !p.free && i.p === p.anchor && Math.abs(i.x) < 0.05 && Math.abs(i.z) < 0.05
 
 /** kept objects of a parcel (anchor removed, strays dropped) */
 function kept(p: Parcel) {
+  if (p.free) return p.items
   return p.items.filter((i) => !isAnchor(p, i) && Math.hypot(i.x, i.z) <= REACH)
 }
 
@@ -60,7 +73,7 @@ export function parcelItems(parcels: Parcel[], groundAt: (x: number, z: number) 
     const a = (q.yaw * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a)
     return kept(p).map((i, k) => {
       const x = q.x + i.x * c + i.z * s, z = q.z - i.x * s + i.z * c
-      const e: ProjectEntity = { id: `${q.id}P${k}`, prefab: i.p, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw: Math.round(q.yaw + i.yaw) }
+      const e: ProjectEntity = { id: p.free && k === 0 ? q.id : `${q.id}P${k}`, prefab: i.p, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw: Math.round(q.yaw + i.yaw) }
       if (i.y > ON_GROUND) e.ycm = Math.round((groundAt(x, z) + i.y) * 100)
       return e
     })

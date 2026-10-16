@@ -12,6 +12,9 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - Work with several people: shared rooms on a small server (`npm run collab`), the map is synced between
   everyone in the room and each mapper's cursor is shown with their name.
 - `CONTRIBUTING.md`, issue templates and a pull request template.
+- Parcel library (Villages tab, 📦): gallery and editor of ready-made lots (house + garden, flats + parking,
+  farm yard...), JSON export / import, community parcels in `public/parcels/`; the village generator
+  uses them, and a new "flats + parking" type fills town centres.
 
 ### Security
 - Collab server: password required before anything is sent (map, cursors, names), listens on the local

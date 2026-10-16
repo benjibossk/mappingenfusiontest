@@ -36,6 +36,7 @@ import { SITE_RADIUS, buildNetwork, pickSites, type Site, type SiteKind } from '
 import { validate, type Issue } from './modules/validate'
 import { worldToIsland } from './modules/importWorld'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
+import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 
@@ -240,6 +241,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="setPaths" type="checkbox" checked> ${t('lbl.setPaths')}</label>
           <label class="check"><input id="setParcels" type="checkbox"> ${t('lbl.setParcels')}</label>
         </div>
+        <button id="parcelLib" type="button">${t('pc.open')}</button>
         <p class="hint">${t('hint.set')}</p>
         <div class="row">
           <button id="setGen" type="button">${t('btn.setGen')}</button>
@@ -1714,9 +1716,18 @@ function drawSettlements() {
     ctx.stroke()
   }
 }
-// parcels captured in the Workbench (fetched once through the bridge)
-let parcels: Parcel[] | null = null
-const loadParcels = async () => (parcels ??= (await getTemplates()) as Parcel[])
+// parcels: captured in the Workbench (fetched once through the bridge) + the parcel library (parcels.ts)
+let captured: Parcel[] | null = null
+const loadCaptured = async () => (captured ??= (await getTemplates()) as Parcel[])
+async function loadParcels() {
+  let got: Parcel[] = []
+  let err: Error | null = null
+  try { got = await loadCaptured() } catch (e) { err = e as Error }
+  const all = [...got, ...(await libraryParcels())]
+  if (!all.length && err) throw err
+  return all
+}
+$<HTMLButtonElement>('parcelLib').addEventListener('click', () => openParcels(loadCaptured))
 const groundAt = (x: number, z: number) => {
   if (!island) return 0
   const { cols, rows, step, minX, minZ } = island.grid

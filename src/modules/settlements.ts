@@ -38,7 +38,7 @@ const STRIP = 42 // buildable depth behind the road edge, metres
 const ROAD_MARGIN = 1.5 // clearance between a footprint and any road surface
 const WATER_MARGIN = 5
 const GAP = 1 // minimal distance between two footprints
-const MAX_DROP: Record<BuildingCat, number> = { houseS: 1.2, houseM: 1.2, houseL: 1.0, farm: 1.5, civic: 1.0, annex: 0.6, shed: 0.6 }
+const MAX_DROP: Record<BuildingCat, number> = { houseS: 1.2, houseM: 1.2, houseL: 1.0, farm: 1.5, civic: 1.0, block: 1.0, annex: 0.6, shed: 0.6 }
 
 function rng(seed: number) {
   let a = seed >>> 0
@@ -437,7 +437,7 @@ export function settle(sites: Site[], roads: Road[], waters: Water[], heights: A
       const district: District = fr < 0.3 ? 'centre' : fr < 0.6 ? 'mid' : 'edge'
       const cats: BuildingCat[] =
         !big ? (fr < 0.5 ? ['houseS', 'houseM', 'houseM', 'farm'] : ['houseS', 'houseM', 'farm', 'farm'])
-        : district === 'centre' ? (site.kind === 'town' ? ['houseL', 'houseL', 'houseM'] : ['houseM', 'houseL'])
+        : district === 'centre' ? (site.kind === 'town' ? ['block', 'houseL', 'houseL', 'houseM'] : ['block', 'houseM', 'houseL', 'houseL'])
         : district === 'mid' ? ['houseS', 'houseM', 'houseM', 'farm']
         : ['houseS', 'farm', 'farm', 'farm']
       const setback = district === 'centre' && big ? 1 + rand() * 2.5 : 2 + rand() * 4
@@ -579,8 +579,10 @@ export function settlementEntities(placed: Placed[], parcels?: ParcelItems): Pro
   const r2 = (v: number) => Math.round(v * 100) / 100
   const out: ProjectEntity[] = []
   for (const q of placed) {
-    out.push({ id: q.id, prefab: q.prefab, x: r2(q.x), z: r2(q.z), yaw: q.yaw })
-    if (q.tpl && parcels) out.push(...parcels(q))
+    const items = q.tpl && parcels ? parcels(q) : []
+    // a parcel made in the library lays its main building itself (it may be turned or off-centre)
+    if (!items.some((e) => e.id === q.id)) out.push({ id: q.id, prefab: q.prefab, x: r2(q.x), z: r2(q.z), yaw: q.yaw })
+    out.push(...items)
   }
   return out
 }
@@ -603,5 +605,5 @@ export function buildingMasks(placed: Placed[]) {
 }
 
 export const CAT_COLOUR: Record<BuildingCat, string> = {
-  houseS: '#f2c48d', houseM: '#e8955a', houseL: '#c9573a', farm: '#9bc25b', annex: '#a0a0a0', shed: '#7d7d7d', civic: '#c77dff',
+  houseS: '#f2c48d', houseM: '#e8955a', houseL: '#c9573a', farm: '#9bc25b', annex: '#a0a0a0', shed: '#7d7d7d', civic: '#c77dff', block: '#6c8ebf',
 }

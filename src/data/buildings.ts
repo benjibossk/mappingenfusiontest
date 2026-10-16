@@ -3,7 +3,7 @@
 // ruins, interiors, parts, "_base", furniture and damaged variants are left out.
 // No church or town hall exists in the vanilla set: the village pub is the unique "civic" building.
 
-export type BuildingCat = 'houseS' | 'houseM' | 'houseL' | 'farm' | 'annex' | 'shed' | 'civic'
+export type BuildingCat = 'houseS' | 'houseM' | 'houseL' | 'farm' | 'annex' | 'shed' | 'civic' | 'block' // block: flats with parking, parcels only
 
 export interface Building {
   prefab: string // "{GUID}path.et"

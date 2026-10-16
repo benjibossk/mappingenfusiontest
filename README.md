@@ -144,7 +144,7 @@ Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `
 |---|---|---|
 | **1. Base** | Terrain, sculpting, roads, rivers, lakes, bridges, fields, send to the Workbench | ✅ done |
 | **2. Work on real maps** | Import a world in progress, edit it, send it back without duplicates | ✅ done, being tested |
-| **3. Villages** | Villages built from house + garden parcels captured on the vanilla maps | 🟡 in progress |
+| **3. Villages** | Villages built from parcels: captured on the vanilla maps or made in the parcel library (📦), shared by the community | 🟡 in progress |
 | **4. Fix what exists** | Bridge placement, rivers and lakes sitting right in the relief, better banks | 🟡 in progress |
 | **5. Fill the map** | Rocks on slopes, automatic forests, paths, field zones, power lines | ⬜ to do |
 | **6. Complete import** | Ground surfaces of an existing world, generator settings (road width…) | ⬜ to do |
