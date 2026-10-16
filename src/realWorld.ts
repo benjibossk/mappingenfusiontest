@@ -5,7 +5,7 @@
 import { BRIDGE_URL, type WorldExport } from './bridge'
 import { t, type Key } from './i18n'
 import {
-  type Area, type Dem, CRS_CHOICES, areaLonLat, buildWorld, copernicusTile, crsKnown, defaultArea, demRange,
+  type Area, type Dem, CRS_CHOICES, areaLonLat, buildWorld, copernicusTiles, mosaic, crsKnown, defaultArea, demRange,
   isGeographic, lonLatToLocal, readDem, readTiff, toSource,
 } from './modules/dem'
 import { canopyClasses } from './modules/canopy'
@@ -39,6 +39,10 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
             <span class="hint">${L('rw.formats')}</span>
           </div>
           <div class="pc-row rw-cop">
+            <input id="rwPlace" type="search" placeholder="${L('rw.placePh')}"><button id="rwFind" type="button">${L('rw.find')}</button>
+            <span id="rwFavs"></span>
+          </div>
+          <div class="pc-row rw-cop">
             <span>${L('rw.cop')}</span>
             <label>${L('rw.lat')} <input id="rwLat" type="number" step="0.0001" placeholder="45.1885"></label>
             <label>${L('rw.lon')} <input id="rwLon" type="number" step="0.0001" placeholder="5.7245"></label>
@@ -53,6 +57,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
             <label>${L('rw.size')} <input id="rwSize" type="number" min="256" step="256"></label>
             <label>${L('rw.rot')} <input id="rwRot" type="number" step="1" value="0"></label>
           </div>
+          <div class="pc-row">${[4, 8, 16, 32].map((k) => `<button type="button" data-km="${k}">${k} km</button>`).join('')}</div>
           <label>${L('rw.crs')} <input id="rwCrs" type="text" list="rwCrsList" placeholder="EPSG:2154"></label>
           <datalist id="rwCrsList">${CRS_CHOICES.filter((c) => c !== 'UTM').map((c) => `<option value="${c}">`).join('')}<option value="EPSG:32631"><option value="EPSG:32632"><option value="EPSG:25832"></datalist>
           <div id="rwPng" class="pc-row" hidden>
@@ -127,28 +132,89 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     msg.textContent = t('rw.reading')
     try { fromCop = false; await useDem(await readDem(f)); msg.textContent = '' } catch (e) { msg.textContent = (e as Error).message }
   })
-  $<HTMLButtonElement>('rwCopGo').addEventListener('click', async () => {
+  $<HTMLButtonElement>('rwCopGo').addEventListener('click', () => void copDownload())
+  async function copDownload() {
     const lat = num('rwLat'), lon = num('rwLon')
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180 || ($<HTMLInputElement>('rwLat').value === '')) return void (msg.textContent = t('rw.badLatLon'))
-    const tile = copernicusTile(lat, lon)
-    msg.textContent = t('rw.downloading', { id: tile.id })
+    // every tile under a 0.3° window (about ±33 km, enough for a turned 32 km area), cut and joined
+    const { box, tiles } = copernicusTiles(lat, lon, 0.3)
     try {
-      let buf: ArrayBuffer
-      try {
-        const r = await fetch(tile.url)
-        if (!r.ok) throw new Error(String(r.status))
-        buf = await r.arrayBuffer()
-      } catch {
-        // no CORS from the browser: the local bridge fetches it (and keeps a copy)
-        const r = await fetch(`${BRIDGE_URL}/dem?tile=${tile.id}`)
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `bridge ${r.status}`)
-        buf = await r.arrayBuffer()
+      const got: Dem[] = []
+      let lastErr = ''
+      for (const [k, tile] of tiles.entries()) {
+        msg.textContent = t('rw.downloading', { id: `${tile.id} (${k + 1}/${tiles.length})` })
+        try { got.push(await readTiff(await fetchTile(tile), tile.id)) } catch (e) { lastErr = (e as Error).message } // missing tile = open sea
       }
+      if (!got.length) throw new Error(lastErr || '404')
       fromCop = true
-      await useDem(await readTiff(buf, tile.id), [lat, lon])
+      msg.textContent = t('rw.joining')
+      await new Promise((r) => setTimeout(r, 20))
+      await useDem(mosaic(got, box, `Copernicus ${lat.toFixed(3)} ${lon.toFixed(3)}`), [lat, lon])
       msg.textContent = ''
     } catch (e) { msg.textContent = t('rw.copFail', { msg: (e as Error).message }) }
+  }
+  async function fetchTile(tile: { id: string; url: string }) {
+    try {
+      const r = await fetch(tile.url)
+      if (!r.ok) throw new Error(String(r.status))
+      return await r.arrayBuffer()
+    } catch {
+      // no CORS from the browser: the local bridge fetches it (and keeps a copy)
+      const r = await fetch(`${BRIDGE_URL}/dem?tile=${tile.id}`)
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `bridge ${r.status}`)
+      return r.arrayBuffer()
+    }
+  }
+
+  // --- place search (OpenStreetMap Nominatim, one request per click) and 4 favourites ---
+  $<HTMLButtonElement>('rwFind').addEventListener('click', async () => {
+    const q = $<HTMLInputElement>('rwPlace').value.trim()
+    if (!q) return
+    msg.textContent = t('rw.finding')
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`)
+      const js = (await r.json()) as { lat: string; lon: string; display_name: string }[]
+      if (!js.length) return void (msg.textContent = t('rw.notFound', { q }))
+      $<HTMLInputElement>('rwLat').value = Number(js[0].lat).toFixed(4)
+      $<HTMLInputElement>('rwLon').value = Number(js[0].lon).toFixed(4)
+      msg.textContent = t('rw.found', { name: js[0].display_name })
+    } catch (e) { msg.textContent = (e as Error).message }
   })
+  $<HTMLInputElement>('rwPlace').addEventListener('keydown', (e) => { if (e.key === 'Enter') $<HTMLButtonElement>('rwFind').click() })
+  interface Fav { lat: number; lon: number; size: number; rot: number }
+  const favs = (): (Fav | null)[] => { try { const v = JSON.parse(localStorage.getItem('mapgen.rwFavs') ?? '[]'); return Array.isArray(v) ? v : [] } catch { return [] } }
+  function drawFavs() {
+    const box = $<HTMLSpanElement>('rwFavs')
+    box.innerHTML = ''
+    const list = favs()
+    for (let i = 0; i < 4; i++) {
+      const f = list[i] ?? null
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.textContent = f ? `★${i + 1}` : `☆${i + 1}`
+      b.title = f ? t('rw.favUse', { lat: f.lat.toFixed(3), lon: f.lon.toFixed(3), km: (f.size / 1000).toFixed(1) }) : t('rw.favSave')
+      b.addEventListener('click', async (ev) => {
+        const cur = favs()
+        if (f && !ev.shiftKey) {
+          $<HTMLInputElement>('rwLat').value = String(f.lat); $<HTMLInputElement>('rwLon').value = String(f.lon)
+          await copDownload()
+          if (area) { area.size = f.size; area.rot = f.rot; fill(); redraw() }
+          return
+        }
+        const d = effective()
+        if (!d || !area || !isGeographic(d.crs)) return void (msg.textContent = t('rw.favNeedCop'))
+        cur[i] = { lat: area.cy, lon: area.cx, size: area.size, rot: area.rot }
+        try { localStorage.setItem('mapgen.rwFavs', JSON.stringify(cur)) } catch { /* private mode */ }
+        drawFavs()
+      })
+      box.append(b)
+    }
+  }
+  drawFavs()
+  for (const b of Array.from(root!.querySelectorAll<HTMLButtonElement>('[data-km]'))) {
+    b.addEventListener('click', () => { if (area) { area.size = Number(b.dataset.km) * 1024; fill(); redraw() } })
+  }
+
   for (const id of ['rwPixel', 'rwBlack', 'rwWhite', 'rwCrs']) $<HTMLInputElement>(id).addEventListener('change', () => { if (dem) { const a = area; void useDem(dem).then(() => { if (a && id === 'rwCrs') { area = a; fill(); redraw() } }) } })
 
   // --- the preview ---
@@ -189,7 +255,9 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     g.beginPath(); g.moveTo(...toCanvas(d, ...toSource(d, area, -h, h))); g.lineTo(...toCanvas(d, ...toSource(d, area, h, h)))
     g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke(); g.lineWidth = 1
     const cols = num('rwCols')
-    $<HTMLDivElement>('rwStep').textContent = t('rw.step', { step: (area.size / (cols - 1)).toFixed(2), km: (area.size / 1000).toFixed(2) })
+    const [, top] = d.normalized ? [0, num('rwWhite')] : demRange(d)
+    const over = (top - num('rwSea')) * Math.max(0.1, num('rwExag') || 1) > 2046
+    $<HTMLDivElement>('rwStep').textContent = t('rw.step', { step: (area.size / (cols - 1)).toFixed(2), km: (area.size / 1000).toFixed(2) }) + (over ? ' — ' + t('rw.tooHigh') : '')
   }
   function fill() {
     if (!area) return

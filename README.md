@@ -183,6 +183,8 @@ The table shows what is done (✅) and what is still planned (⬜).
 
 **Adapted, not copied** (option ticked by default): woods closer than 25 m are welded into one forest and small isolated woods dropped, short minor road pieces dropped, dense town centres thinned (3 buildings per 40 m square at most, 2500 in all) — for gameplay and frame rate. Untick it for a faithful copy.
 
+**Picking the place**: search a place by name (OpenStreetMap Nominatim) or type latitude / longitude, then Download: every Copernicus tile under the area is fetched and joined (no hole on tile borders). Size buttons 4 / 8 / 16 / 32 km (×1024 m, like BARNMAP), 4 favourite areas (click to load, Shift+click to replace), and a warning when the relief goes over the 2046 m the Reforger terrain can hold.
+
 Limits to keep in mind: real data rarely fits the Reforger size and the entity budget as is (it will be
 scaled and simplified); a 30 m DEM is smooth and needs sculpting for small details; every source has its own
 licence (OpenStreetMap: ODbL, attribution and share-alike; Copernicus: attribution) — the tool writes it in the log

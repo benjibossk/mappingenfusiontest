@@ -264,6 +264,39 @@ export function demRange(dem: Dem): [number, number] {
   return [lo, hi]
 }
 
+/** Copernicus tiles covering a window of ±half degrees of latitude around a point (longitude widened
+ *  by 1/cos(lat) so the window is about square on the ground) */
+export function copernicusTiles(lat: number, lon: number, half: number) {
+  const hl = half / Math.max(0.2, Math.cos((lat * Math.PI) / 180))
+  const box: [number, number, number, number] = [lat - half, lon - hl, lat + half, lon + hl] // s, w, n, e
+  const out: ReturnType<typeof copernicusTile>[] = []
+  for (let la = Math.floor(box[0]); la <= Math.floor(box[2]); la++) for (let lo = Math.floor(box[1]); lo <= Math.floor(box[3]); lo++) out.push(copernicusTile(la + 0.5, lo + 0.5))
+  return { box, tiles: out }
+}
+
+/** several geographic tiles cut to one window [s, w, n, e] at the finest resolution; holes (missing
+ *  tiles: open sea) stay NaN */
+export function mosaic(tiles: Dem[], [s, w, n, e]: [number, number, number, number], name: string): Dem {
+  const dx = Math.min(...tiles.map((d) => Math.abs(d.dx))), dy = Math.min(...tiles.map((d) => Math.abs(d.dy)))
+  const W = Math.round((e - w) / dx) + 1, H = Math.round((n - s) / dy) + 1
+  const data = new Float32Array(W * H).fill(Number.NaN)
+  for (let r = 0; r < H; r++) {
+    const y = n - r * dy
+    for (let c = 0; c < W; c++) {
+      const x = w + c * dx
+      for (const d of tiles) {
+        // a point on the seam between two tiles may fall just outside both: take the edge pixel
+        const xe = d.x0 + (d.w - 1) * d.dx, ye = d.y0 + (d.h - 1) * d.dy
+        const near = (v: number, a: number, b: number, step: number) => v >= Math.min(a, b) - 1.5 * Math.abs(step) && v <= Math.max(a, b) + 1.5 * Math.abs(step)
+        if (!near(x, d.x0, xe, d.dx) || !near(y, d.y0, ye, d.dy)) continue
+        const v = sample(d, Math.min(Math.max(x, Math.min(d.x0, xe)), Math.max(d.x0, xe)), Math.min(Math.max(y, Math.min(d.y0, ye)), Math.max(d.y0, ye)))
+        if (!Number.isNaN(v)) { data[r * W + c] = v; break }
+      }
+    }
+  }
+  return { name, w: W, h: H, data, nodata: null, x0: w, y0: n, dx, dy: -dy, crs: 'EPSG:4326' }
+}
+
 /** Copernicus DEM GLO-30 tile holding a point (public AWS open data, one 1°x1° GeoTIFF) */
 export function copernicusTile(lat: number, lon: number) {
   const la = Math.floor(lat), lo = Math.floor(lon)
