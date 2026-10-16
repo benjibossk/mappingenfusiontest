@@ -47,6 +47,7 @@ Modules principaux : `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hy
 | [ENFUSION_FORMATS.md](docs/ENFUSION_FORMATS.md) | Formats et API Enfusion (vérifiés / supposés) |
 | [WIKI_TERRAIN.md](docs/WIKI_TERRAIN.md) | Synthèse du wiki Bohemia sur la création de terrain Reforger |
 | [WORKSHOP_TERRAIN_MODS.md](docs/WORKSHOP_TERRAIN_MODS.md) | Étude des mods Workshop d'outillage terrain |
+| [FINDINGS.md](docs/FINDINGS.md) | Trouvailles et pièges rencontrés (script Workbench, prefabs mesurés, eau, outillage) et reste à faire |
 | [BENCHMARK_GIORBEV.md](docs/BENCHMARK_GIORBEV.md) | Analyse de l'outil de benchmark de giorbev |
 | [FF_ET_SKILLS.md](docs/FF_ET_SKILLS.md) | Ce qu'on réutilise des skills Reforger / Freedom Fighters |
 
