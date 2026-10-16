@@ -6,6 +6,16 @@
 
 Web tool to map quickly for **Arma Reforger** (Enfusion engine) and auto-fill a map with vanilla assets, then send it to the Workbench World Editor.
 
+### What it is — and what it is not
+
+**It does not replace the Workbench.** The World Editor is a great mapping tool and the place where a map is really finished: detailing, lighting, gameplay, polish. Reforger Mapper does not try to redo it.
+
+**It is a planning and teamwork layer on top of it**, to:
+
+- 🎯 **Focus the work**: rough out the big picture fast (relief, road network, rivers, lakes, where villages and fields go) and let generators do the repetitive filling, so mappers spend their Workbench time on what matters.
+- 👥 **Build a map with several people**: a shared, lightweight view of the map that anyone can open, draw on and discuss, without each person needing the whole project in the Workbench. *(Online collaborative mode: on the roadmap.)*
+- 🔁 **Go back and forth**: import a world in progress from the Workbench, change the plan, send it back — the Workbench stays the source of truth.
+
 <p align="center">
   <img src="docs/img/generated-island.png" width="49%" alt="Generated island with rivers">
   <img src="docs/img/imported-world.png" width="49%" alt="World imported from the Workbench: roads, rivers, lakes and buildings">
@@ -128,7 +138,7 @@ Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `
 
 ## Status and roadmap
 
-**Work in progress** — the goal is a real mapping assistant, and later an online, collaborative one.
+**Work in progress** — the goal is a real mapping assistant next to the Workbench (not a replacement), and later an online space where several mappers plan the same map together.
 
 ```mermaid
 flowchart LR
