@@ -109,6 +109,19 @@ function simplify(pts: Pt[], tol: number): Pt[] {
   return pts.filter((_, k) => keep[k])
 }
 
+/** closed ring (first point = last): split at the point farthest from the start, simplify both halves
+ *  (simplify alone measures from a zero-length chord and would keep only the ends), open ring out */
+function simplifyRing(r: Pt[], tol: number): Pt[] {
+  if (r.length < 4) return r.slice(0, -1)
+  let far = 1, best = -1
+  for (let k = 1; k < r.length - 1; k++) {
+    const d = Math.hypot(r[k][0] - r[0][0], r[k][1] - r[0][1])
+    if (d > best) { best = d; far = k }
+  }
+  const a = simplify(r.slice(0, far + 1), tol), b = simplify(r.slice(far), tol)
+  return [...a, ...b.slice(1, -1)]
+}
+
 /** OSM cuts a road into many ways: join the pieces meeting end to end (only where exactly two meet) */
 function merge(ls: Pt[][]): Pt[][] {
   const key = (p: Pt) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`
@@ -176,7 +189,7 @@ export function osmToMap(data: unknown, toLocal: (lon: number, lat: number) => P
     return res
   }
   const area = (r: Pt[]) => { let a = 0; for (let k = 0, j = r.length - 1; k < r.length; j = k++) a += (r[j][0] + r[k][0]) * (r[j][1] - r[k][1]); return Math.abs(a / 2) }
-  const ringPts = (r: Pt[], tol: number) => { const s = simplify(r, tol); return flat(s.slice(0, -1)) } // open ring, the shape is closed by the plugin
+  const ringPts = (r: Pt[], tol: number) => flat(simplifyRing(r, tol)) // open ring, the shape is closed by the plugin
 
   const roadParts = new Map<string, Pt[][]>(), riverParts = new Map<string, Pt[][]>()
   const group = (m: Map<string, Pt[][]>, k: string, l: Pt[]) => { if (l.length < 2) return; const g = m.get(k); if (g) g.push(l); else m.set(k, [l]) }

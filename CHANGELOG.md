@@ -8,6 +8,11 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-17
+
+### Fixed
+- Real place: OpenStreetMap forests, lakes and fields came out as a single point (closed outlines were simplified away), so forests were then all dropped by the gameplay adaptation. Outlines are now kept.
+
 ## [0.4.0] - 2026-10-17
 
 ### Added
@@ -92,6 +97,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.4.1]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.1
 [0.4.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.0
 [0.3.0]: https://github.com/benjibossk/mappingenfusiontest/commits/main
 [0.2.0]: https://github.com/benjibossk/mappingenfusiontest/commits/main
