@@ -246,7 +246,7 @@ const server = createServer(async (req, res) => {
     // Only this host and this tile name pattern are fetched; tiles are kept in <profile>/MapGen/dem/.
     if (req.method === "GET" && req.url.startsWith("/dem?")) {
       const id = new URL(req.url, "http://x").searchParams.get("tile") ?? "";
-      if (!/^Copernicus_DSM_COG_10_[NS]d{2}_00_[EW]d{3}_00_DEM$/.test(id)) return send(res, 400, { error: "bad tile name" });
+      if (!/^Copernicus_DSM_COG_10_[NS][0-9]{2}_00_[EW][0-9]{3}_00_DEM$/.test(id)) return send(res, 400, { error: "bad tile name" });
       const dir = join(PROFILE_DIR, "MapGen", "dem");
       const file = join(dir, id + ".tif");
       let buf;
