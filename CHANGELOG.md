@@ -8,6 +8,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+- Real place: optional OpenStreetMap buildings, each footprint replaced by the closest-sized vanilla building, turned to match.
 - Real place: OpenStreetMap forests and fields now paint forest floor and crop field surfaces; the height scale follows the real relief.
 
 ### Added

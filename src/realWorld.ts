@@ -68,7 +68,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
           <div class="rw-checks">
             ${chk('rwOsm', 'rw.osmOn')}
             ${chk('rwMain', 'rw.mainRoads')}${chk('rwMinor', 'rw.minorRoads')}${chk('rwTracks', 'rw.tracks')}${chk('rwPaths', 'rw.paths', false)}
-            ${chk('rwWater', 'rw.water')}${chk('rwForests', 'rw.forests')}${chk('rwFields', 'rw.fields')}${chk('rwPlaces', 'rw.places')}
+            ${chk('rwWater', 'rw.water')}${chk('rwForests', 'rw.forests')}${chk('rwFields', 'rw.fields')}${chk('rwPlaces', 'rw.places')}${chk('rwBuildings', 'rw.buildings', false)}
           </div>
           <div class="pc-row">
             <label>${L('rw.minForest')} <input id="rwMinForest" type="number" value="1" min="0" step="0.5"></label>
@@ -245,7 +245,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
         if (!d.crs) throw new Error(t('rw.noGeo'))
         const o: OsmOptions = {
           mainRoads: ck('rwMain'), minorRoads: ck('rwMinor'), tracks: ck('rwTracks'), paths: ck('rwPaths'),
-          water: ck('rwWater'), forests: ck('rwForests'), fields: ck('rwFields'), places: ck('rwPlaces'),
+          water: ck('rwWater'), forests: ck('rwForests'), fields: ck('rwFields'), places: ck('rwPlaces'), buildings: ck('rwBuildings'),
           minForest: Math.max(0, num('rwMinForest')) * 10000,
         }
         let data = osmFile

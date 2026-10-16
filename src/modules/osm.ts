@@ -20,6 +20,7 @@ export interface OsmOptions {
   forests: boolean
   fields: boolean
   places: boolean
+  buildings: boolean
   minForest: number // m², smaller woods are dropped
 }
 
@@ -30,6 +31,7 @@ export interface OsmResult {
   forests: { pts: number[]; leaf: 'broad' | 'needle' | 'mixed' }[]
   fields: number[][]
   sites: { x: number; z: number; kind: SiteKind; name: string }[]
+  buildings: number[][] // footprints, open rings, local metres
 }
 
 type Pt = [number, number]
@@ -47,6 +49,7 @@ export function overpassQuery([s, w, n, e]: [number, number, number, number], o:
   if (o.water) q.push(`way["waterway"~"^(river|stream|canal)$"]${bb};`, `way["natural"="water"]${bb};`, `relation["natural"="water"]${bb};`)
   if (o.forests) q.push(`way["landuse"="forest"]${bb};`, `way["natural"="wood"]${bb};`, `relation["landuse"="forest"]${bb};`, `relation["natural"="wood"]${bb};`)
   if (o.fields) q.push(`way["landuse"~"^(farmland|meadow|orchard|vineyard|grass)$"]${bb};`)
+  if (o.buildings) q.push(`way["building"]${bb};`)
   if (o.places) q.push(`node["place"~"^(city|town|village|hamlet)$"]${bb};`)
   return `[out:json][timeout:90];(${q.join('')});out geom;`
 }
@@ -151,7 +154,7 @@ export function osmToMap(data: unknown, toLocal: (lon: number, lat: number) => P
   const h = size / 2
   const bbox: [number, number, number, number] = [0, 0, size, size]
   const loc = (g: { lat: number; lon: number }[]): Pt[] => g.map(({ lat, lon }) => { const [x, z] = toLocal(lon, lat); return [x + h, z + h] })
-  const out: OsmResult = { roads: [], rivers: [], lakes: [], forests: [], fields: [], sites: [] }
+  const out: OsmResult = { roads: [], rivers: [], lakes: [], forests: [], fields: [], sites: [], buildings: [] }
 
   const lines = (pts: Pt[]): Pt[][] => {
     if (pts.length < 2) return []
@@ -199,6 +202,9 @@ export function osmToMap(data: unknown, toLocal: (lon: number, lat: number) => P
       for (const r of polys(wayRings())) if (area(r) > 400) out.lakes.push(ringPts(r, 3))
     } else if (t.landuse === 'forest' || t.natural === 'wood') {
       for (const r of polys(wayRings())) if (area(r) >= o.minForest) out.forests.push({ pts: ringPts(r, 6), leaf: t.leaf_type === 'broadleaved' ? 'broad' : t.leaf_type === 'needleleaved' ? 'needle' : 'mixed' })
+    } else if (t.building && el.type === 'way' && el.geometry) {
+      const r = loc(el.geometry)
+      if (r.length >= 4 && r.every(([x, z]) => x >= 0 && z >= 0 && x <= size && z <= size)) out.buildings.push(flat(r.slice(0, -1)))
     } else if (t.landuse && /^(farmland|meadow|orchard|vineyard|grass)$/.test(t.landuse)) {
       for (const r of polys(wayRings())) if (area(r) > 5000) out.fields.push(ringPts(r, 5))
     }

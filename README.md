@@ -177,8 +177,8 @@ The table shows what is done (✅) and what is still planned (⬜).
 | ✅ **Roads, tracks, paths** | OpenStreetMap | Road shapes with the matching road generator (asphalt, dirt, trail…), pieces of the same road joined |
 | ✅ **Rivers, lakes** · ⬜ coast | OpenStreetMap, Copernicus water layers | River and lake shapes, laid on the relief |
 | ✅ **Forests** (OSM) · ⬜ land cover, canopy height | OpenStreetMap woods, ESA WorldCover / CORINE land cover; LiDAR canopy height (surface minus terrain) | Forest areas sent as forest generators (broadleaved / needleleaved / mixed from the OSM tag); later density and tree height |
-| ✅ **Fields, places** · ⬜ surface masks | OpenStreetMap land use and places, land-cover rasters | Field areas (usable as field zones), village sites from towns / villages / hamlets; later surface masks (grass, soil, rock…) |
-| ⬜ **Buildings** | OpenStreetMap footprints | Village sites and plots, filled with parcels of the right size |
+| ✅ **Fields, places, forest / field ground** | OpenStreetMap land use and places, land-cover rasters | Field areas (usable as field zones), village sites from towns / villages / hamlets; forest floor and crop field surfaces painted under them |
+| ✅ **Buildings** | OpenStreetMap footprints | Each footprint replaced by the closest-sized vanilla building, turned to match (big blocks with no match are skipped) |
 | ⬜ **Satellite / ortho photo** | Imagery you are allowed to use | A tracing layer under the map (not sent to the game) |
 
 Limits to keep in mind: real data rarely fits the Reforger size and the entity budget as is (it will be

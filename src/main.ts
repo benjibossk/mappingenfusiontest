@@ -4,6 +4,7 @@ import { Collab } from './collab'
 import { GENERATORS, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover } from './modules/cover'
+import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
 import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
@@ -1790,6 +1791,7 @@ const FOREST_GEN: Record<NonNullable<MapArea['leaf']>, string> = {
   mixed: 'Prefabs/WEGenerators/Forest/FG_Forest_MixedBirchPine.et',
 }
 function applyRealPlace(r: RealPlace) {
+  let bSkipped = 0
   useWorld(r.world)
   // the real relief sets the height scale; the sea level is already in the heights
   let top = 1
@@ -1804,6 +1806,7 @@ function applyRealPlace(r: RealPlace) {
     for (const s of o.sites) sites.push({ id: nextSiteId(s.kind), x: s.x, z: s.z, kind: s.kind })
     o.forests.forEach((f, k) => areas.push({ id: `FOREST_OSM_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
     o.fields.forEach((f, k) => areas.push({ id: `FIELD_OSM_${k + 1}`, kind: 'field', pts: f }))
+    if (o.buildings.length) { const b = osmBuildings(o.buildings); settled = b.placed; bSkipped = b.skipped; setInfo() }
   }
   credits = r.credits
   waterInfo()
@@ -1816,7 +1819,7 @@ function applyRealPlace(r: RealPlace) {
     name: r.name, km: ((g.cols - 1) * g.step / 1000).toFixed(2), step: g.step.toFixed(2),
     roads: o?.roads.length ?? 0, waters: (o?.rivers.length ?? 0) + (o?.lakes.length ?? 0), forests: o?.forests.length ?? 0,
     fields: o?.fields.length ?? 0, sites: o?.sites.length ?? 0,
-  }) + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
+  }) + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
 }
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
 function drawAreas() {
