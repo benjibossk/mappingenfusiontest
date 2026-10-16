@@ -1,0 +1,129 @@
+:root { font-family: system-ui, sans-serif; color-scheme: dark; background: #1b1d21; color: #e6e6e6; }
+.mg { max-width: 900px; margin: 2rem auto; display: flex; flex-direction: column; gap: .75rem; }
+.status { margin: 0; padding: .5rem .75rem; border-radius: 6px; background: #3a2626; }
+.status[data-ok="true"] { background: #23382a; }
+textarea { min-height: 22rem; font: 13px ui-monospace, monospace; background: #111; color: inherit; border: 1px solid #444; border-radius: 6px; padding: .75rem; }
+button { align-self: flex-start; padding: .6rem 1.2rem; font-size: 1rem; border-radius: 6px; border: 0; background: #3d6fd8; color: #fff; cursor: pointer; }
+button:disabled { opacity: .5; cursor: wait; }
+pre { margin: 0; white-space: pre-wrap; }
+.panel { border: 1px solid #333; border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+.panel h2 { margin: 0; font-size: 1.1rem; }
+.form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .5rem; }
+.form label { display: flex; flex-direction: column; font-size: .85rem; gap: .2rem; }
+.form label:first-child { grid-column: 1 / -1; }
+input { background: #111; color: inherit; border: 1px solid #444; border-radius: 4px; padding: .35rem; }
+.preview { width: 100%; height: 420px; background: #0f1012; border-radius: 6px; }
+.row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.map { width: 100%; aspect-ratio: 1; background: #0f1012; border-radius: 6px; cursor: crosshair; }
+.hint { margin: 0; font-size: .8rem; opacity: .7; }
+button.secondary { background: #444; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+.toolbar button { padding: 4px 10px; opacity: 0.75; }
+.toolbar button.active { opacity: 1; outline: 2px solid #ffd34d; }
+
+/* app layout: rail | map | side panel */
+body { margin: 0; }
+.app { display: grid; grid-template: "top top top" auto "rail stage side" 1fr / 76px 1fr 340px; height: 100vh; }
+.top { grid-area: top; display: flex; gap: 1rem; align-items: center; padding: .4rem .8rem; background: #15171a; border-bottom: 1px solid #2a2d33; }
+.top .status { padding: .2rem .6rem; border-radius: 4px; background: #3a2626; font-size: .8rem; cursor: pointer; }
+.top .status[data-ok="true"] { background: #23382a; }
+.top #cursor { margin-left: auto; font-variant-numeric: tabular-nums; }
+.rail { grid-area: rail; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: #15171a; border-right: 1px solid #2a2d33; overflow-y: auto; }
+.rail button { align-self: stretch; padding: 6px 2px; font-size: .72rem; background: #24272d; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1px solid transparent; opacity: 1; outline: none; }
+.rail button b { font-size: .65rem; opacity: .55; }
+.rail button.active { background: #3d6fd8; border-color: #ffd34d; }
+.rail hr { width: 100%; border: 0; border-top: 1px solid #2a2d33; margin: 4px 0; }
+.stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; background: #0f1012; }
+.stage .map { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+.overlay { position: absolute; left: 8px; bottom: 6px; right: 8px; display: flex; justify-content: space-between; gap: 1rem; pointer-events: none; font-size: .78rem; text-shadow: 0 1px 2px #000; }
+.side { grid-area: side; display: flex; flex-direction: column; gap: .6rem; padding: .6rem; background: #1b1d21; border-left: 1px solid #2a2d33; overflow-y: auto; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; }
+.tabs button { padding: .35rem .6rem; font-size: .8rem; background: #24272d; border-radius: 4px 4px 0 0; }
+.tabs button.active { background: #3d6fd8; }
+.tab { display: flex; flex-direction: column; gap: .6rem; }
+.tab[hidden] { display: none; }
+.side .form { grid-template-columns: 1fr 1fr; }
+.side .form label:first-child { grid-column: auto; }
+.side .form label.wide { grid-column: 1 / -1; }
+.side input { min-width: 0; }
+.side button { padding: .45rem .8rem; font-size: .85rem; }
+.steps { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .4rem; }
+.steps li { display: flex; gap: .5rem; align-items: center; }
+.check { display: flex; gap: .4rem; align-items: center; font-size: .85rem; }
+.side textarea { min-height: 12rem; width: 100%; box-sizing: border-box; }
+.log { margin-top: auto; padding: .5rem; background: #111; border-radius: 4px; font-size: .78rem; min-height: 3rem; }
+
+/* side panel: no horizontal overflow */
+.side { overflow-x: hidden; }
+.side .form label { min-width: 0; }
+.side input:not([type="checkbox"]), .side textarea { width: 100%; box-sizing: border-box; }
+.side .row { gap: .5rem; }
+
+/* responsive: tablet = narrower panel, phone = map on top, tools as a strip, panel below */
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 64px 1fr 280px; }
+  .side .form { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .app { grid-template: "top" auto "rail" auto "stage" 60vh "side" auto / 1fr; height: auto; min-height: 100vh; }
+  .rail { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid #2a2d33; }
+  .rail button { flex: 0 0 auto; min-width: 56px; }
+  .rail hr { display: none; }
+  .side { border-left: 0; border-top: 1px solid #2a2d33; }
+  .side .form { grid-template-columns: 1fr 1fr; }
+  .top { flex-wrap: wrap; gap: .5rem; }
+  .top #cursor { margin-left: 0; width: 100%; }
+  .overlay .hint { display: none; }
+}
+
+.side fieldset.test { border: 1px solid #2a2d33; border-radius: 4px; padding: .5rem; display: flex; flex-direction: column; gap: .5rem; }
+
+.top .hist { padding: 2px 8px; font-size: 16px; line-height: 1; }
+.roadlist { list-style: none; margin: 4px 0; padding: 0; max-height: 220px; overflow: auto; }
+.roadlist li { display: flex; gap: 4px; margin: 2px 0; }
+.roadlist li button:first-child { flex: 1; text-align: left; font-family: monospace; font-size: 11px; }
+.roadlist li.sel button:first-child { outline: 2px solid #ffd34d; }
+
+.stage { position: relative; }
+.ctxmenu { position: absolute; z-index: 20; display: flex; flex-direction: column; gap: 3px; min-width: 210px;
+  padding: 6px; background: #1d2026; border: 1px solid #444; border-radius: 6px; box-shadow: 0 4px 14px #0008; }
+.ctxmenu[hidden] { display: none; }
+.ctxmenu .title { font-family: monospace; font-size: 12px; color: #ffd34d; padding: 2px 4px; }
+.ctxmenu button { text-align: left; }
+.ctxmenu label { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; align-items: center; }
+.ctxmenu select, .ctxmenu input { width: 120px; }
+button.active { outline: 2px solid #4da3ff; }
+
+.app.norail { grid-template-columns: 0 1fr 340px; }
+.app.norail .rail { display: none; }
+@media (max-width: 1100px) { .app.norail { grid-template-columns: 0 1fr 280px; } }
+.side .row { flex-wrap: wrap; }
+.side .row > label { flex: 1 1 120px; min-width: 0; }
+.side label, .side fieldset { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.roadlist li button:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* fixed full-screen layout: map fills everything left of the side panel; top bar and tools float over it */
+html, body, #app { height: 100%; overflow: hidden; }
+.app, .app.norail { display: grid; grid-template: "stage side" 1fr / 1fr 340px; height: 100vh; min-height: 0; overflow: hidden; }
+.app > .stage { grid-area: stage; }
+.app > .top { grid-area: stage; align-self: start; justify-self: stretch; z-index: 6; margin: 8px 8px 0 8px; border: 1px solid #2a2d33;
+  border-radius: 6px; background: #15171ad9; backdrop-filter: blur(4px); pointer-events: auto; }
+.app > .rail { grid-area: stage; align-self: center; justify-self: start; z-index: 6; margin-left: 8px; max-height: calc(100% - 120px);
+  border: 1px solid #2a2d33; border-radius: 6px; background: #15171ad9; backdrop-filter: blur(4px); width: 70px; box-sizing: border-box; }
+.app.norail .rail { display: none; }
+.app > .side { grid-area: side; height: 100vh; box-sizing: border-box; overflow-y: auto; }
+.overlay { bottom: 8px; }
+@media (max-width: 1100px) { .app, .app.norail { grid-template-columns: 1fr 300px; } }
+@media (max-width: 760px) {
+  .app, .app.norail { grid-template: "stage" 55vh "side" 45vh / 1fr; height: 100vh; }
+  .app > .side { height: 45vh; }
+  .app > .rail { flex-direction: column; align-self: center; }
+}
+
+/* nothing at the bottom: the map hints sit under the top bar */
+.overlay { top: 56px; bottom: auto; left: 16px; right: 16px; }
+
+.layers { position: absolute; bottom: 28px; left: 8px; background: rgba(20,22,26,.88); border-radius: 6px; padding: 4px 10px; font-size: .8rem; z-index: 10; }
+.layers summary { cursor: pointer; }
+.layers label { display: block; margin: 2px 0; }
