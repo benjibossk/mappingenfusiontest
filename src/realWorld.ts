@@ -206,16 +206,15 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     } catch (e) { msg.textContent = t('rw.copFail', { msg: (e as Error).message }) }
   }
   async function fetchTile(tile: { id: string; url: string }) {
-    try {
-      const r = await fetch(tile.url)
+    // the bucket sends no CORS header, so the local bridge fetches it (and keeps a copy); direct only without the bridge
+    let r: Response
+    try { r = await fetch(`${BRIDGE_URL}/dem?tile=${tile.id}`) } catch {
+      r = await fetch(tile.url)
       if (!r.ok) throw new Error(String(r.status))
-      return await r.arrayBuffer()
-    } catch {
-      // no CORS from the browser: the local bridge fetches it (and keeps a copy)
-      const r = await fetch(`${BRIDGE_URL}/dem?tile=${tile.id}`)
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `bridge ${r.status}`)
       return r.arrayBuffer()
     }
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `bridge ${r.status}`)
+    return r.arrayBuffer()
   }
 
   // --- place search (OpenStreetMap Nominatim, one request per click) and 4 favourites ---
@@ -438,7 +437,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
         let data = osmFile
         if (!data) {
           await step('rw.osmFetching')
-          data = await fetchOverpass(overpassQuery(areaLonLat(d, area), o))
+          data = await fetchOverpass(overpassQuery(areaLonLat(d, area), o), (host, k, n) => { if (k > 1) { label = t('rw.osmMirror', { host, k, n }); show() } })
         }
         await step('rw.osmProcessing')
         // adapted: keep small woods for now, they may weld into a forest; the size limit applies after

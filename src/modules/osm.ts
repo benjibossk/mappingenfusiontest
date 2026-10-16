@@ -9,6 +9,8 @@ import type { RoadType } from './roads'
 import type { SiteKind } from './network'
 
 export const OVERPASS = 'https://overpass-api.de/api/interpreter'
+// public mirrors, tried in turn when one is busy (502 / 504 / 429 / network error)
+const MIRRORS = [OVERPASS, 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
 export const OSM_ATTRIBUTION = '© OpenStreetMap contributors (ODbL)'
 
 export interface OsmOptions {
@@ -54,10 +56,19 @@ export function overpassQuery([s, w, n, e]: [number, number, number, number], o:
   return `[out:json][timeout:90];(${q.join('')});out geom;`
 }
 
-export async function fetchOverpass(query: string): Promise<unknown> {
-  const res = await fetch(OVERPASS, { method: 'POST', body: new URLSearchParams({ data: query }) })
-  if (!res.ok) throw new Error(`Overpass ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  return res.json()
+export async function fetchOverpass(query: string, onTry?: (host: string, k: number, n: number) => void): Promise<unknown> {
+  let last = ''
+  for (let k = 0; k < MIRRORS.length; k++) {
+    const url = MIRRORS[k]
+    onTry?.(new URL(url).host, k + 1, MIRRORS.length)
+    try {
+      const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: query }) })
+      if (res.ok) return await res.json()
+      last = `${res.status}: ${(await res.text()).slice(0, 200)}`
+      if (res.status === 400) break // the query itself is wrong, no mirror will take it
+    } catch (e) { last = (e as Error).message }
+  }
+  throw new Error(`Overpass ${last}`)
 }
 
 const ROAD: Record<string, RoadType> = {

@@ -8,6 +8,12 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-10-17
+
+### Fixed
+- OpenStreetMap download: when the main Overpass server is busy (502, 504, 429), two public mirrors are tried in turn.
+- Copernicus tiles go through the bridge first, so the console no longer shows a CORS error on every download.
+
 ## [0.4.4] - 2026-10-17
 
 ### Added
@@ -113,6 +119,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.4.5]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.5
 [0.4.4]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.4
 [0.4.3]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.3
 [0.4.2]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.2
