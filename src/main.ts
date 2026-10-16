@@ -1,5 +1,6 @@
 import './style.css'
 import { external, fr, getLang, t } from './i18n'
+import { Collab } from './collab'
 import type { Project, ProjectEntity, ProjectShape } from './project'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
@@ -13,6 +14,8 @@ import { ROAD_COLOURS, ROAD_TYPES, carveRoads, roadFurniture, roadHalf, roadMask
 const LAYERS = ['existing', 'fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
+let collab: Collab | null = null // shared room, see src/collab.ts
+let quietUntil = 0 // a project just received from the room is not sent back
 let saveTimer = 0 // declared early: handlers registered above autosave() may fire first
 let issues: Issue[] = [] // read by draw(), which runs during start-up
 /** what already stands in the imported world: shown locked, kept clear by the generators */
@@ -43,9 +46,19 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <button id="undo" class="hist" title="${t('app.undo')}">↶</button>
     <button id="redo" class="hist" title="${t('app.redo')}">↷</button>
     <button id="lang" class="hist" title="Language / Langue">${getLang() === 'fr' ? 'EN' : 'FR'}</button>
+    <button id="collab" class="hist" title="${t('collab.tip')}">👥</button>
+    <span id="collabInfo" class="hint"></span>
     <span id="status" class="status" title="${t('app.refresh')}">…</span>
     <span id="cursor" class="hint"></span>
   </header>
+  <div id="collabBox" class="ctxmenu collabbox" hidden>
+    <div class="title">${t('collab.title')}</div>
+    <label>${t('collab.server')} <input id="collabUrl" type="text"></label>
+    <label>${t('collab.room')} <input id="collabRoom" type="text"></label>
+    <label>${t('collab.name')} <input id="collabName" type="text"></label>
+    <button id="collabGo" type="button">${t('collab.join')}</button>
+    <div class="info">${t('collab.hint')}</div>
+  </div>
 
   <nav class="rail" id="tools">
     <button type="button" data-tool="zone" title="${t('tool.zone.tip')}"><b>1</b>${t('tool.zone')}</button>
@@ -410,6 +423,7 @@ function draw() {
   }
   if (layer('bridges')) drawBridges()
   if (layer('issues')) drawIssues()
+  if (collab) drawPeers()
   drawBrush()
 }
 
@@ -563,6 +577,7 @@ map.addEventListener('mousemove', (e) => {
   cursorWorld = [x, z]
   if (tool() !== 'zone' && !painting && !panFrom) draw()
   $<HTMLSpanElement>('cursor').textContent = `X ${Math.round(x)}  Z ${Math.round(z)}${heightLabel(x, z)}`
+  collab?.sendCursor(x, z)
   if (painting) paintAt(x, z)
   if (dragSite) {
     dragSite.s.x = Math.round(x)
@@ -754,6 +769,65 @@ function restore(to: number) {
   recompose(true)
   restoring = false
   logEl.textContent = t('log.history', { i: histAt + 1, n: history.length })
+}
+// --- working with several people: a room on the collab server (npm run collab) ---
+const collabBox = $<HTMLDivElement>('collabBox')
+const collabField = (id: string, key: string, def: string) => {
+  const el = $<HTMLInputElement>(id)
+  try { el.value = localStorage.getItem(key) ?? def } catch { el.value = def }
+  el.addEventListener('change', () => { try { localStorage.setItem(key, el.value) } catch { /* storage blocked */ } })
+  return el
+}
+const collabUrl = collabField('collabUrl', 'reforger-mapper.collab.url', `ws://${location.hostname || 'localhost'}:5790`)
+const collabRoom = collabField('collabRoom', 'reforger-mapper.collab.room', 'map1')
+const collabName = collabField('collabName', 'reforger-mapper.collab.name', 'mapper')
+$<HTMLButtonElement>('collab').addEventListener('click', () => { collabBox.hidden = !collabBox.hidden })
+function leaveRoom() {
+  collab?.close()
+  collab = null
+  $<HTMLSpanElement>('collabInfo').textContent = ''
+  $<HTMLButtonElement>('collabGo').textContent = t('collab.join')
+  draw()
+}
+$<HTMLButtonElement>('collabGo').addEventListener('click', () => {
+  if (collab) return leaveRoom()
+  let received = false
+  collab = new Collab(collabUrl.value.trim(), collabRoom.value.trim() || 'map1', collabName.value.trim() || 'mapper', {
+    project: (p, from) => {
+      received = true
+      quietUntil = performance.now() + 1500
+      try { loadProject(p) } catch (e) { logEl.textContent = t('err.generic', { msg: (e as Error).message }); return }
+      logEl.textContent = t('collab.got', { name: from })
+    },
+    peers: (ps) => { $<HTMLSpanElement>('collabInfo').textContent = t('collab.peers', { room: collabRoom.value, n: ps.length + 1, names: ps.map((p) => p.name).join(', ') }) },
+    cursors: () => draw(),
+    status: (s, detail) => {
+      if (s === 'connected') {
+        $<HTMLButtonElement>('collabGo').textContent = t('collab.leave')
+        collabBox.hidden = true
+        // an empty room gets our map; otherwise the room's map arrives right after joining
+        setTimeout(() => { if (!received) { const p = islandProject(); if (p) collab?.sendProject(p) } }, 1500)
+      } else {
+        logEl.textContent = t('collab.closed', { detail: detail ?? '' })
+        leaveRoom()
+      }
+    },
+  })
+})
+function drawPeers() {
+  if (!collab) return
+  ctx.font = '12px sans-serif'
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  for (const [id, c] of collab.cursors) {
+    const [x, y] = toScreen(c.x, c.z)
+    const hue = (id * 97) % 360
+    ctx.fillStyle = `hsl(${hue}, 80%, 60%)`
+    ctx.beginPath()
+    ctx.moveTo(x, y); ctx.lineTo(x + 12, y + 4); ctx.lineTo(x + 4, y + 12); ctx.closePath()
+    ctx.fill()
+    ctx.fillText(c.name, x + 14, y + 12)
+  }
 }
 $<HTMLButtonElement>('lang').addEventListener('click', () => {
   try { localStorage.setItem('reforger-mapper.lang', getLang() === 'fr' ? 'en' : 'fr') } catch { /* storage blocked */ }
@@ -1017,6 +1091,7 @@ function autosave() {
   saveTimer = window.setTimeout(() => {
     const p = islandProject()
     try { if (p) localStorage.setItem(PROJECT_KEY, JSON.stringify(p)) } catch { /* storage full or blocked */ }
+    if (p && collab && performance.now() > quietUntil) collab.sendProject(p)
   }, 500)
 }
 function loadProject(p: any) {

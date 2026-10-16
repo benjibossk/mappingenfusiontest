@@ -131,3 +131,5 @@ html, body, #app { height: 100%; overflow: hidden; }
 .issues { margin: 6px 0 0; padding-left: 1.1rem; font-size: .8rem; max-height: 220px; overflow: auto; }
 .issues li { cursor: pointer; margin: 2px 0; }
 .issues li.ok { cursor: default; list-style: none; opacity: .7; }
+.collabbox { position: absolute; top: 48px; left: 12px; z-index: 20; display: flex; flex-direction: column; gap: 4px; }
+.collabbox input { width: 180px; }

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "bridge": "node bridge/server.mjs"
+    "bridge": "node bridge/server.mjs",
+    "collab": "node collab/server.mjs"
   },
   "devDependencies": {
     "@types/d3-delaunay": "^6.0.4",
@@ -21,6 +22,7 @@
     "maplibre-gl": "^6.14.0",
     "poisson-disk-sampling": "^2.3.1",
     "proj4": "^2.22.0",
-    "simplex-noise": "^4.0.3"
+    "simplex-noise": "^4.0.3",
+    "ws": "^8.18.0"
   }
 }

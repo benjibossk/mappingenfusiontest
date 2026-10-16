@@ -13,7 +13,7 @@ Web tool to map quickly for **Arma Reforger** (Enfusion engine) and auto-fill a 
 **It is a planning and teamwork layer on top of it**, to:
 
 - 🎯 **Focus the work**: rough out the big picture fast (relief, road network, rivers, lakes, where villages and fields go) and let generators do the repetitive filling, so mappers spend their Workbench time on what matters.
-- 👥 **Build a map with several people**: a shared, lightweight view of the map that anyone can open, draw on and discuss, without each person needing the whole project in the Workbench. *(Online collaborative mode: on the roadmap.)*
+- 👥 **Build a map with several people**: a shared, lightweight view of the map that anyone can open, draw on and discuss, without each person needing the whole project in the Workbench. Run `npm run collab` on one machine (port **5790**), then each mapper clicks 👥, enters the server address and the same room name: the map syncs and everyone's cursor shows. *(LAN / VPN for now; the last change wins. Online site: on the roadmap.)*
 - 🔁 **Go back and forth**: import a world in progress from the Workbench, change the plan, send it back — the Workbench stays the source of truth.
 
 <p align="center">
@@ -140,21 +140,17 @@ Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `
 
 **Work in progress** — the goal is a real mapping assistant next to the Workbench (not a replacement), and later an online space where several mappers plan the same map together.
 
-```mermaid
-flowchart LR
-    classDef done fill:#2e7d32,color:#fff,stroke:#1b5e20
-    classDef wip fill:#f9a825,color:#000,stroke:#f57f17
-    classDef todo fill:#455a64,color:#fff,stroke:#263238
-    A[Terrain · roads · water · bridges]:::done --> B[World import + editing]:::wip
-    B --> C[Villages from captured parcels]:::wip
-    C --> X[Fix bridges · rivers · lakes]:::wip
-    X --> D[Banks · rocks · forests · paths · fields · power lines]:::todo
-    D --> E[Ground surfaces import]:::todo
-    E --> F[Online site + SHP/CSV export]:::todo
-    F --> G[Real-time collaboration]:::todo
-```
+| Phase | Goal | Status |
+|---|---|---|
+| **1. Base** | Terrain, sculpting, roads, rivers, lakes, bridges, fields, send to the Workbench | ✅ done |
+| **2. Work on real maps** | Import a world in progress, edit it, send it back without duplicates | ✅ done, being tested |
+| **3. Villages** | Villages built from house + garden parcels captured on the vanilla maps | 🟡 in progress |
+| **4. Fix what exists** | Bridge placement, rivers and lakes sitting right in the relief, better banks | 🟡 in progress |
+| **5. Fill the map** | Rocks on slopes, automatic forests, paths, field zones, power lines | ⬜ to do |
+| **6. Complete import** | Ground surfaces of an existing world, generator settings (road width…) | ⬜ to do |
+| **7. Together** | Shared rooms ✅ (first version) → online site, accounts, SHP / CSV export, real-time merging | 🟡 started |
 
-<sub>🟩 done · 🟨 in progress · ⬛ to do</sub>
+What changed and when: [CHANGELOG.md](CHANGELOG.md).
 
 ### Known issues / not finished
 
@@ -166,7 +162,7 @@ flowchart LR
 - 🧱 Ground surfaces are not imported from an existing world (relief only).
 - 📊 Entity budget limits per platform are provisional (no measured FPS data yet).
 
-Help is welcome on: bridge, river and lake placement, power lines, riverbank / lake shore generation, rocks on steep slopes, automatic forests, paths and field zones, ground surface import, and FPS bench data per platform (Xbox Series S/X, PS5, PC) to calibrate the entity budget.
+Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md). Help is welcome on: bridge, river and lake placement, power lines, riverbank / lake shore generation, rocks on steep slopes, automatic forests, paths and field zones, ground surface import, and FPS bench data per platform (Xbox Series S/X, PS5, PC) to calibrate the entity budget.
 
 - **Vanilla assets** only: no third-party content is required or redistributed.
 - **No AI tool required**: the site, the bridge and the plugin are all you need.
