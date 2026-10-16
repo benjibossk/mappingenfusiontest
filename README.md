@@ -174,32 +174,46 @@ Help is welcome on: bridge, river and lake placement, power lines, riverbank / l
 
 ## Thanks, credits and sources
 
-This project stands on the work of many people — thank you to all of them. Full list with notes: [CREDITS.md](CREDITS.md).
+This project stands on the work of many people — thank you to all of them. What was reused from each and the full notes: [CREDITS.md](CREDITS.md).
 
-### Projects that inspired us / ported code
+### Projects
 
-| Project | Author | URL | Licence | What we reused |
-|---|---|---|---|---|
-| BARNMAP (v1.48) | Barnaber / LEBARNABER | https://ustorie.github.io/BARNARMA/ | None (closed exe) | Observed behaviour and `.et` formats, data sources; no code. **Use authorised by the author.** |
-| Map-generator ("Map Generator Pro" v7) | giorbev | repo `giorbev/Map-generator` | MIT (© 2026 Giorbev) | Surface mask algorithms (slope, TPI, curvature, flow, JSON biomes) ported / to port; binary format documentation (specs). **Use authorised by the author.** |
-| mapgen4 | Amit Patel (Red Blob Games) | https://github.com/redblobgames/mapgen4 | Apache-2.0 | Approach reused in `hydro.ts` and `sculpt.ts` (rivers by flow accumulation, terrain brush). Merging Map-generator / BARNMAP / mapgen4 is done with the authors' permission. |
-| AgriFieldGenerator (v1.2.0) | Tanin69 (Didier ALAIN) | repo `Tanin69/AgriFieldGenerator` | MIT (© 2024) | Plot pipeline (Voronoi, Bézier, colouring) reimplemented in `campaign.ts`; "Painting with masks" tutorial |
-| Benchmark_Tools_reforger | giorbev | — | None (© 2025, all rights reserved) | Measurement ideas and per-platform thresholds; no code |
-| Lou's tools (`SCR_WorldEditorToolHelper.c`, `SCR_ImageHelper.c`) | Lou | — | not specified | Idea of an entity density heatmap |
-| Azgaar Fantasy Map Generator | Azgaar | https://github.com/Azgaar/Fantasy-Map-Generator | MIT | Idea: habitability score to place settlements |
-| ProbableTrain MapGenerator | ProbableTrain | https://maps.probabletrain.com/ | LGPL-3.0 (to confirm) | Ideas (tensor fields for streets) |
-| Medieval Fantasy City Generator / TownGeneratorOS | watabou | — | GPL-3.0 (old Haxe version) / closed | Ideas only |
-| city-roads | anvaka | — | MIT | Ideas |
-| Fantasy Town Generator | — | https://www.fantasytowngenerator.com/temporary-settlement | closed | Ideas |
-| FantasyGen City Map Generator | — | https://fantasygen.net/city-map-generator | closed | Ideas |
-| Simteract City Generator | Simteract | https://simteract.com/projects/city-generator/ | closed | Ideas |
-| Mapimator City Roads | Mapimator | https://mapimator.com/tools/city-roads | closed | Ideas |
-| Wave Function Collapse | mxgmn | — | MIT (unverified) | Idea |
-| ProtonScatter | HungryProton | https://github.com/HungryProton/scatter | — | Idea: stack of placement filters |
-| PCGExtendedToolkit | PCGEx | https://github.com/PCGEx/PCGExtendedToolkit | — | Idea: road network as a graph |
-| Unreal PCG / Biome Core | Epic Games | https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-pcg-biome-core-and-sample-plugins-overview-guide-in-unreal-engine | proprietary | Idea: data-driven biomes |
-| ReforgerSatGenerator | granQ | https://github.com/granQ/ReforgerSatGenerator | — | Reference |
-| ARTE (QGIS plugin) | — | https://plugins.qgis.org/plugins/ARTE/ | — | Reference (competing tool) |
+| Project | Author | Licence |
+|---|---|---|
+| [BARNMAP (v1.48)](https://ustorie.github.io/BARNARMA/) | Barnaber / LEBARNABER | None (closed exe) |
+| [Map-generator ("Map Generator Pro" v7)](https://github.com/giorbev/Map-generator) | giorbev | MIT (© 2026 Giorbev) |
+| [mapgen4](https://github.com/redblobgames/mapgen4) | Amit Patel (Red Blob Games) | Apache-2.0 |
+| [AgriFieldGenerator (v1.2.0)](https://github.com/Tanin69/AgriFieldGenerator) | Tanin69 (Didier ALAIN) | MIT (© 2024) |
+| Benchmark_Tools_reforger | giorbev | None (© 2025, all rights reserved) |
+| Lou's tools (`SCR_WorldEditorToolHelper.c`, `SCR_ImageHelper.c`) | Lou | not specified |
+| [Azgaar Fantasy Map Generator](https://github.com/Azgaar/Fantasy-Map-Generator) | Azgaar | MIT |
+| [ProbableTrain MapGenerator](https://maps.probabletrain.com/) | ProbableTrain | LGPL-3.0 (to confirm) |
+| Medieval Fantasy City Generator / TownGeneratorOS | watabou | GPL-3.0 (old Haxe version) / closed |
+| city-roads | anvaka | MIT |
+| [Fantasy Town Generator](https://www.fantasytowngenerator.com/temporary-settlement) | — | closed |
+| [FantasyGen City Map Generator](https://fantasygen.net/city-map-generator) | — | closed |
+| [Simteract City Generator](https://simteract.com/projects/city-generator/) | Simteract | closed |
+| [Mapimator City Roads](https://mapimator.com/tools/city-roads) | Mapimator | closed |
+| Wave Function Collapse | mxgmn | MIT (unverified) |
+| [ProtonScatter](https://github.com/HungryProton/scatter) | HungryProton | — |
+| [PCGExtendedToolkit](https://github.com/PCGEx/PCGExtendedToolkit) | PCGEx | — |
+| [Unreal PCG / Biome Core](https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-pcg-biome-core-and-sample-plugins-overview-guide-in-unreal-engine) | Epic Games | proprietary |
+| [ReforgerSatGenerator](https://github.com/granQ/ReforgerSatGenerator) | granQ | — |
+| [ARTE (QGIS plugin)](https://plugins.qgis.org/plugins/ARTE/) | — | — |
+
+### Data
+
+| Data | Licence |
+|---|---|
+| OpenStreetMap / Overpass | ODbL (attribution + share-alike) |
+| [ESA WorldCover 10 m](https://registry.opendata.aws/esa-worldcover-vito/) | CC BY 4.0 |
+| [Copernicus DEM GLO-30 (© DLR / Airbus)](https://registry.opendata.aws/copernicus-dem/) | Copernicus licence, attribution required |
+| [Mapterhorn](https://mapterhorn.com/data-access/) | Per source: https://download.mapterhorn.com/attribution.json |
+| [IGN LiDAR HD (DTM)](https://www.data.gouv.fr/datasets/mnt-lidar-hd-ign-2025) | Licence Ouverte Etalab 2.0 (to confirm) |
+| Mapzen / Tilezen (Terrarium), Esri World Imagery, CARTO basemap | Seen in BARNMAP |
+
+<details>
+<summary><b>More sources</b>: games and city builders studied, papers, tools, Workshop mods, Bohemia tools</summary>
 
 #### City builders and games studied (ideas only, CITIES.md §6)
 
@@ -247,15 +261,6 @@ Read for ideas (excerpts of at most 10 lines quoted in the docs, no code copied)
 
 ### Data sources (DEM, OSM…)
 
-| Data | URL | Licence |
-|---|---|---|
-| OpenStreetMap / Overpass | — | ODbL (attribution + share-alike) |
-| ESA WorldCover 10 m | https://registry.opendata.aws/esa-worldcover-vito/ | CC BY 4.0 |
-| Copernicus DEM GLO-30 (© DLR / Airbus) | https://registry.opendata.aws/copernicus-dem/ | Copernicus licence, attribution required |
-| Mapterhorn | https://mapterhorn.com/data-access/ | Per source: https://download.mapterhorn.com/attribution.json |
-| IGN LiDAR HD (DTM) | https://www.data.gouv.fr/datasets/mnt-lidar-hd-ign-2025 | Licence Ouverte Etalab 2.0 (to confirm) |
-| Mapzen / Tilezen (Terrarium), Esri World Imagery, CARTO basemap | — | Seen in BARNMAP |
-
 ### Bohemia Interactive tools
 
 - Arma Reforger Tools / Enfusion Workbench, World Editor, Terrain Creation Tool: https://community.bistudio.com/wiki/Arma_Reforger:World_Editor:_Terrain_Creation_Tool
@@ -270,6 +275,8 @@ Arma Reforger and Enfusion are trademarks of Bohemia Interactive. Unofficial fan
 
 - **enfusion-mcp**: MCP server used to explore the API, the game files and the wiki.
 - Development assisted by **Claude (Anthropic)**.
+
+</details>
 
 ## Licence and notices
 
