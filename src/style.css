@@ -128,6 +128,9 @@ html, body, #app { height: 100%; overflow: hidden; }
 .layers { position: absolute; bottom: 28px; left: 8px; background: rgba(20,22,26,.88); border-radius: 6px; padding: 4px 10px; font-size: .8rem; z-index: 10; }
 .layers summary { cursor: pointer; }
 .layers label { display: block; margin: 2px 0; }
+.layers .trace { border-top: 1px solid #333; margin-top: 4px; padding-top: 4px; }
+.layers .trace input[type=file] { display: block; max-width: 190px; font-size: .75rem; }
+.layers .trace input[type=range] { width: 120px; vertical-align: middle; }
 .issues { margin: 6px 0 0; padding-left: 1.1rem; font-size: .8rem; max-height: 220px; overflow: auto; }
 .issues li { cursor: pointer; margin: 2px 0; }
 .issues li.ok { cursor: default; list-style: none; opacity: .7; }

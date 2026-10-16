@@ -92,6 +92,11 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <details id="layers" class="layers">
       <summary>${t('layers.title')}</summary>
       ${LAYERS.map((l) => `<label class="check"><input type="checkbox" data-layer="${l}" checked> ${t(('layers.' + l) as Parameters<typeof t>[0])}</label>`).join('')}
+      <div class="trace" title="${t('hint.trace')}">
+        <label class="check">${t('layers.trace')} <input id="traceFile" type="file" accept="image/*"></label>
+        <input id="traceAlpha" type="range" min="0" max="1" step="0.05" value="0.6">
+        <button id="traceClear" type="button">${t('btn.traceClear')}</button>
+      </div>
     </details>
     <div class="overlay">
       <span id="brushInfo"></span>
@@ -366,6 +371,7 @@ function draw() {
     ctx.imageSmoothingEnabled = view.mpp > terrain.step
     ctx.drawImage(terrainImg, x0, y0, x1 - x0, y1 - y0)
   }
+  drawTrace()
 
   if (result && layer('fields')) {
     result.fields.forEach((f, i) => {
@@ -1822,6 +1828,30 @@ function applyRealPlace(r: RealPlace) {
   }) + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
 }
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
+// tracing image (satellite / ortho photo / scanned map) stretched over the whole terrain, north up;
+// only shown here, never sent to the game, not saved with the project (the file can be large)
+let traceImg: HTMLImageElement | null = null
+function drawTrace() {
+  if (!traceImg || !terrain) return
+  const [x0, y0] = toScreen(terrain.minX, terrain.minZ + (terrain.rows - 1) * terrain.step)
+  const [x1, y1] = toScreen(terrain.minX + (terrain.cols - 1) * terrain.step, terrain.minZ)
+  ctx.save()
+  ctx.globalAlpha = Number($<HTMLInputElement>('traceAlpha').value)
+  ctx.imageSmoothingEnabled = true
+  ctx.drawImage(traceImg, x0, y0, x1 - x0, y1 - y0)
+  ctx.restore()
+}
+$<HTMLInputElement>('traceFile').addEventListener('change', (e) => {
+  const f = (e.target as HTMLInputElement).files?.[0]
+  if (!f) return
+  if (!terrain) { logEl.textContent = t('err.traceNoTerrain'); return }
+  const img = new Image()
+  img.onload = () => { traceImg = img; draw(); logEl.textContent = t('log.trace', { name: f.name, w: img.width, h: img.height }) }
+  img.onerror = () => { logEl.textContent = t('err.traceImg', { name: f.name }) }
+  img.src = URL.createObjectURL(f)
+})
+$<HTMLInputElement>('traceAlpha').addEventListener('input', () => draw())
+$<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; draw() })
 function drawAreas() {
   for (const a of areas) {
     ctx.beginPath()
