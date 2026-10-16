@@ -149,8 +149,28 @@ Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `
 | **5. Fill the map** | Rocks on slopes, automatic forests, paths, field zones, power lines | ⬜ to do |
 | **6. Complete import** | Ground surfaces of an existing world, generator settings (road width…) | ⬜ to do |
 | **7. Together** | Shared rooms ✅ (first version) → online site, accounts, SHP / CSV export, real-time merging | 🟡 started |
+| **8. Real-world import** | Start from a real place: elevation (DEM, LiDAR), roads, water, forests, fields and land cover, then edit it like a base mesh | ⬜ to do |
 
 What changed and when: [CHANGELOG.md](CHANGELOG.md).
+
+### Planned: start from a real place
+
+The idea: load a real area as a **starting shape**, then reshape it with the brush, the generators and the
+parcel library, like a primitive mesh in 3D modelling. Everything below is planned, nothing is built yet.
+
+| Data | Source (open data) | Becomes in the tool |
+|---|---|---|
+| **Elevation** | 16-bit PNG / GeoTIFF heightmap of your own; Copernicus DEM GLO-30 (30 m, worldwide); national LiDAR terrain models (e.g. IGN LiDAR HD, 1 m, France) | Heightmap: pick the area, rotate, crop, rescale to the Reforger terrain size and grid, choose the sea level; then sculpt on top |
+| **Roads, tracks, paths** | OpenStreetMap | Road shapes with the matching road generator (asphalt, dirt, trail…), crossing roads joined |
+| **Rivers, lakes, coast** | OpenStreetMap, Copernicus water layers | River and lake shapes, laid on the relief |
+| **Forests** | OpenStreetMap woods, ESA WorldCover / CORINE land cover; LiDAR canopy height (surface minus terrain) | Forest areas with density and tree height, then the forest generator |
+| **Fields, meadows, villages** | OpenStreetMap land use, land-cover rasters | Field zones, surface masks (grass, soil, rock…), village sites |
+| **Buildings** | OpenStreetMap footprints | Village sites and plots, filled with parcels of the right size |
+| **Satellite / ortho photo** | Imagery you are allowed to use | A tracing layer under the map (not sent to the game) |
+
+Limits to keep in mind: real data rarely fits the Reforger size and the entity budget as is (it will be
+scaled and simplified); a 30 m DEM is smooth and needs sculpting for small details; every source has its own
+licence (OpenStreetMap: ODbL, attribution and share-alike) — the tool will show it with the import.
 
 ### Known issues / not finished
 
