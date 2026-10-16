@@ -1089,6 +1089,8 @@ function fitCanvas() {
   draw()
 }
 new ResizeObserver(fitCanvas).observe(map.parentElement!)
+// tracing image (declared before the first draw, which reads it)
+let traceImg: HTMLImageElement | HTMLCanvasElement | null = null
 fitCanvas()
 
 // --- island project: autosave in the browser + save/open a file ---
@@ -1841,7 +1843,6 @@ function applyRealPlace(r: RealPlace) {
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
 // tracing image (satellite / ortho photo / scanned map) stretched over the whole terrain, north up;
 // only shown here, never sent to the game, not saved with the project (the file can be large)
-let traceImg: HTMLImageElement | HTMLCanvasElement | null = null
 function drawTrace() {
   if (!traceImg || !terrain) return
   const [x0, y0] = toScreen(terrain.minX, terrain.minZ + (terrain.rows - 1) * terrain.step)

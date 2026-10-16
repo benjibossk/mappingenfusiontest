@@ -8,6 +8,11 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-17
+
+### Fixed
+- The site crashed at start-up (tracing image read before it was declared), so no toolbar button worked, including **Real place**.
+
 ## [0.4.1] - 2026-10-17
 
 ### Fixed
@@ -97,6 +102,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.4.2]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.2
 [0.4.1]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.1
 [0.4.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.0
 [0.3.0]: https://github.com/benjibossk/mappingenfusiontest/commits/main
