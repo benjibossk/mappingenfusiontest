@@ -1,26 +1,27 @@
-# Architecture — outil global
+# Architecture — global tool
 
-Un seul outil, trois couches. Chaque outil étudié devient un **module** qui lit et écrit un même
-format pivot, le *projet MapGen* (JSON). Sources : inventaire de RESEARCH, WORKSHOP_TERRAIN_MODS,
+A single tool, three layers. Each studied tool becomes a **module** that reads and writes the same
+pivot format, the *MapGen project* (JSON). Sources: inventory from RESEARCH, WORKSHOP_TERRAIN_MODS,
 BENCHMARK_GIORBEV, WIKI_TERRAIN, ENFUSION_FORMATS.
 
 ```
- Navigateur (Vite + TS)                Pont local (Node)            Workbench
+ Browser (Vite + TS)                   Local bridge (Node)          Workbench
  ┌──────────────────────────┐  HTTP   ┌──────────────────┐  TCP    ┌─────────────────────────┐
- │ modules → projet JSON    │ ──────▶ │ écrit le JSON,   │ ──────▶ │ plugin MapGen :         │
- │ aperçu MapLibre / WebGL  │ ◀────── │ appelle le plugin│ NET API │ lit le JSON, crée formes│
- └──────────────────────────┘ statut  └──────────────────┘ :5775   │ + générateurs, peint    │
+ │ modules → project JSON   │ ──────▶ │ writes the JSON, │ ──────▶ │ MapGen plugin:          │
+ │ MapLibre / WebGL preview │ ◀────── │ calls the plugin │ NET API │ reads the JSON, creates │
+ └──────────────────────────┘ status  └──────────────────┘ :5775   │ shapes + generators,    │
+                                                                    │ paints                  │
                                                                     └─────────────────────────┘
 ```
 
-- **Navigateur** : tout le calcul (relief, masques, parcelles, semis). Aucun accès Workbench requis :
-  le projet s'exporte aussi en fichiers (`.asc`, PNG, JSON) pour un import manuel.
-- **Pont** : petit serveur local ; le Workbench sait parler vers l'extérieur (NetApiHandler,
-  RestContext, `Workbench.RunProcess`). Réutilise le mécanisme du MCP (port 5775).
-- **Workbench** : plugin `MapGen - Apply project` (évolution de `MG_CreateShapesPlugin`, méthode
-  validée ENFUSION_FORMATS §9) — seul endroit qui touche le monde.
+- **Browser**: all the computation (terrain, masks, parcels, scattering). No Workbench access required:
+  the project can also be exported as files (`.asc`, PNG, JSON) for a manual import.
+- **Bridge**: small local server; the Workbench can talk to the outside (NetApiHandler,
+  RestContext, `Workbench.RunProcess`). Reuses the MCP mechanism (port 5775).
+- **Workbench**: `MapGen - Apply project` plugin (an evolution of `MG_CreateShapesPlugin`, method
+  validated in ENFUSION_FORMATS §9) — the only place that touches the world.
 
-## Format pivot `mapgen.json` (v0)
+## Pivot format `mapgen.json` (v0)
 
 ```json
 {
@@ -28,7 +29,7 @@ BENCHMARK_GIORBEV, WIKI_TERRAIN, ENFUSION_FORMATS.
   "terrain": { "size": 4096, "cell": 2, "origin": [0, 0] },
   "shapes": [
     { "id": "forest_12", "kind": "polyline", "closed": true,
-      "points": [x0, z0, x1, z1, ...],   // paires X/Z monde à plat, Y échantillonné par le plugin
+      "points": [x0, z0, x1, z1, ...],   // flat world X/Z pairs, Y sampled by the plugin
       "generator": "{37C347EECE844530}Prefabs/WEGenerators/Forest/FG_Forest_Pine1.et",
       "source": "worldcover" }
   ],
@@ -38,227 +39,227 @@ BENCHMARK_GIORBEV, WIKI_TERRAIN, ENFUSION_FORMATS.
 }
 ```
 
-Règles : prefabs **toujours** `{GUID}chemin` ; routes en `kind: "spline"` (RoadGenerator refuse
-les polylines) ; forêts / lacs fermés ≥ 3 points.
+Rules: prefabs **always** `{GUID}path`; roads as `kind: "spline"` (RoadGenerator rejects
+polylines); closed forests / lakes need ≥ 3 points.
 
-## Modules (ce qu'on reprend de chaque outil)
+## Modules (what we take from each tool)
 
-| Module | Repris de | Reprise | Sortie |
+| Module | Taken from | What is taken | Output |
 |---|---|---|---|
-| Relief réel | BARNMAP (formats seulement), Copernicus / IGN / Mapterhorn | idées | `.asc` |
-| Relief fictif | mapgen4 (Apache-2.0) | code | `.asc`, rivières |
-| Analyse relief | Map-generator giorbev (MIT) : pente, TPI, courbure, flux | code porté TS | grilles internes |
-| Masques de sol | Map-generator + WorldCover | code + données | PNG 8-bit (≤5 surfaces/bloc) |
-| Occupation réelle | OSM (routes, eau), WorldCover (forêts) | données | shapes |
-| Campagne | AgriFieldGenerator Tanin (MIT) : Voronoi, coloriage | code porté TS | parcelles, haies `PG_*`, masques |
-| Semis d'objets | TerrainAutomationTools (pas de licence) : biome, densité, lisière, chemins | **idées seulement** | `entities` |
-| Nuage de points | AdvancedTerrainTools (pas de licence) : import `.xyz` | idées | `entities` |
-| Satmap | granQ (pas de licence), wiki §2 | idées | PNG |
-| Budget plateforme | giorbev benchmark (pas de licence) : idées ; Lou : densité | à mesurer | alertes |
+| Real terrain | BARNMAP (formats only), Copernicus / IGN / Mapterhorn | ideas | `.asc` |
+| Fictional terrain | mapgen4 (Apache-2.0) | code | `.asc`, rivers |
+| Terrain analysis | Map-generator giorbev (MIT): slope, TPI, curvature, flow | code ported to TS | internal grids |
+| Ground masks | Map-generator + WorldCover | code + data | 8-bit PNG (≤5 surfaces/block) |
+| Real land use | OSM (roads, water), WorldCover (forests) | data | shapes |
+| Countryside | Tanin AgriFieldGenerator (MIT): Voronoi, coloring | code ported to TS | parcels, `PG_*` hedges, masks |
+| Object scattering | TerrainAutomationTools (no license): biome, density, edge, paths | **ideas only** | `entities` |
+| Point cloud | AdvancedTerrainTools (no license): `.xyz` import | ideas | `entities` |
+| Satmap | granQ (no license), wiki §2 | ideas | PNG |
+| Platform budget | giorbev benchmark (no license): ideas; Lou: density | to be measured | alerts |
 
-Recouvrements tranchés : semis = un seul moteur (Poisson + règles de biome) pour forêts hors
-générateur, rochers, buissons ; haies = PrefabGenerator sur bordure (AFG + Path Decorator) ;
-masques = un seul calcul alimente sol, satmap et règles de semis.
+Overlaps settled: scattering = a single engine (Poisson + biome rules) for forests outside
+generators, rocks, bushes; hedges = PrefabGenerator on a border (AFG + Path Decorator);
+masks = a single computation feeds ground, satmap and scattering rules.
 
-## Ordre de réalisation
+## Implementation order
 
-1. Plugin `MapGen - Apply project` lisant `$profile:MapGen/mapgen.json` (shapes + generators) — **fait** (2026-10-15).
-2. Pont local + bouton « Envoyer au Workbench » dans le web.
-3. Campagne (port AFG) → premier module qui produit des shapes.
-4. Analyse relief + masques ; puis relief réel ; puis semis ; puis budget.
+1. `MapGen - Apply project` plugin reading `$profile:MapGen/mapgen.json` (shapes + generators) — **done** (2026-10-15).
+2. Local bridge + "Send to Workbench" button in the web app.
+3. Countryside (AFG port) → first module that produces shapes.
+4. Terrain analysis + masks; then real terrain; then scattering; then budget.
 
-Ouvert : formule taille de masque (8/16/32 km), GUID river/lake restants, test `ModifyLayers`
-pour peindre les sols depuis script, licences Esri/Mapterhorn/IGN, mesure des limites consoles.
+Open: mask size formula (8/16/32 km), remaining river/lake GUIDs, `ModifyLayers` test
+to paint grounds from script, Esri/Mapterhorn/IGN licenses, measuring console limits.
 
-## Relief : mapgen4 → Workbench (recherche 2026-10-15)
+## Terrain: mapgen4 → Workbench (research 2026-10-15)
 
-- **giorbev** : seul `Map-generator` touche au terrain ; il **lit** les hauteurs (`load_heightmap_asc`) et
-  écrit les couches de sol directement dans les `.ttile`. Pas d'érosion, pas d'écriture de hauteurs ;
-  « eau » = masques remplissage de cuvettes + accumulation de flux.
-- **mapgen4** (Apache-2.0) : déjà TypeScript / ES modules, build esbuild, WebGL maison (pas de regl).
-  Altitude sans unité −1..1 (0 = mer), peinture 128², maillage Delaunay ; pluie et rivières
-  (`assignRainfall`, `assignRivers`, `flow_s`). **Pas d'export** : à ajouter (rastérisation des
-  triangles en grille Float32), puis détail (bruit + érosion) et mise en mètres.
-- **Écriture des hauteurs par script** : `WorldEditorAPI.BeginTerrainAction(TerrainToolType, …)`,
+- **giorbev**: only `Map-generator` touches the terrain; it **reads** the heights (`load_heightmap_asc`) and
+  writes the ground layers directly into the `.ttile` files. No erosion, no height writing;
+  "water" = basin-filling masks + flow accumulation.
+- **mapgen4** (Apache-2.0): already TypeScript / ES modules, esbuild build, custom WebGL (no regl).
+  Unitless elevation −1..1 (0 = sea), 128² painting, Delaunay mesh; rainfall and rivers
+  (`assignRainfall`, `assignRivers`, `flow_s`). **No export**: to be added (rasterizing the
+  triangles into a Float32 grid), then detail (noise + erosion) and conversion to meters.
+- **Writing heights by script**: `WorldEditorAPI.BeginTerrainAction(TerrainToolType, …)`,
   `ModifyHeightMap(x, z, FilterMorphOperation, TerrainToolDesc, FilterMorphShape, FilterMorphLerpFunc)`,
   `ModifyHeightMapUserShape(x, z, op, toolDesc, array<float> userShape, UserShapeFilter)`.
-  Aucun exemple dans les scripts du jeu. Inconnues : « set » absolu ou additif, taille du tampon,
-  bords des tuiles, mémoire d'annulation. Repli : `.asc` importé par le Terrain Creation Tool.
-- **Érosion navigateur** (licences à vérifier) : SimpleHydrology (particules, MIT), terrain-erosion-3-ways
-  (grille, MIT), Hydraulic-Erosion de Sebastian Lague (MIT), érosion grille WebGL2 (Mei 2007), thermique.
+  No example in the game scripts. Unknowns: absolute "set" or additive, buffer size,
+  tile edges, undo memory. Fallback: `.asc` imported by the Terrain Creation Tool.
+- **Browser erosion** (licenses to be checked): SimpleHydrology (particles, MIT), terrain-erosion-3-ways
+  (grid, MIT), Sebastian Lague's Hydraulic-Erosion (MIT), WebGL2 grid erosion (Mei 2007), thermal.
 
-Pipeline visé : mapgen4 (dessin) → grille 1025² → sur-échantillonnage + bruit → érosion (+ rivières
-mapgen4) → mètres → pont, par tuiles → plugin `ModifyHeightMapUserShape`.
+Target pipeline: mapgen4 (drawing) → 1025² grid → upsampling + noise → erosion (+ mapgen4
+rivers) → meters → bridge, by tiles → `ModifyHeightMapUserShape` plugin.
 
-### Écriture des hauteurs : VÉRIFIÉ (2026-10-15, plugin `MG_TerrainTestPlugin`)
+### Height writing: VERIFIED (2026-10-15, plugin `MG_TerrainTestPlugin`)
 
-- Enums (sondés par script) : `FilterMorphOperation` ADD=0 NOISE=1 EXACT=2 SMOOTH=3 COMBINE=4
-  NONCUMULATIVE=5 ; `FilterMorphShape` ROUND/SQUARE/USER ; `FilterMorphLerpFunc` LINEAR, SIN, INV_COS,
-  SMOOTH, SPHERE, INV_SPHERE ; `UserShapeFilter` NEAREST/BILINEAR/BICUBIC ; `TerrainToolType`
+- Enums (probed by script): `FilterMorphOperation` ADD=0 NOISE=1 EXACT=2 SMOOTH=3 COMBINE=4
+  NONCUMULATIVE=5; `FilterMorphShape` ROUND/SQUARE/USER; `FilterMorphLerpFunc` LINEAR, SIN, INV_COS,
+  SMOOTH, SPHERE, INV_SPHERE; `UserShapeFilter` NEAREST/BILINEAR/BICUBIC; `TerrainToolType`
   HEIGHT_ADD=1 HEIGHT_EXACT=2 HEIGHT_SMOOTH=3 HEIGHT_NOISE=4 SURFACE_PAINT=5 …
 - `BeginTerrainAction(HEIGHT_EXACT)` + `ModifyHeightMap(x, z, EXACT, TerrainToolDesc_HeightExact
-  {fExactHeight=48, fOuterSize=64, fInnerSizePercent=100}, SQUARE, LINEAR)` + `EndTerrainAction` :
-  38 m → **48 m exact**, plat jusqu'à 120 m du centre, intact à 140 m.
-  ⇒ **`fOuterSize` = demi-largeur en mailles du terrain** (64 × 2 m = 128 m). Annulable (Ctrl+Z).
-- Terrain test `emptyarland` : 2049 × 2049 sommets, maille 2 m.
-- Reste à tester : `ModifyHeightMapUserShape` (tampon de hauteurs libres) pour écrire une grille.
+  {fExactHeight=48, fOuterSize=64, fInnerSizePercent=100}, SQUARE, LINEAR)` + `EndTerrainAction`:
+  38 m → **exactly 48 m**, flat up to 120 m from the center, untouched at 140 m.
+  ⇒ **`fOuterSize` = half-width in terrain cells** (64 × 2 m = 128 m). Undoable (Ctrl+Z).
+- Test terrain `emptyarland`: 2049 × 2049 vertices, 2 m cell.
+- Still to test: `ModifyHeightMapUserShape` (free height buffer) to write a grid.
 
-## Peinture des sols (recherche giorbev, 2026-10-15)
+## Ground painting (giorbev research, 2026-10-15)
 
-- Limite réelle : **par bloc** (33 × 33 sommets, 32 × 32 faces) : **5 surfaces max** défaut compris,
-  voisins comptés ; BI recommande 3 pour des masques faits hors Workbench (WIKI_TERRAIN §47).
-  Le « 7 » de Map-generator = capacité du format binaire (`_layer.edds` R32_UINT, w1..w6 sur 5 bits,
-  w0 implicite), exploitée sur une seule carte (Zimnitrita) ; son propre README dit 5 en vanilla.
-- Élagage repris de `clean_weights.py` : mettre à 0 sous ~1 % de couverture, garder les N plus fortes,
-  renormaliser. Mieux : reporter le poids retiré sur la surface conservée la plus proche.
-- Écriture directe `.ttile` (LRS2/GCTD) : rétro-ingénierie fragile (octet « fond Zimnitrita » codé en dur,
-  décalage ignoré), matériaux devant exister dans `terrain.terr` → **à éviter**. Voies retenues :
-  import de masques par le Terrain Tool, ou `ModifyLayers` / `ModifyLayersUserShape` par script
-  (même API que les hauteurs, `TerrainToolType.SURFACE_PAINT`, `TerrainToolDesc_LayerAdd`) — à tester.
-- Règles de biome giorbev : pente min/max, altitude min/max, courbure, priorité, intensité ; matériaux =
-  noms `.emat` vanilla (Grass_02, Rock_01, …).
+- Actual limit: **per block** (33 × 33 vertices, 32 × 32 faces): **5 surfaces max** including the default,
+  neighbors counted; BI recommends 3 for masks made outside the Workbench (WIKI_TERRAIN §47).
+  The "7" of Map-generator = capacity of the binary format (`_layer.edds` R32_UINT, w1..w6 on 5 bits,
+  w0 implicit), used on a single map (Zimnitrita); its own README says 5 in vanilla.
+- Pruning taken from `clean_weights.py`: set to 0 below ~1% coverage, keep the N strongest,
+  renormalize. Better: transfer the removed weight to the nearest kept surface.
+- Direct `.ttile` writing (LRS2/GCTD): fragile reverse engineering (hardcoded "Zimnitrita background" byte,
+  offset ignored), materials must exist in `terrain.terr` → **to be avoided**. Chosen routes:
+  mask import through the Terrain Tool, or `ModifyLayers` / `ModifyLayersUserShape` by script
+  (same API as heights, `TerrainToolType.SURFACE_PAINT`, `TerrainToolDesc_LayerAdd`) — to be tested.
+- giorbev biome rules: min/max slope, min/max altitude, curvature, priority, intensity; materials =
+  vanilla `.emat` names (Grass_02, Rock_01, …).
 
-## Tuiles et relief chez giorbev (Map-generator, MIT) — 2026-10-15
+## Tiles and terrain at giorbev (Map-generator, MIT) — 2026-10-15
 
-- **Géométrie** (Zimnitrita, 4097² sommets, maille 4 m) : 32 × 32 tuiles, 4 × 4 blocs par tuile ;
-  tuile = 128 mailles (+1 sommet partagé = 129), bloc = 32 mailles ; `_layer.edds` 512² par tuile
-  (128² texels par bloc). À lire dans `Terrain.bterr` HEAD (u32 largeur, u32 hauteur, f32 maille à
-  l'offset 16) au lieu de coder 32/4 en dur. Fichier `<préfixe><id>.ttile`, id = ty × 32 + tx ;
-  `.Data/` (ttile, _layer.edds) et `.EditorData/` ; ligne de bloc 0 = sud (inversion image).
-- Chunks `.ttile` : VERS, HGHT (33 282 o = 129 × 129 u16 probable, non vérifié), BERR, GCTD, LRS2, TMAT.
-- Pas de fonction « tuiles touchées par une zone » : à écrire (comme `polygon_tiles.txt` d'AFG).
-- **Relief à porter en TS** (terrain_algorithms.py) : pente et orientation (`np.gradient`), courbure
-  Zevenbergen-Thorne 3×3, TPI (moyenne en boîte, rayons 100 m / 500 m, normalisé p1–p99), rugosité
-  (écart-type 20 m) → portage direct. À remplacer par mieux : remplissage des cuvettes (reconstruction
-  skimage → priority-flood Barnes 2014), écoulement D8 (boucle Python → tableaux typés), distance à la
-  côte (EDT Felzenszwalb).
-- **Mer / côte** : mer = h ≤ 0 **reliée au bord** de la carte (exclut les creux intérieurs), bande
-  côtière 40 m en dégradé. Pas de polygones de lacs ni de rivières : seulement l'accumulation D8.
+- **Geometry** (Zimnitrita, 4097² vertices, 4 m cell): 32 × 32 tiles, 4 × 4 blocks per tile;
+  tile = 128 cells (+1 shared vertex = 129), block = 32 cells; `_layer.edds` 512² per tile
+  (128² texels per block). To be read from `Terrain.bterr` HEAD (u32 width, u32 height, f32 cell at
+  offset 16) instead of hardcoding 32/4. File `<prefix><id>.ttile`, id = ty × 32 + tx;
+  `.Data/` (ttile, _layer.edds) and `.EditorData/`; block row 0 = south (image flip).
+- `.ttile` chunks: VERS, HGHT (33,282 bytes = 129 × 129 u16 probable, unverified), BERR, GCTD, LRS2, TMAT.
+- No "tiles touched by an area" function: to be written (like AFG's `polygon_tiles.txt`).
+- **Terrain analysis to port to TS** (terrain_algorithms.py): slope and aspect (`np.gradient`), Zevenbergen-Thorne
+  3×3 curvature, TPI (box mean, radii 100 m / 500 m, normalized p1–p99), roughness
+  (20 m standard deviation) → direct port. To be replaced by better: basin filling (skimage
+  reconstruction → Barnes 2014 priority-flood), D8 flow (Python loop → typed arrays), distance to
+  the coast (Felzenszwalb EDT).
+- **Sea / coast**: sea = h ≤ 0 **connected to the map edge** (excludes inner depressions), 40 m coastal
+  band with gradient. No lake polygons or rivers: only D8 accumulation.
 
-### Test 2 (2026-10-15, `MG_TerrainTest2Plugin`, repère : mât `MG_TerrainTestMarker` en 1104 / 2832)
+### Test 2 (2026-10-15, `MG_TerrainTest2Plugin`, reference: mast `MG_TerrainTestMarker` at 1104 / 2832)
 
-- `ModifyHeightMapUserShape(x, z, EXACT, HeightExact{fExactHeight=60, fOuterSize=32}, pyramide 32×32
-  0→1, BILINEAR)` : sommet 59,3 m, 49,4 m à mi-pente, sol intact (39 m) à 64 m.
-  ⇒ le tableau couvre ±fOuterSize mailles (32 × 2 m = 64 m de demi-largeur) et chaque valeur est un
-  **poids de mélange** : h = sol + w × (fExactHeight − sol). Pour imposer une grille quelconque :
-  à tester `ADD` + `HeightAdd{fAdd=1}` avec tableau = (cible − sol) en mètres.
-- `ModifyLayers(SURFACE_PAINT, LayerAdd{pMaterial=Rock_01, fAddNormalized=1, fOuterSize=16})` :
-  appel accepté (`begin=1`), rendu à confirmer visuellement (carré de 64 m à 60 m à l'ouest du mât).
-- ⚠ Les modifications de terrain **non sauvegardées sont perdues** au rechargement des scripts
-  (le plateau à 48 m du test 1 a disparu) → toujours `wb_save` avant de compiler.
+- `ModifyHeightMapUserShape(x, z, EXACT, HeightExact{fExactHeight=60, fOuterSize=32}, 32×32 pyramid
+  0→1, BILINEAR)`: peak 59.3 m, 49.4 m at mid-slope, ground untouched (39 m) at 64 m.
+  ⇒ the array covers ±fOuterSize cells (32 × 2 m = 64 m half-width) and each value is a
+  **blend weight**: h = ground + w × (fExactHeight − ground). To impose an arbitrary grid:
+  to be tested `ADD` + `HeightAdd{fAdd=1}` with array = (target − ground) in meters.
+- `ModifyLayers(SURFACE_PAINT, LayerAdd{pMaterial=Rock_01, fAddNormalized=1, fOuterSize=16})`:
+  call accepted (`begin=1`), rendering to be confirmed visually (64 m square at 60 m west of the mast).
+- ⚠ **Unsaved** terrain modifications are lost when scripts reload
+  (the 48 m plateau from test 1 disappeared) → always `wb_save` before compiling.
 
-## Surfaces du terrain : ce qui marche (validé 2026-10-15 sur Mapgenerator/Worlds/TestWorld)
+## Terrain surfaces: what works (validated 2026-10-15 on Mapgenerator/Worlds/TestWorld)
 
-- **Convention monde ↔ terrain** : `Worlds/X.ent`, `Worlds/X_Layers/`, `Worlds/X/X.terr` (+ `.Data/X_*`,
-  `.EditorData/`), et l'entité du layer s'appelle `GenericTerrainEntity X` (le nom désigne le dossier).
-- **Carte de surfaces** : un terrain importé peut ne pas en avoir (Info & Diags : « Surface Mask n/a ») →
-  peindre crashe. Manage → *Change surface map size…* (256 = 1 m/texel sur tuile 256 m) l'initialise sans
-  crash. Effet disque : `TerrainSurfaceBits 8` dans le `.terr.meta`, un octet de `TEXS` passe à 1.
-- **Liste des surfaces** = chunk `MATS` de `X.terr` (IFF : `FORM` + taille BE, `TERR`, chunks nom + taille BE).
-  Corps : 2 octets (`08 00`), puis entrées `u32 LE longueur (avec \0)` + `{GUID}chemin.emat\0`. Le panneau
-  Paint ne l'écrit qu'après usage d'une surface ; **l'écrire nous-mêmes, monde fermé, marche** : 51 surfaces
-  vanilla présentes à la réouverture. Liste exportée par le plugin *MapGen - Register surfaces*
+- **World ↔ terrain convention**: `Worlds/X.ent`, `Worlds/X_Layers/`, `Worlds/X/X.terr` (+ `.Data/X_*`,
+  `.EditorData/`), and the layer entity is named `GenericTerrainEntity X` (the name designates the folder).
+- **Surface map**: an imported terrain may not have one (Info & Diags: "Surface Mask n/a") →
+  painting crashes. Manage → *Change surface map size…* (256 = 1 m/texel on a 256 m tile) initializes it without
+  crashing. Effect on disk: `TerrainSurfaceBits 8` in the `.terr.meta`, one byte of `TEXS` goes to 1.
+- **Surface list** = `MATS` chunk of `X.terr` (IFF: `FORM` + BE size, `TERR`, name chunks + BE size).
+  Body: 2 bytes (`08 00`), then entries `u32 LE length (with \0)` + `{GUID}path.emat\0`. The Paint panel
+  only writes it after a surface has been used; **writing it ourselves, with the world closed, works**: 51 vanilla
+  surfaces present on reopening. List exported by the *MapGen - Register surfaces* plugin
   (`$profile:MapGen/surfaces.txt`).
-- **Peinture par script : crashe** (`Material.GetOrLoadMaterial(res, 0)` → « Material cannot create clone
-  for 0x0 creation flags », puis access violation dans `ModifyLayers`). Flags non documentés. Reste à
-  tester : import de masques (Paint → Import/export masks) ou écriture `_layer.edds`.
-- **ModifyHeightMapUserShape** : EXACT = poids (h = sol + w·(H − sol)) ✔ ; ADD ≈ un coup de pinceau
-  (+0,6 m pour 20 demandés) ✘ → relief arbitraire en 2 passes EXACT (montée H = max, descente H = min).
-- **Ne pas interroger le NET API pendant une fenêtre modale du Workbench** (crash dans `GetResponse`) :
-  le site ne fait plus de sondage automatique.
+- **Painting by script: crashes** (`Material.GetOrLoadMaterial(res, 0)` → "Material cannot create clone
+  for 0x0 creation flags", then access violation in `ModifyLayers`). Undocumented flags. Still to
+  test: mask import (Paint → Import/export masks) or `_layer.edds` writing.
+- **ModifyHeightMapUserShape**: EXACT = weight (h = ground + w·(H − ground)) ✔; ADD ≈ one brush stroke
+  (+0.6 m for 20 requested) ✘ → arbitrary terrain in 2 EXACT passes (raise H = max, lower H = min).
+- **Do not query the NET API while a Workbench modal window is open** (crash in `GetResponse`):
+  the site no longer polls automatically.
 
-### Création d'un terrain neuf (validé 2026-10-15, Mapgenerator/Worlds/MG_Test)
+### Creating a new terrain (validated 2026-10-15, Mapgenerator/Worlds/MG_Test)
 
-1. New World (Base scene) → poser `{221ABC927C672E4E}Prefabs/World/DefaultWorld/GenericTerrain_Default.et`
-   en 0 0 0, nom = nom du monde, Ctrl+S → clic droit « Create new terrain… ».
-2. Fenêtre New Terrain = le futur formulaire du site : nom ; grille (multiple de 128 = tuile) ; blocs par
-   tuile (4) ; maille (m) ; Height scale (0,03125 m → 2048 m de plage) ; « Zero » (10 % → −205..+1843 m) ;
-   Surface layer weight bits : **8 bits = 5 surfaces/bloc** (fondu fin, défaut BI) ou **5 bits = 7 surfaces**.
-3. Monde fermé → `POST /surfaces` (pont) : 51 surfaces vanilla dans `MATS` + octet `TEXS` → à la
-   réouverture, pas de fenêtre « Init Surface Map », peinture directe OK.
-   Note : `TEXS` d'un terrain neuf = 6 octets à 0 (l'île importée avait `00 01 00 01 00 00`).
-4. Relief : Manage → Import height map accepte `.asc` et PNG 16 bits (resampling min/max) → voie
-   principale pour le site (réel ou mapgen4) ; EXACT par script pour les retouches.
+1. New World (Base scene) → place `{221ABC927C672E4E}Prefabs/World/DefaultWorld/GenericTerrain_Default.et`
+   at 0 0 0, name = world name, Ctrl+S → right click "Create new terrain…".
+2. New Terrain window = the future form of the site: name; grid (multiple of 128 = tile); blocks per
+   tile (4); cell (m); Height scale (0.03125 m → 2048 m range); "Zero" (10% → −205..+1843 m);
+   Surface layer weight bits: **8 bits = 5 surfaces/block** (fine blending, BI default) or **5 bits = 7 surfaces**.
+3. World closed → `POST /surfaces` (bridge): 51 vanilla surfaces in `MATS` + `TEXS` byte → on
+   reopening, no "Init Surface Map" window, direct painting OK.
+   Note: `TEXS` of a new terrain = 6 bytes at 0 (the imported island had `00 01 00 01 00 00`).
+4. Terrain: Manage → Import height map accepts `.asc` and 16-bit PNG (min/max resampling) → main
+   route for the site (real or mapgen4); EXACT by script for touch-ups.
 
-## Masques de surface (Paint → Import/export masks)
+## Surface masks (Paint → Import/export masks)
 
-- Un PNG par surface, nommé comme le .emat (`Grass_01.png`), niveaux de gris 8 bits, une image pour tout le terrain.
-- Taille = TilesCount × 252 + 1 (MG_Test 16 tuiles → 4033 px, ≈ 1,016 m/px). Valeur 0..255 = poids de la surface.
-- **Ligne 0 = NORD** (z max), colonne 0 = ouest. Vérifié sur MG_Test (2026-10-15).
-- L'import prend un dossier ; les surfaces sans PNG sont signalées absentes (avertissement sans gravité).
-- Les tuiles peintes non enregistrées font échouer le chargement de `<nom>_<t>_layer.edds` à l'export : Ctrl+S avant.
+- One PNG per surface, named like the .emat (`Grass_01.png`), 8-bit grayscale, one image for the whole terrain.
+- Size = TilesCount × 252 + 1 (MG_Test 16 tiles → 4033 px, ≈ 1.016 m/px). Value 0..255 = surface weight.
+- **Row 0 = NORTH** (max z), column 0 = west. Verified on MG_Test (2026-10-15).
+- The import takes a folder; surfaces without a PNG are reported as missing (harmless warning).
+- Painted tiles that are not saved make loading `<name>_<t>_layer.edds` fail on export: Ctrl+S first.
 
-## À faire : routes tracées sur le site
+## To do: roads drawn on the site
 
-- Route = spline avec générateur de route (comme les haies), prefab route sur la spline.
-- Sous la route : masque de surface Asphalt (cœur) + Dirt (bords, fondu), écrit dans /masks.
-- Carte satellite : même tracé coloré (asphalte gris, bords terre) pour la vue de loin.
-- L'herbe 3D (clutter) vient de la surface peinte, pas de la carte satellite : peindre l'asphalte sous la route
-  supprime l'herbe qui traverse le prefab.
+- Road = spline with a road generator (like hedges), road prefab on the spline.
+- Under the road: Asphalt surface mask (core) + Dirt (edges, blended), written in /masks.
+- Satellite map: same drawing colored (gray asphalt, dirt edges) for the distant view.
+- 3D grass (clutter) comes from the painted surface, not from the satellite map: painting asphalt under the road
+  removes the grass that shows through the prefab.
 
-## Relief fictif sur le site (2026-10-15)
+## Fictional terrain on the site (2026-10-15)
 
-Fonctions de mapgen4 (Amit Patel, Apache-2.0) refaites sur notre grille, sans reprise de son code
-(maillage Delaunay + WebGL inadapté au tuyau grille → pont) :
-- `src/modules/island.ts` : îles (nombre, part de terre, graine), mer en profondeur, surfaces par altitude/pente.
-- Pinceau (site) : monter, creuser, aplanir, mer, adoucir — sur `baseHeights`.
-- `src/modules/hydro.ts` : pluie modulée par le vent (versants exposés), priority-flood (cuvettes drainées),
-  directions D8, accumulation, lit creusé + surface `Pebbles_01`. Les fleuves sont recalculés à la demande
-  depuis `baseHeights` (pas de creusement cumulé).
-À faire : eau des fleuves (prefab rivière sur spline depuis le tracé), biomes par pluie.
+mapgen4 functions (Amit Patel, Apache-2.0) redone on our grid, without reusing its code
+(Delaunay mesh + WebGL unsuited to the grid → bridge pipeline):
+- `src/modules/island.ts`: islands (count, land share, seed), sea depth, surfaces by altitude/slope.
+- Brush (site): raise, dig, flatten, sea, smooth — on `baseHeights`.
+- `src/modules/hydro.ts`: wind-modulated rainfall (exposed slopes), priority-flood (basins drained),
+  D8 directions, accumulation, carved bed + `Pebbles_01` surface. Rivers are recomputed on demand
+  from `baseHeights` (no cumulative carving).
+To do: river water (river prefab on a spline from the trace), biomes by rainfall.
 
-## Côtes et niveau de la mer (site, 2026-10-15)
+## Coasts and sea level (site, 2026-10-15)
 
-- Surfaces de base (51, `Terrains/Common/Surfaces/`) : pas de sable ni d'algues en surface. Algues = objets
-  (`Prefabs/Vegetation/Core/Seaweed_Base.et`, rochers `GraniteBeachStone_*_Fucus`), laisse de mer = décalques
-  `Assets/Decals/Stones/Beach/Beach_NatureDebris_*` → futur moteur de semis.
-- Règles (`computeSurfaces`) : < −3 m SeaBed_01 ; −3..+1 Pebbles_02 ; +1..+4 BeachGrass_01 ; +4..+10
-  Grass_03_coastal ; pente forte Rock_01, pied de falaise côtière Debris_Rock_01 ; lit de fleuve Pebbles_01.
-- `limitPerBlock` : 5 surfaces max par bloc de 64 m (tuile 256 m / 4 blocs, cellule 2 m) — à ajuster si la
-  grille du terrain change. Les surfaces retirées passent à la plus forte gardée.
-- Niveau de la mer : la mer du jeu reste à 0 m, le site abaisse/relève tout le relief.
+- Base surfaces (51, `Terrains/Common/Surfaces/`): no sand or seaweed as a surface. Seaweed = objects
+  (`Prefabs/Vegetation/Core/Seaweed_Base.et`, rocks `GraniteBeachStone_*_Fucus`), strandline = decals
+  `Assets/Decals/Stones/Beach/Beach_NatureDebris_*` → future scattering engine.
+- Rules (`computeSurfaces`): < −3 m SeaBed_01; −3..+1 Pebbles_02; +1..+4 BeachGrass_01; +4..+10
+  Grass_03_coastal; steep slope Rock_01, coastal cliff foot Debris_Rock_01; river bed Pebbles_01.
+- `limitPerBlock`: 5 surfaces max per 64 m block (256 m tile / 4 blocks, 2 m cell) — to be adjusted if the
+  terrain grid changes. Removed surfaces go to the strongest kept one.
+- Sea level: the game's sea stays at 0 m, the site lowers/raises the whole terrain.
 
-## À faire : travail à plusieurs côté site
+## To do: multi-user work on the site
 
-Le Workbench ne permet qu'une personne par terrain (tuiles « claim/release » seulement). Le site peut
-porter la collaboration, le Workbench ne recevant que le résultat :
-- Projet partagé = état du site (macro-relief, masque fleuves, zones, routes, paramètres) synchronisé
-  entre navigateurs (serveur léger WebSocket ou CRDT type Yjs ; à choisir).
-- Verrous par zone / par calque (relief, fleuves, campagne, routes) plutôt que par tuile, avec curseurs
-  et pinceaux des autres visibles en direct.
-- Les coups de pinceau sont des opérations rejouables (outil, position, rayon, force) → historique,
-  annulation par personne, fusion simple.
-- Un seul poste « publie » vers le Workbench (pont local) : relief, masques, satellite, shapes.
-- **Onglet « Notes » (annotations partagées)**, calque à part, jamais envoyé au Workbench :
-  - dessiner des lignes libres, des tracés de route proposés, des zones (polygones) ;
-  - poser du texte sur la carte (étiquette ancrée à un point) ;
-  - chaque note a un auteur, une date, une couleur par personne, un statut (idée / acceptée / faite / rejetée) ;
-  - fil de commentaires par note : les autres répondent à l'idée, réagissent, la marquent « faite » ;
-  - liste des notes dans le panneau (filtre par auteur / statut), clic = centrer la carte dessus ;
-  - action « convertir en route / en zone de campagne » pour passer d'une proposition au vrai calque ;
-  - visibles par-dessus tous les onglets, masquables d'un clic.
+The Workbench only allows one person per terrain (tiles "claim/release" only). The site can
+carry the collaboration, with the Workbench only receiving the result:
+- Shared project = site state (macro-terrain, rivers mask, zones, roads, parameters) synchronized
+  between browsers (lightweight WebSocket server or CRDT such as Yjs; to be chosen).
+- Locks per zone / per layer (terrain, rivers, countryside, roads) rather than per tile, with the cursors
+  and brushes of the others visible live.
+- Brush strokes are replayable operations (tool, position, radius, strength) → history,
+  per-person undo, simple merging.
+- Only one workstation "publishes" to the Workbench (local bridge): terrain, masks, satellite, shapes.
+- **"Notes" tab (shared annotations)**, a separate layer, never sent to the Workbench:
+  - draw freehand lines, proposed road traces, zones (polygons);
+  - put text on the map (label anchored to a point);
+  - each note has an author, a date, a color per person, a status (idea / accepted / done / rejected);
+  - comment thread per note: others reply to the idea, react, mark it "done";
+  - list of notes in the panel (filter by author / status), click = center the map on it;
+  - "convert to road / to countryside zone" action to turn a proposal into the real layer;
+  - visible over all tabs, hideable with one click.
 
-## À faire : villes (après les routes)
+## To do: towns (after roads)
 
-Références données par Benji (idées seulement, pas de code repris) :
+References given by Benji (ideas only, no code reused):
 - https://www.fantasytowngenerator.com/temporary-settlement
 - https://fantasygen.net/city-map-generator
-- Vidéo https://www.youtube.com/watch?v=UmUs9W4riPs et outil Fab https://www.fab.com/listings/013f192b-caf4-422f-b560-5166f8c6d9b8
-  (système procédural de ville à recréer côté site + plugin).
+- Video https://www.youtube.com/watch?v=UmUs9W4riPs and Fab tool https://www.fab.com/listings/013f192b-caf4-422f-b560-5166f8c6d9b8
+  (procedural town system to recreate on the site + plugin side).
 
-Pistes : bibliothèque de prefabs de bâtiments vanilla (empreinte, type, rôle), îlots découpés le long
-du réseau routier, parcelles orientées vers la rue, densité centre → périphérie.
-- https://maps.probabletrain.com/ (ProbableTrain MapGenerator) : réseau routier par **champ de tenseurs**
-  (grilles + radiaux mélangés, contournent l'eau), routes principales puis secondaires, îlots, bâtiments
-  extrudés. Licence à vérifier avant toute reprise : idées seulement par défaut.
-- https://simteract.com/projects/city-generator/ (Simteract) : générateur de villes pour la simulation
-  (réseau routier hiérarchisé, quartiers typés, bâtiments placés selon la zone). Idées seulement.
+Leads: library of vanilla building prefabs (footprint, type, role), blocks cut along the
+road network, parcels oriented toward the street, density center → periphery.
+- https://maps.probabletrain.com/ (ProbableTrain MapGenerator): road network by **tensor field**
+  (blended grids + radials, avoiding water), main roads then secondary, blocks, extruded
+  buildings. License to be checked before any reuse: ideas only by default.
+- https://simteract.com/projects/city-generator/ (Simteract): town generator for simulation
+  (hierarchical road network, typed districts, buildings placed according to the zone). Ideas only.
 
-## À faire : routes depuis des données réelles
+## To do: roads from real data
 
-- Référence : https://mapimator.com/tools/city-roads (même principe que anvaka/city-roads) : routes
-  téléchargées depuis **OpenStreetMap via l'API Overpass** (`way[highway]` dans une zone), puis dessinées.
-- Chez nous : requête Overpass sur la zone choisie → tri par `highway` (motorway/primary/secondary →
-  asphalte, track/path → terre, residential → rues de ville) → projection en mètres sur le terrain →
-  simplification (points tous les ~25 m) → mêmes `Road` que le tracé manuel (relief, masques, splines).
-- Attribution OSM obligatoire (ODbL) si des données OSM finissent dans une carte publiée.
+- Reference: https://mapimator.com/tools/city-roads (same principle as anvaka/city-roads): roads
+  downloaded from **OpenStreetMap via the Overpass API** (`way[highway]` in an area), then drawn.
+- For us: Overpass query on the chosen area → sort by `highway` (motorway/primary/secondary →
+  asphalt, track/path → dirt, residential → town streets) → projection to meters on the terrain →
+  simplification (points every ~25 m) → same `Road` as the manual trace (terrain, masks, splines).
+- OSM attribution mandatory (ODbL) if OSM data ends up in a published map.

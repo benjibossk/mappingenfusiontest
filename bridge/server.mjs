@@ -4,6 +4,7 @@
 //     1. writes it to <Workbench profile>/MapGen/mapgen.json
 //     2. calls the MG_ApplyProject NET API handler (addon Mapgenerator) on the Workbench
 //   GET  /status  is the Workbench reachable?
+//   GET  /entities  objects and shapes already in the open world (MG_ExportEntities)
 //   GET  /heights?step=8   terrain height grid of the open world (MG_ExportHeights)
 //   POST /surfaces  body = {addon, world: "Worlds/X"}  preload the vanilla surfaces into Worlds/X/X.terr
 //                   and initialise its surface map + normal map. The world must be CLOSED in the Workbench.
@@ -20,7 +21,7 @@
 
 import { createServer } from "node:http";
 import { Socket } from "node:net";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -124,7 +125,7 @@ const server = createServer(async (req, res) => {
 
   try {
     if (req.method === "GET" && req.url === "/status") {
-      const state = await callWorkbench("EMCP_WB_GetState", {}, 5_000).catch((e) => ({ error: e.message }));
+      const state = await callWorkbench("MG_Status", {}, 5_000).catch((e) => ({ error: e.message }));
       return send(res, 200, { bridge: "ok", projectFile: PROJECT_FILE, workbench: state });
     }
 
@@ -149,6 +150,61 @@ const server = createServer(async (req, res) => {
 
       const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" });
       return send(res, result.status === "error" ? 500 : 200, result);
+    }
+
+    // the open world as a whole (heights + ground materials), to load a map already in progress
+    if (req.method === "GET" && req.url.startsWith("/world")) {
+      const step = Number(new URL(req.url, "http://x").searchParams.get("step") ?? 8);
+      const h = await callWorkbench("MG_ExportHeights", { step }, 600_000);
+      if (h.status !== "ok") return send(res, 500, h);
+      // ground materials: MG_ExportSurfaces (terrain trace) crashed the Workbench on its first trace, off for now
+      const [hHead, ...hLines] = readFileSync(join(PROFILE_DIR, "MapGen", "heights.txt"), "utf-8").trim().split(/\r?\n/);
+      const [minX, minZ, cell, cols, rows, ocean] = hHead.split(" ").map(Number);
+            return send(res, 200, {
+        minX, minZ, step: cell, cols, rows, ocean,
+        heights: hLines.flatMap((l) => l.split(" ").map(Number)),
+        materials: [],
+        surfaces: [],
+      });
+    }
+
+    // what already stands in the open world (MG_ExportEntities): prefab objects + shapes with their generators
+    if (req.method === "GET" && req.url === "/entities") {
+      const r = await callWorkbench("MG_ExportEntities", {}, 600_000);
+      if (r.status !== "ok") return send(res, 500, r);
+      const objects = [], shapes = [];
+      for (const l of readFileSync(join(PROFILE_DIR, "MapGen", "entities.txt"), "utf-8").split(/\r?\n/)) {
+        const f = l.trim().split(" ");
+        if (f[0] === "E" && f.length >= 9) {
+          const [x, z, yaw, x0, z0, x1, z1] = f.slice(-7).map(Number);
+          objects.push({ prefab: f.slice(1, -7).join(" "), x, z, yaw, box: [x0, z0, x1, z1] });
+        } else if (f[0] === "S" && f.length >= 9) {
+          const pts = f.slice(5).map(Number), points = [];
+          for (let i = 0; i + 1 < pts.length; i += 2) points.push([pts[i], pts[i + 1]]);
+          shapes.push({ generators: f[1] === "-" ? [] : f[1].split("|"), closed: f[2] === "1", origin: [Number(f[3]), Number(f[4])], points });
+        }
+      }
+      // a generator (road, river, wall, forest prefab) is listed as an object sitting on a point of its shape:
+      // hand it to that shape, it is not an obstacle box
+      const free = [];
+      for (const ob of objects) {
+        const sh = /WEGenerators/.test(ob.prefab) && shapes.find((q) => q.points.some(([x, z]) => Math.hypot(x - ob.x, z - ob.z) < 0.5));
+        if (sh) sh.generators.push(ob.prefab);
+        else free.push(ob);
+      }
+      return send(res, 200, { objects: free, shapes });
+    }
+
+    // parcels captured by the "MapGen - Capture templates" plugin
+    if (req.method === "GET" && req.url === "/templates") {
+      const dir = join(PROFILE_DIR, "MapGen", "templates");
+      let files = [];
+      try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch {}
+      const out = [];
+      for (const f of files) {
+        try { out.push(JSON.parse(readFileSync(join(dir, f), "utf-8"))); } catch {}
+      }
+      return send(res, 200, out);
     }
 
     if (req.method === "POST" && req.url === "/surfaces") {

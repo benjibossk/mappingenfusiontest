@@ -18,6 +18,7 @@ export interface Placed {
   id: string
   site: string
   prefab: string
+  tpl?: string
   cat: BuildingCat
   x: number // entity origin, world metres
   z: number
@@ -141,6 +142,8 @@ export interface SettleOptions {
   square: boolean // central green kept free, the civic building facing it (villages, towns)
   lanes: boolean // secondary dead-end lanes branching off the roads (villages, towns)
   paths: boolean // worn footpaths: doors to the road, to the annex, between back gardens, to the square
+  pool?: Building[] // replaces the vanilla list (captured parcels)
+  blocked?: [number, number, number, number][] // world boxes already taken (objects of an imported world)
 }
 export interface Square { site: string; x: number; z: number; r: number }
 export type District = 'centre' | 'mid' | 'edge'
@@ -205,6 +208,7 @@ export function settle(sites: Site[], roads: Road[], waters: Water[], heights: A
   const inSquare = (x: number, z: number, m: number) => squares.some((s) => Math.hypot(x - s.x, z - s.z) < s.r + m)
   const fits = (b: Building, c: number[]) => {
     for (const q of placed) if (overlap(c, q.corners, GAP)) return false
+    for (const [x0, z0, x1, z1] of opt.blocked ?? []) if (overlap(c, [x0, z0, x1, z0, x1, z1, x0, z1], GAP)) return false
     const pts = samples(c)
     let lo = Infinity, hi = -Infinity
     for (let i = 0; i < pts.length; i += 2) {
@@ -233,7 +237,7 @@ export function settle(sites: Site[], roads: Road[], waters: Water[], heights: A
     return { x, z, yaw, corners: footprint(b, x, z, yaw), width: tmax - tmin, depth: nmax - nmin }
   }
 
-  const pool = (cats: BuildingCat[]) => BUILDINGS.filter((b) => cats.includes(b.cat))
+  const pool = (cats: BuildingCat[]) => (opt.pool ?? BUILDINGS).filter((b) => cats.includes(b.cat))
   const civics = pool(['civic'])
 
   // a house and the plot it stands on (for the footpaths)
@@ -410,7 +414,7 @@ export function settle(sites: Site[], roads: Road[], waters: Water[], heights: A
       if (square) {
         const r = put(b, sqP[0], sqP[1], sqN[0], sqN[1], sqHalf + ROAD_MARGIN + square.r * 2 + 2)
         if (fits(b, r.corners)) {
-          placed.push({ id: pre + 'C1', site: site.id, prefab: b.prefab, cat: b.cat, x: r.x, z: r.z, yaw: r.yaw, corners: r.corners })
+          placed.push({ id: pre + 'C1', site: site.id, prefab: b.prefab, tpl: b.tpl, cat: b.cat, x: r.x, z: r.z, yaw: r.yaw, corners: r.corners })
           done = true
         }
       }
@@ -418,7 +422,7 @@ export function settle(sites: Site[], roads: Road[], waters: Water[], heights: A
         const front = pl.half + ROAD_MARGIN + 3
         const r = put(b, pl.px, pl.pz, pl.nx, pl.nz, front)
         if (fits(b, r.corners)) {
-          const q: Placed = { id: pre + 'C1', site: site.id, prefab: b.prefab, cat: b.cat, x: r.x, z: r.z, yaw: r.yaw, corners: r.corners }
+          const q: Placed = { id: pre + 'C1', site: site.id, prefab: b.prefab, tpl: b.tpl, cat: b.cat, x: r.x, z: r.z, yaw: r.yaw, corners: r.corners }
           placed.push(q)
           homes.push({ q, px: pl.px, pz: pl.pz, nx: pl.nx, nz: pl.nz, half: pl.half, front, depth: r.depth, width: r.width, line: pl.line, side: pl.side, s: pl.s })
           break
@@ -450,7 +454,7 @@ export function settle(sites: Site[], roads: Road[], waters: Water[], heights: A
       if (!done) continue
       nH++
       const { b, r } = done
-      const q: Placed = { id: pre + 'H' + nH, site: site.id, prefab: b.prefab, cat: b.cat, x: r.x, z: r.z, yaw: r.yaw, corners: r.corners }
+      const q: Placed = { id: pre + 'H' + nH, site: site.id, prefab: b.prefab, tpl: b.tpl, cat: b.cat, x: r.x, z: r.z, yaw: r.yaw, corners: r.corners }
       placed.push(q)
       const home: Home = { q, px: pl.px, pz: pl.pz, nx: pl.nx, nz: pl.nz, half: pl.half, front, depth: r.depth, width: r.width, line: pl.line, side: pl.side, s: pl.s }
       homes.push(home)
@@ -571,9 +575,16 @@ export function settlementShapes(s: { lanes: Road[]; paths: Road[] }): ProjectSh
 
 //! buildings stand upright on the ground under their origin (the plugin's terrain height, like the
 //! editor's Ctrl+Down snap); no tilt
-export function settlementEntities(placed: Placed[]): ProjectEntity[] {
-  return placed.map((q) => ({ id: q.id, prefab: q.prefab, x: Math.round(q.x * 100) / 100, z: Math.round(q.z * 100) / 100, yaw: q.yaw }))
+export function settlementEntities(placed: Placed[], parcels?: ParcelItems): ProjectEntity[] {
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  const out: ProjectEntity[] = []
+  for (const q of placed) {
+    out.push({ id: q.id, prefab: q.prefab, x: r2(q.x), z: r2(q.z), yaw: q.yaw })
+    if (q.tpl && parcels) out.push(...parcels(q))
+  }
+  return out
 }
+export type ParcelItems = (q: Placed) => ProjectEntity[]
 
 //! bare earth painted under each building (1.5 m around the footprint), same mask format as roadMasks:
 //! a line along the long side of the footprint, half = half the short side + margin

@@ -1,32 +1,30 @@
-# Ce qu'on réutilise des skills Reforger / Freedom Fighters et du CLAUDE.md des addons
+# Notes reused from Reforger / Freedom Fighters modding knowledge
 
-## Formats et GUID (skill arma-reforger-modding)
-- **Chaque `.et` exporté a besoin d'un `.meta`** (`MetaFileClass`, `Name "{GUID}chemin"`, configurations PC/XBOX_ONE/XBOX_SERIES/PS4/PS5/HEADLESS). BARNMAP fait pareil.
-- **GUID déterministes** : `sha256(sel + chemin)[:16]` en majuscules. Réexporter une même zone garde ainsi les mêmes GUID, et les références des calques restent valides.
-- Les références utilisent le **GUID de la ressource** (`.meta`), jamais le GUID de l'addon.
-- Vérifié en test (2026-10-14) : le Workbench résout aussi un prefab par **chemin seul** (`Prefabs/WEGenerators/Water/Lake/LG_Lake_01.et`). C'est une solution de repli pour les GUID inconnus.
-- Validation : `mod_validate` (MCP) comme pré-contrôle.
+## Formats and GUIDs (arma-reforger-modding skill)
+- **Every exported `.et` needs a `.meta`** (`MetaFileClass`, `Name "{GUID}path"`, configurations PC/XBOX_ONE/XBOX_SERIES/PS4/PS5/HEADLESS). BARNMAP does the same.
+- **Deterministic GUIDs**: `sha256(salt + path)[:16]` in uppercase. Re-exporting the same area therefore keeps the same GUIDs, and layer references stay valid.
+- References use the **resource GUID** (`.meta`), never the addon GUID.
+- Verified in testing (2026-10-14): the Workbench also resolves a prefab by **path alone** (`Prefabs/WEGenerators/Water/Lake/LG_Lake_01.et`). This is a fallback for unknown GUIDs.
+- Validation: `mod_validate` (MCP) as a pre-check.
 
-## ⚠️ IDs d'entités non « bakés » : risque de crash en serveur dédié (skill FF §15.18)
-- Un `.et` écrit à la main sans `ID "..."` stable à la racine désynchronise le client et le serveur, ce qui provoque un kick `REPLICATION SYSTEM_FAILURE`.
-- **L'outil doit écrire un `ID` 16-hex à chaque entité** : la shape, le générateur enfant et le ShapePoint en `{GUID}`. BARNMAP le fait.
-- Par sécurité, on documente dans la fiche d'import un « Force Save All » dans le Workbench : Resource Browser, puis Edit Prefab(s), puis Force Save All. **Ne pas utiliser Reimport.**
-- Détection : `rg --files-without-match -g '*.et' '^\s*ID "'`. On l'intègre au validateur de l'outil.
+## ⚠️ Non-"baked" entity IDs: dedicated server crash risk (FF skill §15.18)
+- A hand-written `.et` without a stable `ID "..."` at the root desynchronises client and server, which causes a `REPLICATION SYSTEM_FAILURE` kick.
+- **The tool must write a 16-hex `ID` on every entity**: the shape, the child generator and the ShapePoint as `{GUID}`. BARNMAP does this.
+- As a safety measure, the import sheet documents a "Force Save All" in the Workbench: Resource Browser, then Edit Prefab(s), then Force Save All. **Do not use Reimport.**
+- Detection: `rg --files-without-match -g '*.et' '^\s*ID "'`. We build this into the tool's validator.
 
-## Freedom Fighters : un terrain généré doit être « FF-ready » (skill FF §3-4)
-- **Taille conseillée de 25 km² ou plus** (Arland, environ 2,5 × 2,5 km, est le minimum souple). Nos 4 km = 16 km² sont donc limites ; il vaut mieux viser 8 km.
-- **Réseau routier asphalté connecté** entre les lieux principaux. Sans lui, FF n'a ni trafic, ni QRF, ni convois.
-  - Pièges FF : des **extrémités qui ne se touchent pas** (gaps) et des **îlots** (sous-réseaux déconnectés).
-  - → L'outil doit **souder les intersections** (un point commun, même hauteur, ce que recommande aussi BI) et détecter les composantes connexes du graphe routier avant l'export (rapport « îlots »).
-- `JWK_World` demande Map Offset et Map Size. On peut les calculer directement depuis la grille exportée (origine 0,0,0, taille N×1,024 km, Y min/max).
-- Lieux FF (Town, FOB, base militaire, tour radio, port, checkpoint, station-service) : l'outil pourrait proposer des **marqueurs de POI** à partir d'OSM (`place=village`, `amenity=fuel`, `man_made=mast`, `harbour`, `military`) et les exporter comme emplacements à compléter avec les contrôleurs `JWK_*`. C'est une idée pour une phase ultérieure.
-- Bâtiments personnalisés : `JWK_SpawnPointsContainerComponent`. Ce n'est pas notre périmètre.
+## Freedom Fighters: a generated terrain must be "FF-ready" (FF skill §3-4)
+- **Recommended size of 25 km² or more** (Arland, about 2.5 × 2.5 km, is the soft minimum). Our 4 km = 16 km² is therefore borderline; aim for 8 km instead.
+- **Connected paved road network** between the main locations. Without it, FF has no traffic, no QRF and no convoys.
+  - FF pitfalls: **endpoints that do not touch** (gaps) and **islands** (disconnected sub-networks).
+  - → The tool must **weld intersections** (one shared point, same height, which BI also recommends) and detect the connected components of the road graph before export ("islands" report).
+- `JWK_World` requires Map Offset and Map Size. They can be computed directly from the exported grid (origin 0,0,0, size N×1.024 km, Y min/max).
+- FF locations (Town, FOB, military base, radio tower, port, checkpoint, gas station): the tool could offer **POI markers** from OSM (`place=village`, `amenity=fuel`, `man_made=mast`, `harbour`, `military`) and export them as placeholders to be completed with the `JWK_*` controllers. This is an idea for a later phase.
+- Custom buildings: `JWK_SpawnPointsContainerComponent`. This is outside our scope.
 
-## Outillage MCP (CLAUDE.md addons)
-- ⚠️ **Appeler un outil `wb_*` peut supprimer `addons/EnfusionMCP/`.** Copie de secours dans `enfusion-mcp-local\ADDON_EnfusionMCP_SAFE\`. Vérifié présent après nos tests du 2026-10-14.
-- `wb_compile` sert à compiler un plugin Workbench (piste : un importeur JSON en script Enforce).
-- Lire les logs avec `wb_console`, ou en dernier recours le `console.log` du dossier de logs le plus récent.
-- `ToggleGeneratorEvents(true)` (API) est nécessaire pour que les générateurs tournent quand on crée des entités par script.
+## Workbench scripting notes
+- `ToggleGeneratorEvents(true)` (API) is required for generators to run when entities are created by script.
+- After editing a plugin, recompile with Script Editor > Build > Validate and Reload Scripts (Shift+F7) and read the errors in the Errors pane.
 
 ## Bench / performance
-- Le plugin `WorldEditorPlugin` (pattern du skill FF §15.18) peut aussi servir de base au **plugin de bench** : densité par cellule avec `QueryEntitiesByAABB` (scripts de Lou), puis heatmap PNG.
+- The `WorldEditorPlugin` (pattern from FF skill §15.18) can also serve as the basis for the **bench plugin**: density per cell with `QueryEntitiesByAABB` (Lou's scripts), then a PNG heatmap.

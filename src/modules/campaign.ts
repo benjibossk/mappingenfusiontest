@@ -1,7 +1,7 @@
-// Module Campagne — parcelles + haies sur une zone.
-// Démarche inspirée de Tanin69/AgriFieldGenerator (MIT, © 2024 Didier ALAIN) : graines,
-// Voronoi découpé par la zone, bordures entre parcelles. Implémentation propre ici ; ajouts :
-// haies réelles (PrefabGenerator sur les bordures), sortie au format pivot mapgen.json.
+// Countryside module — field plots + hedges over a zone.
+// Approach inspired by Tanin69/AgriFieldGenerator (MIT, © 2024 Didier ALAIN): seeds,
+// Voronoi clipped by the zone, borders between plots. Own implementation here; additions:
+// real hedges (PrefabGenerator on the borders), output in the mapgen.json pivot format.
 
 import { Delaunay } from 'd3-delaunay'
 import * as turf from '@turf/turf'
@@ -9,17 +9,17 @@ import type { Feature, Polygon, MultiPolygon, LineString } from 'geojson'
 import { GENERATORS, type ProjectShape } from '../project'
 
 export interface CampaignOptions {
-  /** zone fermée, paires X/Z monde à plat */
+  /** closed zone, flat world X/Z pairs */
   zone: number[]
   /** taille moyenne d'une parcelle, m */
   fieldSize: number
-  /** 0..1 : décalage aléatoire des graines dans leur case */
+  /** 0..1: random offset of the seeds within their cell */
   jitter: number
-  /** angle de la trame, degrés */
+  /** grid angle, degrees */
   angle: number
-  /** probabilité qu'une bordure entre deux parcelles porte une haie */
+  /** probability that a border between two plots carries a hedge */
   hedgeChance: number
-  /** longueur minimale d'un tronçon de haie, m */
+  /** minimum length of a hedge segment, m */
   minHedge: number
   seed: number
   /** false = eau / hors terrain : pas de parcelle ni de haie */
@@ -29,12 +29,12 @@ export interface CampaignOptions {
 }
 
 export interface CampaignResult {
-  fields: number[][][]   // anneaux [x, z][] par parcelle (aperçu, masques plus tard)
+  fields: number[][][]   // [x, z][] rings per plot (preview, masks later)
   hedges: number[][][]   // polylignes [x, z][]
   shapes: ProjectShape[]
 }
 
-// PRNG déterministe : même graine → même campagne
+// deterministic PRNG: same seed → same countryside
 function mulberry32(seed: number) {
   let a = seed >>> 0
   return () => {
@@ -61,7 +61,7 @@ export function generateCampaign(o: CampaignOptions): CampaignResult {
   const zone = turf.polygon([pairsToRing(o.zone)])
   const [minX, minZ, maxX, maxZ] = turf.bbox(zone)
 
-  // 1. graines : trame tournée + jitter, gardées dans la zone
+  // 1. seeds: rotated grid + jitter, kept inside the zone
   const seeds: [number, number][] = []
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2
   const r = Math.hypot(maxX - minX, maxZ - minZ) / 2
@@ -76,7 +76,7 @@ export function generateCampaign(o: CampaignOptions): CampaignResult {
   }
   if (seeds.length < 2) return { fields: [], hedges: [], shapes: [] }
 
-  // 2. Voronoi découpé par la zone
+  // 2. Voronoi clipped by the zone
   const delaunay = Delaunay.from(seeds)
   const voronoi = delaunay.voronoi([minX - 1, minZ - 1, maxX + 1, maxZ + 1])
   const fields: number[][][] = []
@@ -90,7 +90,7 @@ export function generateCampaign(o: CampaignOptions): CampaignResult {
     for (const p of polys) fields.push(p[0])
   }
 
-  // 3. bordures communes entre voisins → haies (tirage par bordure), découpées par la zone
+  // 3. shared borders between neighbours → hedges (one roll per border), clipped by the zone
   const outline = turf.polygonToLine(zone) as Feature<LineString>
   const hedges: number[][][] = []
   for (let i = 0; i < seeds.length; i++) {
@@ -120,7 +120,7 @@ export function generateCampaign(o: CampaignOptions): CampaignResult {
     }
   }
 
-  // 4. format pivot : une polyline ouverte + PrefabGenerator par haie
+  // 4. pivot format: one open polyline + PrefabGenerator per hedge
   const prefix = o.prefix ?? 'CAMP'
   const generator = o.hedgeGenerator ?? GENERATORS.hedgeCorylus
   const shapes: ProjectShape[] = hedges.map((h, n) => ({

@@ -1,11 +1,11 @@
-# Formats et API Enfusion (fouille MCP enfusion-mcp, lecture seule)
+# Enfusion formats and API (dig through the enfusion-mcp MCP, read-only)
 
-Légende : [V] vérifié dans les fichiers du jeu, l'API ou le wiki · [S] supposé.
-Limite : les `.ent`, `.layer` et `.terr` vanilla (Everon, Arland) sont binarisés (EBIN), donc illisibles. Les GUID viennent des lignes d'héritage `: "{GUID}..."` et des `.layer` de mods.
+Legend: [V] verified in the game files, the API or the wiki · [S] assumed.
+Limit: the vanilla `.ent`, `.layer` and `.terr` files (Everon, Arland) are binarized (EBIN), hence unreadable. The GUIDs come from the inheritance lines `: "{GUID}..."` and from mod `.layer` files.
 
 ## 1. Forest Generator [V]
-- `Prefabs/WEGenerators/Forest/` contient 97 `FG_*.et` (Forest_*, Brushland_*, Clearing_*, variantes `_aut`), plus `FG_Forest_Pinus/` et `FG_Forest_Spruce_1/`.
-- GUID connus :
+- `Prefabs/WEGenerators/Forest/` contains 97 `FG_*.et` (Forest_*, Brushland_*, Clearing_*, `_aut` variants), plus `FG_Forest_Pinus/` and `FG_Forest_Spruce_1/`.
+- Known GUIDs:
 
 | GUID | Prefab |
 |---|---|
@@ -19,16 +19,16 @@ Limite : les `.ent`, `.layer` et `.terr` vanilla (Everon, Arland) sont binarisé
 | `{FC00F74F9C552E1F}` | FG_Forest_PiceaWeathered_1 |
 | `{FA33CB2A2E422795}` | FG_Forest_PiceaWeathered_D_1 |
 
-- Base `FG_Forest_base.et` : `m_bAvoidObjects / Roads / Rivers / PowerLines / Tracks / Lakes = 1`, `m_bRandomiseSeedOnUse 0`.
-- Structure d'un prefab :
-  - `GeneratorType GeneratorTypeForest "{58ACC07B205BBA26}"`, `m_iSeed` ;
-  - `m_aLevels` : Outline, TopLevel, BottomLevel. Chaque niveau a `m_fDensity` (300 à 400) et des `m_aTreeGroups`, eux-mêmes composés d'arbres Tall, Middle et Short (`m_fMinScale`, `m_fMaxScale`, `m_fWeight`, `m_Prefab`) ;
-  - `m_aClusters` : `ForestGeneratorCircleCluster` (`m_fMinCDENSHA`, `m_fMaxCDENSHA`, objets avec `m_iMinCount/MaxCount`, `m_fMinRadius/MaxRadius`).
-- Règles :
-  - la forme est une Polyline ou une Spline, toujours considérée fermée, avec au moins 3 points ;
-  - le générateur doit être **enfant direct** de la forme ;
-  - on peut mettre plusieurs FG par zone.
-- Format en enfant de la forme [S] (syntaxe transposée d'un `.layer` power line) :
+- Base `FG_Forest_base.et`: `m_bAvoidObjects / Roads / Rivers / PowerLines / Tracks / Lakes = 1`, `m_bRandomiseSeedOnUse 0`.
+- Structure of a prefab:
+  - `GeneratorType GeneratorTypeForest "{58ACC07B205BBA26}"`, `m_iSeed`;
+  - `m_aLevels`: Outline, TopLevel, BottomLevel. Each level has `m_fDensity` (300 to 400) and `m_aTreeGroups`, themselves made of Tall, Middle and Short trees (`m_fMinScale`, `m_fMaxScale`, `m_fWeight`, `m_Prefab`);
+  - `m_aClusters`: `ForestGeneratorCircleCluster` (`m_fMinCDENSHA`, `m_fMaxCDENSHA`, objects with `m_iMinCount/MaxCount`, `m_fMinRadius/MaxRadius`).
+- Rules:
+  - the shape is a Polyline or a Spline, always considered closed, with at least 3 points;
+  - the generator must be a **direct child** of the shape;
+  - several FGs can be placed per zone.
+- Format as a child of the shape [S] (syntax transposed from a power line `.layer`):
 ```
 PolylineShapeEntity {
  coords 105.097 1 140.877
@@ -44,100 +44,100 @@ PolylineShapeEntity {
  }
 }
 ```
-- Les points sont relatifs à `coords`. BARNMAP met `coords 0 0 0` avec des points absolus, ce qui revient au même.
-- [S] Les arbres sont générés dans le Workbench, il n'est donc pas nécessaire de les exporter.
-- **Test 2026-10-14 (monde `emptyarland`, sous-scène d'Arland)** [V] : nos `.et` écrits à la main (`MapGenTests/Test_Forest|Test_Lake|Test_Hedge.et`, polyline fermée + `IsClosed 1` + générateur enfant avec `ID` baké) sont acceptés, placés et sauvegardés dans `default.layer` sous la forme `PolylineShapeEntity MG_TEST_Forest : "{GUID}MapGenTests/Test_Forest.et" {...}`.
-  - Déplacer la forme bloque le Workbench plus de 10 s (timeout MCP), ce qui suggère une régénération. Les objets générés ne figurent pas dans la liste des entités éditeur.
-  - **Cause de la non-génération (constat de Benji)** : nos points avaient `Y = 0` (relatif), donc ils n'étaient pas collés au terrain. Après un « Snap to terrain » sur la spline, **la forêt s'est générée** [V].
-  - **Correction (test `MG_TEST_ForestSnapped`)** : une forme écrite avec le Y exact du terrain **ne génère toujours rien** au chargement. Elle génère dès qu'on clique sur « Snap to terrain » dans le Vector Tool. La hauteur n'est donc pas la cause : **le générateur ne tourne que sur un événement d'édition de la forme**. Charger un `.et` ou un `.layer` ne déclenche rien.
-  - → Il faut **déclencher la génération par un plugin Workbench**. Pistes :
-    - `ForestGeneratorEntity.RegenerateForest(bool forceRegeneration)`, la plus directe (existe dans l'API) ;
-    - `ToggleGeneratorEvents(true)`, puis modifier les points par l'API ;
-    - à défaut, la manip manuelle « Select all » + « Snap to terrain » dans le Vector Tool.
-  - Écrire quand même le Y réel du terrain, pour que les formes soient justes.
-  - GUID résolu : `{1F2254A7C9C8AA57}` LG_Lake_01.
+- The points are relative to `coords`. BARNMAP uses `coords 0 0 0` with absolute points, which amounts to the same thing.
+- [S] Trees are generated inside the Workbench, so there is no need to export them.
+- **Test 2026-10-14 (world `emptyarland`, Arland subscene)** [V]: our hand-written `.et` files (`MapGenTests/Test_Forest|Test_Lake|Test_Hedge.et`, closed polyline + `IsClosed 1` + child generator with baked `ID`) are accepted, placed and saved in `default.layer` in the form `PolylineShapeEntity MG_TEST_Forest : "{GUID}MapGenTests/Test_Forest.et" {...}`.
+  - Moving the shape freezes the Workbench for more than 10 s (MCP timeout), which suggests a regeneration. The generated objects do not appear in the editor entity list.
+  - **Cause of the non-generation (Benji's finding)**: our points had `Y = 0` (relative), so they were not snapped to the terrain. After a "Snap to terrain" on the spline, **the forest generated** [V].
+  - **Correction (test `MG_TEST_ForestSnapped`)**: a shape written with the exact terrain Y **still generates nothing** on load. It generates as soon as "Snap to terrain" is clicked in the Vector Tool. So height is not the cause: **the generator only runs on an edit event of the shape**. Loading a `.et` or a `.layer` triggers nothing.
+  - → The generation has to be **triggered by a Workbench plugin**. Leads:
+    - `ForestGeneratorEntity.RegenerateForest(bool forceRegeneration)`, the most direct (exists in the API);
+    - `ToggleGeneratorEvents(true)`, then modify the points through the API;
+    - failing that, the manual "Select all" + "Snap to terrain" in the Vector Tool.
+  - Still write the real terrain Y, so that the shapes are accurate.
+  - Resolved GUID: `{1F2254A7C9C8AA57}` LG_Lake_01.
 
-## 2. Eau [V]
-- **Rivière** : `Prefabs/WEGenerators/Water/River/R_RiverMedium_01.et` (GUID inconnu).
-  - Contenu : `RiverEntity { GeneratorType GeneratorTypeRiver "{58B894C70B4B0C9E}" Width 5 SplineOffsetUp 0.139 Material "{53A33317B1C9B8E0}Terrains/Common/Water/River/RiverSurface_01.emat" PhysicsLayer "Water" }`.
-  - Forme ouverte, au moins 2 points. Options Clearance et ReverseFlow.
-- **Lacs** : `Water/Lake/` contient LG_Lake_01, LG_LakeDirty_01, LG_LakeMountain_01, LG_CainLake_01 et LG_DirtyDrainage_01 (GUID inconnus).
-  - Contenu : `LakeGeneratorEntity { GeneratorType GeneratorTypeLake "{58B894C7011D8F70}" m_MaterialName "{202B614D7E81B3C5}.../PondSurface_01.emat" m_bFlattenByBottomPlane 1 }`.
-  - Forme fermée, au moins 3 points, **dans le sens horaire** (sinon ReversePointOrder). La surface de l'eau se place au point le plus bas de la forme.
-- `Water/Pool/` n'a pas été exploré.
+## 2. Water [V]
+- **River**: `Prefabs/WEGenerators/Water/River/R_RiverMedium_01.et` (GUID unknown).
+  - Content: `RiverEntity { GeneratorType GeneratorTypeRiver "{58B894C70B4B0C9E}" Width 5 SplineOffsetUp 0.139 Material "{53A33317B1C9B8E0}Terrains/Common/Water/River/RiverSurface_01.emat" PhysicsLayer "Water" }`.
+  - Open shape, at least 2 points. Clearance and ReverseFlow options.
+- **Lakes**: `Water/Lake/` contains LG_Lake_01, LG_LakeDirty_01, LG_LakeMountain_01, LG_CainLake_01 and LG_DirtyDrainage_01 (GUIDs unknown).
+  - Content: `LakeGeneratorEntity { GeneratorType GeneratorTypeLake "{58B894C7011D8F70}" m_MaterialName "{202B614D7E81B3C5}.../PondSurface_01.emat" m_bFlattenByBottomPlane 1 }`.
+  - Closed shape, at least 3 points, **clockwise** (otherwise ReversePointOrder). The water surface is placed at the lowest point of the shape.
+- `Water/Pool/` has not been explored.
 
-## 3. Autres générateurs [V]
-- **Murs et clôtures** : `Walls/{Brick,Concrete,Crashbarrier,Custom,Metal,Misc,Net,Pipe,Pole,Stone,Wooden}/WG_*.et`.
-  - GUID connus : `{E00BA421CC399343}` WG_ConcreteWall_01 et `{1A61D6F828325773}` WG_WoodenFence_01.
-  - Format : `WallGeneratorEntity { FirstObject LastObject PrePadding PostPadding m_aWallGroups { WallLengthGroup { m_aWallPrefabs { WallWeightPair { m_sWallAsset m_fWeight } } } } }`.
-- **Lignes électriques** : `Powerline/PG_PowerLine_*`.
-  - GUID connus : `{20E4877A07D28502}` PG_PowerLine_01_WoodenSmall et `{613763D114E7CD1C}` Powerline.et.
-  - Classe `SCR_PowerlineGeneratorEntity`, `GeneratorTypeHV "{58B894C75A99C899}"`, `m_fDistance 50`, `Clearance 3`.
-  - Le `.layer` contient aussi les poteaux et câbles générés.
-- **PrefabGeneratorEntity** (objets posés le long d'une ligne) : PG_Vegetation_CorylusBushline, PG_Vegetatation_BirchTreeline, PG_StreamStones.
-  - Paramètres : `m_PrefabNames`, `m_Weights`, `m_fDistance 4`, `m_fOffsetVariance 8`, `m_fGap 3`.
-  - **C'est la brique idéale pour les haies** entre champs.
-- Dossiers non détaillés : Brushland, Bushline, Decals, Infrastructure, Miscellaneous, Pavements, Stones.
+## 3. Other generators [V]
+- **Walls and fences**: `Walls/{Brick,Concrete,Crashbarrier,Custom,Metal,Misc,Net,Pipe,Pole,Stone,Wooden}/WG_*.et`.
+  - Known GUIDs: `{E00BA421CC399343}` WG_ConcreteWall_01 and `{1A61D6F828325773}` WG_WoodenFence_01.
+  - Format: `WallGeneratorEntity { FirstObject LastObject PrePadding PostPadding m_aWallGroups { WallLengthGroup { m_aWallPrefabs { WallWeightPair { m_sWallAsset m_fWeight } } } } }`.
+- **Power lines**: `Powerline/PG_PowerLine_*`.
+  - Known GUIDs: `{20E4877A07D28502}` PG_PowerLine_01_WoodenSmall and `{613763D114E7CD1C}` Powerline.et.
+  - Class `SCR_PowerlineGeneratorEntity`, `GeneratorTypeHV "{58B894C75A99C899}"`, `m_fDistance 50`, `Clearance 3`.
+  - The `.layer` also contains the generated poles and cables.
+- **PrefabGeneratorEntity** (objects placed along a line): PG_Vegetation_CorylusBushline, PG_Vegetatation_BirchTreeline, PG_StreamStones.
+  - Parameters: `m_PrefabNames`, `m_Weights`, `m_fDistance 4`, `m_fOffsetVariance 8`, `m_fGap 3`.
+  - **This is the ideal building block for hedges** between fields.
+- Folders not detailed: Brushland, Bushline, Decals, Infrastructure, Miscellaneous, Pavements, Stones.
 
-## 4. Routes [V]
-- Format : `RoadGeneratorEntity { GeneratorType GeneratorTypeRoad "{58B894C738383FF4}" AdjustHeightMap 1 AdjustHeightMapPriority 47 RoadClearance RoadWidth RoadFalloffWidth { RoadEntity { Type "Road Minor"|Path Width Material } } }`.
-- **Asphalt** : RG_Road_Asphalt_E_01 `{723C2AAE6E9AD131}`, E_01_Narrow, E_01_DashedLine, E_02 (largeur 8, clearance 4.5, falloff 4, priorité 47), E_03.
-- **Dirt** : RG_Road_Dirt_01 `{8E83BBD5CEC42A11}`, Dirt_02, Road_Forest_01, Road_Coal_01, RG_TrailDirt_01 (largeur 1.75, type Path, priorité 30), TrailForest_01, TrailGravel_01, TrailCoal_01.
-- Dossiers non listés : Cobblestone/, Concrete/, VergePosts/.
+## 4. Roads [V]
+- Format: `RoadGeneratorEntity { GeneratorType GeneratorTypeRoad "{58B894C738383FF4}" AdjustHeightMap 1 AdjustHeightMapPriority 47 RoadClearance RoadWidth RoadFalloffWidth { RoadEntity { Type "Road Minor"|Path Width Material } } }`.
+- **Asphalt**: RG_Road_Asphalt_E_01 `{723C2AAE6E9AD131}`, E_01_Narrow, E_01_DashedLine, E_02 (width 8, clearance 4.5, falloff 4, priority 47), E_03.
+- **Dirt**: RG_Road_Dirt_01 `{8E83BBD5CEC42A11}`, Dirt_02, Road_Forest_01, Road_Coal_01, RG_TrailDirt_01 (width 1.75, type Path, priority 30), TrailForest_01, TrailGravel_01, TrailCoal_01.
+- Folders not listed: Cobblestone/, Concrete/, VergePosts/.
 
-## 5. API Workbench (WorldEditorAPI) [V]
-- **Lecture** : `GetTerrainSurfaceY(x,z)`, `GetEditorEntityCount/GetEditorEntity`, `FindEntityByName`, `SourceToEntity`.
-- **Édition** :
-  - `BeginEntityAction/EndEntityAction` ;
-  - `ParentEntity(parent, child, transformToParentSpace)` ;
-  - `SetVariableValue(container, path, key, value)` ;
-  - `CreateObjectArrayVariableMember`, `CreateComponent` ;
-  - `ToggleGeneratorEvents(bool)` : doit être activé pour que les générateurs fonctionnent.
-- **Terrain** : `BeginTerrainAction(TerrainToolType)`, `ModifyHeightMap`, `ModifyHeightMapUserShape(...)`, `ModifyLayers` et `ModifyLayersUserShape` (peindre les surfaces par script).
-- **Calques** : `CreateSubsceneLayer`, `SetEntitySubsceneLayer`.
-- **Import de heightmap** : uniquement via l'outil Terrain Creation (`.asc` ou PNG 16 bits avec min/max).
-- **Piste** : un plugin Workbench (Enforce script) pourrait importer un JSON produit par l'outil web et créer formes, générateurs et peinture directement. C'est plus robuste que l'écriture de fichiers texte.
+## 5. Workbench API (WorldEditorAPI) [V]
+- **Read**: `GetTerrainSurfaceY(x,z)`, `GetEditorEntityCount/GetEditorEntity`, `FindEntityByName`, `SourceToEntity`.
+- **Edit**:
+  - `BeginEntityAction/EndEntityAction`;
+  - `ParentEntity(parent, child, transformToParentSpace)`;
+  - `SetVariableValue(container, path, key, value)`;
+  - `CreateObjectArrayVariableMember`, `CreateComponent`;
+  - `ToggleGeneratorEvents(bool)`: must be enabled for the generators to work.
+- **Terrain**: `BeginTerrainAction(TerrainToolType)`, `ModifyHeightMap`, `ModifyHeightMapUserShape(...)`, `ModifyLayers` and `ModifyLayersUserShape` (paint surfaces by script).
+- **Layers**: `CreateSubsceneLayer`, `SetEntitySubsceneLayer`.
+- **Heightmap import**: only through the Terrain Creation tool (`.asc` or 16-bit PNG with min/max).
+- **Lead**: a Workbench plugin (Enforce script) could import a JSON produced by the web tool and create shapes, generators and painting directly. This is more robust than writing text files.
 
-## 6. Terrain et masques [V wiki]
-- 1 bloc = 32×32 faces (33×33 sommets), 5 LOD, 1 draw call.
-- 1 tuile = 1 à 32 blocs. La supertexture, la normal map et le surface mask sont mappés par tuile.
-- Une heightmap de N faces fait N+1 px (2048 faces → 2049 px).
-- Heightmap en entier 16 bits : précision = plage / 65535.
-- 1 seul terrain par monde. Taille = grid × cell size, et X et Z peuvent différer.
-- **4033 = 2·2016 + 1** [S] : sans doute un lien avec la taille de tuile et la bordure. Reste à confirmer.
+## 6. Terrain and masks [V wiki]
+- 1 block = 32×32 faces (33×33 vertices), 5 LODs, 1 draw call.
+- 1 tile = 1 to 32 blocks. The supertexture, the normal map and the surface mask are mapped per tile.
+- A heightmap of N faces is N+1 px (2048 faces → 2049 px).
+- 16-bit integer heightmap: precision = range / 65535.
+- Only 1 terrain per world. Size = grid × cell size, and X and Z can differ.
+- **4033 = 2·2016 + 1** [S]: probably related to the tile size and the border. To be confirmed.
 
-## 7. Limites chiffrées
-- 5 surfaces maximum par bloc.
-- 5 LOD par bloc.
-- 1 à 32 blocs par tuile.
-- Heightmap en 16 bits.
-- **Aucune limite trouvée** sur la taille maximale du terrain ou le nombre d'entités. Ce sera à mesurer par bench.
+## 7. Numeric limits
+- 5 surfaces maximum per block.
+- 5 LODs per block.
+- 1 to 32 blocks per tile.
+- 16-bit heightmap.
+- **No limit found** on the maximum terrain size or the number of entities. This will have to be measured by benchmark.
 
-## 8. Déclencher la génération par plugin [V 2026-10-14]
-- Le plugin `Mapgenerator/Scripts/WorkbenchGame/MapGen/MG_RegeneratePlugin.c` (menu Plugins > MapGen) fait trois choses :
-  1. `ToggleGeneratorEvents(true)` ;
-  2. pour chaque forme `MG_*`, il réécrit chaque point (`SetVariableValue(src, {ContainerIdPathEntry("Points", i)}, "Position", ...)`) au Y du terrain (`GetTerrainSurfaceY`) ;
-  3. il appelle `RegenerateForest(true)` sur chaque forêt.
-- `RegenerateForest` est **protégée**. On l'expose par `modded class ForestGeneratorEntity { void MG_ForceRegenerate() }`, placé dans `Scripts/Game`.
-- **Résultat** : 7 formes, 31 points et 3 forêts traités. Le monde passe de 1557 à **2553 entités** : la génération a eu lieu sans aucun clic.
-- **Chaîne validée** : fichier `.layer` ou `.et` → plugin → génération. L'importeur final suivra ce patron.
+## 8. Triggering generation by plugin [V 2026-10-14]
+- The plugin `Mapgenerator/Scripts/WorkbenchGame/MapGen/MG_RegeneratePlugin.c` (menu Plugins > MapGen) does three things:
+  1. `ToggleGeneratorEvents(true)`;
+  2. for each `MG_*` shape, it rewrites every point (`SetVariableValue(src, {ContainerIdPathEntry("Points", i)}, "Position", ...)`) at the terrain Y (`GetTerrainSurfaceY`);
+  3. it calls `RegenerateForest(true)` on each forest.
+- `RegenerateForest` is **protected**. It is exposed through `modded class ForestGeneratorEntity { void MG_ForceRegenerate() }`, placed in `Scripts/Game`.
+- **Result**: 7 shapes, 31 points and 3 forests processed. The world goes from 1557 to **2553 entities**: generation took place without any click.
+- **Validated chain**: `.layer` or `.et` file → plugin → generation. The final importer will follow this pattern.
 
-## 9. Méthode validée de création des formes générées (2026-10-15)
+## 9. Validated method for creating generated shapes (2026-10-15)
 
-Validée visuellement par Benji : forêt, haie et lac générés sans aucun clic.
-Plugin `MG_CreateShapesPlugin` (addon Mapgenerator), reproduit la création manuelle :
+Visually validated by Benji: forest, hedge and lake generated without any click.
+Plugin `MG_CreateShapesPlugin` (Mapgenerator addon), reproduces the manual creation:
 
-1. `api.ToggleGeneratorEvents(true)` puis `BeginEntityAction`.
-2. `api.CreateEntity("PolylineShapeEntity", name, layerId, null, pos, "0 0 0")` — forme **nue**
-   (pas de prefab enveloppe), origine à `GetTerrainSurfaceY`.
-3. `SetVariableValue(shape, null, "IsClosed", "1")` pour forêt / lac.
-4. Par point : `CreateObjectArrayVariableMember(shape, null, "Points", "ShapePoint", i)` puis
-   `SetVariableValue(..., [Points,i], "Position", "x y z")`, Y local = terrain − origine.
-5. Générateur en enfant : `CreateEntity(Workbench.GetResourceName(path), "", layerId, shape, 0, 0)`.
-6. `EndEntityAction`. La génération se fait seule (événements éditeur), le résultat (arbres,
-   buissons) est sérialisé dans le `.layer` sous le générateur ; l'eau du lac ne l'est pas.
+1. `api.ToggleGeneratorEvents(true)` then `BeginEntityAction`.
+2. `api.CreateEntity("PolylineShapeEntity", name, layerId, null, pos, "0 0 0")` — **bare** shape
+   (no wrapper prefab), origin at `GetTerrainSurfaceY`.
+3. `SetVariableValue(shape, null, "IsClosed", "1")` for forest / lake.
+4. Per point: `CreateObjectArrayVariableMember(shape, null, "Points", "ShapePoint", i)` then
+   `SetVariableValue(..., [Points,i], "Position", "x y z")`, local Y = terrain − origin.
+5. Generator as a child: `CreateEntity(Workbench.GetResourceName(path), "", layerId, shape, 0, 0)`.
+6. `EndEntityAction`. Generation happens on its own (editor events), the result (trees,
+   bushes) is serialized in the `.layer` under the generator; the lake water is not.
 
-Échecs à ne pas reproduire :
-- Forme enveloppée dans un prefab `.et` de test : génération non déclenchée au chargement.
-- Référence de prefab **sans GUID** (`"Prefabs/…/X.et"`) : non résolue, générateur vide
-  (`prefabs=0`). Toujours `{GUID}chemin` ; `Workbench.GetResourceName(path)` donne le GUID.
+Failures not to reproduce:
+- Shape wrapped in a test `.et` prefab: generation not triggered on load.
+- Prefab reference **without GUID** (`"Prefabs/…/X.et"`): not resolved, empty generator
+  (`prefabs=0`). Always `{GUID}path`; `Workbench.GetResourceName(path)` gives the GUID.

@@ -1,106 +1,106 @@
-# Crédits et sources
+# Credits and sources
 
-Ce projet s'appuie sur le travail de nombreuses personnes. Sauf mention contraire, seules les **idées** ou des **spécifications** ont été reprises ; le code a été réécrit en TypeScript / Enforce Script.
+This project builds on the work of many people. Unless stated otherwise, only **ideas** or **specifications** were reused; the code was rewritten in TypeScript / Enforce Script.
 
-## Projets dont on s'inspire / code porté
+## Projects that inspired us / ported code
 
-| Projet | Auteur | URL | Licence | Ce qu'on a repris |
+| Project | Author | URL | Licence | What we reused |
 |---|---|---|---|---|
-| BARNMAP (v1.48) | Barnaber / LEBARNABER | https://ustorie.github.io/BARNARMA/ | Aucune (exe fermé) | Comportement et formats `.et` observés, sources de données ; aucun code. **Utilisation autorisée par l'auteur.** |
-| Map-generator (« Map Generator Pro » v7) | giorbev | dépôt `giorbev/Map-generator` | MIT (© 2026 Giorbev) | Algorithmes de masques de surfaces (pente, TPI, courbure, flux, biomes JSON) portés / à porter ; documentation des formats binaires (specs). **Utilisation autorisée par l'auteur.** |
-| mapgen4 | Amit Patel (Red Blob Games) | https://github.com/redblobgames/mapgen4 | Apache-2.0 | Approche reprise dans `hydro.ts` et `sculpt.ts` (rivières par accumulation de flux, pinceau de relief). La fusion Map-generator / BARNMAP / mapgen4 se fait avec l'autorisation des auteurs. |
-| AgriFieldGenerator (v1.2.0) | Tanin69 (Didier ALAIN) | dépôt `Tanin69/AgriFieldGenerator` | MIT (© 2024) | Pipeline de parcelles (Voronoï, Bézier, coloriage) réimplémenté dans `campaign.ts` ; tutoriel « Painting with masks » |
-| Benchmark_Tools_reforger | giorbev | — | Aucune (© 2025, tous droits réservés) | Idées de mesure et seuils par plateforme ; aucun code |
-| Outils de Lou (`SCR_WorldEditorToolHelper.c`, `SCR_ImageHelper.c`) | Lou | — | non précisée | Idée de heatmap de densité d'entités |
-| Azgaar Fantasy Map Generator | Azgaar | https://github.com/Azgaar/Fantasy-Map-Generator | MIT | Idée : score d'habitabilité pour placer les localités |
-| ProbableTrain MapGenerator | ProbableTrain | https://maps.probabletrain.com/ | LGPL-3.0 (à confirmer) | Idées (champs de tenseurs pour les rues) |
-| Medieval Fantasy City Generator / TownGeneratorOS | watabou | — | GPL-3.0 (ancienne version Haxe) / fermé | Idées seulement |
-| city-roads | anvaka | — | MIT | Idées |
-| Fantasy Town Generator | — | https://www.fantasytowngenerator.com/temporary-settlement | fermé | Idées |
-| FantasyGen City Map Generator | — | https://fantasygen.net/city-map-generator | fermé | Idées |
-| Simteract City Generator | Simteract | https://simteract.com/projects/city-generator/ | fermé | Idées |
-| Mapimator City Roads | Mapimator | https://mapimator.com/tools/city-roads | fermé | Idées |
-| Wave Function Collapse | mxgmn | — | MIT (non vérifié) | Idée |
-| ProtonScatter | HungryProton | https://github.com/HungryProton/scatter | — | Idée : pile de filtres de placement |
-| PCGExtendedToolkit | PCGEx | https://github.com/PCGEx/PCGExtendedToolkit | — | Idée : réseau routier comme graphe |
-| Unreal PCG / Biome Core | Epic Games | https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-pcg-biome-core-and-sample-plugins-overview-guide-in-unreal-engine | propriétaire | Idée : biomes en données |
-| ReforgerSatGenerator | granQ | https://github.com/granQ/ReforgerSatGenerator | — | Référence |
-| ARTE (plugin QGIS) | — | https://plugins.qgis.org/plugins/ARTE/ | — | Référence (outil concurrent) |
+| BARNMAP (v1.48) | Barnaber / LEBARNABER | https://ustorie.github.io/BARNARMA/ | None (closed exe) | Observed behaviour and `.et` formats, data sources; no code. **Use authorised by the author.** |
+| Map-generator ("Map Generator Pro" v7) | giorbev | repo `giorbev/Map-generator` | MIT (© 2026 Giorbev) | Surface mask algorithms (slope, TPI, curvature, flow, JSON biomes) ported / to port; binary format documentation (specs). **Use authorised by the author.** |
+| mapgen4 | Amit Patel (Red Blob Games) | https://github.com/redblobgames/mapgen4 | Apache-2.0 | Approach reused in `hydro.ts` and `sculpt.ts` (rivers by flow accumulation, terrain brush). Merging Map-generator / BARNMAP / mapgen4 is done with the authors' permission. |
+| AgriFieldGenerator (v1.2.0) | Tanin69 (Didier ALAIN) | repo `Tanin69/AgriFieldGenerator` | MIT (© 2024) | Plot pipeline (Voronoi, Bézier, colouring) reimplemented in `campaign.ts`; "Painting with masks" tutorial |
+| Benchmark_Tools_reforger | giorbev | — | None (© 2025, all rights reserved) | Measurement ideas and per-platform thresholds; no code |
+| Lou's tools (`SCR_WorldEditorToolHelper.c`, `SCR_ImageHelper.c`) | Lou | — | not specified | Idea of an entity density heatmap |
+| Azgaar Fantasy Map Generator | Azgaar | https://github.com/Azgaar/Fantasy-Map-Generator | MIT | Idea: habitability score to place settlements |
+| ProbableTrain MapGenerator | ProbableTrain | https://maps.probabletrain.com/ | LGPL-3.0 (to confirm) | Ideas (tensor fields for streets) |
+| Medieval Fantasy City Generator / TownGeneratorOS | watabou | — | GPL-3.0 (old Haxe version) / closed | Ideas only |
+| city-roads | anvaka | — | MIT | Ideas |
+| Fantasy Town Generator | — | https://www.fantasytowngenerator.com/temporary-settlement | closed | Ideas |
+| FantasyGen City Map Generator | — | https://fantasygen.net/city-map-generator | closed | Ideas |
+| Simteract City Generator | Simteract | https://simteract.com/projects/city-generator/ | closed | Ideas |
+| Mapimator City Roads | Mapimator | https://mapimator.com/tools/city-roads | closed | Ideas |
+| Wave Function Collapse | mxgmn | — | MIT (unverified) | Idea |
+| ProtonScatter | HungryProton | https://github.com/HungryProton/scatter | — | Idea: stack of placement filters |
+| PCGExtendedToolkit | PCGEx | https://github.com/PCGEx/PCGExtendedToolkit | — | Idea: road network as a graph |
+| Unreal PCG / Biome Core | Epic Games | https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-pcg-biome-core-and-sample-plugins-overview-guide-in-unreal-engine | proprietary | Idea: data-driven biomes |
+| ReforgerSatGenerator | granQ | https://github.com/granQ/ReforgerSatGenerator | — | Reference |
+| ARTE (QGIS plugin) | — | https://plugins.qgis.org/plugins/ARTE/ | — | Reference (competing tool) |
 
-### City builders et jeux étudiés (idées seulement, CITIES.md §6)
+### City builders and games studied (ideas only, CITIES.md §6)
 
-- OpenTTD, croissance des villes : https://github.com/OpenTTD/OpenTTD/blob/master/src/town_cmd.cpp (GPL-2.0), https://wiki.openttd.org/en/Manual/Game%20mechanics
-- Micropolis (SimCity open source) : https://github.com/SimHacker/micropolis (GPL-3.0)
-- Citybound : https://github.com/citybound/citybound, https://aeplay.org/citybound-devblog (AGPL-3.0)
-- Cities: Skylines : https://skylines.paradoxwikis.com/Zoning, https://skylines.paradoxwikis.com/Districts
-- Manor Lords : https://wiki.hoodedhorse.com/Manor_Lords/Building ; Banished
-- Minecraft (villages « jigsaw ») : https://minecraft.wiki/w/Village, https://minecraft.wiki/w/Jigsaw_Block
-- Townscaper (Oskar Stålberg) : https://www.gamedeveloper.com/design/how-townscaper-works-a-story-four-games-in-the-making
+- OpenTTD, town growth: https://github.com/OpenTTD/OpenTTD/blob/master/src/town_cmd.cpp (GPL-2.0), https://wiki.openttd.org/en/Manual/Game%20mechanics
+- Micropolis (open-source SimCity): https://github.com/SimHacker/micropolis (GPL-3.0)
+- Citybound: https://github.com/citybound/citybound, https://aeplay.org/citybound-devblog (AGPL-3.0)
+- Cities: Skylines: https://skylines.paradoxwikis.com/Zoning, https://skylines.paradoxwikis.com/Districts
+- Manor Lords: https://wiki.hoodedhorse.com/Manor_Lords/Building ; Banished
+- Minecraft ("jigsaw" villages): https://minecraft.wiki/w/Village, https://minecraft.wiki/w/Jigsaw_Block
+- Townscaper (Oskar Stålberg): https://www.gamedeveloper.com/design/how-townscaper-works-a-story-four-games-in-the-making
 
-## Articles scientifiques
+## Scientific papers
 
-- Parish & Müller (2001), « Procedural Modeling of Cities », SIGGRAPH : génération de rues.
-- Chen, Esch, Wonka, Müller, Zhang (2008), « Interactive Procedural Street Modeling » : champs de tenseurs.
-- Vanegas et al. : découpage de lots.
-- Emilien et al. (2012), « Procedural generation of villages on arbitrary terrains », The Visual Computer : https://hal.inria.fr/hal-00694525
-- Zevenbergen & Thorne : courbure de terrain (via Map-generator).
+- Parish & Müller (2001), "Procedural Modeling of Cities", SIGGRAPH: street generation.
+- Chen, Esch, Wonka, Müller, Zhang (2008), "Interactive Procedural Street Modeling": tensor fields.
+- Vanegas et al.: lot subdivision.
+- Emilien et al. (2012), "Procedural generation of villages on arbitrary terrains", The Visual Computer: https://hal.inria.fr/hal-00694525
+- Zevenbergen & Thorne: terrain curvature (via Map-generator).
 
-Algorithmes publiés, librement réimplémentés ; aucun code copié.
+Published algorithms, freely reimplemented; no code copied.
 
-## Outils et sites
+## Tools and sites
 
-- Gaea (QuadSpinner) : https://quadspinner.com/Order/ (idée : masques d'érosion)
-- World Machine : https://www.cgchannel.com/?p=122990 (idée : tuilage avec marges)
-- World Creator : https://www.world-creator.com/en/buy.phtml
-- Houdini (SideFX) : https://www.sidefx.com/faq/question/houdini-engine-plugin-free-for-unity-and-unreal/
+- Gaea (QuadSpinner): https://quadspinner.com/Order/ (idea: erosion masks)
+- World Machine: https://www.cgchannel.com/?p=122990 (idea: tiling with margins)
+- World Creator: https://www.world-creator.com/en/buy.phtml
+- Houdini (SideFX): https://www.sidefx.com/faq/question/houdini-engine-plugin-free-for-unity-and-unreal/
 - Instant Terra, L3DT, Blender-OSM / Blosm, terrain.party
-- PCG UE5.6/5.7 (80.lv) : https://80.lv/articles/what-s-new-in-pcg-in-ue5-6-ue5-7
-- Assets Godot (https://godotengine.org/asset-library/asset/edit/14377, https://godotengine.org/asset-library/asset/edit/8541), asset Fab (https://www.fab.com/listings/013f192b-caf4-422f-b560-5166f8c6d9b8), vidéo https://www.youtube.com/watch?v=UmUs9W4riPs : idées
+- PCG UE5.6/5.7 (80.lv): https://80.lv/articles/what-s-new-in-pcg-in-ue5-6-ue5-7
+- Godot assets (https://godotengine.org/asset-library/asset/edit/14377, https://godotengine.org/asset-library/asset/edit/8541), Fab asset (https://www.fab.com/listings/013f192b-caf4-422f-b560-5166f8c6d9b8), video https://www.youtube.com/watch?v=UmUs9W4riPs: ideas
 
-### Bibliothèques utilisées
+### Libraries used
 
 `@turf/turf` (MIT), `maplibre-gl` (BSD-3-Clause), `poisson-disk-sampling` (MIT), `simplex-noise` (MIT), Vite (MIT), TypeScript (Apache-2.0).
 
-## Mods Workshop étudiés
+## Workshop mods studied
 
-Lus pour en tirer des idées (extraits de 10 lignes au plus cités dans la doc, aucun code recopié). **Aucune licence ni aucun auteur indiqués.**
+Read for ideas (excerpts of at most 10 lines quoted in the docs, no code copied). **No licence or author stated.**
 
 - AdvancedTerrainTools (`6874E07B40C6D5E5`)
-- OutsideTerrainCore (`61F0D506562D9BC9`) / Outside Terrain Tool : https://reforger.armaplatform.com/workshop/61F2B96F0D3F27D4
+- OutsideTerrainCore (`61F0D506562D9BC9`) / Outside Terrain Tool: https://reforger.armaplatform.com/workshop/61F2B96F0D3F27D4
 - TerrainAutomationTools (`684876344DA83476`)
-- Carte exemple OMAHA de BARNMAP (`6A84C9A969207F9F`)
-- Freedom Fighters (conventions et skills, voir FF_ET_SKILLS.md)
+- BARNMAP OMAHA sample map (`6A84C9A969207F9F`)
+- Freedom Fighters (conventions and skills, see FF_ET_SKILLS.md)
 
-## Sources de données (DEM, OSM…)
+## Data sources (DEM, OSM…)
 
-| Donnée | URL | Licence |
+| Data | URL | Licence |
 |---|---|---|
-| OpenStreetMap / Overpass | — | ODbL (attribution + partage à l'identique) |
+| OpenStreetMap / Overpass | — | ODbL (attribution + share-alike) |
 | ESA WorldCover 10 m | https://registry.opendata.aws/esa-worldcover-vito/ | CC BY 4.0 |
-| Copernicus DEM GLO-30 (© DLR / Airbus) | https://registry.opendata.aws/copernicus-dem/ | Licence Copernicus, attribution obligatoire |
-| Mapterhorn | https://mapterhorn.com/data-access/ | Par source : https://download.mapterhorn.com/attribution.json |
-| IGN LiDAR HD (MNT) | https://www.data.gouv.fr/datasets/mnt-lidar-hd-ign-2025 | Licence Ouverte Etalab 2.0 (à confirmer) |
-| Mapzen / Tilezen (Terrarium), Esri World Imagery, fond CARTO | — | Vus dans BARNMAP |
+| Copernicus DEM GLO-30 (© DLR / Airbus) | https://registry.opendata.aws/copernicus-dem/ | Copernicus licence, attribution required |
+| Mapterhorn | https://mapterhorn.com/data-access/ | Per source: https://download.mapterhorn.com/attribution.json |
+| IGN LiDAR HD (DTM) | https://www.data.gouv.fr/datasets/mnt-lidar-hd-ign-2025 | Licence Ouverte Etalab 2.0 (to confirm) |
+| Mapzen / Tilezen (Terrarium), Esri World Imagery, CARTO basemap | — | Seen in BARNMAP |
 
-## Outils Bohemia Interactive
+## Bohemia Interactive tools
 
-- Arma Reforger Tools / Enfusion Workbench, World Editor, Terrain Creation Tool : https://community.bistudio.com/wiki/Arma_Reforger:World_Editor:_Terrain_Creation_Tool
-- Wiki Bohemia (BIKI) : https://community.bistudio.com/wiki/ (lu via le dump hors ligne fourni avec enfusion-mcp)
-- Terrain Builder / Terrain Processor (Arma 3) : https://community.bistudio.com/wiki/Terrain_Processor:_Tutorial
-- Tutoriel terrain officiel : https://reforger.armaplatform.com/news/terrain-tutorial
-- Prefabs générateurs vanilla (`Prefabs/WEGenerators/`) et assets vanilla du jeu
+- Arma Reforger Tools / Enfusion Workbench, World Editor, Terrain Creation Tool: https://community.bistudio.com/wiki/Arma_Reforger:World_Editor:_Terrain_Creation_Tool
+- Bohemia wiki (BIKI): https://community.bistudio.com/wiki/ (read via the offline dump shipped with enfusion-mcp)
+- Terrain Builder / Terrain Processor (Arma 3): https://community.bistudio.com/wiki/Terrain_Processor:_Tutorial
+- Official terrain tutorial: https://reforger.armaplatform.com/news/terrain-tutorial
+- Vanilla generator prefabs (`Prefabs/WEGenerators/`) and vanilla game assets
 
-Arma Reforger et Enfusion sont des marques de Bohemia Interactive. Outil de fan non officiel.
+Arma Reforger and Enfusion are trademarks of Bohemia Interactive. Unofficial fan tool.
 
-## Autres
+## Other
 
-- **enfusion-mcp** : serveur MCP utilisé pour explorer l'API, les fichiers du jeu et le wiki.
-- Développement assisté par **Claude (Anthropic)**.
+- **enfusion-mcp**: MCP server used to explore the API, the game files and the wiki.
+- Development assisted by **Claude (Anthropic)**.
 
-## À vérifier
+## To verify
 
-- Les sources de CITIES.md §6 (city builders) n'ont **pas été vérifiées en ligne** ; licences citées de mémoire.
-- URL manquante : Map-generator (giorbev), AgriFieldGenerator (Tanin69), Benchmark_Tools_reforger, watabou, anvaka city-roads, WFC (mxgmn), articles Parish & Müller / Chen / Vanegas, enfusion-mcp.
-- Licence inconnue ou non confirmée : ProbableTrain (LGPL-3.0 ?), WFC, ProtonScatter, PCGEx, ReforgerSatGenerator, ARTE, outils de Lou, mods Workshop (aucune), IGN LiDAR HD, licences des libs JS (notées « de mémoire » dans STATE_OF_ART.md).
-- Autorisations de BARNMAP et de giorbev : à conserver **par écrit** (BARNMAP est sans licence ; Benchmark_Tools de giorbev est sans licence, distinct de Map-generator).
-- Vidéo YouTube et asset Fab de CITIES.md §1 marqués « non vérifié ».
+- The CITIES.md §6 sources (city builders) were **not verified online**; licences quoted from memory.
+- Missing URL: Map-generator (giorbev), AgriFieldGenerator (Tanin69), Benchmark_Tools_reforger, watabou, anvaka city-roads, WFC (mxgmn), Parish & Müller / Chen / Vanegas papers, enfusion-mcp.
+- Unknown or unconfirmed licence: ProbableTrain (LGPL-3.0?), WFC, ProtonScatter, PCGEx, ReforgerSatGenerator, ARTE, Lou's tools, Workshop mods (none), IGN LiDAR HD, JS library licences (noted "from memory" in STATE_OF_ART.md).
+- BARNMAP and giorbev permissions: to be kept **in writing** (BARNMAP has no licence; giorbev's Benchmark_Tools has no licence, separate from Map-generator).
+- YouTube video and Fab asset from CITIES.md §1 marked "unverified".

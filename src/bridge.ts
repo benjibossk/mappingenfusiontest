@@ -16,7 +16,7 @@ export async function getStatus(): Promise<BridgeStatus> {
     const body = await res.json()
     const wb = body.workbench ?? {}
     if (wb.error) return { bridge: true, workbench: false, detail: wb.error }
-    return { bridge: true, workbench: true, detail: t('status.entities', { mode: wb.mode, n: wb.entityCount }) }
+    return { bridge: true, workbench: true, detail: wb.terrain ? t('status.entities') : t('status.noWorld') }
   } catch {
     return { bridge: false, workbench: false, detail: t('status.bridgeDown') }
   }
@@ -31,6 +31,31 @@ export async function sendToWorkbench(project: Project): Promise<string> {
   const body = await res.json()
   if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`)
   return body.message
+}
+
+export interface WorldExport { minX: number; minZ: number; step: number; cols: number; rows: number; ocean: number; heights: number[]; materials: string[]; surfaces: number[] }
+export async function getWorld(step: number): Promise<WorldExport> {
+  const res = await fetch(`${BRIDGE_URL}/world?step=${step}`)
+  const out = await res.json()
+  if (!res.ok) throw new Error(out.error ?? out.message ?? `HTTP ${res.status}`)
+  return out
+}
+
+/** something already in the open world: a prefab object (world box) or a shape with its generators */
+export interface ExistingObject { prefab: string; x: number; z: number; yaw: number; box: [number, number, number, number] }
+export interface ExistingShape { generators: string[]; closed: boolean; origin: [number, number]; points: [number, number][] }
+export interface Existing { objects: ExistingObject[]; shapes: ExistingShape[] }
+export async function getExisting(): Promise<Existing> {
+  const res = await fetch(`${BRIDGE_URL}/entities`)
+  const out = await res.json()
+  if (!res.ok) throw new Error(out.error ?? out.message ?? `HTTP ${res.status}`)
+  return out
+}
+
+export async function getTemplates(): Promise<unknown[]> {
+  const res = await fetch(`${BRIDGE_URL}/templates`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
 }
 
 async function post<T>(route: string, body: unknown): Promise<T> {

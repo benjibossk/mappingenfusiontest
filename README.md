@@ -1,65 +1,65 @@
 # Reforger Mapper
 
-> **English summary** — Reforger Mapper is an unofficial, work-in-progress web tool (Vite + TypeScript) to quickly design Arma Reforger terrains: generate an island, sculpt the heightmap, paint surface masks, lay out roads, rivers, lakes and bridges, then send everything to the Enfusion Workbench through a small local bridge and a Workbench plugin (`MapGen` menu). Vanilla assets only. MIT licensed. Documentation is in French.
+> Reforger Mapper is an unofficial, work-in-progress web tool (Vite + TypeScript) to quickly design Arma Reforger terrains: generate an island, sculpt the heightmap, paint surface masks, lay out roads, rivers, lakes and bridges, then send everything to the Enfusion Workbench through a small local bridge and a Workbench plugin (`MapGen` menu). Vanilla assets only. MIT licensed. The UI is in English and French (toggle in the top bar); the documentation is in English.
 
-Outil web pour mapper vite sur **Arma Reforger** (moteur Enfusion) et auto-remplir une carte avec les assets vanilla, puis l'envoyer dans le World Editor du Workbench.
+Web tool to map quickly for **Arma Reforger** (Enfusion engine) and auto-fill a map with vanilla assets, then send it to the Workbench World Editor.
 
-## Fonctionnalités
+## Features
 
-- **Génération de terrain / île** : relief procédural (bruit, forme d'île), export heightmap.
-- **Sculpt** : pinceau de relief interactif (approche inspirée de mapgen4).
-- **Surfaces et masques** : masques de surfaces calculés (altitude, pente, etc.).
-- **Routes** : tracé, réseau routier (graphe), mobilier et panneaux le long des routes.
-- **Eau** : rivières (accumulation de flux), lacs, berges.
-- **Ponts** aux croisements route / rivière.
-- **Campagne** : parcelles agricoles (Voronoï, inspiré d'AgriFieldGenerator).
-- **Labels de debug** dans le World Editor.
-- **Envoi vers le Workbench** : formes (`.et`), générateurs et prefabs vanilla.
+- **Terrain / island generation**: procedural heightmap (noise, island shape), heightmap export.
+- **Sculpt**: interactive terrain brush (approach inspired by mapgen4).
+- **Surfaces and masks**: computed surface masks (altitude, slope, etc.).
+- **Roads**: drawing, road network (graph), furniture and signs along roads.
+- **Water**: rivers (flow accumulation), lakes, banks.
+- **Bridges** at road / river crossings.
+- **Countryside**: farm plots (Voronoi, inspired by AgriFieldGenerator).
+- **Debug labels** in the World Editor.
+- **Send to the Workbench**: shapes (`.et`), generators and vanilla prefabs.
 
-Modules principaux : `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `water`, `campaign`), `src/terrain.ts`, `src/project.ts`, `src/bridge.ts`.
+Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `water`, `campaign`), `src/terrain.ts`, `src/project.ts`, `src/bridge.ts`.
 
-## Fonctionnement
+## How it works
 
-1. **Site** : `npm install` puis `npm run dev` → http://localhost:5173
-2. **Pont local** : `npm run bridge` (Node, port **5780**), qui relie le site au Workbench.
-3. **Plugin Workbench** : copier `workbench/Mapgenerator/` comme addon dans
-   `Documents/My Games/ArmaReforgerWorkbench/addons/`, puis l'ajouter dans le Workbench.
-   Les plugins apparaissent dans le menu **MapGen** du World Editor :
-   - `MapGen - Apply project` : applique le projet envoyé par le site
+1. **Site**: `npm install` then `npm run dev` → http://localhost:5173
+2. **Local bridge**: `npm run bridge` (Node, port **5780**), which links the site to the Workbench.
+3. **Workbench plugin**: copy `workbench/Mapgenerator/` as an addon into
+   `Documents/My Games/ArmaReforgerWorkbench/addons/`, then add it in the Workbench.
+   The plugins appear in the World Editor **MapGen** menu:
+   - `MapGen - Apply project`: applies the project sent by the site
    - `MapGen - Apply heightmap`
-   - `MapGen - Labels` (**Ctrl+Shift+L**) : labels de debug
+   - `MapGen - Labels` (**Ctrl+Shift+L**): debug labels
    - `MapGen - Measure prefabs`
    - `MapGen - Regenerate MG_ shapes`
    - `MapGen - Register surfaces`
    - `MapGen - Stamp calibration`, `MapGen - Terrain probe`, `MapGen - Create test shapes`,
-     `MapGen - Terrain write test` / `test 2` (outils de diagnostic)
+     `MapGen - Terrain write test` / `test 2` (diagnostic tools)
 
 ## Documentation (`docs/`)
 
-| Fichier | Contenu |
+| File | Content |
 |---|---|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture : un seul outil, trois couches, des modules partageant un même projet |
-| [ROADMAP.md](docs/ROADMAP.md) | Feuille de route et stack technique |
-| [RESEARCH.md](docs/RESEARCH.md) | Dossier de recherche (BARNMAP, Map-generator, mapgen4, AgriFieldGenerator…) |
-| [STATE_OF_ART.md](docs/STATE_OF_ART.md) | État de l'art de la génération / auto-remplissage de terrain (moteurs, outils, données, libs) |
-| [CITIES.md](docs/CITIES.md) | Génération de villages et de villes : état de l'art et pipeline proposé |
-| [GENERATORS.md](docs/GENERATORS.md) | Liste des prefabs générateurs vanilla du World Editor (`Prefabs/WEGenerators/`) |
-| [ENFUSION_FORMATS.md](docs/ENFUSION_FORMATS.md) | Formats et API Enfusion (vérifiés / supposés) |
-| [WIKI_TERRAIN.md](docs/WIKI_TERRAIN.md) | Synthèse du wiki Bohemia sur la création de terrain Reforger |
-| [WORKSHOP_TERRAIN_MODS.md](docs/WORKSHOP_TERRAIN_MODS.md) | Étude des mods Workshop d'outillage terrain |
-| [FINDINGS.md](docs/FINDINGS.md) | Trouvailles et pièges rencontrés (script Workbench, prefabs mesurés, eau, outillage) et reste à faire |
-| [BENCHMARK_GIORBEV.md](docs/BENCHMARK_GIORBEV.md) | Analyse de l'outil de benchmark de giorbev |
-| [FF_ET_SKILLS.md](docs/FF_ET_SKILLS.md) | Ce qu'on réutilise des skills Reforger / Freedom Fighters |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture: a single tool, three layers, modules sharing one project |
+| [ROADMAP.md](docs/ROADMAP.md) | Roadmap and tech stack |
+| [RESEARCH.md](docs/RESEARCH.md) | Research file (BARNMAP, Map-generator, mapgen4, AgriFieldGenerator…) |
+| [STATE_OF_ART.md](docs/STATE_OF_ART.md) | State of the art of terrain generation / auto-fill (engines, tools, data, libs) |
+| [CITIES.md](docs/CITIES.md) | Village and town generation: state of the art and proposed pipeline |
+| [GENERATORS.md](docs/GENERATORS.md) | List of vanilla World Editor generator prefabs (`Prefabs/WEGenerators/`) |
+| [ENFUSION_FORMATS.md](docs/ENFUSION_FORMATS.md) | Enfusion formats and API (verified / assumed) |
+| [WIKI_TERRAIN.md](docs/WIKI_TERRAIN.md) | Summary of the Bohemia wiki on Reforger terrain creation |
+| [WORKSHOP_TERRAIN_MODS.md](docs/WORKSHOP_TERRAIN_MODS.md) | Study of Workshop terrain tooling mods |
+| [FINDINGS.md](docs/FINDINGS.md) | Findings and pitfalls (Workbench script, measured prefabs, water, tooling) and remaining work |
+| [BENCHMARK_GIORBEV.md](docs/BENCHMARK_GIORBEV.md) | Analysis of giorbev's benchmark tool |
+| [FF_ET_SKILLS.md](docs/FF_ET_SKILLS.md) | What is reused from the Reforger / Freedom Fighters skills |
 
-## Statut
+## Status
 
-**Travail en cours.** Prochaine étape : génération de **villages et villes** (voir [docs/CITIES.md](docs/CITIES.md)).
+**Work in progress.** Next step: **village and town** generation (see [docs/CITIES.md](docs/CITIES.md)).
 
-- Uniquement des **assets vanilla** : aucun contenu tiers n'est requis ni redistribué.
-- Sources, inspirations et licences : voir [CREDITS.md](CREDITS.md).
+- **Vanilla assets** only: no third-party content is required or redistributed.
+- Sources, inspirations and licences: see [CREDITS.md](CREDITS.md).
 
-## Licence et mentions
+## Licence and notices
 
-Code sous licence [MIT](LICENSE).
+Code under the [MIT](LICENSE) licence.
 
-*Arma Reforger* et *Enfusion* sont des marques de **Bohemia Interactive**. Reforger Mapper est un **outil de fan non officiel**, sans lien avec Bohemia Interactive ni approuvé par elle.
+*Arma Reforger* and *Enfusion* are trademarks of **Bohemia Interactive**. Reforger Mapper is an **unofficial fan tool**, not affiliated with or endorsed by Bohemia Interactive.

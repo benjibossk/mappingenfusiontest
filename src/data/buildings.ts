@@ -12,6 +12,7 @@ export interface Building {
   minZ: number
   maxX: number
   maxZ: number
+  tpl?: string // captured parcel laid down with it (templates.ts)
 }
 
 //! Door side is unknown. Convention: the street front of a building is its local +Z side (the

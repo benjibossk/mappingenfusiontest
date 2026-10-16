@@ -90,6 +90,7 @@ body { margin: 0; }
   padding: 6px; background: #1d2026; border: 1px solid #444; border-radius: 6px; box-shadow: 0 4px 14px #0008; }
 .ctxmenu[hidden] { display: none; }
 .ctxmenu .title { font-family: monospace; font-size: 12px; color: #ffd34d; padding: 2px 4px; }
+.ctxmenu .info { font-size: 11px; color: #aab; padding: 0 4px 2px; max-width: 280px; overflow-wrap: anywhere; }
 .ctxmenu button { text-align: left; }
 .ctxmenu label { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; align-items: center; }
 .ctxmenu select, .ctxmenu input { width: 120px; }

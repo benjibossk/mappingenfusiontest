@@ -1,47 +1,47 @@
-# Reforger Mapper — dossier de recherche
+# Reforger Mapper — research file
 
-Objectif : un outil web pour mapper vite sur Arma Reforger (moteur Enfusion) et auto-remplir des zones avec les assets vanilla.
-Phase actuelle : **recherche**. Pour chaque source : ce qu'elle fait, ce qu'on a vérifié, et comment le reproduire dans l'outil final.
+Goal: a web tool to map quickly for Arma Reforger (Enfusion engine) and auto-fill areas with vanilla assets.
+Current phase: **research**. For each source: what it does, what we verified, and how to reproduce it in the final tool.
 
-Légende : ✅ vérifié dans le code ou dans des fichiers · 🔎 déduit (captures, doc) · ❓ à confirmer
+Legend: ✅ verified in code or in files · 🔎 inferred (screenshots, docs) · ❓ to be confirmed
 
 ---
 
 ## 1. BARNMAP (Barnaber / LEBARNABER), v1.48
 
-- **Statut** : exe Windows fermé, distribué contre un don, sans licence. On ne réutilise **aucun code**, seulement le comportement et les formats observés. L'accord de l'auteur est à garder par écrit.
-- **Sources** : [page vitrine](https://ustorie.github.io/BARNARMA/), manuel PDF (`BARNMAP_Manuel_Import_Enfusion.pdf`, identique à celui du dépôt), 6 captures de la v1.48, carte exemple OMAHA (zip téléchargé, Workshop `6A84C9A969207F9F`).
+- **Status**: closed Windows exe, distributed against a donation, no licence. We reuse **no code**, only the observed behaviour and formats. The author's agreement is to be kept in writing.
+- **Sources**: [showcase page](https://ustorie.github.io/BARNARMA/), PDF manual (`BARNMAP_Manuel_Import_Enfusion.pdf`, identical to the one in the repo), 6 screenshots of v1.48, example OMAHA map (downloaded zip, Workshop `6A84C9A969207F9F`).
 
-### 1.1 Fonctionnement (captures 🔎)
-- Interface Leaflet. On cherche un lieu ou on saisit lat/lon, puis on choisit une taille : 4, 8, 16 ou 32 km.
-- 4 favoris de position (boutons 1 à 4 avec une disquette).
-- Le cadre de sélection est légèrement tourné : l'outil travaille dans une projection métrique locale, pas en Mercator.
-- Fonds de carte et couches exportées : Heightmap, Satellite, Forêt, Route, Eau, Surface masks.
-- Bouton « Calcul du relief ».
-- **Décalage vertical** : désactivé par défaut. Une fois activé, il ramène le point le plus bas à 0 m ; au-delà de 2048 m, tout est aplati à 2046 m. C'est probablement la limite de hauteur du terrain Enfusion ❓.
-- Export dans un dossier, avec une barre de progression et un bouton d'annulation.
+### 1.1 How it works (screenshots 🔎)
+- Leaflet interface. You search for a place or enter lat/lon, then choose a size: 4, 8, 16 or 32 km.
+- 4 position favourites (buttons 1 to 4 with a floppy disk).
+- The selection frame is slightly rotated: the tool works in a local metric projection, not in Mercator.
+- Base maps and exported layers: Heightmap, Satellite, Forest, Road, Water, Surface masks.
+- "Relief calculation" button.
+- **Vertical offset**: disabled by default. Once enabled, it brings the lowest point to 0 m; beyond 2048 m, everything is flattened to 2046 m. This is probably the height limit of the Enfusion terrain ❓.
+- Export to a folder, with a progress bar and a cancel button.
 
-### 1.2 Sources de données (attributions visibles dans les captures 🔎)
-| Couche | Source |
+### 1.2 Data sources (attributions visible in the screenshots 🔎)
+| Layer | Source |
 |---|---|
-| Relief | Mapzen/Tilezen (tuiles Terrarium), Mapterhorn, Copernicus DEM (DLR/Airbus), **IGN LiDAR HD** |
+| Relief | Mapzen/Tilezen (Terrarium tiles), Mapterhorn, Copernicus DEM (DLR/Airbus), **IGN LiDAR HD** |
 | Satellite | Esri World Imagery |
-| Forêt et masques | **ESA WorldCover 2021** (10 m, Sentinel). Couleurs : vert = arbres, jaune = prairie, rose = cultures, rouge = bâti, bleu = eau |
-| Routes et eau | OpenStreetMap (fond CARTO) |
+| Forest and masks | **ESA WorldCover 2021** (10 m, Sentinel). Colours: green = trees, yellow = grassland, pink = crops, red = built-up, blue = water |
+| Roads and water | OpenStreetMap (CARTO background) |
 
-### 1.3 Grille terrain (✅ captures et fichiers)
-- Pour N km demandés : N×512 faces, N×512+1 sommets, 2 m par cellule. Le terrain mesure réellement N×1,024 km.
-  - Exemple pour 4 km : 2048 faces, 2049 sommets, terrain de 4,096 km.
-- Réglages Workbench (manuel) : Blocks per tile = 4, origine du terrain en 0,0,0, import de la heightmap avec Invert X désactivé et Invert Z activé.
-- Heightmap : `Terrain.asc` (grille ASCII, altitudes en mètres).
-- **Masques de surfaces : PNG en gris 8 bits de 4033×4033 px pour 4 km** ✅. Ce n'est ni 4096 ni 4097 : le rapport est d'environ 0,985 px/m. Le manuel précise : « format relevé dans ton Workbench, ne redimensionne pas le PNG ». C'est donc la taille attendue par l'import Workbench pour ce terrain ; reste à trouver la formule pour 8/16/32 km ❓.
-- Surfaces exportées ✅ : Asphalt_01, Concrete_01, Crop_Field_01, Dirt_01, ForestDeciduous_01_Base, Heather_01, Pebbles_01, Rock_01, SeaBed_01. Grass_01 sert de fond par défaut.
-- Limite moteur : 5 surfaces par bloc (manuel).
+### 1.3 Terrain grid (✅ screenshots and files)
+- For N km requested: N×512 faces, N×512+1 vertices, 2 m per cell. The terrain actually measures N×1.024 km.
+  - Example for 4 km: 2048 faces, 2049 vertices, 4.096 km terrain.
+- Workbench settings (manual): Blocks per tile = 4, terrain origin at 0,0,0, heightmap import with Invert X disabled and Invert Z enabled.
+- Heightmap: `Terrain.asc` (ASCII grid, altitudes in metres).
+- **Surface masks: 8-bit greyscale PNG of 4033×4033 px for 4 km** ✅. This is neither 4096 nor 4097: the ratio is about 0.985 px/m. The manual states: "format read in your Workbench, do not resize the PNG". This is therefore the size expected by the Workbench import for this terrain; the formula for 8/16/32 km is still to be found ❓.
+- Exported surfaces ✅: Asphalt_01, Concrete_01, Crop_Field_01, Dirt_01, ForestDeciduous_01_Base, Heather_01, Pebbles_01, Rock_01, SeaBed_01. Grass_01 serves as the default background.
+- Engine limit: 5 surfaces per block (manual).
 
-### 1.4 Formats `.et` exportés (✅ carte OMAHA : 386 routes, 42 forêts, 14 eaux)
-Chaque élément est un fichier `.et` séparé. L'entité est en `coords 0 0 0` et les points sont en **coordonnées monde absolues, Y compris** : l'altitude du terrain est déjà échantillonnée. Les ID sont des hex aléatoires de 16 caractères, les ShapePoint des `{GUID}`.
+### 1.4 Exported `.et` formats (✅ OMAHA map: 386 roads, 42 forests, 14 water bodies)
+Each element is a separate `.et` file. The entity is at `coords 0 0 0` and the points are in **absolute world coordinates, Y included**: the terrain altitude is already sampled. The IDs are random 16-character hex strings, the ShapePoints are `{GUID}`s.
 
-**Route** : `SplineShapeEntity` avec un générateur enfant.
+**Road**: `SplineShapeEntity` with a child generator.
 ```
 SplineShapeEntity {
  ID "68B4AE5E9FC54922"
@@ -64,13 +64,13 @@ SplineShapeEntity {
  }
 }
 ```
-- Deux prefabs seulement :
-  - `{723C2AAE6E9AD131}RG_Road_Asphalt_E_01` : 267 routes, largeur 8 ;
-  - `{8E83BBD5CEC42A11}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_01.et` : 119 routes, largeur 6,5.
-- La clearance vaut 16 partout.
-- Une fois placée dans le monde, le `Route.layer` contient le `RoadEntity` généré (bloc `SplinePoints`, `Width`, `IsClosedSpline`).
+- Only two prefabs:
+  - `{723C2AAE6E9AD131}RG_Road_Asphalt_E_01`: 267 roads, width 8;
+  - `{8E83BBD5CEC42A11}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_01.et`: 119 roads, width 6.5.
+- The clearance is 16 everywhere.
+- Once placed in the world, `Route.layer` contains the generated `RoadEntity` (`SplinePoints` block, `Width`, `IsClosedSpline`).
 
-**Forêt** : `PolylineShapeEntity` fermée, **sans générateur**. C'est à l'utilisateur d'ajouter un Forest Generator.
+**Forest**: closed `PolylineShapeEntity`, **without a generator**. It is up to the user to add a Forest Generator.
 ```
 PolylineShapeEntity {
  ID "809C747A8FAB4D8F"
@@ -81,119 +81,119 @@ PolylineShapeEntity {
 }
 ```
 
-**Eau** : même format que la forêt, avec `LineColor 0.05 0.48 1 1`. Les polygones de mer suivent la côte (Y ≈ -1,6 à 0), sans générateur.
+**Water**: same format as the forest, with `LineColor 0.05 0.48 1 1`. The sea polygons follow the coast (Y ≈ -1.6 to 0), without a generator.
 
-- Chaque `.et` a un `.meta` (`MetaFileClass`, `Name "{GUID}chemin"`, configurations PC/XBOX_ONE/XBOX_SERIES/PS4/PS5/HEADLESS).
-- **Layers du monde** (`worlds/BarnMap4km_Layers/*.layer`) : de simples références aux prefabs, par exemple `PolylineShapeEntity : "{0268BDCAF521235C}Foret/..._009.et" { }`. Les fichiers sont `Wood.layer`, `Route.layer`, `Eau.layer` et `default.layer` (GenericWorldEntity, GenericTerrainEntity, PP effects).
+- Each `.et` has a `.meta` (`MetaFileClass`, `Name "{GUID}path"`, PC/XBOX_ONE/XBOX_SERIES/PS4/PS5/HEADLESS configurations).
+- **World layers** (`worlds/BarnMap4km_Layers/*.layer`): simple references to prefabs, for example `PolylineShapeEntity : "{0268BDCAF521235C}Foret/..._009.et" { }`. The files are `Wood.layer`, `Route.layer`, `Eau.layer` and `default.layer` (GenericWorldEntity, GenericTerrainEntity, PP effects).
 
-### 1.5 Ce qu'on fait mieux
-- Les masques WorldCover sont pixelisés (10 m) : on les lisse et on les croise avec les polygones OSM.
-- On ajoute un **Forest Generator** sur les forêts et un **générateur d'eau** sur l'eau, au lieu de laisser des contours vides.
-- On réutilise ses deux prefabs de routes, mais on choisit la largeur selon le tag OSM `highway=*`.
-- On écrit les `.meta` avec des GUID générés, comme lui.
+### 1.5 What we do better
+- The WorldCover masks are pixelated (10 m): we smooth them and cross them with the OSM polygons.
+- We add a **Forest Generator** to the forests and a **water generator** to the water, instead of leaving empty outlines.
+- We reuse its two road prefabs, but choose the width from the OSM `highway=*` tag.
+- We write the `.meta` files with generated GUIDs, as it does.
 
 ---
 
-## 2. giorbev/Map-generator (« Map Generator Pro » v7)
-- **Licence MIT**, © 2026 Giorbev. On peut porter le code en gardant la mention.
-- **Fonction** : peindre automatiquement les surfaces à partir d'une heightmap `.asc`. Il ne place aucun objet.
-- **Stack** : Python (numpy, scipy, opencv, scikit), interface PyWebView. Fichiers clés : `pipeline_v5.py`, `terrain_algorithms.py`, `clean_weights.py`.
-- **Algorithmes** ✅ :
-  - pente et aspect ; courbure Zevenbergen-Thorne ; TPI multi-rayon ;
-  - remplissage des dépressions puis accumulation de flux ;
-  - distance à la côte (distanceTransform) ;
-  - bruit pseudo-fBm pour casser les formes rondes ;
-  - chaque masque est un produit de rampes et de « cloches » sur altitude × pente × TPI × aspect ;
-  - normalisation (somme = 1), puis budget de 5 à 7 matériaux dominants par bloc.
-- **13 masques**, avec des presets de biomes en JSON (`data/biomes/`).
-- **Sorties** : PNG 16 bits par masque, ou écriture binaire directe dans `.ttile` (format LRS2/GCTD documenté dans `docs/technical/`). Cette écriture est risquée.
-- **Limites** : valeurs codées en dur pour Zimnitrita, seed numpy globale, gros fichiers monolithiques.
-- **À reproduire** : porter en TypeScript les calculs de pente, TPI, courbure et flux, et les règles de biomes en JSON, dans un worker. On exporte des PNG, pas d'écriture `.ttile` au départ. On garde sa documentation des formats binaires pour plus tard.
+## 2. giorbev/Map-generator ("Map Generator Pro" v7)
+- **MIT licence**, © 2026 Giorbev. We can port the code while keeping the notice.
+- **Function**: automatically paint the surfaces from an `.asc` heightmap. It places no objects.
+- **Stack**: Python (numpy, scipy, opencv, scikit), PyWebView interface. Key files: `pipeline_v5.py`, `terrain_algorithms.py`, `clean_weights.py`.
+- **Algorithms** ✅:
+  - slope and aspect; Zevenbergen-Thorne curvature; multi-radius TPI;
+  - depression filling then flow accumulation;
+  - distance to the coast (distanceTransform);
+  - pseudo-fBm noise to break up round shapes;
+  - each mask is a product of ramps and "bells" over altitude × slope × TPI × aspect;
+  - normalisation (sum = 1), then a budget of 5 to 7 dominant materials per block.
+- **13 masks**, with biome presets in JSON (`data/biomes/`).
+- **Outputs**: 16-bit PNG per mask, or direct binary writing into `.ttile` (LRS2/GCTD format documented in `docs/technical/`). This writing is risky.
+- **Limits**: values hard-coded for Zimnitrita, global numpy seed, large monolithic files.
+- **To reproduce**: port the slope, TPI, curvature and flow computations to TypeScript, and the biome rules as JSON, in a worker. We export PNGs, with no `.ttile` writing at first. We keep its binary format documentation for later.
 
 ## 3. mapgen4 (Red Blob Games)
-- **Licence Apache-2.0** (vérifiée), dépôt officiel `redblobgames/mapgen4`.
-- **Technique** :
-  - maillage dual Delaunay/Voronoi (`dual-mesh`) ;
-  - élévation peinte au pinceau, puis bruit ;
-  - vent → humidité → pluie, avec ombre pluviométrique ;
-  - rivières par accumulation de flux, largeur selon le débit ;
-  - rendu WebGL (regl), calculs dans un worker.
-- **À reproduire** : le mode **carte fictive** (peindre le relief, puis exporter `.asc`, masques et shapes), le pinceau de relief en temps réel, l'humidité pour les biomes, et l'architecture worker + WebGL.
+- **Apache-2.0 licence** (verified), official repo `redblobgames/mapgen4`.
+- **Technique**:
+  - Delaunay/Voronoi dual mesh (`dual-mesh`);
+  - elevation painted with a brush, then noise;
+  - wind → humidity → rain, with rain shadow;
+  - rivers by flow accumulation, width according to discharge;
+  - WebGL rendering (regl), computation in a worker.
+- **To reproduce**: the **fictional map** mode (paint the relief, then export `.asc`, masks and shapes), the real-time relief brush, humidity for the biomes, and the worker + WebGL architecture.
 
 ## 4. Tanin69/AgriFieldGenerator (v1.2.0)
-- **Licence MIT**, © 2024 Didier ALAIN.
-- **Pipeline** ✅ :
-  1. spline fermée (`SplineShapeEntity` lue dans un `.layer`, conversion Hermite → Bézier) ;
-  2. polygone ;
-  3. points de départ (aléatoires, grille tournée, rectangles) ;
-  4. Voronoi découpé selon la zone ;
-  5. arêtes courbées en Bézier, en gardant les parcelles voisines jointives ;
-  6. coloriage glouton BFS pour que deux voisins n'aient jamais la même texture ;
-  7. bordure aléatoire entre champs.
-- **Sorties** : masques PNG (4 au maximum) fusionnés avec ceux exportés du Workbench, et une `PolylineShapeEntity` par parcelle (Y = 0).
-- **Limites** : pas de relief, pas de prefabs, pas de haies réelles, couleurs comparées en RVB exact.
-- **À reproduire** : le module **Campagne**. On reprend son pipeline (d3-delaunay, turf), puis on ajoute la hauteur réelle, des haies et clôtures en prefabs sur les bordures, des chemins via `RG_Road_Dirt_01`, et des bosquets en lisière. Les parcelles « cultures » issues de WorldCover servent de zone de départ.
+- **MIT licence**, © 2024 Didier ALAIN.
+- **Pipeline** ✅:
+  1. closed spline (`SplineShapeEntity` read from a `.layer`, Hermite → Bézier conversion);
+  2. polygon;
+  3. starting points (random, rotated grid, rectangles);
+  4. Voronoi clipped to the area;
+  5. edges curved as Béziers, keeping neighbouring parcels contiguous;
+  6. greedy BFS colouring so that two neighbours never have the same texture;
+  7. random border between fields.
+- **Outputs**: PNG masks (4 at most) merged with those exported from the Workbench, and one `PolylineShapeEntity` per parcel (Y = 0).
+- **Limits**: no relief, no prefabs, no real hedges, colours compared in exact RGB.
+- **To reproduce**: the **Countryside** module. We take its pipeline (d3-delaunay, turf), then add the real height, hedges and fences as prefabs on the borders, paths via `RG_Road_Dirt_01`, and groves at the edges. The "crops" parcels from WorldCover serve as the starting area.
 
-## 5. État de l'art (autres moteurs)
-| Outil | Idée retenue |
+## 5. State of the art (other engines)
+| Tool | Idea retained |
 |---|---|
-| Unreal PCG (UE5) | Un graphe de règles appliqué à un volume : échantillonner, filtrer (pente, altitude, masque), élaguer les chevauchements, spawn |
-| Unity MapMagic 2 / Gaia / Vegetation Studio | Règles de spawn par biome, génération par tuiles |
-| Gaea / World Machine / Instant Terra | Érosion et masques dérivés (pente, flux, dépôts). Bohemia recommande Instant Terra |
-| Arma 3 Terrain Processor | Pipeline « une forme vectorielle → une tâche » (remplir un polygone, une ligne, une clôture) |
-| Reforger World Editor | **Forest / Road / River Generator natifs** pilotés par des shapes. C'est la cible d'export principale |
-| Terrain Automation Tools (mod) | Lisières éclaircies (« featherer »), couloirs dégagés le long des splines |
-| Watabou | Village = route, puis découpe en parcelles, puis bâtiments orientés vers la route |
-| Azgaar | Biomes = température × humidité, routes entre localités |
+| Unreal PCG (UE5) | A graph of rules applied to a volume: sample, filter (slope, altitude, mask), prune overlaps, spawn |
+| Unity MapMagic 2 / Gaia / Vegetation Studio | Per-biome spawn rules, tile-based generation |
+| Gaea / World Machine / Instant Terra | Erosion and derived masks (slope, flow, deposition). Bohemia recommends Instant Terra |
+| Arma 3 Terrain Processor | "One vector shape → one task" pipeline (fill a polygon, a line, a fence) |
+| Reforger World Editor | **Native Forest / Road / River Generators** driven by shapes. This is the main export target |
+| Terrain Automation Tools (mod) | Thinned edges ("featherer"), cleared corridors along splines |
+| Watabou | Village = road, then split into parcels, then buildings oriented toward the road |
+| Azgaar | Biomes = temperature × humidity, roads between localities |
 
-**Briques JS/TS** (licences à revérifier) : simplex-noise, poisson-disk-sampling (MIT), d3-delaunay / Delaunator (ISC), turf (MIT), osmtogeojson (MIT), geotiff.js (MIT), proj4 (MIT), MapLibre GL (BSD-3), Three.js (MIT).
+**JS/TS building blocks** (licences to be rechecked): simplex-noise, poisson-disk-sampling (MIT), d3-delaunay / Delaunator (ISC), turf (MIT), osmtogeojson (MIT), geotiff.js (MIT), proj4 (MIT), MapLibre GL (BSD-3), Three.js (MIT).
 
-## 6. Benchmark et limites moteur (TODO)
-- **Problème** : certaines maps sont lourdes et plantent. Il faut connaître les limites par plateforme : Xbox Series S, Xbox Series X, PS5, PC (nombre d'entités, densité de végétation, mémoire, taille du terrain).
-- **Outils reçus de Lou** :
-  - `SCR_WorldEditorToolHelper.c` : accès WorldEditorAPI et `QueryEntitiesByAABB/BySphere` ;
-  - `SCR_ImageHelper.c` : export d'images PNG.
-  - Avec les deux, on peut produire une **heatmap de densité d'entités** (comptage par cellule de 50 m, puis PNG).
-- **À reproduire** : un compteur de budget dans l'outil, une plateforme cible à choisir, et une alerte avant l'export.
+## 6. Benchmark and engine limits (TODO)
+- **Problem**: some maps are heavy and crash. We need to know the limits per platform: Xbox Series S, Xbox Series X, PS5, PC (entity count, vegetation density, memory, terrain size).
+- **Tools received from Lou**:
+  - `SCR_WorldEditorToolHelper.c`: WorldEditorAPI access and `QueryEntitiesByAABB/BySphere`;
+  - `SCR_ImageHelper.c`: PNG image export.
+  - With both, we can produce an **entity density heatmap** (count per 50 m cell, then PNG).
+- **To reproduce**: a budget counter in the tool, a target platform to choose, and an alert before export.
 
 ---
 
-## 7. Synthèse : comment l'outil final reproduit chaque brique
+## 7. Summary: how the final tool reproduces each building block
 
-| Brique | Inspiré de | Implémentation prévue | Sortie Reforger |
+| Building block | Inspired by | Planned implementation | Reforger output |
 |---|---|---|---|
-| Sélection de zone réelle | BARNMAP | MapLibre et projection locale (proj4, UTM), tailles 4/8/16/32 km, favoris | — |
-| Relief | BARNMAP | Tuiles Terrarium / Copernicus (+ IGN LiDAR HD en France), ré-échantillonnées à 2 m, décalage vertical optionnel | `Terrain.asc` |
-| Relief fictif | mapgen4 | Pinceau d'élévation, Delaunay, bruit | `Terrain.asc` |
-| Cartes dérivées | Map-generator | Pente, TPI, courbure, flux, distances (worker TS) | (interne) |
-| Masques de surfaces | Map-generator + BARNMAP | WorldCover + OSM + règles de biomes, budget par bloc | PNG en gris 8 bits (taille à confirmer, cf. 4033) |
-| Routes | BARNMAP | OSM `highway=*` → `SplineShapeEntity` + RoadGenerator (Asphalt_E_01 / Dirt_01), Y échantillonné | `.et` + `.meta` + `.layer` |
-| Forêts | BARNMAP + WE natif | Polygones WorldCover/OSM lissés → `PolylineShapeEntity` fermée **+ ForestGenerator enfant** | `.et` + `.layer` |
-| Eau | BARNMAP + WE natif | OSM waterway/natural=water → polylignes + générateur rivière/lac ❓ | `.et` + `.layer` |
-| Champs | AgriFieldGenerator | Voronoi découpé, coloriage, haies et chemins | masques + shapes + prefabs |
-| Remplissage direct | PCG / Gaia | Poisson-disk par espèce, filtres par biome | `.layer` d'entités prefab |
-| Budget | Bench Lou | Comptage par cellule, seuils par plateforme | Rapport + heatmap |
+| Real-area selection | BARNMAP | MapLibre and local projection (proj4, UTM), sizes 4/8/16/32 km, favourites | — |
+| Relief | BARNMAP | Terrarium / Copernicus tiles (+ IGN LiDAR HD in France), resampled to 2 m, optional vertical offset | `Terrain.asc` |
+| Fictional relief | mapgen4 | Elevation brush, Delaunay, noise | `Terrain.asc` |
+| Derived maps | Map-generator | Slope, TPI, curvature, flow, distances (TS worker) | (internal) |
+| Surface masks | Map-generator + BARNMAP | WorldCover + OSM + biome rules, per-block budget | 8-bit greyscale PNG (size to be confirmed, cf. 4033) |
+| Roads | BARNMAP | OSM `highway=*` → `SplineShapeEntity` + RoadGenerator (Asphalt_E_01 / Dirt_01), sampled Y | `.et` + `.meta` + `.layer` |
+| Forests | BARNMAP + native WE | Smoothed WorldCover/OSM polygons → closed `PolylineShapeEntity` **+ child ForestGenerator** | `.et` + `.layer` |
+| Water | BARNMAP + native WE | OSM waterway/natural=water → polylines + river/lake generator ❓ | `.et` + `.layer` |
+| Fields | AgriFieldGenerator | Clipped Voronoi, colouring, hedges and paths | masks + shapes + prefabs |
+| Direct fill | PCG / Gaia | Poisson-disk per species, per-biome filters | prefab entity `.layer` |
+| Budget | Lou's bench | Per-cell counting, per-platform thresholds | Report + heatmap |
 
-## 8. Questions ouvertes
-1. Formule de la taille des masques : 4033 px pour 4 km (valeur relevée dans le Workbench d'après le manuel) ; valeurs pour 8/16/32 km ?
-2. Format exact d'une `PolylineShapeEntity` avec un `ForestGeneratorEntity` enfant, et prefabs `FG_*` vanilla : à extraire des fichiers du jeu.
-3. Générateur d'eau natif (River / Lake) : nom de classe et prefabs.
-4. GUID : les fichiers `.et` exportés ont besoin d'un `.meta` avec un GUID unique. Le format est vérifié, il reste à confirmer que des GUID aléatoires suffisent.
-5. Limites moteur par plateforme : documentation Bohemia et bench.
-6. Licences et CGU des tuiles Esri / Mapterhorn / IGN pour un export.
+## 8. Open questions
+1. Formula for the mask size: 4033 px for 4 km (value read in the Workbench according to the manual); values for 8/16/32 km?
+2. Exact format of a `PolylineShapeEntity` with a child `ForestGeneratorEntity`, and vanilla `FG_*` prefabs: to be extracted from the game files.
+3. Native water generator (River / Lake): class name and prefabs.
+4. GUIDs: the exported `.et` files need a `.meta` with a unique GUID. The format is verified; it remains to confirm that random GUIDs are enough.
+5. Engine limits per platform: Bohemia documentation and bench.
+6. Licences and terms of use of the Esri / Mapterhorn / IGN tiles for an export.
 
 ---
 
-## 9. Tanin69 : approfondissement (README AgriFieldGenerator + tutoriel Google Doc « Painting with masks », Workbench 1.1.0.42)
-- Parmi les dépôts de Tanin69, seul **AgriFieldGenerator** concerne notre outil. Il maintient aussi un fork d'`enfusion-mcp` (MIT) et DarcMods (mods).
-- **Résolution du surface mask** : elle se lit dans *Terrain Tool > Info & Diags > Surface mask > Resolution* (exemple de Tanin : 1,000795 m/px pour un terrain de 16 257 px). La config AFG demande une taille de SVG égale à la satmap et au terrain, et un `tile_size` de 512.
-  - **Formule probable des 4033 px de BARNMAP** : 4033 = 64×63+1 et 16 257 = 128×127+1, soit *nb_tiles × (px_par_tile − 1) + 1* (bordure de tuile partagée). À confirmer dans Info & Diags sur notre terrain test.
-- **Outil Workbench « Export geographic data »** : il exporte en **SVG** les polylignes sélectionnées (`profile/export.svg`). Le SVG n'a **pas** la taille du masque : il faut le redimensionner à la taille exacte du masque, sinon tout est décalé. → L'outil web peut **importer ce SVG** pour récupérer des zones dessinées dans le Workbench, et AFG sait aussi lire les `SplineShapeEntity` d'un `.layer`.
-- **Vector Tool** : les boutons « New Polyline from selected » et « Convert to polyline area » servent à créer des zones à partir de splines existantes.
-- **Pièges de l'import de masque** :
-  - réimporter un masque **modifie toutes les tuiles**, avec des erreurs « trop de matériaux par tuile » sur des dizaines, voire plus de cent tuiles ;
-  - en équipe, cela écrase les tuiles des collègues ;
-  - avant chaque nouvel import, réimporter la texture de base (Grass03) pour effacer l'import précédent.
-- **Satmap** : il faut l'exporter depuis les masques, la régénérer, puis la réimporter. Cela prend 45 min sur un terrain de 256 km² avec une GTX 1060. L'équipe de Tanin utilise **[granQ/ReforgerSatGenerator](https://github.com/granQ/ReforgerSatGenerator)** (Python, sans licence publiée), qui combine les masques exportés en une image satellite. C'est exactement la recommandation BI (satmap construite à partir des masques). → À analyser et à reproduire dans l'outil.
-- **Mise à jour par tuile** : chaque tuile correspond à 8 fichiers, répartis entre `Terrain/.Data` et `Terrain/.EditorData`, et contenant le numéro de tuile. Tanin a un script qui ne copie que les tuiles modifiées, et AFG exporte `polygon_tiles.txt` (la liste des tuiles touchées). → **Notre outil devrait produire des masques limités à la zone modifiée et la liste des tuiles concernées**, pour éviter de casser le reste du terrain.
-- **Backlog d'AFG** (idées à reprendre) : la satmap en fond de l'aperçu, l'affichage des tuiles Enfusion sur le polygone, et la prise en compte du relief pour placer les points.
+## 9. Tanin69: deeper look (AgriFieldGenerator README + Google Doc tutorial "Painting with masks", Workbench 1.1.0.42)
+- Among Tanin69's repos, only **AgriFieldGenerator** concerns our tool. He also maintains a fork of `enfusion-mcp` (MIT) and DarcMods (mods).
+- **Surface mask resolution**: it is read in *Terrain Tool > Info & Diags > Surface mask > Resolution* (Tanin's example: 1.000795 m/px for a 16,257 px terrain). The AFG config requires an SVG size equal to the satmap and the terrain, and a `tile_size` of 512.
+  - **Probable formula for BARNMAP's 4033 px**: 4033 = 64×63+1 and 16,257 = 128×127+1, i.e. *nb_tiles × (px_per_tile − 1) + 1* (shared tile border). To be confirmed in Info & Diags on our test terrain.
+- **Workbench "Export geographic data" tool**: it exports the selected polylines as **SVG** (`profile/export.svg`). The SVG does **not** have the mask's size: it must be resized to the exact size of the mask, otherwise everything is shifted. → The web tool can **import this SVG** to recover areas drawn in the Workbench, and AFG can also read the `SplineShapeEntity` from a `.layer`.
+- **Vector Tool**: the "New Polyline from selected" and "Convert to polyline area" buttons are used to create areas from existing splines.
+- **Mask import pitfalls**:
+  - reimporting a mask **modifies all tiles**, with "too many materials per tile" errors on dozens, even over a hundred tiles;
+  - in a team, this overwrites colleagues' tiles;
+  - before each new import, reimport the base texture (Grass03) to erase the previous import.
+- **Satmap**: it must be exported from the masks, regenerated, then reimported. This takes 45 min on a 256 km² terrain with a GTX 1060. Tanin's team uses **[granQ/ReforgerSatGenerator](https://github.com/granQ/ReforgerSatGenerator)** (Python, no published licence), which combines the exported masks into a satellite image. This is exactly the BI recommendation (satmap built from the masks). → To be analysed and reproduced in the tool.
+- **Per-tile update**: each tile corresponds to 8 files, spread between `Terrain/.Data` and `Terrain/.EditorData`, and containing the tile number. Tanin has a script that copies only the modified tiles, and AFG exports `polygon_tiles.txt` (the list of tiles touched). → **Our tool should produce masks limited to the modified area and the list of tiles concerned**, to avoid breaking the rest of the terrain.
+- **AFG backlog** (ideas to adopt): the satmap as the preview background, display of the Enfusion tiles over the polygon, and taking the relief into account to place the points.

@@ -1,8 +1,8 @@
 import './style.css'
-import { fr, t } from './i18n'
+import { fr, getLang, t } from './i18n'
 import type { Project, ProjectEntity, ProjectShape } from './project'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
-import { BRIDGE_URL, applyHeightmap, getStatus, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
+import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
 import { computeSurfaces, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
@@ -10,11 +10,29 @@ import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
+const LAYERS = ['existing', 'fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
+let saveTimer = 0 // declared early: handlers registered above autosave() may fire first
+let issues: Issue[] = [] // read by draw(), which runs during start-up
+/** what already stands in the imported world: shown locked, kept clear by the generators */
+let existing: Existing = { objects: [], shapes: [] }
+/** origins of existing objects taken over or deleted in the map, deleted in the Workbench on the next send */
+//! family: deleted only by a send that rebuilds it (ROAD_ / WATER_), ANY = deleted by hand, on any send
+interface Removed { f: 'ROAD_' | 'WATER_' | 'ANY'; x: number; z: number }
+let removed: Removed[] = []
+const toWb = async (p: Project) => {
+  const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
+  const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
+  const msg = await sendToWorkbench({ ...p, remove: removed.filter(go).flatMap((r) => [r.x, r.z]) })
+  removed = removed.filter((r) => !go(r))
+  autosave()
+  return msg
+}
 import { SITE_RADIUS, buildNetwork, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
+import { worldToIsland } from './modules/importWorld'
+import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 
@@ -24,6 +42,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <strong>reforger-mapper</strong>
     <button id="undo" class="hist" title="${t('app.undo')}">↶</button>
     <button id="redo" class="hist" title="${t('app.redo')}">↷</button>
+    <button id="lang" class="hist" title="Language / Langue">${getLang() === 'fr' ? 'EN' : 'FR'}</button>
     <span id="status" class="status" title="${t('app.refresh')}">…</span>
     <span id="cursor" class="hint"></span>
   </header>
@@ -82,6 +101,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="row">
         <button id="tGen" type="button">${t('btn.tGen')}</button>
         <button id="tReroll" type="button" class="secondary">${t('btn.tReroll')}</button>
+        <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
       </div>
       <div class="row">
         <button id="pSave" type="button" class="secondary">${t('btn.pSave')}</button>
@@ -204,6 +224,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="setSquare" type="checkbox" checked> ${t('lbl.setSquare')}</label>
           <label class="check"><input id="setLanes" type="checkbox" checked> ${t('lbl.setLanes')}</label>
           <label class="check"><input id="setPaths" type="checkbox" checked> ${t('lbl.setPaths')}</label>
+          <label class="check"><input id="setParcels" type="checkbox"> ${t('lbl.setParcels')}</label>
         </div>
         <p class="hint">${t('hint.set')}</p>
         <div class="row">
@@ -333,6 +354,7 @@ function draw() {
     })
   }
 
+  if (layer('existing')) drawExisting()
   if (layer('water')) drawWater()
   if (layer('roads')) for (const r of [...roads, ...(roadDraft ? [roadDraft] : [])]) {
     const ring: number[][] = []
@@ -733,6 +755,10 @@ function restore(to: number) {
   restoring = false
   logEl.textContent = t('log.history', { i: histAt + 1, n: history.length })
 }
+$<HTMLButtonElement>('lang').addEventListener('click', () => {
+  try { localStorage.setItem('reforger-mapper.lang', getLang() === 'fr' ? 'en' : 'fr') } catch { /* storage blocked */ }
+  location.reload()
+})
 $<HTMLButtonElement>('undo').addEventListener('click', () => restore(histAt - 1))
 $<HTMLButtonElement>('redo').addEventListener('click', () => restore(histAt + 1))
 window.addEventListener('keydown', (e) => {
@@ -809,6 +835,8 @@ async function run(label: string, f: () => Promise<string>) {
 }
 
 $<HTMLButtonElement>('tGen').addEventListener('click', () => {
+  imported = null
+  existing = { objects: [], shapes: [] }
   const size = num('tSize')
   island = generateIsland({
     size,
@@ -828,6 +856,42 @@ $<HTMLButtonElement>('tGen').addEventListener('click', () => {
   logEl.textContent = t('log.island', { cols: island.grid.cols, rows: island.grid.rows, step: island.grid.step })
   recompose(true)
 })
+// load the world open in the Workbench (relief + ground materials) to carry on a map in progress
+/** world imported from the Workbench (null = generated island); kept so the project survives a reload */
+let imported: WorldExport | null = null
+function useWorld(w: WorldExport) {
+  imported = { ...w, materials: [], surfaces: [] }
+  island = worldToIsland(w)
+  const { cols, rows, step, minX, minZ } = island.grid
+  sink = undefined
+  let top = 1
+  for (const h of island.heights) top = Math.max(top, h)
+  sculpt = new Sculpt(cols, step, top, num('tSeed'), island.heights)
+  rivers = undefined
+  // the imported world replaces the previous project: nothing drawn on the old island is kept
+  roads = []
+  sites = []
+  waters = []
+  loadSetState(undefined)
+  result = null
+  noBridge.clear()
+  existing = { objects: [], shapes: [] }
+  removed = []
+  waterInfo()
+  view.x = minX + (cols * step) / 2
+  view.z = minZ + (rows * step) / 2
+  view.mpp = (cols * step) / map.width
+}
+$<HTMLButtonElement>('tImport').addEventListener('click', () =>
+  run(t('run.l.import'), async () => {
+    const w = await getWorld(8)
+    useWorld(w)
+    existing = await getExisting().catch(() => ({ objects: [], shapes: [] }))
+    const took = adoptExisting()
+    recompose(true)
+    return t('log.imported', { cols: w.cols, rows: w.rows, step: w.step, objects: existing.objects.length, shapes: existing.shapes.length, ...took })
+  }),
+)
 $<HTMLButtonElement>('tReroll').addEventListener('click', () => {
   $<HTMLInputElement>('tSeed').value = String(Math.floor(Math.random() * 1e6))
   $<HTMLButtonElement>('tGen').click()
@@ -868,7 +932,7 @@ async function refreshStatus() {
 sendEl.addEventListener('click', async () => {
   sendEl.disabled = true
   try {
-    logEl.textContent = await sendToWorkbench(JSON.parse(projectEl.value) as Project)
+    logEl.textContent = await toWb(JSON.parse(projectEl.value) as Project)
   } catch (e) {
     logEl.textContent = t('err.generic', { msg: (e as Error).message })
   } finally {
@@ -877,8 +941,6 @@ sendEl.addEventListener('click', async () => {
   }
 })
 
-draw()
-refreshStatus()
 // no polling: a NET API call landing while a Workbench modal dialog is open crashes the Workbench
 statusEl.title = t('app.refresh')
 statusEl.addEventListener("click", refreshStatus)
@@ -945,9 +1007,11 @@ function islandProject() {
     settlements: setState(),
     fields: result,
     noBridge: [...noBridge],
+    imported: imported && { ...imported, heights: b64(new Uint8Array(new Float32Array(imported.heights).buffer)) },
+    existing,
+    removed,
   }
 }
-let saveTimer = 0
 function autosave() {
   clearTimeout(saveTimer)
   saveTimer = window.setTimeout(() => {
@@ -964,7 +1028,8 @@ function loadProject(p: any) {
     if (el.type === 'checkbox') el.checked = !!v
     else el.value = String(v)
   }
-  $<HTMLButtonElement>('tGen').click() // rebuilds grid + sculpt with the saved settings
+  if (p.imported) useWorld({ ...p.imported, heights: [...new Float32Array(unb64(p.imported.heights).buffer)] })
+  else $<HTMLButtonElement>('tGen').click() // rebuilds grid + sculpt with the saved settings
   if (!island || !sculpt) return
   const macro = new Float32Array(unb64(p.macro).buffer)
   if (macro.length !== sculpt.macro.length) throw new Error(t('err.gridMismatch'))
@@ -977,6 +1042,8 @@ function loadProject(p: any) {
   result = p.fields && Array.isArray(p.fields.fields) ? p.fields : null
   noBridge.clear()
   for (const k of Array.isArray(p.noBridge) ? p.noBridge : []) noBridge.add(k)
+  if (p.existing?.objects) existing = p.existing
+  removed = Array.isArray(p.removed) ? p.removed : []
   waterInfo()
   recompose(true)
 }
@@ -1001,10 +1068,6 @@ $<HTMLInputElement>('pFile').addEventListener('change', async (e) => {
   }
   ;(e.target as HTMLInputElement).value = ''
 })
-try {
-  const saved = localStorage.getItem(PROJECT_KEY)
-  if (saved) { loadProject(JSON.parse(saved)); logEl.textContent = t('log.restored') }
-} catch { /* nothing saved or unreadable */ }
 
 // --- roads ---
 function roadInfo() {
@@ -1051,6 +1114,81 @@ function deleteRoad(id: string) {
   roadInfo()
   recompose(true)
 }
+const shortName = (path: string) => path.replace(/^.*\//, '').replace(/\.et$/, '')
+/** road type of an existing road shape, from its generator prefab (null: not a road) */
+function roadTypeOf(s: ExistingShape): RoadType | null {
+  const g = s.generators.find((x) => /WEGenerators\/Roads\//.test(x))
+  if (!g) return null
+  if (/TrailDirt/i.test(g)) return 'trailDirt'
+  if (/TrailGravel/i.test(g)) return 'trailGravel'
+  if (/TrailForest/i.test(g)) return 'trailForest'
+  if (/Forest/i.test(g)) return 'forest'
+  if (/Dirt/i.test(g)) return 'dirt'
+  if (/Cobble/i.test(g)) return 'cobble'
+  if (/Concrete/i.test(g)) return 'concrete'
+  if (/Narrow/i.test(g)) return 'asphaltNarrow'
+  return 'asphalt'
+}
+/** takes the world's roads, rivers and lakes over as editable site objects; its road furniture (barriers,
+ *  verge posts, signs) and bridges are dropped because the site rebuilds them on send. Every taken item is
+ *  deleted from the world on the next send, so nothing ends up twice. */
+function adoptExisting() {
+  let nRoads = 0, nWaters = 0, nFurn = 0
+  const keep: ExistingShape[] = []
+  for (const s of existing.shapes) {
+    const g = s.generators.join(' ')
+    const road = roadTypeOf(s)
+    const lake = (Object.keys(WATER_TYPES) as WaterType[]).find((k) => WATER_TYPES[k].closed && g.includes(WATER_TYPES[k].generator.replace(/^\{[0-9A-F]+\}/, '')))
+    if (road) {
+      roads.push({ id: nextRoadId(road), type: road, pts: s.points.flat() })
+      nRoads++
+    } else if (/WEGenerators\/Water\/River\//.test(g) && !s.closed) {
+      waters.push({ id: nextWaterId('river'), type: 'river', pts: s.points.flat(), width: 8, depth: 1.5 })
+      nWaters++
+    } else if (lake && s.closed) {
+      waters.push({ id: nextWaterId(lake), type: lake, pts: s.points.flat(), width: 0, depth: 2 })
+      nWaters++
+    } else { keep.push(s); continue }
+    removed.push({ f: road ? 'ROAD_' : 'WATER_', x: s.origin[0], z: s.origin[1] })
+  }
+  existing.shapes = keep
+  // prefabs: only buildings and signs are imported (locked); bridges are rebuilt by the site, the rest is ignored
+  existing.objects = existing.objects.filter((o) => {
+    if (/Infrastructure\/Bridges\//.test(o.prefab)) {
+      removed.push({ f: 'WATER_', x: o.x, z: o.z })
+      nFurn++
+      return false
+    }
+    return /Structures\/(Signs|Houses|Commercial|Civic|Farm|Industrial|Military|Cultural|Religious|Recreation|Infrastructure\/Harbour)\//.test(o.prefab)
+  })
+  // the world keeps its own signs, barriers and posts: the site must not add its own on top
+  $<HTMLInputElement>('roadFurn').checked = false
+  waterInfo()
+  roadInfo()
+  return { roads: nRoads, waters: nWaters, furn: nFurn }
+}
+function hitExistingShape(sx: number, sy: number): ExistingShape | null {
+  let best: ExistingShape | null = null, bd = 8
+  for (const s of existing.shapes) for (let i = 1; i < s.points.length + (s.closed ? 1 : 0); i++) {
+    const p = s.points[i - 1], q = s.points[i % s.points.length]
+    const [ax, ay] = toScreen(p[0], p[1]), [bx, by] = toScreen(q[0], q[1])
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1
+    const u = Math.max(0, Math.min(1, ((sx - ax) * dx + (sy - ay) * dy) / L))
+    const d = Math.hypot(ax + u * dx - sx, ay + u * dy - sy)
+    if (d < bd) { bd = d; best = s }
+  }
+  return best
+}
+function hitExistingObject(wx: number, wz: number): ExistingObject | null {
+  const m = 4 * view.mpp // a few pixels of slack for tiny objects
+  let best: ExistingObject | null = null, ba = Infinity
+  for (const o of existing.objects) {
+    const [x0, z0, x1, z1] = o.box
+    const a = (x1 - x0) * (z1 - z0)
+    if (wx > x0 - m && wx < x1 + m && wz > z0 - m && wz < z1 + m && a < ba && !/Prefabs\/Terrain\//.test(o.prefab)) { ba = a; best = o }
+  }
+  return best
+}
 function hitRoad(sx: number, sy: number): Road | null {
   let best: Road | null = null, bd = 10
   for (const r of roads) for (let i = 2; i + 1 < r.pts.length; i += 2) {
@@ -1086,6 +1224,7 @@ function openRoadMenu(e: MouseEvent) {
   const changed = () => { roadInfo(); recompose(true) }
   const site = r ? null : hitSite(sx, sy)
   const bld = r ? null : hitBuilding(wx, wz)
+  const ex = r || site || bld || !layer('existing') ? null : hitExistingShape(sx, sy) ?? hitExistingObject(wx, wz)
   if (bld) {
     const h = document.createElement('div')
     h.className = 'title'
@@ -1130,6 +1269,33 @@ function openRoadMenu(e: MouseEvent) {
     })
     if (pt && r.pts.length > 4) item(t('menu.delPoint'), () => { r.pts.splice(pt.i, 2); changed() })
     item(t('menu.delRoad'), () => deleteRoad(r.id))
+  } else if (ex) {
+    const h = document.createElement('div')
+    h.className = 'title'
+    menu.append(h)
+    const info = (txt: string) => { const d = document.createElement('div'); d.className = 'info'; d.textContent = txt; menu.append(d) }
+    if ('points' in ex) {
+      h.textContent = ex.generators.length ? shortName(ex.generators[0]) : t('ex.shape')
+      for (const g of ex.generators.slice(1)) info('+ ' + shortName(g))
+      let len = 0
+      for (let i = 1; i < ex.points.length; i++) len += Math.hypot(ex.points[i][0] - ex.points[i - 1][0], ex.points[i][1] - ex.points[i - 1][1])
+      info(t('ex.shapeInfo', { n: ex.points.length, len: Math.round(len), closed: ex.closed ? t('ex.closed') : '' }))
+      const type = roadTypeOf(ex)
+      if (type) item(t('menu.exTake'), () => {
+        const id = nextRoadId(type)
+        roads.push({ id, type, pts: ex.points.flat() })
+        removed.push({ f: 'ROAD_', x: ex.origin[0], z: ex.origin[1] })
+        existing.shapes = existing.shapes.filter((q) => q !== ex)
+        selectRoad(id)
+        changed()
+      })
+      item(t('menu.exDel'), () => { removed.push({ f: 'ANY', x: ex.origin[0], z: ex.origin[1] }); existing.shapes = existing.shapes.filter((q) => q !== ex); changed() })
+    } else {
+      h.textContent = shortName(ex.prefab)
+      info(ex.prefab.replace(/^\{[0-9A-F]+\}/, ''))
+      info(t('ex.objInfo', { x: Math.round(ex.x), z: Math.round(ex.z), w: Math.round(ex.box[2] - ex.box[0]), d: Math.round(ex.box[3] - ex.box[1]), yaw: Math.round(ex.yaw) }))
+      item(t('menu.exDel'), () => { removed.push({ f: 'ANY', x: ex.x, z: ex.z }); existing.objects = existing.objects.filter((q) => q !== ex); changed() })
+    }
   } else {
     item(t('menu.newHere'), () => { selectRoad(null); setDrawing(true); roadClick(wx, wz) })
     for (const k of ['town', 'village', 'hamlet'] as SiteKind[])
@@ -1157,6 +1323,7 @@ window.addEventListener('keydown', (e) => {
 
 /** Readable id, identical to the entity name in the Workbench (ROAD_BETON_USSR_1). */
 function nextRoadId(type: string) {
+  // Ids are built from the French labels on purpose, so existing road ids stay stable.
   const slug = fr[('road.type.' + type) as keyof typeof fr].normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')
   const used = new Set(roads.map((r) => r.id))
@@ -1200,7 +1367,7 @@ $<HTMLButtonElement>('roadClear').addEventListener('click', () => { roads = []; 
 $<HTMLButtonElement>('roadSend').addEventListener('click', () =>
   run(t('run.l.routes'), async () => {
     if (!roads.length) throw new Error(t('err.noRoad'))
-    return sendToWorkbench({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] })
+    return toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] })
   }),
 )
 roadInfo()
@@ -1263,7 +1430,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     logEl.textContent = t('test.p1')
     out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights })).message }))
     logEl.textContent = t('test.p2')
-    out.push(t('test.routes', { msg: await sendToWorkbench({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }) }))
+    out.push(t('test.routes', { msg: await toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }) }))
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
@@ -1470,11 +1637,24 @@ function drawSettlements() {
     ctx.stroke()
   }
 }
-$<HTMLButtonElement>('setGen').addEventListener('click', () => {
+// parcels captured in the Workbench (fetched once through the bridge)
+let parcels: Parcel[] | null = null
+const loadParcels = async () => (parcels ??= (await getTemplates()) as Parcel[])
+const groundAt = (x: number, z: number) => {
+  if (!island) return 0
+  const { cols, rows, step, minX, minZ } = island.grid
+  const c = Math.min(cols - 1, Math.max(0, Math.round((x - minX) / step))), r = Math.min(rows - 1, Math.max(0, Math.round((z - minZ) / step)))
+  return island.heights[r * cols + c]
+}
+$<HTMLButtonElement>('setGen').addEventListener('click', async () => {
   if (!island) return void (logEl.textContent = t('err.setNoIsland'))
   if (!sites.length) return void (logEl.textContent = t('err.setNoSites'))
   const chk = (id: string) => $<HTMLInputElement>(id).checked
-  const res = settle(sites, roads, waters, island.heights, island.grid, { seed: num('setSeed'), density: num('setDensity') }, { square: chk('setSquare'), lanes: chk('setLanes'), paths: chk('setPaths') })
+  let pool: ReturnType<typeof parcelPool> | undefined
+  if (chk('setParcels')) {
+    try { pool = parcelPool(await loadParcels()) } catch (e) { logEl.textContent = t('err.parcels') + (e as Error).message; return }
+  }
+  const res = settle(sites, [...roads, ...existingRoads()], waters, island.heights, island.grid, { seed: num('setSeed'), density: num('setDensity') }, { square: chk('setSquare'), lanes: chk('setLanes'), paths: chk('setPaths'), pool, blocked: existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box) })
   settled = res.placed
   setLanes = res.lanes
   setPaths = res.paths
@@ -1489,7 +1669,7 @@ $<HTMLButtonElement>('setSend').addEventListener('click', () =>
   run(t('run.l.set'), async () => {
     if (!settled.length) throw new Error(t('err.setNone'))
     runChecks()
-    return sendToWorkbench({ version: 0, shapes: settlementShapes({ lanes: setLanes, paths: setPaths }), entities: settlementEntities(settled) })
+    return toWb({ version: 0, shapes: settlementShapes({ lanes: setLanes, paths: setPaths }), entities: settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined) })
   }),
 )
 
@@ -1723,7 +1903,7 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
     logEl.textContent = t('test.p1')
     out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights })).message }))
     logEl.textContent = t('test.water')
-    out.push(t('test.waterSent', { msg: await sendToWorkbench(waterAndRoads()) }))
+    out.push(t('test.waterSent', { msg: await toWb(waterAndRoads()) }))
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
@@ -1757,7 +1937,7 @@ function allWaterShapes() {
 $<HTMLButtonElement>('wSend').addEventListener('click', () =>
   run(t('run.l.water'), async () => {
     if (!island || !waters.length) throw new Error(t('err.noWater'))
-    return sendToWorkbench(waterAndRoads())
+    return toWb(waterAndRoads())
   }),
 )
 
@@ -1786,7 +1966,6 @@ document.querySelectorAll<HTMLInputElement>('#layers [data-layer]').forEach((el)
 }))
 
 // --- checks before sending: markers on the map + list in the Workbench tab; never blocks a send ---
-let issues: Issue[] = []
 function runChecks() {
   if (!island) return (issues = [])
   const ids = new Set(roads.map((r) => r.id))
@@ -1805,6 +1984,39 @@ function runChecks() {
   if (!issues.length) list.innerHTML = `<li class="ok">${t('check.none')}</li>`
   draw()
   return issues
+}
+/** road shapes of the imported world, as roads the villages can line up on (never sent back) */
+function existingRoads(): Road[] {
+  return existing.shapes
+    .filter((s) => s.generators.some((g) => /Road/i.test(g)))
+    .map((s, i) => ({ id: `EXIST_${i}`, type: 'asphalt' as RoadType, pts: s.points.flat() }))
+}
+function drawExisting() {
+  for (const s of existing.shapes) {
+    const road = s.generators.some((g) => /Road/i.test(g)), forest = s.generators.some((g) => /Forest/i.test(g))
+    const water = s.generators.some((g) => /River|Lake|Water/i.test(g))
+    ctx.beginPath()
+    s.points.forEach(([x, z], i) => { const [sx, sy] = toScreen(x, z); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) })
+    if (s.closed) ctx.closePath()
+    if (forest && s.closed) { ctx.fillStyle = 'rgba(30,70,30,0.35)'; ctx.fill() }
+    if (water && s.closed) { ctx.fillStyle = 'rgba(60,120,200,0.45)'; ctx.fill() }
+    ctx.setLineDash(road || water ? [] : [6, 4])
+    ctx.strokeStyle = water ? 'rgba(80,150,230,0.9)' : road ? 'rgba(200,200,200,0.85)' : forest ? 'rgba(60,140,60,0.8)' : 'rgba(255,255,255,0.5)'
+    ctx.lineWidth = road ? Math.max(2, 6 / view.mpp) : 1.5
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+  ctx.fillStyle = 'rgba(150,150,160,0.7)'
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)'
+  ctx.lineWidth = 1
+  for (const o of existing.objects) {
+    const [x0, y0] = toScreen(o.box[0], o.box[3])
+    const [x1, y1] = toScreen(o.box[2], o.box[1])
+    if (x1 < 0 || y1 < 0 || x0 > map.width || y0 > map.height) continue
+    const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0)
+    ctx.fillRect(x0, y0, w, h)
+    if (w > 4) ctx.strokeRect(x0, y0, w, h)
+  }
 }
 function drawIssues() {
   for (const it of issues) {
@@ -1830,3 +2042,13 @@ $<HTMLButtonElement>('checkRun').addEventListener('click', () => {
   const n = runChecks().length
   logEl.textContent = n ? t('log.checkIssues', { n }) : t('check.none')
 })
+
+// restore the autosaved project last: loading it redraws, which needs every declaration above
+try {
+  const saved = localStorage.getItem(PROJECT_KEY)
+  if (saved) { loadProject(JSON.parse(saved)); logEl.textContent = t('log.restored') }
+} catch (err) { console.warn('autosave not restored', err) }
+
+// first paint once everything is declared
+draw()
+refreshStatus()

@@ -31,6 +31,7 @@ export interface Project {
   version: 0
   shapes: ProjectShape[]
   entities?: ProjectEntity[]
+  remove?: number[] // X/Z origins of objects already in the world to delete (taken over or removed in the map)
 }
 
 export const GENERATORS = {

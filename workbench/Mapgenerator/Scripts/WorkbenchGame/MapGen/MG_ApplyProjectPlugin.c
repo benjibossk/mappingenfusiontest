@@ -51,12 +51,14 @@ class MG_Project : JsonApiStruct
 	int version;
 	ref array<ref MG_ProjectShape> shapes = {};
 	ref array<ref MG_ProjectEntity> entities = {};
+	ref array<float> remove = {};	//!< X/Z pairs: origins of objects already in the world to delete (taken over or removed in the web map)
 
 	void MG_Project()
 	{
 		RegV("version");
 		RegV("shapes");
 		RegV("entities");
+		RegV("remove");
 	}
 }
 
@@ -186,6 +188,25 @@ class MG_ProjectApplier
 				if (src.GetName().StartsWith(fam))
 				{
 					old.Insert(src);
+					break;
+				}
+			}
+		}
+		// objects of the world taken over / removed in the web map: root entities at those origins
+		for (int ri = api.GetEditorEntityCount() - 1; ri >= 0 && !project.remove.IsEmpty(); ri--)
+		{
+			IEntitySource rsrc = api.GetEditorEntity(ri);
+			if (!rsrc || rsrc.GetParent() || old.Contains(rsrc))
+				continue;
+			IEntity ent = api.SourceToEntity(rsrc);
+			if (!ent)
+				continue;
+			vector o = ent.GetOrigin();
+			for (int k = 0; k + 1 < project.remove.Count(); k += 2)
+			{
+				if (Math.AbsFloat(o[0] - project.remove[k]) < 0.3 && Math.AbsFloat(o[2] - project.remove[k + 1]) < 0.3)
+				{
+					old.Insert(rsrc);
 					break;
 				}
 			}
