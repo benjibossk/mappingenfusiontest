@@ -3,9 +3,10 @@ import { external, fr, getLang, t } from './i18n'
 import { Collab } from './collab'
 import { GENERATORS, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
+import { rasterCover } from './modules/cover'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
-import { computeSurfaces, generateIsland, overfullBlocks, type Island } from './modules/island'
+import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { generateCampaign, type CampaignResult } from './modules/campaign'
@@ -739,7 +740,8 @@ function recompose(final: boolean) {
     riverSim = sim
   }
   if (final) {
-    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers)
+    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas))
+    island.colours = { ...SURFACE_COLOURS, ...island.colours }
     const bad = overfullBlocks(island.surfaces)
     $<HTMLSpanElement>('brushInfo').dataset.warn = bad ? '1' : ''
     if (bad) logEl.textContent = t('log.overfull', { n: bad })
@@ -1789,6 +1791,11 @@ const FOREST_GEN: Record<NonNullable<MapArea['leaf']>, string> = {
 }
 function applyRealPlace(r: RealPlace) {
   useWorld(r.world)
+  // the real relief sets the height scale; the sea level is already in the heights
+  let top = 1
+  for (const h of r.world.heights) top = Math.max(top, h)
+  $<HTMLInputElement>('tMax').value = String(Math.ceil(top))
+  $<HTMLInputElement>('tSeaLevel').value = '0'
   const o = r.osm
   if (o) {
     for (const x of o.roads) roads.push({ id: nextRoadId(x.type), type: x.type, pts: x.pts, ...(x.width ? { width: x.width } : {}) })
@@ -1850,7 +1857,7 @@ function openAreaMenu(e: MouseEvent) {
     menu.append(b)
   }
   if (a.kind === 'field') item(t('menu.areaZone'), () => { setZone(a.pts); draw() })
-  item(t('menu.areaDel'), () => { areas = areas.filter((x) => x !== a); draw(); autosave() })
+  item(t('menu.areaDel'), () => { areas = areas.filter((x) => x !== a); recompose(true); draw(); autosave() })
   const box = map.getBoundingClientRect()
   menu.style.left = `${e.clientX - box.left + map.offsetLeft}px`
   menu.style.top = `${e.clientY - box.top + map.offsetTop}px`
@@ -1865,7 +1872,7 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
     return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'] })) })
   }),
 )
-$<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; draw(); autosave() })
+$<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; recompose(true); draw(); autosave() })
 
 // --- water: rivers and lakes drawn by hand (tab Eau) ---
 function nextWaterId(type: WaterType) {

@@ -45,6 +45,15 @@ const COLOURS: Record<string, [number, number, number]> = {
   Debris_Rock_01: [118, 112, 102],
   Dirt_02: [150, 125, 95],
 }
+// ground under real forests and fields (land cover, cover.ts): only used when a cover grid is given
+const COVER: Record<string, [number, number, number]> = {
+  ForestDeciduous_01_Base: [72, 74, 46],
+  ForestConiferous_01_Base: [60, 62, 44],
+  Crop_Field_01: [138, 118, 80],
+}
+/** cover codes of cover.ts, in order: 1 broadleaved, 2 needleleaved, 3 mixed, 4 field */
+const COVER_OF = ['', 'ForestDeciduous_01_Base', 'ForestConiferous_01_Base', 'ForestDeciduous_01_Base', 'Crop_Field_01']
+export const SURFACE_COLOURS: Record<string, [number, number, number]> = { ...COLOURS, ...COVER }
 
 function rng(seed: number) {
   let s = seed >>> 0 || 1
@@ -133,9 +142,9 @@ export function generateIsland(p: IslandParams): Island {
 }
 
 //! Surface weights from height and slope (+ river beds). Rerun after painting or rivers.
-export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array): SurfaceGrid[] {
+export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array): SurfaceGrid[] {
   const { cols, rows, step } = grid
-  const names = Object.keys(COLOURS)
+  const names = Object.keys(COLOURS).concat(cover ? Object.keys(COVER) : [])
   const weights: Record<string, number[]> = Object.fromEntries(names.map((k) => [k, []]))
   // bare patches in the seabed: the algae surface everywhere looks like a carpet
   const patches = noise2(7331, 3)
@@ -172,8 +181,11 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     weights.Grass_03_coastal.push(coastal)
     weights.Rock_01.push(rock)
     weights.Debris_Rock_01.push(scree)
-    weights.MountainGrass_01.push(rest * high)
-    weights.Grass_01.push(rest * (1 - high))
+    // real land cover takes the free ground (grass), never the coast, rock or river bed
+    const covered = cover && cover[i] && h > 1 ? COVER_OF[cover[i]] : ''
+    if (cover) for (const k of Object.keys(COVER)) weights[k].push(k === covered ? rest : 0)
+    weights.MountainGrass_01.push(covered ? 0 : rest * high)
+    weights.Grass_01.push(covered ? 0 : rest * (1 - high))
   }
   for (const k of names) weights[k] = weights[k].map((w) => (w < 1 / 255 ? 0 : w))
   const out = names.map((name) => ({ ...grid, name, weights: weights[name] }))

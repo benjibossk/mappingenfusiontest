@@ -8,6 +8,8 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+- Real place: OpenStreetMap forests and fields now paint forest floor and crop field surfaces; the height scale follows the real relief.
+
 ### Added
 - Work with several people: shared rooms on a small server (`npm run collab`), the map is synced between
   everyone in the room and each mapper's cursor is shown with their name.
