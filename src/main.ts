@@ -3,7 +3,7 @@ import { external, fr, getLang, t } from './i18n'
 import { Collab } from './collab'
 import { GENERATORS, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
-import { rasterCover } from './modules/cover'
+import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
@@ -30,6 +30,8 @@ let removed: Removed[] = []
 /** forests and field areas brought from OpenStreetMap (realWorld.ts): forests are sent as forest generators */
 interface MapArea { id: string; kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; tall?: 'low' | 'mid' | 'high'; pts: number[] }
 let areas: MapArea[] = []
+/** land cover per terrain vertex from ESA WorldCover (realWorld.ts), painted under the areas */
+let landCover: { cols: number; data: Uint8Array } | null = null
 /** data sources of the terrain (licences asking for attribution) */
 let credits: string[] = []
 const toWb = async (p: Project) => {
@@ -747,7 +749,7 @@ function recompose(final: boolean) {
     riverSim = sim
   }
   if (final) {
-    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas))
+    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined))
     island.colours = { ...SURFACE_COLOURS, ...island.colours }
     const bad = overfullBlocks(island.surfaces)
     $<HTMLSpanElement>('brushInfo').dataset.warn = bad ? '1' : ''
@@ -979,6 +981,7 @@ function useWorld(w: WorldExport) {
   existing = { objects: [], shapes: [] }
   removed = []
   areas = []
+  landCover = null
   credits = []
   waterInfo()
   view.x = minX + (cols * step) / 2
@@ -1114,6 +1117,7 @@ function islandProject() {
     existing,
     removed,
     areas,
+    landCover: landCover && { cols: landCover.cols, n: landCover.data.length, rle: rle(landCover.data) },
     credits,
   }
 }
@@ -1150,6 +1154,8 @@ function loadProject(p: any) {
   for (const k of Array.isArray(p.noBridge) ? p.noBridge : []) noBridge.add(k)
   if (p.existing?.objects) existing = p.existing
   areas = Array.isArray(p.areas) ? p.areas : []
+  landCover = null
+  if (p.landCover && typeof p.landCover.rle === 'string') { const d = unrle(p.landCover.rle, p.landCover.n); if (d) landCover = { cols: p.landCover.cols, data: d } }
   credits = Array.isArray(p.credits) ? p.credits : []
   removed = Array.isArray(p.removed) ? p.removed : []
   waterInfo()
@@ -1818,6 +1824,8 @@ function applyRealPlace(r: RealPlace) {
     if (o.buildings.length) { const b = osmBuildings(o.buildings); settled = b.placed; bSkipped = b.skipped; setInfo() }
   }
   credits = r.credits
+  if (r.cover) landCover = { cols: r.world.cols, data: r.cover }
+  if (r.trace) { traceImg = r.trace; $<HTMLDetailsElement>('layers').open = true }
   waterInfo()
   roadInfo()
   recompose(true)
@@ -1828,12 +1836,12 @@ function applyRealPlace(r: RealPlace) {
     name: r.name, km: ((g.cols - 1) * g.step / 1000).toFixed(2), step: g.step.toFixed(2),
     roads: o?.roads.length ?? 0, waters: (o?.rivers.length ?? 0) + (o?.lakes.length ?? 0), forests: o?.forests.length ?? 0,
     fields: o?.fields.length ?? 0, sites: o?.sites.length ?? 0,
-  }) + (r.adapted ? '\n' + t('log.adapted', { f0: r.adapted.before.forests, f1: r.adapted.after.forests, r0: r.adapted.before.roads, r1: r.adapted.after.roads, b0: r.adapted.before.buildings, b1: r.adapted.after.buildings }) : '') + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
+  }) + (r.adapted ? '\n' + t('log.adapted', { f0: r.adapted.before.forests, f1: r.adapted.after.forests, r0: r.adapted.before.roads, r1: r.adapted.after.roads, b0: r.adapted.before.buildings, b1: r.adapted.after.buildings }) : '') + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (r.warn ? '\n' + r.warn : '') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
 }
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
 // tracing image (satellite / ortho photo / scanned map) stretched over the whole terrain, north up;
 // only shown here, never sent to the game, not saved with the project (the file can be large)
-let traceImg: HTMLImageElement | null = null
+let traceImg: HTMLImageElement | HTMLCanvasElement | null = null
 function drawTrace() {
   if (!traceImg || !terrain) return
   const [x0, y0] = toScreen(terrain.minX, terrain.minZ + (terrain.rows - 1) * terrain.step)
@@ -1854,7 +1862,7 @@ $<HTMLInputElement>('traceFile').addEventListener('change', (e) => {
   img.src = URL.createObjectURL(f)
 })
 $<HTMLInputElement>('traceAlpha').addEventListener('input', () => draw())
-$<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; draw() })
+$<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg instanceof HTMLImageElement) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; draw() })
 function drawAreas() {
   for (const a of areas) {
     ctx.beginPath()

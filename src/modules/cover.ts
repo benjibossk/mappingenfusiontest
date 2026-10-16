@@ -1,6 +1,7 @@
 // Land cover on the terrain grid: forest and field areas (OpenStreetMap, realWorld.ts) rasterised to one
 // code per grid vertex, used by computeSurfaces to paint forest floor and crop field instead of grass.
-//   0 nothing, 1 broadleaved forest, 2 needleleaved forest, 3 mixed forest, 4 field
+//   0 nothing, 1 broadleaved forest, 2 needleleaved forest, 3 mixed forest, 4 field,
+//   5 shrubs / heath, 6 built-up, 7 bare ground (5-7 come from ESA WorldCover only)
 
 import type { Grid } from './island'
 
@@ -8,10 +9,11 @@ export interface CoverArea { kind: 'forest' | 'field'; leaf?: 'broad' | 'needle'
 
 const CODE = { broad: 1, needle: 2, mixed: 3 } as const
 
-export function rasterCover(grid: Grid, areas: CoverArea[]): Uint8Array | undefined {
-  if (!areas.length) return undefined
+export function rasterCover(grid: Grid, areas: CoverArea[], base?: Uint8Array): Uint8Array | undefined {
+  if (!areas.length && !base) return undefined
   const { cols, rows, step, minX, minZ } = grid
-  const out = new Uint8Array(cols * rows)
+  // the land-cover grid (WorldCover) first, the drawn areas over it
+  const out = base && base.length === cols * rows ? base.slice() : new Uint8Array(cols * rows)
   // fields first: a forest drawn over a meadow wins
   const order = [...areas.filter((a) => a.kind === 'field'), ...areas.filter((a) => a.kind === 'forest')]
   for (const a of order) {
@@ -37,4 +39,30 @@ export function rasterCover(grid: Grid, areas: CoverArea[]): Uint8Array | undefi
     }
   }
   return out
+}
+
+/** ESA WorldCover class -> cover code (grass, snow, water, wetland: nothing, the terrain rules decide) */
+export const WORLDCOVER: Record<number, number> = { 10: 1, 20: 5, 40: 4, 50: 6, 60: 7, 95: 1, 100: 5 }
+
+/** run-length text of a cover grid, for the saved project ("code,count;code,count…") */
+export function rle(a: Uint8Array) {
+  const out: string[] = []
+  for (let i = 0; i < a.length;) {
+    let j = i
+    while (j < a.length && a[j] === a[i]) j++
+    out.push(`${a[i]},${j - i}`)
+    i = j
+  }
+  return out.join(';')
+}
+export function unrle(s: string, n: number): Uint8Array | null {
+  const a = new Uint8Array(n)
+  let k = 0
+  for (const part of s.split(';')) {
+    const [v, c] = part.split(',').map(Number)
+    if (!Number.isFinite(v) || !Number.isFinite(c) || k + c > n) return null
+    a.fill(v, k, k + c)
+    k += c
+  }
+  return k === n ? a : null
 }

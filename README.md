@@ -149,7 +149,7 @@ Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `
 | **5. Fill the map** | Rocks on slopes, automatic forests, paths, field zones, power lines | ⬜ to do |
 | **6. Complete import** | Ground surfaces of an existing world, generator settings (road width…) | ⬜ to do |
 | **7. Together** | Shared rooms ✅ (first version) → online site, accounts, SHP / CSV export, real-time merging | 🟡 started |
-| **8. Real-world import** | Start from a real place: elevation (DEM, LiDAR), roads, water, forests, fields and land cover, then edit it like a base mesh | 🟡 well advanced (elevation, LiDAR GeoTIFF, OpenStreetMap roads / water / forests / fields / buildings, forest and field ground, tracing image) — land-cover rasters to do |
+| **8. Real-world import** | Start from a real place: elevation (DEM, LiDAR), roads, water, forests, fields and land cover, then edit it like a base mesh | ✅ first full version (elevation, LiDAR GeoTIFF, OpenStreetMap roads / water / forests / fields / buildings, forest and field ground, tracing image), land cover, satellite tracing — on par with BARNMAP |
 
 What changed and when: [CHANGELOG.md](CHANGELOG.md).
 
@@ -173,13 +173,13 @@ The table shows what is done (✅) and what is still planned (⬜).
 
 | Data | Source (open data) | Becomes in the tool |
 |---|---|---|
-| ✅ **Elevation** | 16-bit PNG / GeoTIFF heightmap of your own; Copernicus DEM GLO-30 (30 m, worldwide); national LiDAR terrain models (e.g. IGN LiDAR HD, 1 m, France) | Heightmap: pick the area, rotate, crop, rescale to the Reforger terrain size and grid, choose the sea level; then sculpt on top |
+| ✅ **Elevation** | 16-bit PNG / GeoTIFF heightmap of your own; downloaded for you: Copernicus DEM GLO-30 (30 m, world, tiles joined), Terrarium tiles (world), IGN RGE ALTI (1-5 m, France) and IGN LiDAR HD (1 m, France, where flown) | Heightmap: pick the area, rotate, crop, rescale to the Reforger terrain size and grid, choose the sea level; then sculpt on top |
 | ✅ **Roads, tracks, paths** | OpenStreetMap | Road shapes with the matching road generator (asphalt, dirt, trail…), pieces of the same road joined |
 | ✅ **Rivers, lakes, sea** | OpenStreetMap, Copernicus water layers | River and lake shapes, laid on the relief; the sea is wherever the real relief is at or below 0 m |
-| ✅ **Forests** (OSM), **tree height** (LiDAR) · ⬜ land-cover rasters | OpenStreetMap woods, ESA WorldCover / CORINE land cover; LiDAR canopy height (surface minus terrain) | Forest areas sent as vanilla forest generators: leaf type from the OSM tag, tree height (young / normal / mature) from a LiDAR canopy height file or set by hand (right-click). Reforger has no tree-height setting, so the height only picks the generator |
-| ✅ **Fields, places, forest / field ground** | OpenStreetMap land use and places, land-cover rasters | Field areas (usable as field zones), village sites from towns / villages / hamlets; forest floor and crop field surfaces painted under them |
+| ✅ **Forests** (OSM, WorldCover), **tree height** (LiDAR) | OpenStreetMap woods, ESA WorldCover / CORINE land cover; LiDAR canopy height (surface minus terrain) | Forest areas sent as vanilla forest generators: leaf type from the OSM tag, tree height (young / normal / mature) from a LiDAR canopy height file, fetched with IGN LiDAR HD, or set by hand (right-click). Forests can also be outlined from ESA WorldCover and welded with the OSM ones. Reforger has no tree-height setting, so the height only picks the generator |
+| ✅ **Fields, places, ground surfaces** | OpenStreetMap land use and places, ESA WorldCover 10 m (through the bridge) | Field areas (usable as field zones), village sites from towns / villages / hamlets; ground surfaces from land cover: forest floor, crop field, heath (shrubs), concrete (built-up), dirt (bare ground) |
 | ✅ **Buildings** | OpenStreetMap footprints | Each footprint replaced by the closest-sized vanilla building, turned to match (big blocks with no match are skipped) |
-| ✅ **Satellite / ortho photo** | Imagery you are allowed to use | Tracing image in the Layers panel, stretched over the terrain with an opacity slider (not sent to the game, not saved) |
+| ✅ **Satellite / ortho photo** | Esri World Imagery (fetched for the area), or imagery of your own | Tracing image in the Layers panel, stretched over the terrain with an opacity slider (not sent to the game, not saved) |
 
 **Adapted, not copied** (option ticked by default): woods closer than 25 m are welded into one forest and small isolated woods dropped, short minor road pieces dropped, dense town centres thinned (3 buildings per 40 m square at most, 2500 in all) — for gameplay and frame rate. Untick it for a faithful copy.
 

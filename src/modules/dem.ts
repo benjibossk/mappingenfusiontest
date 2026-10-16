@@ -32,7 +32,7 @@ export interface Area {
 }
 
 // --- projections ---
-const DEFS: Record<string, string> = {
+export const DEFS: Record<string, string> = {
   'EPSG:2154': '+proj=lcc +lat_0=46.5 +lon_0=3 +lat_1=49 +lat_2=44 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs',
   'EPSG:27700': '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs',
   'EPSG:28992': '+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 +k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel +towgs84=565.417,50.3319,465.552,-0.398957,0.343988,-1.8774,4.0725 +units=m +no_defs',
@@ -182,6 +182,14 @@ export function lonLatToLocal(dem: Dem, a: Area): (lon: number, lat: number) => 
     if (fwd) { const [x, y] = fwd.forward([lon, lat]); e = x - a.cx; n = y - a.cy }
     else { e = (lon - a.cx) * mLon(a.cy); n = (lat - a.cy) * M_LAT }
     return [e * c - n * s, e * s + n * c]
+  }
+}
+/** WGS84 of a point of the area's local frame (metres from the centre) */
+export function localToLonLat(dem: Dem, a: Area): (lx: number, lz: number) => [number, number] {
+  const inv = !dem.crs || isGeographic(dem.crs) ? null : proj4(def(dem.crs), 'EPSG:4326')
+  return (lx, lz) => {
+    const p = toSource(dem, a, lx, lz)
+    return inv ? (inv.forward(p) as [number, number]) : p
   }
 }
 /** WGS84 bounding box (south, west, north, east) of the area, for OpenStreetMap */

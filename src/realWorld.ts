@@ -6,9 +6,12 @@ import { BRIDGE_URL, type WorldExport } from './bridge'
 import { t, type Key } from './i18n'
 import {
   type Area, type Dem, CRS_CHOICES, areaLonLat, buildWorld, copernicusTiles, mosaic, crsKnown, defaultArea, demRange,
-  isGeographic, lonLatToLocal, readDem, readTiff, toSource,
+  isGeographic, localToLonLat, lonLatToLocal, readDem, readTiff, toSource,
 } from './modules/dem'
 import { canopyClasses } from './modules/canopy'
+import { CREDITS, coverage, fetchIgn, fetchImagery, fetchTerrarium, fetchWorldCover } from './modules/sources'
+import { WORLDCOVER } from './modules/cover'
+import * as turf from '@turf/turf'
 import { ADAPT_DEFAULTS, adaptForGame } from './modules/adapt'
 import { OSM_ATTRIBUTION, type OsmOptions, type OsmResult, fetchOverpass, osmToMap, overpassQuery } from './modules/osm'
 
@@ -18,6 +21,9 @@ export interface RealPlace {
   name: string
   credits: string[]
   adapted?: ReturnType<typeof adaptForGame>
+  cover?: Uint8Array // land-cover code per terrain vertex (cover.ts), from ESA WorldCover
+  warn?: string
+  trace?: HTMLCanvasElement // satellite picture of the area, north up, for the tracing layer
 }
 
 let root: HTMLDivElement | null = null
@@ -43,7 +49,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
             <span id="rwFavs"></span>
           </div>
           <div class="pc-row rw-cop">
-            <span>${L('rw.cop')}</span>
+            <select id="rwSrc" title="${L('hint.src')}"><option value="copernicus">${L('rw.src.copernicus')}</option><option value="terrarium">${L('rw.src.terrarium')}</option><option value="ign">${L('rw.src.ign')}</option><option value="ignLidar">${L('rw.src.ignLidar')}</option></select>
             <label>${L('rw.lat')} <input id="rwLat" type="number" step="0.0001" placeholder="45.1885"></label>
             <label>${L('rw.lon')} <input id="rwLon" type="number" step="0.0001" placeholder="5.7245"></label>
             <button id="rwCopGo" type="button">${L('rw.download')}</button>
@@ -77,6 +83,8 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
             ${chk('rwOsm', 'rw.osmOn')}
             ${chk('rwMain', 'rw.mainRoads')}${chk('rwMinor', 'rw.minorRoads')}${chk('rwTracks', 'rw.tracks')}${chk('rwPaths', 'rw.paths', false)}
             ${chk('rwWater', 'rw.water')}${chk('rwForests', 'rw.forests')}${chk('rwFields', 'rw.fields')}${chk('rwPlaces', 'rw.places')}${chk('rwBuildings', 'rw.buildings', false)}<span title="${L('hint.adapt')}">${chk('rwAdapt', 'rw.adapt')}</span>
+            <span title="${L('hint.wc')}">${chk('rwWc', 'rw.wc')}${chk('rwWcForest', 'rw.wcForest', false)}</span>
+            <span title="${L('hint.sat')}">${chk('rwSat', 'rw.sat', false)}</span>
           </div>
           <div class="pc-row">
             <label>${L('rw.minForest')} <input id="rwMinForest" type="number" value="1" min="0" step="0.5"></label>
@@ -99,6 +107,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
   let shade: ImageData | null = null
   let osmFile: unknown = null
   let fromCop = false
+  let srcCredit = '' // credit of the relief source other than Copernicus
 
   // --- the file ---
   function effective(): Dem | null {
@@ -110,7 +119,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     const px = Math.max(0.1, num('rwPixel'))
     return { ...dem, dx: px, dy: -px, x0: 0, y0: (dem.h - 1) * px, crs: null }
   }
-  async function useDem(d: Dem, at?: [number, number]) {
+  async function useDem(d: Dem, at?: [number, number], size?: number) {
     dem = d
     $<HTMLDivElement>('rwPng').hidden = !d.normalized
     $<HTMLInputElement>('rwCrs').value = d.crs ?? ''
@@ -119,6 +128,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     area = defaultArea(e)
     if (at && isGeographic(e.crs)) { area.cx = at[1]; area.cy = at[0]; area.size = 8192 }
     area.size = Math.min(area.size, 20480)
+    if (size) area.size = size
     const [lo, hi] = d.normalized ? [num('rwBlack'), num('rwWhite')] : demRange(d)
     $<HTMLInputElement>('rwSea').value = String(lo <= 0.5 ? 0 : Math.floor(lo) - 1)
     $<HTMLDivElement>('rwInfo').textContent = t('rw.info', { name: d.name, w: d.w, h: d.h, crs: d.crs ?? '—', lo: Math.round(lo), hi: Math.round(hi) })
@@ -130,12 +140,35 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     const f = (ev.target as HTMLInputElement).files?.[0]
     if (!f) return
     msg.textContent = t('rw.reading')
-    try { fromCop = false; await useDem(await readDem(f)); msg.textContent = '' } catch (e) { msg.textContent = (e as Error).message }
+    try { fromCop = false; srcCredit = ''; await useDem(await readDem(f)); msg.textContent = '' } catch (e) { msg.textContent = (e as Error).message }
   })
   $<HTMLButtonElement>('rwCopGo').addEventListener('click', () => void copDownload())
   async function copDownload() {
     const lat = num('rwLat'), lon = num('rwLon')
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180 || ($<HTMLInputElement>('rwLat').value === '')) return void (msg.textContent = t('rw.badLatLon'))
+    const src = $<HTMLSelectElement>('rwSrc').value
+    if (src !== 'copernicus') {
+      // sized sources: fetched for the area size asked (change it, then download again)
+      const size = Math.max(1024, Math.min(32768, num('rwSize') || 8192))
+      try {
+        let d: Dem
+        if (src === 'terrarium') d = await fetchTerrarium(lat, lon, size, (k, n) => { msg.textContent = t('rw.downloading', { id: `Terrarium ${k}/${n}` }) })
+        else {
+          msg.textContent = t('rw.downloading', { id: 'IGN' })
+          d = await fetchIgn(lat, lon, size, src === 'ignLidar' ? 'lidarMnt' : 'rgealti')
+          if (coverage(d) < 0.5) throw new Error(t(src === 'ignLidar' ? 'rw.ignNoLidar' : 'rw.ignOutside'))
+          if (src === 'ignLidar') {
+            msg.textContent = t('rw.downloading', { id: 'IGN LiDAR HD MNH' })
+            chm = await fetchIgn(lat, lon, size, 'lidarMnh').catch(() => null)
+          }
+        }
+        fromCop = false
+        srcCredit = src === 'terrarium' ? CREDITS.terrarium : CREDITS.ign
+        await useDem(d, [lat, lon], size)
+        msg.textContent = chm && src === 'ignLidar' ? t('rw.chmAuto') : ''
+      } catch (e) { msg.textContent = t('rw.copFail', { msg: (e as Error).message }) }
+      return
+    }
     // every tile under a 0.3° window (about ±33 km, enough for a turned 32 km area), cut and joined
     const { box, tiles } = copernicusTiles(lat, lon, 0.3)
     try {
@@ -147,6 +180,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       }
       if (!got.length) throw new Error(lastErr || '404')
       fromCop = true
+      srcCredit = ''
       msg.textContent = t('rw.joining')
       await new Promise((r) => setTimeout(r, 20))
       await useDem(mosaic(got, box, `Copernicus ${lat.toFixed(3)} ${lon.toFixed(3)}`), [lat, lon])
@@ -317,10 +351,40 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
         pngRange: d.normalized ? [num('rwBlack'), num('rwWhite')] : undefined,
       })
       const credits: string[] = []
+      if (srcCredit) credits.push(srcCredit)
       if (fromCop) credits.push('Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA')
       let osm: OsmResult | null = null
       let adapted: RealPlace['adapted']
       const ck = (id: string) => $<HTMLInputElement>(id).checked
+      const ar = area
+      const toLL = d.crs ? localToLonLat(d, ar) : null
+      // ESA WorldCover: ground surfaces for every terrain vertex, forests outlined from the tree class
+      let cover: Uint8Array | undefined
+      let warn = ''
+      let wcForests: number[][] = []
+      if ((ck('rwWc') || ck('rwWcForest')) && toLL) {
+        msg.textContent = t('rw.wcFetching')
+        const [s, w, n, e] = areaLonLat(d, ar)
+        const wc = await fetchWorldCover(s, w, n, e, Math.min(2048, Math.ceil((ar.size * 1.45) / 10))).catch((err: Error) => { warn = t('rw.wcFail', { msg: err.message }); return null })
+        if (wc) {
+        const code = (x: number, z: number) => {
+          const [lon, lat] = toLL(x - ar.size / 2, z - ar.size / 2)
+          const c = Math.round((lon - wc.x0) / wc.dx), r = Math.round((lat - wc.y0) / wc.dy)
+          return c < 0 || r < 0 || c >= wc.w || r >= wc.h ? 0 : wc.data[r * wc.w + c]
+        }
+        if (ck('rwWc')) {
+          cover = new Uint8Array(world.cols * world.rows)
+          for (let r = 0; r < world.rows; r++) for (let c = 0; c < world.cols; c++) cover[r * world.cols + c] = WORLDCOVER[code(c * world.step, r * world.step)] ?? 0
+        }
+        if (ck('rwWcForest')) wcForests = treeOutlines(code, ar.size)
+        credits.push(CREDITS.worldcover)
+        }
+      }
+      if (wcForests.length && !ck('rwOsm')) {
+        osm = { roads: [], rivers: [], lakes: [], forests: [], fields: [], sites: [], buildings: [] }
+        osm.forests.push(...wcForests.map((pts) => ({ pts, leaf: 'mixed' as const })))
+        adapted = adaptForGame(osm, { ...ADAPT_DEFAULTS, minForest: Math.max(0, num('rwMinForest')) * 10000 })
+      }
       if (ck('rwOsm')) {
         if (!d.crs) throw new Error(t('rw.noGeo'))
         const o: OsmOptions = {
@@ -335,16 +399,26 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
         }
         // adapted: keep small woods for now, they may weld into a forest; the size limit applies after
         const adapt = ck('rwAdapt')
-        osm = osmToMap(data, lonLatToLocal(d, area), area.size, adapt ? { ...o, minForest: Math.min(o.minForest, 1000) } : o)
+        osm = osmToMap(data, lonLatToLocal(d, area), area.size, adapt || wcForests.length ? { ...o, minForest: Math.min(o.minForest, 1000) } : o)
+        // WorldCover woods join the OpenStreetMap ones, welded below
+        osm.forests.push(...wcForests.map((pts) => ({ pts, leaf: 'mixed' as const })))
         if (chm) {
           if (chm.crs && d.crs && chm.crs !== d.crs) throw new Error(t('rw.chmCrs', { a: chm.crs, b: d.crs }))
           const ar = area
           canopyClasses(osm.forests, chm, (x, z) => toSource(d, ar, x - ar.size / 2, z - ar.size / 2))
         }
         if (adapt) adapted = adaptForGame(osm, { ...ADAPT_DEFAULTS, minForest: o.minForest })
+        else if (wcForests.length) adapted = adaptForGame(osm, { ...ADAPT_DEFAULTS, minForest: o.minForest, minRoad: 0, perCell: 1e9, maxBuildings: 1e9 })
         credits.push(OSM_ATTRIBUTION)
       }
-      onApply({ world, osm, name: d.name, credits, adapted })
+      let trace: HTMLCanvasElement | undefined
+      if (ck('rwSat') && toLL) {
+        msg.textContent = t('rw.satFetching')
+        const [s, w, n, e] = areaLonLat(d, ar)
+        trace = areaPicture(await fetchImagery(s, w, n, e, 2048), [s, w, n, e], toLL, ar.size)
+        credits.push(CREDITS.esri)
+      }
+      onApply({ world, osm, name: d.name, credits, adapted, cover, trace, warn })
       root!.hidden = true
       msg.textContent = ''
     } catch (e) {
@@ -355,4 +429,48 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
   })
   $<HTMLButtonElement>('rwClose').addEventListener('click', () => { root!.hidden = true })
   redraw()
+}
+
+/** outlines of the WorldCover tree class (code 10 / 95) on a grid of about 20 m, local metres, open rings */
+function treeOutlines(code: (x: number, z: number) => number, size: number): number[][] {
+  const step = Math.max(20, size / 400), n = Math.floor(size / step) + 1, DEG = 111320
+  const pts: ReturnType<typeof turf.point>[] = []
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const v = code(c * step, r * step)
+    pts.push(turf.point([(c * step) / DEG, (r * step) / DEG], { v: v === 10 || v === 95 ? 1 : 0 }))
+  }
+  const bands = turf.isobands(turf.featureCollection(pts), [0.5, 1.5], { zProperty: 'v' })
+  const out: number[][] = []
+  for (const f of bands.features) {
+    for (const poly of f.geometry.coordinates) {
+      const ring = poly[0]
+      if (!ring || ring.length < 4) continue
+      const flat: number[] = []
+      for (const [x, z] of ring.slice(0, -1)) flat.push(x * DEG, z * DEG)
+      out.push(flat)
+    }
+  }
+  return out
+}
+
+/** the satellite picture turned into the area frame: north of the area up, 1 px ≈ size / 2048 m */
+function areaPicture(img: HTMLCanvasElement, [s, w, n, e]: [number, number, number, number], toLL: (lx: number, lz: number) => [number, number], size: number) {
+  const W = Math.min(2048, img.width * 2)
+  const src = img.getContext('2d')!.getImageData(0, 0, img.width, img.height).data
+  const out = document.createElement('canvas')
+  out.width = out.height = W
+  const g = out.getContext('2d')!
+  const data = g.createImageData(W, W)
+  for (let r = 0; r < W; r++) {
+    for (let c = 0; c < W; c++) {
+      // row 0 = north edge of the area
+      const [lon, lat] = toLL(((c + 0.5) / W - 0.5) * size, (0.5 - (r + 0.5) / W) * size)
+      const x = Math.floor(((lon - w) / (e - w)) * img.width), y = Math.floor(((n - lat) / (n - s)) * img.height)
+      if (x < 0 || y < 0 || x >= img.width || y >= img.height) continue
+      const i = (y * img.width + x) * 4, o = (r * W + c) * 4
+      data.data[o] = src[i]; data.data[o + 1] = src[i + 1]; data.data[o + 2] = src[i + 2]; data.data[o + 3] = 255
+    }
+  }
+  g.putImageData(data, 0, 0)
+  return out
 }

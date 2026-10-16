@@ -99,7 +99,7 @@ function send(res, code, body) {
     // the web app runs from the Vite dev server or a local file
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Range",
   });
   res.end(JSON.stringify(body));
 }
@@ -258,6 +258,22 @@ const server = createServer(async (req, res) => {
         writeFileSync(file, buf);
       }
       res.writeHead(200, { "Content-Type": "image/tiff", "Content-Length": buf.length, "Access-Control-Allow-Origin": "*" });
+      return res.end(buf);
+    }
+
+    // ESA WorldCover 2021 tile (3°×3° cloud-optimised GeoTIFF, about 100 MB): only the byte ranges the
+    // browser asks for are forwarded (the bucket sends no CORS headers). Fixed host and tile name pattern.
+    if (req.method === "GET" && req.url.startsWith("/landcover?")) {
+      const id = new URL(req.url, "http://x").searchParams.get("tile") ?? "";
+      if (!/^[NS][0-9]{2}[EW][0-9]{3}$/.test(id)) return send(res, 400, { error: "bad tile name" });
+      const range = req.headers.range ?? "";
+      if (range && !/^bytes=[0-9]+-[0-9]*$/.test(range)) return send(res, 400, { error: "bad range" });
+      const r = await fetch(`https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_${id}_Map.tif`, range ? { headers: { Range: range } } : {});
+      if (!r.ok) return send(res, r.status === 404 || r.status === 403 ? 404 : 502, { error: r.status === 404 || r.status === 403 ? "no WorldCover tile here (open sea)" : "download failed " + r.status });
+      const buf = Buffer.from(await r.arrayBuffer());
+      const head = { "Content-Type": "image/tiff", "Content-Length": buf.length, "Accept-Ranges": "bytes", "Access-Control-Allow-Origin": "*", "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges" };
+      if (r.status === 206) head["Content-Range"] = r.headers.get("content-range");
+      res.writeHead(r.status, head);
       return res.end(buf);
     }
 
