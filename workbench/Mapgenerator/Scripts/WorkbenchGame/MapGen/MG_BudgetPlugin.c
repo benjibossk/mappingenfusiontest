@@ -15,7 +15,7 @@ enum MG_EPlatform
 	PC
 }
 
-[WorkbenchPluginAttribute(name: "MapGen - Entity budget", category: "MapGen", shortcut: "Ctrl+Shift+B", wbModules: { "WorldEditor" }, awesomeFontCode: 0xF080)]
+[WorkbenchPluginAttribute(name: "MapGen - Entity budget", category: "MapGen", wbModules: { "WorldEditor" }, awesomeFontCode: 0xF080)]
 class MG_BudgetPlugin : WorldEditorPlugin
 {
 	[Attribute("0", UIWidgets.ComboBox, "Target platform", "", ParamEnumArray.FromEnum(MG_EPlatform))]
@@ -263,7 +263,7 @@ class MG_BudgetPlugin : WorldEditorPlugin
 	//------------------------------------------------------------------------------------------------
 	override void Configure()
 	{
-		Workbench.ScriptDialog("MapGen entity budget", "Platform, cell size and the PROVISIONAL limits per cell. Run (Ctrl+Shift+B) counts the world.", this);
+		Workbench.ScriptDialog("MapGen entity budget", "Platform, cell size and the PROVISIONAL limits per cell. Run counts the world.", this);
 	}
 }
 #endif

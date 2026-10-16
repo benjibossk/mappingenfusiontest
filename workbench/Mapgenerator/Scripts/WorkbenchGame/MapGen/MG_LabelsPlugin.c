@@ -1,8 +1,8 @@
 #ifdef WORKBENCH
 //! Debug for screenshots: the name of every object sent by the web tool floats over it.
-//! Only the objects closer than Range to the camera get a label; Run (Ctrl+Alt+Shift+L) redraws them
+//! Only the objects closer than Range to the camera get a label; Run redraws them
 //! around the current camera. Labels come from $profile:MapGen/labels.txt, written on Apply.
-[WorkbenchPluginAttribute(name: "MapGen - Labels", category: "MapGen", shortcut: "Ctrl+Alt+Shift+L", wbModules: { "WorldEditor" }, awesomeFontCode: 0xF02B)]
+[WorkbenchPluginAttribute(name: "MapGen - Labels", category: "MapGen", wbModules: { "WorldEditor" }, awesomeFontCode: 0xF02B)]
 class MG_LabelsPlugin : WorldEditorPlugin
 {
 	[Attribute("400", UIWidgets.Slider, "Labels for objects closer than this to the camera (m)", "0 10000 10")]
@@ -103,7 +103,7 @@ class MG_LabelsPlugin : WorldEditorPlugin
 	//------------------------------------------------------------------------------------------------
 	override void Configure()
 	{
-		Workbench.ScriptDialog("MapGen labels", "Range, size, show/hide. Run (Ctrl+Alt+Shift+L) redraws around the camera.", this);
+		Workbench.ScriptDialog("MapGen labels", "Range, size, show/hide. Run redraws around the camera.", this);
 		Store();
 		Refresh();
 	}

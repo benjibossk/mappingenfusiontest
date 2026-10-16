@@ -78,7 +78,7 @@ Mesures faites avec le plugin « MapGen - Measure prefabs » (844 prefabs → `p
 Par ordre utilité / effort :
 
 1. Validation avant envoi (routes sur l'eau sans pont, pentes, bâtiments mal placés, villages isolés).
-2. ~~Budget d'entités par plateforme~~ : plugin « MapGen - Entity budget » (Ctrl+Shift+B), avec doublons, objets enterrés et occlusion par le terrain (cases chargées plates ou en crête).
+2. ~~Budget d'entités par plateforme~~ : plugin « MapGen - Entity budget », avec doublons, objets enterrés et occlusion par le terrain (cases chargées plates ou en crête).
 3. Lisières de forêt et couloirs dégagés autour des routes.
 4. Forêts selon altitude / pente / biome.
 5. Clôtures et murs de villages, lignes électriques.
