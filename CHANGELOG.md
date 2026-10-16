@@ -8,6 +8,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+- Real place: "Adapt for gameplay and performance" (on by default) welds nearby woods into forests, drops small woods and short road pieces, thins dense town centres.
 - Tree height for forests: young / normal / mature picks the matching vanilla forest generator; set from a LiDAR canopy height file (CHM) or by right-click on a forest, along with the leaf type.
 - Tracing image in the Layers panel: an image you may use (satellite, ortho photo, scanned map) stretched over the terrain, with opacity; display only.
 - Real place: optional OpenStreetMap buildings, each footprint replaced by the closest-sized vanilla building, turned to match.

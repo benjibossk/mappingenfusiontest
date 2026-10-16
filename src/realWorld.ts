@@ -9,6 +9,7 @@ import {
   isGeographic, lonLatToLocal, readDem, readTiff, toSource,
 } from './modules/dem'
 import { canopyClasses } from './modules/canopy'
+import { ADAPT_DEFAULTS, adaptForGame } from './modules/adapt'
 import { OSM_ATTRIBUTION, type OsmOptions, type OsmResult, fetchOverpass, osmToMap, overpassQuery } from './modules/osm'
 
 export interface RealPlace {
@@ -16,6 +17,7 @@ export interface RealPlace {
   osm: OsmResult | null
   name: string
   credits: string[]
+  adapted?: ReturnType<typeof adaptForGame>
 }
 
 let root: HTMLDivElement | null = null
@@ -69,7 +71,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
           <div class="rw-checks">
             ${chk('rwOsm', 'rw.osmOn')}
             ${chk('rwMain', 'rw.mainRoads')}${chk('rwMinor', 'rw.minorRoads')}${chk('rwTracks', 'rw.tracks')}${chk('rwPaths', 'rw.paths', false)}
-            ${chk('rwWater', 'rw.water')}${chk('rwForests', 'rw.forests')}${chk('rwFields', 'rw.fields')}${chk('rwPlaces', 'rw.places')}${chk('rwBuildings', 'rw.buildings', false)}
+            ${chk('rwWater', 'rw.water')}${chk('rwForests', 'rw.forests')}${chk('rwFields', 'rw.fields')}${chk('rwPlaces', 'rw.places')}${chk('rwBuildings', 'rw.buildings', false)}<span title="${L('hint.adapt')}">${chk('rwAdapt', 'rw.adapt')}</span>
           </div>
           <div class="pc-row">
             <label>${L('rw.minForest')} <input id="rwMinForest" type="number" value="1" min="0" step="0.5"></label>
@@ -249,6 +251,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       const credits: string[] = []
       if (fromCop) credits.push('Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA')
       let osm: OsmResult | null = null
+      let adapted: RealPlace['adapted']
       const ck = (id: string) => $<HTMLInputElement>(id).checked
       if (ck('rwOsm')) {
         if (!d.crs) throw new Error(t('rw.noGeo'))
@@ -262,15 +265,18 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
           msg.textContent = t('rw.osmFetching')
           data = await fetchOverpass(overpassQuery(areaLonLat(d, area), o))
         }
-        osm = osmToMap(data, lonLatToLocal(d, area), area.size, o)
+        // adapted: keep small woods for now, they may weld into a forest; the size limit applies after
+        const adapt = ck('rwAdapt')
+        osm = osmToMap(data, lonLatToLocal(d, area), area.size, adapt ? { ...o, minForest: Math.min(o.minForest, 1000) } : o)
         if (chm) {
           if (chm.crs && d.crs && chm.crs !== d.crs) throw new Error(t('rw.chmCrs', { a: chm.crs, b: d.crs }))
           const ar = area
           canopyClasses(osm.forests, chm, (x, z) => toSource(d, ar, x - ar.size / 2, z - ar.size / 2))
         }
+        if (adapt) adapted = adaptForGame(osm, { ...ADAPT_DEFAULTS, minForest: o.minForest })
         credits.push(OSM_ATTRIBUTION)
       }
-      onApply({ world, osm, name: d.name, credits })
+      onApply({ world, osm, name: d.name, credits, adapted })
       root!.hidden = true
       msg.textContent = ''
     } catch (e) {

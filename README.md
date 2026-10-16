@@ -181,6 +181,8 @@ The table shows what is done (✅) and what is still planned (⬜).
 | ✅ **Buildings** | OpenStreetMap footprints | Each footprint replaced by the closest-sized vanilla building, turned to match (big blocks with no match are skipped) |
 | ✅ **Satellite / ortho photo** | Imagery you are allowed to use | Tracing image in the Layers panel, stretched over the terrain with an opacity slider (not sent to the game, not saved) |
 
+**Adapted, not copied** (option ticked by default): woods closer than 25 m are welded into one forest and small isolated woods dropped, short minor road pieces dropped, dense town centres thinned (3 buildings per 40 m square at most, 2500 in all) — for gameplay and frame rate. Untick it for a faithful copy.
+
 Limits to keep in mind: real data rarely fits the Reforger size and the entity budget as is (it will be
 scaled and simplified); a 30 m DEM is smooth and needs sculpting for small details; every source has its own
 licence (OpenStreetMap: ODbL, attribution and share-alike; Copernicus: attribution) — the tool writes it in the log
