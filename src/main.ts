@@ -41,9 +41,14 @@ function cleanSpline(pts: number[]): number[] {
   for (let k = 2; k + 1 < pts.length; k += 2) {
     const x = pts[k], z = pts[k + 1]
     let dup = false
+    const last = k + 2 >= pts.length
     for (;;) {
       const n = out.length
-      if (Math.hypot(x - out[n - 2], z - out[n - 1]) < 0.5) { dup = true; break }
+      const d = Math.hypot(x - out[n - 2], z - out[n - 1])
+      // "invalid segments" in the road generator: interior points closer than 3 m are skipped; the end
+      // point is kept and takes the place of a too close interior one
+      if (d < 0.5 || (d < 3 && !last)) { dup = true; break }
+      if (d < 3 && last && n >= 4) { out.length = n - 2; continue }
       if (n < 4) break
       const dx = out[n - 2] - out[n - 4], dz = out[n - 1] - out[n - 3], ex = x - out[n - 2], ez = z - out[n - 1]
       if ((dx * ex + dz * ez) / (Math.hypot(dx, dz) * Math.hypot(ex, ez)) >= -0.5) break

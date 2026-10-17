@@ -8,6 +8,11 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-10-17
+
+### Fixed
+- Road clean-up also skips interior points closer than 3 m (Workbench "invalid segments on the road").
+
 ## [0.4.7] - 2026-10-17
 
 ### Added
@@ -136,6 +141,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.4.8]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.8
 [0.4.7]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.7
 [0.4.6]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.6
 [0.4.5]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.5
