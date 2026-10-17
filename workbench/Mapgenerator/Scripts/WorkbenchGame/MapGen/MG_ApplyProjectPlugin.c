@@ -156,6 +156,20 @@ class MG_ProjectApplier
 
 		MG_Project project = new MG_Project();
 		project.LoadFromFile(projectFile);
+		// big projects come in parts (mapgen.1.json, mapgen.2.json...): the JSON reader fails on large files
+		string stem = projectFile.Substring(0, projectFile.Length() - 5);
+		int part = 1;
+		while (FileIO.FileExists(stem + "." + part.ToString() + ".json"))
+		{
+			MG_Project more = new MG_Project();
+			more.LoadFromFile(stem + "." + part.ToString() + ".json");
+			foreach (MG_ProjectShape ms : more.shapes)
+				project.shapes.Insert(ms);
+			foreach (MG_ProjectEntity me : more.entities)
+				project.entities.Insert(me);
+			part++;
+		}
+		Print(string.Format("[MapGen] read %1 file(s): %2 shapes, %3 objects", part, project.shapes.Count(), project.entities.Count()));
 
 		api.ToggleGeneratorEvents(true);
 		bool ownsAction = api.BeginEntityAction("MapGen apply project");

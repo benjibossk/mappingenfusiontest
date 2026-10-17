@@ -21,7 +21,7 @@
 
 import { createServer } from "node:http";
 import { Socket } from "node:net";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -146,7 +146,24 @@ const server = createServer(async (req, res) => {
       if (!Array.isArray(project.shapes)) return send(res, 400, { error: "project.shapes missing" });
 
       mkdirSync(join(PROFILE_DIR, "MapGen"), { recursive: true });
-      writeFileSync(PROJECT_FILE, JSON.stringify(project, null, 1), "utf-8");
+      // the Workbench JSON reader gives up silently on big files (4.7 MB: 0 shapes read), so the project is
+      // cut into parts of ~300 KB: mapgen.json (version, remove, first part), then mapgen.1.json, mapgen.2.json...
+      const parts = [];
+      let cur = { shapes: [], entities: [] }, size = 0;
+      const add = (key, item) => {
+        const n = JSON.stringify(item).length;
+        if (size + n > 300_000 && (cur.shapes.length || cur.entities.length)) { parts.push(cur); cur = { shapes: [], entities: [] }; size = 0; }
+        cur[key].push(item); size += n;
+      };
+      for (const s of project.shapes) add("shapes", s);
+      for (const e of project.entities ?? []) add("entities", e);
+      parts.push(cur);
+      for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (/^mapgen.d+.json$/.test(f)) rmSync(join(PROFILE_DIR, "MapGen", f));
+      parts.forEach((p, k) => {
+        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [] } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
+        writeFileSync(k === 0 ? PROJECT_FILE : join(PROFILE_DIR, "MapGen", `mapgen.${k}.json`), JSON.stringify(body), "utf-8");
+      });
+      console.log(`[apply] ${project.shapes.length} shapes, ${(project.entities ?? []).length} objects in ${parts.length} file(s)`);
 
       const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" });
       return send(res, result.status === "error" ? 500 : 200, result);

@@ -221,7 +221,7 @@ export function overfullBlocks(surfaces: SurfaceGrid[], blockSize = 64, max = 5)
 //! Keeps at most `max` surfaces per block (the strongest by total weight); the weight of the others
 //! goes to the strongest kept surface of each cell. Note: the mask PNG is sampled bilinearly, so a
 //! surface may still bleed a few metres into the next block.
-export function limitPerBlock(surfaces: SurfaceGrid[], blockSize = 64, max = 5) {
+export function limitPerBlock(surfaces: SurfaceGrid[], blockSize = 64, max = 4) {
   if (!surfaces.length) return
   const { cols, rows, step } = surfaces[0]
   const per = Math.max(1, Math.round(blockSize / step))
@@ -240,8 +240,10 @@ export function limitPerBlock(surfaces: SurfaceGrid[], blockSize = 64, max = 5) 
       keep.push(new Set(totals.map((t, k) => [t, k]).filter(([t]) => t > 0).sort((a, b) => b[0] - a[0]).slice(0, max).map(([, k]) => k)))
     }
   }
-  // disjoint blocks: the surface map is per texel, blocks do not share texels
-  const blocksOf = (i: number, n: number) => [Math.min(Math.floor(i / per), n - 1)]
+  // the mask PNG is upscaled bilinearly onto the terrain texels, so a vertex also paints the blocks of its
+  // neighbours: on coarse grids (64 m cells on a 32 km map) it must obey them too, or a block ends up
+  // with 6+ surfaces ("Surface import: Too many layers")
+  const blocksOf = (i: number, n: number) => [...new Set([i - 1, i, i + 1].map((j) => Math.max(0, Math.min(Math.floor(j / per), n - 1))))]
   for (let r = 0; r < rows; r++) {
     const brs = blocksOf(r, nbr)
     for (let c = 0; c < cols; c++) {

@@ -8,6 +8,15 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-10-17
+
+### Added
+- **Send everything to Workbench** button: roads, water, forests and buildings in one go, with a log of what is sent.
+
+### Fixed
+- Big projects reached Workbench empty (0 shapes): its JSON reader fails silently on large files. The bridge now writes the project in ~300 KB parts that the plugin reads back together, and logs the totals.
+- "Surface import: Too many layers" on coarse grids: the per-block surface limit now also follows the neighbouring blocks a vertex paints into, with one layer of margin.
+
 ## [0.4.5] - 2026-10-17
 
 ### Fixed
@@ -119,6 +128,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.4.6]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.6
 [0.4.5]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.5
 [0.4.4]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.4
 [0.4.3]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.3

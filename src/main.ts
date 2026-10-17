@@ -312,7 +312,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <summary>${t('sum.project')} <code>mapgen.json</code></summary>
         <textarea id="project" spellcheck="false"></textarea>
       </details>
-      <button id="send" type="button">${t('btn.send')}</button>
+      <button id="sendAll" type="button">${t('btn.sendAll')}</button>
+      <button id="send" type="button" class="secondary">${t('btn.send')}</button>
     </div>
 
     <pre id="log" class="log"></pre>
@@ -1838,7 +1839,7 @@ function applyRealPlace(r: RealPlace) {
     name: r.name, km: ((g.cols - 1) * g.step / 1000).toFixed(2), step: g.step.toFixed(2),
     roads: o?.roads.length ?? 0, waters: (o?.rivers.length ?? 0) + (o?.lakes.length ?? 0), forests: o?.forests.length ?? 0,
     fields: o?.fields.length ?? 0, sites: o?.sites.length ?? 0,
-  }) + (r.adapted ? '\n' + t('log.adapted', { f0: r.adapted.before.forests, f1: r.adapted.after.forests, r0: r.adapted.before.roads, r1: r.adapted.after.roads, b0: r.adapted.before.buildings, b1: r.adapted.after.buildings }) : '') + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (r.warn ? '\n' + r.warn : '') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
+  }) + (r.adapted ? '\n' + t('log.adapted', { f0: r.adapted.before.forests, f1: r.adapted.after.forests, r0: r.adapted.before.roads, r1: r.adapted.after.roads, b0: r.adapted.before.buildings, b1: r.adapted.after.buildings }) : '') + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (r.warn ? '\n' + r.warn : '') + String.fromCharCode(10) + t('log.realNext') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
 }
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
 // tracing image (satellite / ortho photo / scanned map) stretched over the whole terrain, north up;
@@ -1920,6 +1921,19 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
     return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid'] })) })
+  }),
+)
+// everything at once (roads + water, forests, buildings): one project, the log says what went
+$<HTMLButtonElement>('sendAll').addEventListener('click', () =>
+  run(t('run.l.all'), async () => {
+    const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
+    const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid'] }))
+    const setShapes = settled.length ? settlementShapes({ lanes: setLanes, paths: setPaths }) : []
+    const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined) : []
+    const shapes = [...wr.shapes, ...forests, ...setShapes], entities = [...(wr.entities ?? []), ...setEnts]
+    if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
+    const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
+    return what + '\n' + (await toWb({ version: 0, shapes, entities }))
   }),
 )
 $<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; recompose(true); draw(); autosave() })
