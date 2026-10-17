@@ -34,13 +34,35 @@ let areas: MapArea[] = []
 let landCover: { cols: number; data: Uint8Array } | null = null
 /** data sources of the terrain (licences asking for attribution) */
 let credits: string[] = []
+// spline roads: drop points on top of the previous one and hairpin points (turn > 120 degrees), the
+// generator draws a loop there. Shapes with a per-point lift (water) are left as they are.
+function cleanSpline(pts: number[]): number[] {
+  const out: number[] = [pts[0], pts[1]]
+  for (let k = 2; k + 1 < pts.length; k += 2) {
+    const x = pts[k], z = pts[k + 1]
+    let dup = false
+    for (;;) {
+      const n = out.length
+      if (Math.hypot(x - out[n - 2], z - out[n - 1]) < 0.5) { dup = true; break }
+      if (n < 4) break
+      const dx = out[n - 2] - out[n - 4], dz = out[n - 1] - out[n - 3], ex = x - out[n - 2], ez = z - out[n - 1]
+      if ((dx * ex + dz * ez) / (Math.hypot(dx, dz) * Math.hypot(ex, ez)) >= -0.5) break
+      out.length = n - 2 // hairpin: the middle point goes, test again against the one before
+    }
+    if (!dup) out.push(x, z)
+  }
+  return out // fewer than 2 points left: a crumb under 0.5 m, dropped by toWb
+}
 const toWb = async (p: Project) => {
+  const before = p.shapes.reduce((n, sh) => n + sh.points.length, 0), count = p.shapes.length
+  p = { ...p, shapes: p.shapes.map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).filter((sh) => sh.points.length >= 4) }
+  const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
   const msg = await sendToWorkbench({ ...p, remove: removed.filter(go).flatMap((r) => [r.x, r.z]) })
   removed = removed.filter((r) => !go(r))
   autosave()
-  return msg
+  return (lostPts > 0 || crumbs ? t('log.cleaned', { pts: lostPts, crumbs }) + '\n' : '') + msg
 }
 import { SITE_RADIUS, buildNetwork, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'

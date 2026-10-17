@@ -8,6 +8,14 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-10-17
+
+### Added
+- Sent vs built report: the bridge writes `profile/MapGen/sent.txt` (every shape and object sent, with suspect geometry flagged), the plugin writes `built.txt` (what it really built: points, generator, objects placed), and the bridge compares them in `report.txt`. The summary shows in the site log.
+
+### Fixed
+- Broken road pieces: spline roads are cleaned before sending (points on top of each other, hairpin turns over 120° that made the generator loop, pieces under 0.5 m dropped). The site log says how much was cleaned.
+
 ## [0.4.6] - 2026-10-17
 
 ### Added
@@ -128,6 +136,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.4.7]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.7
 [0.4.6]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.6
 [0.4.5]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.5
 [0.4.4]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.4

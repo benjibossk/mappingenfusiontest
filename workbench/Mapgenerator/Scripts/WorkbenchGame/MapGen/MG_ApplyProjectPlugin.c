@@ -231,12 +231,31 @@ class MG_ProjectApplier
 		foreach (IEntitySource src : old)
 			api.DeleteEntity(src);
 
+		// report of what was really built, line per shape / object, compared by the bridge with what was sent
+		// S <id> <ok|FAIL> <points sent> <points built> <generator children>   E <id> <ok|FAIL> <x> <z>
+		FileHandle rep = FileIO.OpenFile("$profile:MapGen/built.txt", FileMode.WRITE);
 		int created;
 		s_aLabels.Clear();
 		foreach (MG_ProjectShape shape : project.shapes)
 		{
-			if (MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, Layer(api, LayerFor(shape.id, shape.generator)), shape.lift))
+			IEntitySource shapeMade = MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, Layer(api, LayerFor(shape.id, shape.generator)), shape.lift);
+			if (shapeMade)
 				created++;
+			if (rep)
+			{
+				int nPts = 0;
+				int nKids = 0;
+				string state = "FAIL";
+				if (shapeMade)
+				{
+					state = "ok";
+					BaseContainerList ptList = shapeMade.GetObjectArray("Points");
+					if (ptList)
+						nPts = ptList.Count();
+					nKids = shapeMade.GetNumChildren();
+				}
+				rep.WriteLine(string.Format("S %1 %2 %3 %4 %5", shape.id, state, shape.points.Count() / 2, nPts, nKids));
+			}
 			Label(api, shape);
 		}
 		FlushLabels(api);
@@ -255,6 +274,13 @@ class MG_ProjectApplier
 			if (ent.ycm != 0)
 				pos[1] = ent.ycm * 0.01;
 			IEntitySource made = api.CreateEntity(prefab, ent.id, layer, null, pos, vector.Zero);
+			if (rep)
+			{
+				string est = "FAIL";
+				if (made)
+					est = "ok";
+				rep.WriteLine(string.Format("E %1 %2 %3 %4", ent.id, est, ent.x, ent.z));
+			}
 			if (made)
 			{
 				// the angles argument of CreateEntity is ignored here: set the yaw explicitly.
@@ -327,6 +353,8 @@ class MG_ProjectApplier
 				Print("[MapGen] cannot place " + ent.prefab, LogLevel.ERROR);
 		}
 
+		if (rep)
+			rep.Close();
 		if (ownsAction)
 			api.EndEntityAction();
 

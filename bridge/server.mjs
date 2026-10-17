@@ -165,7 +165,14 @@ const server = createServer(async (req, res) => {
       });
       console.log(`[apply] ${project.shapes.length} shapes, ${(project.entities ?? []).length} objects in ${parts.length} file(s)`);
 
+      const sent = sentReport(project);
+      writeFileSync(join(PROFILE_DIR, "MapGen", "sent.txt"), sent.lines.join("\n"), "utf-8");
+      rmSync(join(PROFILE_DIR, "MapGen", "built.txt"), { force: true });
       const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" });
+      const diff = compareBuilt(project, sent.warnings);
+      writeFileSync(join(PROFILE_DIR, "MapGen", "report.txt"), diff.lines.join("\n"), "utf-8");
+      console.log("[apply] " + diff.summary);
+      if (result && typeof result.message === "string") result.message += "\n" + diff.summary;
       return send(res, result.status === "error" ? 500 : 200, result);
     }
 
@@ -305,3 +312,65 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`[bridge] http://127.0.0.1:${PORT}  ->  Workbench ${WB_HOST}:${WB_PORT}`);
   console.log(`[bridge] project file: ${PROJECT_FILE}`);
 });
+
+// --- what was sent vs what Workbench built (profile/MapGen/sent.txt, built.txt, report.txt) ---
+// geometry that the road generators handle badly: points on top of each other, hairpins, very long legs
+function shapeWarnings(sh) {
+  const p = sh.points ?? [], n = p.length / 2, out = [];
+  if (n < 2) out.push("fewer than 2 points");
+  for (let k = 0; k < p.length; k++) if (!Number.isFinite(p[k])) { out.push("NaN / infinite coordinate"); break; }
+  let dup = 0, sharp = 0, long = 0;
+  for (let k = 1; k < n; k++) {
+    const dx = p[k * 2] - p[k * 2 - 2], dz = p[k * 2 + 1] - p[k * 2 - 1], d = Math.hypot(dx, dz);
+    if (d < 0.5) dup++;
+    if (d > 400) long++;
+    if (k + 1 < n && d >= 0.5) {
+      const ex = p[k * 2 + 2] - p[k * 2], ez = p[k * 2 + 3] - p[k * 2 + 1], e = Math.hypot(ex, ez);
+      if (e >= 0.5 && (dx * ex + dz * ez) / (d * e) < -0.5) sharp++; // turn sharper than 120 degrees
+    }
+  }
+  if (dup) out.push(dup + " point(s) closer than 0.5 m to the previous one");
+  if (sharp && sh.kind === "spline") out.push(sharp + " hairpin turn(s) > 120 deg (spline loops)");
+  if (long) out.push(long + " leg(s) longer than 400 m");
+  return out;
+}
+function sentReport(project) {
+  const lines = [], warnings = new Map();
+  for (const sh of project.shapes) {
+    const w = shapeWarnings(sh);
+    if (w.length) warnings.set(sh.id, w);
+    lines.push(`S ${sh.id} ${sh.kind} ${(sh.points ?? []).length / 2} ${sh.generator ?? ""}${w.length ? "  ! " + w.join("; ") : ""}`);
+  }
+  for (const e of project.entities ?? []) lines.push(`E ${e.id} ${e.prefab} ${e.x} ${e.z}`);
+  return { lines, warnings };
+}
+function compareBuilt(project, warnings) {
+  let built = [];
+  try { built = readFileSync(join(PROFILE_DIR, "MapGen", "built.txt"), "utf-8").split(/\r?\n/).filter(Boolean); }
+  catch { return { lines: ["no built.txt: reload the Workbench scripts (Mapgenerator plugin too old)"], summary: "No build report from Workbench (reload its scripts)." }; }
+  const got = new Map();
+  for (const l of built) { const [t, id, state, a, b, c] = l.split(" "); got.set(t + " " + id, { state, a, b, c }); }
+  const lines = [], count = { missing: 0, failed: 0, points: 0, nogen: 0, warned: 0, entFail: 0 };
+  for (const sh of project.shapes) {
+    const g = got.get("S " + sh.id), sentPts = (sh.points ?? []).length / 2, w = warnings.get(sh.id);
+    if (w) { count.warned++; lines.push(`WARN   ${sh.id}: ${w.join("; ")}`); }
+    if (!g) { count.missing++; lines.push(`MISSING ${sh.id} (${sh.kind}, ${sentPts} pts)`); continue; }
+    if (g.state !== "ok") { count.failed++; lines.push(`FAILED ${sh.id} (${sh.kind}, ${sentPts} pts, ${sh.generator})`); continue; }
+    if (Number(g.b) !== sentPts) { count.points++; lines.push(`POINTS ${sh.id}: sent ${sentPts}, built ${g.b}`); }
+    if (sh.generator && Number(g.c) < 1) { count.nogen++; lines.push(`NO GENERATOR ${sh.id}: ${sh.generator}`); }
+  }
+  for (const e of project.entities ?? []) {
+    const g = got.get("E " + e.id);
+    if (!g || g.state !== "ok") { count.entFail++; lines.push(`OBJECT NOT PLACED ${e.id}: ${e.prefab} at ${e.x} ${e.z}`); }
+  }
+  const nShapes = project.shapes.length, nEnt = (project.entities ?? []).length;
+  const okShapes = nShapes - count.missing - count.failed, okEnt = nEnt - count.entFail;
+  const summary = `Report: ${okShapes}/${nShapes} shapes and ${okEnt}/${nEnt} objects built` +
+    (count.failed + count.missing ? `, ${count.failed + count.missing} shape(s) failed` : "") +
+    (count.nogen ? `, ${count.nogen} without generator` : "") +
+    (count.points ? `, ${count.points} with lost points` : "") +
+    (count.warned ? `, ${count.warned} with suspect geometry` : "") +
+    (count.entFail ? `, ${count.entFail} object(s) not placed` : "") +
+    (lines.length ? " - details in profile/MapGen/report.txt" : "");
+  return { lines: [summary, "", ...lines], summary };
+}
