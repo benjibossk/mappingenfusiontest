@@ -290,3 +290,16 @@ LLM pour paramétrer et nommer, image calque pour guider à la main. Le cœur re
 `rng(seed)`, `Box` orienté (+Z = avant, yaw en degrés), `boxesOverlap`, `inBox`, `toWorld`, `heightAt`,
 `FlattenRequest {box,h0,h1,falloff}` + `applyFlatten(heights, grid, reqs) → m³`, `bestPlane`, `earthwork`, `maxSlope`,
 `toEntity`, `wallShape`, `roadShape`, `svgPreview`. Aucun import DOM / i18n (testable sous node/tsx).
+
+## Masques depuis le satellite
+
+Idée de **Jove Chiere** (Discord, communauté Reforger) : indexer l'image satellite en 5 couleurs, une couleur = une surface, noir + R/G/B/A = 5 surfaces, importées comme masques dans le Workbench.
+
+Module pur : `src/modules/satmask.ts` (non branché).
+- `quantise(rgba, { k: 5, median, blur, minRegion })` : k-means déterministe en CIELAB → `{ index, palette, lab, share }`.
+- `suggestSurfaces(q)` : surface proposée par couleur (vert foncé → forêt, vert clair → herbe, beige → champ, brun → terre, gris → béton/roche, bleu → SeaBed).
+- `satelliteSurfaces(q, grid, { surfaces, override, cover, bounds })` → `SurfaceGrid[]` (même format que `computeSurfaces`, donc POST `/masks` tel quel), `override` par cellule (routes/eau OSM rasterisées) prioritaire, WorldCover départage les cellules ambiguës, puis `limitPerBlock` (0 bloc hors limite).
+- `packRgbaMask(surfaces, [R,G,B,A])` → PNG RGBA (noir = surface par défaut) + légende, pour import manuel. `previewRgba(q)` + `encodePng` pour l'aperçu.
+
+À câbler (main.ts) : source = `traceImg` (traceStore) dessiné dans un canvas → `getImageData`. UI : aperçu de l'image indexée, 5 pastilles de palette (avec % de couverture), une liste déroulante de surface par pastille (pré-remplie par `suggestSurfaces`), un curseur « lissage » (blur 0-4 + minRegion), cases « routes/eau OSM prioritaires » et « départager avec WorldCover », boutons « Envoyer les masques » et « Exporter PNG RGBA ».
+Limite connue : un override d'1 cellule de large (route fine) peut être sacrifié par `limitPerBlock` dans un bloc déjà plein.
