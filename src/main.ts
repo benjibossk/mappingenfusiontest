@@ -222,6 +222,26 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
   <section class="stage">
     <canvas id="map" class="map" width="800" height="800"></canvas>
+    <button id="btn3d" type="button" class="v3d-toggle" title="${t('v3d.tip')}" aria-label="${t('v3d.tip')}">3D</button>
+    <div id="shareDlg" class="rwdlg" hidden role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+      <div class="rwbox sharebox">
+        <h2 id="shareTitle">${ic('users')} ${t('share.title')}</h2>
+        <p class="hint">${t('share.lead')}</p>
+        <label class="sharename">${t('collab.name')} <input id="shareName" type="text" autocomplete="nickname"></label>
+        <div class="sharecards">
+          <section><h3>${t('share.create')}</h3><p>${t('share.create.tip')}</p>
+            <button id="shareCreate" type="button">${t('share.create.go')}</button>
+            <div id="shareLinkRow" hidden><input id="shareLink" type="text" readonly aria-label="${t('p2p.link')}"><button id="shareCopy" type="button" class="secondary">${t('p2p.copy')}</button><div class="info">${t('p2p.share.hint')}</div></div>
+          </section>
+          <section><h3>${t('share.join')}</h3><p>${t('share.join.tip')}</p>
+            <input id="shareJoinLink" type="text" placeholder="${t('share.join.ph')}" aria-label="${t('share.join.ph')}">
+            <button id="shareJoin" type="button">${t('share.join.go')}</button>
+          </section>
+        </div>
+        <div id="shareStatus" class="info" role="status"></div>
+        <div class="row"><button id="shareAdv" type="button" class="secondary">${t('share.adv')}</button><button id="shareClose" type="button" class="secondary">${t('share.close')}</button></div>
+      </div>
+    </div>
     <div id="rwDlg" class="rwdlg" hidden role="dialog" aria-modal="true" aria-labelledby="rwTitle">
       <div class="rwbox">
         <h2 id="rwTitle">${ic('dice')} ${t('wg.title')}</h2>
@@ -283,7 +303,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         ${connectSteps()}
         <div class="row"><button type="button" class="secondary wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button></div>
         <h3>${t('help.faq')}</h3>
-        ${(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
+        ${(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
         <h3>${t('help.glossary')}</h3>
         <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget', 'p2p', 'host'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
         <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><button id="helpNews" type="button" class="secondary">${t('news.open')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
@@ -642,6 +662,9 @@ const num = (id: string) => Number($<HTMLInputElement>(id).value)
 let terrain: Heightmap | null = null
 let terrainImg: HTMLCanvasElement | null = null
 let result: CampaignResult | null = null
+let v3d: Awaited<ReturnType<View3DMod['open3d']>> | null = null
+let draping = false
+let drapeTimer = 0
 // view: world X/Z at the canvas centre + metres per pixel
 const view = { x: 2048, z: 2048, mpp: 4096 / 800 }
 
@@ -769,6 +792,7 @@ function draw() {
   if (collab) drawPeers()
   drawBrush()
   renderMini()
+  drapeLater()
 }
 
 function drawBrush() {
@@ -1025,6 +1049,7 @@ let setLanes: Road[] = [] // settlement lanes and footpaths, squares (tab Villag
 let setPaths: Road[] = []
 let setSquares: Square[] = []
 let setGardens: { site: string; corners: number[] }[] = [] // v2 back gardens (drawn only)
+let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random world (3D view only)
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
 let zonePick: { kind: ZoneKind; sub: string } | null = null
 let zoneCands: { x: number; z: number; yaw: number }[] = []
@@ -1189,7 +1214,46 @@ const collabUrl = collabField('collabUrl', 'reforger-mapper.collab.url', `ws://$
 const collabRoom = collabField('collabRoom', 'reforger-mapper.collab.room', 'map1')
 const collabName = collabField('collabName', 'reforger-mapper.collab.name', 'mapper')
 const collabKey = $<HTMLInputElement>('collabKey') // the password is never stored
-$<HTMLButtonElement>('collab').addEventListener('click', () => showCollabView(!collabView.classList.contains('on')))
+// Share: outside a room it asks first "create or join"; inside one it opens the collaboration panel
+const shareDlg = $('shareDlg')
+const openShare = () => { $<HTMLInputElement>('shareName').value = collabName.value; $('shareStatus').textContent = ''; shareDlg.hidden = false; $<HTMLButtonElement>('shareCreate').focus() }
+const closeShare = () => { shareDlg.hidden = true }
+$<HTMLButtonElement>('collab').addEventListener('click', () => {
+  if (!collab && !collabView.classList.contains('on')) { openShare(); return }
+  showCollabView(!collabView.classList.contains('on'))
+})
+const shareNameIn = () => { const v = $<HTMLInputElement>('shareName').value.trim(); if (v) { collabName.value = v; collabName.dispatchEvent(new Event('change')) } }
+$<HTMLButtonElement>('shareCreate').addEventListener('click', () => {
+  shareNameIn()
+  if (collabMode.value === 'server') { collabMode.value = 'direct'; collabMode.dispatchEvent(new Event('change')) }
+  $<HTMLButtonElement>('p2pCreate').click()
+  $<HTMLInputElement>('shareLink').value = $<HTMLInputElement>('p2pLink').value
+  $('shareLinkRow').hidden = false
+  $('shareStatus').textContent = t('share.created')
+  if (!collabView.classList.contains('on')) showCollabView(true)
+})
+$<HTMLButtonElement>('shareCopy').addEventListener('click', () => {
+  const el = $<HTMLInputElement>('shareLink'); el.select()
+  void navigator.clipboard?.writeText(el.value).then(() => { $('shareStatus').textContent = t('p2p.copied') }, () => { /* selected: Ctrl+C works */ })
+})
+$<HTMLButtonElement>('shareJoin').addEventListener('click', () => {
+  const raw = $<HTMLInputElement>('shareJoinLink').value.trim()
+  const h = raw.includes('#') ? raw.slice(raw.indexOf('#') + 1) : raw
+  const q = new URLSearchParams(h)
+  const code = q.get('salon'), key = q.get('cle')
+  if (!code || !key) { $('shareStatus').textContent = t('share.join.bad'); $<HTMLInputElement>('shareJoinLink').focus(); return }
+  shareNameIn()
+  if (collabMode.value === 'server') { collabMode.value = 'direct'; collabMode.dispatchEvent(new Event('change')) }
+  if (collab) leaveRoom()
+  collabRoom.value = code; collabKey.value = key
+  closeShare()
+  showCollabView(true)
+  joinRoomNow(false)
+})
+$<HTMLButtonElement>('shareAdv').addEventListener('click', () => { closeShare(); showCollabView(true); collabBox.hidden = false })
+$<HTMLButtonElement>('shareClose').addEventListener('click', closeShare)
+shareDlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeShare() })
+shareDlg.addEventListener('click', (e) => { if (e.target === shareDlg) closeShare() })
 $<HTMLButtonElement>('cvJoin').addEventListener('click', () => { collabBox.hidden = !collabBox.hidden })
 function leaveRoom(keepStatus = false) {
   const c = collab
@@ -3886,6 +3950,7 @@ function applyWorld(w: WorldResult) {
   settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
   setGardens = []
   zones = w.zones
+  worldBridges = w.bridges ?? []
   pendingAct = 'rwGo'
   doneSnap.fill(null); ownSnap.fill('') // a fresh world: every step that has content counts as done
   waterInfo(); roadInfo(); powerInfo(); zoneInfo()
@@ -3949,3 +4014,106 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
     $<HTMLButtonElement>('rwGo').disabled = false
   }
 })
+
+// --- 3D view (src/view3d, loaded on demand: three.js stays out of the main bundle) ---
+type View3DMod = typeof import('./view3d')
+const BLD_H: Record<string, number> = { houseS: 5, houseM: 7, houseL: 9, farm: 7, annex: 3.5, shed: 4, civic: 12, block: 15 }
+function box3d(c: number[], h: number) {
+  const cx = (c[0] + c[2] + c[4] + c[6]) / 4, cz = (c[1] + c[3] + c[5] + c[7]) / 4
+  const w = Math.hypot(c[2] - c[0], c[3] - c[1]), d = Math.hypot(c[4] - c[2], c[5] - c[3])
+  return { cx, cz, w: Math.max(1, w), d: Math.max(1, d), h, yaw: Math.atan2(c[3] - c[1], c[2] - c[0]) }
+}
+/** trees scattered in the forest areas: jittered grid, capped at ~150 k */
+function forestTrees(): Float32Array {
+  const forests = areas.filter((a) => a.kind === 'forest' && a.pts.length >= 6)
+  let tot = 0
+  const bb = forests.map((a) => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i + 1 < a.pts.length; i += 2) { x0 = Math.min(x0, a.pts[i]); x1 = Math.max(x1, a.pts[i]); z0 = Math.min(z0, a.pts[i + 1]); z1 = Math.max(z1, a.pts[i + 1]) }
+    let ar = 0
+    for (let i = 0, j = a.pts.length - 2; i < a.pts.length; j = i, i += 2) ar += (a.pts[j] - a.pts[i]) * (a.pts[j + 1] + a.pts[i + 1])
+    tot += Math.abs(ar) / 2
+    return [x0, z0, x1, z1]
+  })
+  const sp = Math.max(14, Math.sqrt(tot / 150_000))
+  const out: number[] = []
+  let seed = 1
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  forests.forEach((a, n) => {
+    const [x0, z0, x1, z1] = bb[n], p = a.pts
+    for (let z = z0 + sp / 2; z < z1; z += sp) for (let x = x0 + sp / 2; x < x1; x += sp) {
+      const px = x + (rnd() - 0.5) * sp * 0.8, pz = z + (rnd() - 0.5) * sp * 0.8
+      let inside = false
+      for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+        if ((p[i + 1] > pz) !== (p[j + 1] > pz) && px < ((p[j] - p[i]) * (pz - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) inside = !inside
+      }
+      if (inside) out.push(px, pz, 0.7 + rnd() * 0.6)
+    }
+  })
+  return new Float32Array(out)
+}
+/** the 2D render (relief, surfaces, areas, water, roads, buildings) into a square canvas over the whole terrain */
+function drapeCanvas(size: number) {
+  if (!terrain) return null
+  const side = Math.max((terrain.cols - 1) * terrain.step, (terrain.rows - 1) * terrain.step)
+  const W = map.width, Hh = map.height, sv = { ...view }, cw = cursorWorld, hadNames = !hiddenLayers.has('names')
+  draping = true
+  try {
+    map.width = size; map.height = size
+    view.x = terrain.minX + side / 2; view.z = terrain.minZ + side / 2; view.mpp = side / size
+    cursorWorld = null
+    if (hadNames) hiddenLayers.add('names')
+    draw()
+    const out = document.createElement('canvas')
+    out.width = out.height = size
+    out.getContext('2d')!.drawImage(map, 0, 0)
+    return { canvas: out, x0: terrain.minX, z0: terrain.minZ, side }
+  } finally {
+    if (hadNames) hiddenLayers.delete('names')
+    map.width = W; map.height = Hh; Object.assign(view, sv); cursorWorld = cw
+    draw()
+    draping = false
+  }
+}
+/** called at the end of draw(): the project changed while the 3D view is open, re-drape (debounced) */
+function drapeLater() {
+  if (!v3d || draping) return
+  clearTimeout(drapeTimer)
+  drapeTimer = window.setTimeout(() => v3d?.refreshDrape(), 1200)
+}
+const btn3d = $<HTMLButtonElement>('btn3d')
+btn3d.addEventListener('click', () => void (async () => {
+  if (v3d) return v3d.close()
+  if (!terrain) return void (logEl.textContent = t('v3d.noTerrain'))
+  const hm = terrain
+  await busy(t('v3d.busy'), async () => {
+    busyStage(t('v3d.load'))
+    const mod: View3DMod = await import('./view3d')
+    const buildings = [
+      ...settled.map((b) => box3d(b.corners, BLD_H[b.cat] ?? 6)),
+      ...zones.flatMap((z) => z.boxes.filter((b) => b.corners.length >= 8).map((b) => box3d(b.corners, /hangar|tower/i.test(b.role) ? 12 : 7))),
+    ]
+    const lakes = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts)
+    const bridgesBoxes = worldBridges.map((b) => ({ cx: b.x, cz: b.z, w: 8, d: 16, h: 1.2, yaw: (-b.yaw * Math.PI) / 180 }))
+    v3d = await mod.open3d(map.parentElement!, {
+      hm, sea: 0, buildings, trees: forestTrees(), lakes,
+      bridges: bridgesBoxes, bridgeY: worldBridges.map((b) => (b.ycm !== undefined ? b.ycm / 100 : heightAt(hm, b.x, b.z))),
+      target: [view.x, view.z], span: map.width * view.mpp,
+    }, {
+      text: {
+        back: t('v3d.back'), exag: t('v3d.exag'), reset: t('v3d.reset'), top: t('v3d.top'), trees: t('v3d.trees'), help: t('v3d.help'),
+        stage: (k) => t(('v3d.st.' + k) as K),
+      },
+      drape: drapeCanvas,
+      progress: (s, i, n) => busyStage(s, i, n),
+      onClose: (tg, span) => {
+        v3d = null
+        btn3d.classList.remove('on')
+        view.x = tg[0]; view.z = tg[1]; view.mpp = Math.max(0.05, span / map.width)
+        draw()
+      },
+    })
+    btn3d.classList.add('on')
+    ;(window as unknown as { __view3d: unknown }).__view3d = v3d
+  })
+})())
