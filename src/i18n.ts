@@ -38,6 +38,46 @@ export const en = {
   'step.state.todo': 'To do',
   'step.state.done': 'Done',
   'step.state.stale': 'Out of date: an earlier step changed since. Regenerate it.',
+  'help.tip': 'Help and guided tour',
+  'help.title': 'Help',
+  'help.what': 'reforger-mapper builds an Arma Reforger map step by step: relief, water, roads, villages, fields and forests.\nWork alone or with others in a shared room; everything is saved in the browser.\nThe last step sends the whole map to the Workbench in one click (relay: npm run bridge).',
+  'help.steps': 'The 7 steps',
+  'help.go': 'Go',
+  'help.controls': 'Mouse and keyboard',
+  'help.c1': 'Wheel: zoom · middle button (drag): pan the map',
+  'help.c2': 'Shift+wheel: brush radius · Ctrl+wheel: brush strength',
+  'help.c3': 'Right click: actions on what is under the cursor',
+  'help.c4': 'Ctrl+Z / Ctrl+Y: undo / redo · Esc: cancel the current tool',
+  'help.c5': 'Keys 1–9: sculpt tools of the left bar',
+  'help.tour': 'Restart the guided tour',
+  'help.docs': 'Full documentation (GitHub)',
+  'help.close': 'Close',
+  'tour.1': 'Header: undo / redo, relay and Workbench status, collaboration and language.',
+  'tour.2': 'The 7 steps of your map. Green ✓ = done, amber = to redo after a change.',
+  'tour.3': 'The map: wheel to zoom, middle button to move, right click for actions.',
+  'tour.4': 'The current step: its settings and actions. “Next” moves on.',
+  'tour.5': 'Last step: send everything to the Workbench. The “?” bubble reopens this help.',
+  'tour.next': 'Next',
+  'tour.skip': 'Skip',
+  'tour.done': 'Got it',
+  'info.layers': 'Show or hide what is drawn on the map. A reference image can be traced over.',
+  'info.adv': 'Optional settings: the defaults work.',
+  'welcome.kicker': 'Arma Reforger · map creation',
+  'welcome.new.foot': 'Recommended to start →',
+  'welcome.real.foot': 'IGN · Copernicus · OSM',
+  'welcome.join': 'Join a room',
+  'welcome.join.tip': 'Work with several people on the same map, with history and comments.',
+  'welcome.join.foot': 'Room code + key',
+  'welcome.file': 'Open a file…',
+  'lang.title': 'Interface language',
+  'lang.base': 'base language',
+  'lang.follow': 'Follow the browser language',
+  'lang.export': 'Export the language file',
+  'lang.import': 'Import a translation',
+  'lang.importErr': 'Invalid language file.',
+  'lang.custom': 'Imported translation',
+  'step.kicker': 'Step {n} / {total}',
+  'foot.keys': 'Wheel: zoom · Shift+wheel: radius',
   'welcome.title': 'Start a new map',
   'welcome.lead': 'Pick a starting point. You can change everything afterwards.',
   'welcome.new': 'New island',
@@ -595,6 +635,46 @@ export const fr: Record<Key, string> = {
   'step.state.todo': 'À faire',
   'step.state.done': 'Terminée',
   'step.state.stale': 'À refaire : une étape précédente a changé depuis. Régénère-la.',
+  'help.tip': 'Aide et visite guidée',
+  'help.title': 'Aide',
+  'help.what': 'reforger-mapper construit une carte Arma Reforger étape par étape : relief, eau, routes, villages, champs et forêts.\nTravaille seul ou à plusieurs dans un salon partagé ; tout est gardé dans le navigateur.\nLa dernière étape envoie toute la carte au Workbench en un clic (relais : npm run bridge).',
+  'help.steps': 'Les 7 étapes',
+  'help.go': 'Aller',
+  'help.controls': 'Souris et clavier',
+  'help.c1': 'Molette : zoom · bouton du milieu (glisser) : déplacer la carte',
+  'help.c2': 'Maj+molette : rayon du pinceau · Ctrl+molette : force',
+  'help.c3': 'Clic droit : actions sur ce qui est sous le curseur',
+  'help.c4': 'Ctrl+Z / Ctrl+Y : annuler / rétablir · Échap : annuler l’outil en cours',
+  'help.c5': 'Touches 1–9 : outils de sculpture de la barre de gauche',
+  'help.tour': 'Relancer la visite guidée',
+  'help.docs': 'Documentation complète (GitHub)',
+  'help.close': 'Fermer',
+  'tour.1': 'En-tête : annuler / rétablir, état du relais et du Workbench, collaboration et langue.',
+  'tour.2': 'Les 7 étapes de ta carte. ✓ vert = fait, ambre = à refaire après une modification.',
+  'tour.3': 'La carte : molette pour zoomer, bouton du milieu pour se déplacer, clic droit pour les actions.',
+  'tour.4': 'L’étape en cours : ses réglages et ses actions. « Suivant » passe à la suite.',
+  'tour.5': 'Dernière étape : tout envoyer au Workbench. La bulle « ? » rouvre cette aide.',
+  'tour.next': 'Suivant',
+  'tour.skip': 'Passer',
+  'tour.done': 'Compris',
+  'info.layers': 'Affiche ou masque ce qui est dessiné sur la carte. Une image de référence peut être décalquée.',
+  'info.adv': 'Réglages facultatifs : les valeurs par défaut fonctionnent.',
+  'welcome.kicker': 'Arma Reforger · création de carte',
+  'welcome.new.foot': 'Recommandé pour débuter →',
+  'welcome.real.foot': 'IGN · Copernicus · OSM',
+  'welcome.join': 'Rejoindre un salon',
+  'welcome.join.tip': 'Travaille à plusieurs sur la même carte, avec historique et commentaires.',
+  'welcome.join.foot': 'Code du salon + clé',
+  'welcome.file': 'Ouvrir un fichier…',
+  'lang.title': 'Langue de l’interface',
+  'lang.base': 'langue de base',
+  'lang.follow': 'Suivre la langue du navigateur',
+  'lang.export': 'Exporter le fichier de langue',
+  'lang.import': 'Importer une traduction',
+  'lang.importErr': 'Fichier de langue invalide.',
+  'lang.custom': 'Traduction importée',
+  'step.kicker': 'Étape {n} / {total}',
+  'foot.keys': 'Molette : zoom · Maj+molette : rayon',
   'welcome.title': 'Commencer une nouvelle carte',
   'welcome.lead': 'Choisis un point de départ. Tout reste modifiable ensuite.',
   'welcome.new': 'Nouvelle île',
@@ -1112,23 +1192,92 @@ export const fr: Record<Key, string> = {
   'err.setNone': 'Aucun bâtiment : clique d’abord sur « Générer les villages ».',
 }
 
-const langs: Record<string, Partial<Record<Key, string>>> = { en, fr }
+// Adding a language = adding a dictionary here (Partial: missing keys fall back to English, never a raw key).
+type Dict = Partial<Record<Key, string>>
+export const LANGS: { code: string; name: string; dict: Dict }[] = [
+  { code: 'fr', name: 'Français', dict: fr },
+  { code: 'en', name: 'English', dict: en },
+]
+const LANG_KEY = 'reforger-mapper.lang'
+const FOLLOW_KEY = 'reforger-mapper.lang.follow'
+const CUSTOM_KEY = 'reforger-mapper.lang.custom'
+
+// a translation imported at runtime (Export → translate → Import), stored as language 'xx'
+try {
+  const c = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? 'null') as { name?: string; strings?: Dict } | null
+  if (c?.strings) LANGS.push({ code: 'xx', name: c.name || 'Custom', dict: c.strings })
+} catch { /* storage blocked or bad JSON */ }
+
+const dictOf = (code: string) => LANGS.find((l) => l.code === code)?.dict
+
+/** share of English keys translated (non-empty) in a language, 0..100 */
+export function completion(code: string): number {
+  const d = dictOf(code)
+  if (!d) return 0
+  const keys = Object.keys(en) as Key[]
+  return Math.round((keys.filter((k) => (d[k] ?? '').trim() !== '').length / keys.length) * 100)
+}
+
+function browserLang(): string {
+  const nav = typeof navigator !== 'undefined' ? navigator.languages ?? [navigator.language] : []
+  for (const n of nav) { const c = (n || '').slice(0, 2).toLowerCase(); if (dictOf(c)) return c }
+  return 'en'
+}
 
 let lang = 'en'
+let follow = false
 try {
-  lang = localStorage.getItem('reforger-mapper.lang') ?? 'en'
-} catch { /* storage blocked */ }
+  const saved = localStorage.getItem(LANG_KEY)
+  const f = localStorage.getItem(FOLLOW_KEY)
+  follow = f === null ? saved === null : f === '1'
+  lang = follow ? browserLang() : saved ?? 'en'
+} catch { lang = browserLang() }
+if (!dictOf(lang)) lang = 'en'
 
 export function getLang(): string {
   return lang
 }
+export function followsBrowser(): boolean {
+  return follow
+}
 
 export function setLang(code: string) {
-  if (langs[code]) lang = code
+  if (dictOf(code)) lang = code
+}
+
+/** choose a language (and remember it); the caller reloads the page */
+export function chooseLang(code: string, followBrowser: boolean) {
+  try {
+    localStorage.setItem(FOLLOW_KEY, followBrowser ? '1' : '0')
+    localStorage.setItem(LANG_KEY, followBrowser ? browserLang() : code)
+  } catch { /* storage blocked */ }
+}
+
+/** JSON of every English key with the current language's text ('' when untranslated) */
+export function exportLang(): string {
+  const d = dictOf(lang) ?? {}
+  const strings: Record<string, string> = {}
+  for (const k of Object.keys(en) as Key[]) strings[k] = lang === 'en' ? en[k] : d[k] ?? ''
+  return JSON.stringify({ code: lang, name: LANGS.find((l) => l.code === lang)?.name ?? lang, base: en, strings }, null, 2)
+}
+
+/** load a translated file as language 'xx'; returns false if the file is not usable */
+export function importLang(text: string): boolean {
+  try {
+    const j = JSON.parse(text) as { name?: string; strings?: Record<string, unknown> }
+    if (!j || typeof j.strings !== 'object' || !j.strings) return false
+    const strings: Dict = {}
+    for (const k of Object.keys(en) as Key[]) { const v = j.strings[k]; if (typeof v === 'string' && v.trim()) strings[k] = v }
+    if (!Object.keys(strings).length) return false
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify({ name: String(j.name ?? 'Custom').slice(0, 40), strings }))
+    localStorage.setItem(FOLLOW_KEY, '0')
+    localStorage.setItem(LANG_KEY, 'xx')
+    return true
+  } catch { return false }
 }
 
 export function t(key: Key, vars?: Record<string, string | number>): string {
-  const s: string = langs[lang]?.[key] ?? en[key]
+  const s: string = dictOf(lang)?.[key] || en[key]
   // {msg} carries text from the Workbench or the bridge: rewritten for the UI language
   return vars ? s.replace(/\{(\w+)\}/g, (m, n: string) => (n in vars ? (n === 'msg' ? external(String(vars[n])) : String(vars[n])) : m)) : s
 }

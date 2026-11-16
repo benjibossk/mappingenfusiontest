@@ -1,5 +1,5 @@
 import './style.css'
-import { external, fr, getLang, t, type Key } from './i18n'
+import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
 import { Collab, type Op } from './collab'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
 import { POWER_DEFAULTS, powerLineShape, routePowerLine, type PowerKind, type PowerLine } from './modules/power'
@@ -91,17 +91,52 @@ const STEPS = [
   { tab: 'wb', label: 'step.send', lead: 'step.send.lead' },
 ] as const
 
+// stroke icons for the UI chrome (MILSPEC style: 1.6px stroke, currentColor)
+const ICON: Record<string, string> = {
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  island: '<path d="M3 17c2-1 4-1 6 0s4 1 6 0 4-1 6 0"/><path d="M6 13c1-4 4-6 7-6s5 2 6 6"/><path d="M12 7V3"/>',
+  map: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14"/><path d="M15 6v14"/>',
+  folder: '<path d="M3 6h6l2 2h10v11H3z"/>',
+  pin: '<path d="M12 21s-6-6-6-11a6 6 0 0 1 12 0c0 5-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  caret: '<path d="m6 9 6 6 6-6"/>',
+  check: '<path d="m5 12 5 5 9-10"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7"/><path d="M12 17h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7h.01"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+}
+const ic = (n: string, size = 18) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICON[n]}</svg>`
+const info = (k: Key) => `<i class="info" title="${t(k)}" aria-label="${t(k)}" role="img">${ic('info', 13)}</i>`
+const LANG_NAME = LANGS.find((l) => l.code === getLang())?.name ?? getLang()
+
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <div class="app">
   <header class="top">
-    <strong>reforger-mapper</strong>
-    <button id="undo" class="hist" title="${t('app.undo')}">↶</button>
-    <button id="redo" class="hist" title="${t('app.redo')}">↷</button>
-    <button id="lang" class="hist" title="${t('app.lang.tip')}">🌐 ${getLang() === 'fr' ? 'FR' : 'EN'}</button>
-    <button id="collab" class="hist" title="${t('collab.tip')}">👥</button>
-    <span id="collabInfo" class="hint"></span>
+    <strong class="brand">reforger-mapper</strong>
+    <button id="undo" class="hist" title="${t('app.undo')}" aria-label="${t('app.undo')}">${ic('undo')}</button>
+    <button id="redo" class="hist" title="${t('app.redo')}" aria-label="${t('app.redo')}">${ic('redo')}</button>
     <span id="status" class="status" title="${t('app.refresh')}">…</span>
-    <span id="cursor" class="hint"></span>
+    <span id="collabInfo" class="hint"></span>
+    <span class="grow"></span>
+    <button id="collab" class="hist" title="${t('collab.tip')}" aria-label="${t('collab.tip')}">${ic('users')}</button>
+    <div class="langsel">
+      <button id="lang" class="langbtn" type="button" title="${t('lang.title')}" aria-haspopup="listbox" aria-expanded="false">${ic('globe', 16)}<span class="lcode">${getLang().toUpperCase()}</span><span class="lname"> · ${LANG_NAME}</span>${completion(getLang()) < 100 ? `<span class="lpct">${completion(getLang())}%</span>` : ''}${ic('caret', 14)}</button>
+      <div id="langMenu" class="langmenu" hidden>
+        <div class="lmhead">${t('lang.title')}</div>
+        <div id="langList" role="listbox" tabindex="-1" aria-label="${t('lang.title')}">
+          ${LANGS.map((l) => { const c = completion(l.code); return `<div role="option" id="lang-${l.code}" data-lang="${l.code}" aria-selected="${l.code === getLang()}"><span class="lcode">${l.code.toUpperCase()}</span><span class="lname">${l.name}${l.code === 'en' ? ` <small>· ${t('lang.base')}</small>` : ''}</span><span class="lbar"><i style="width:${c}%"></i></span><span class="lpct${c < 100 ? ' part' : ''}">${c}%</span><span class="lok">${l.code === getLang() ? ic('check', 14) : ''}</span></div>` }).join('')}
+        </div>
+        <div class="lmfoot">
+          <label class="check"><input id="langFollow" type="checkbox"${followsBrowser() ? ' checked' : ''}> ${t('lang.follow')}</label>
+          <div class="row"><button id="langExport" type="button" class="secondary">${t('lang.export')}</button><button id="langImport" type="button" class="secondary">${t('lang.import')}</button></div>
+          <input id="langFile" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+    </div>
   </header>
   <div id="collabBox" class="ctxmenu collabbox" hidden>
     <div class="title">${t('collab.title')}</div>
@@ -132,17 +167,21 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <section class="stage">
     <canvas id="map" class="map" width="800" height="800"></canvas>
     <div id="welcome" class="welcome" hidden>
-      <h2>${t('welcome.title')}</h2>
+      <span class="kicker">${t('welcome.kicker')}</span>
+      <h2>reforger-mapper</h2>
       <p>${t('welcome.lead')}</p>
       <div class="choices">
-        <button type="button" data-go="tGen"><b>🏝</b><strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span></button>
-        <button type="button" data-go="tReal"><b>🗺</b><strong>${t('welcome.real')}</strong><span>${t('welcome.real.tip')}</span></button>
-        <button type="button" data-go="pOpen"><b>📂</b><strong>${t('welcome.open')}</strong><span>${t('welcome.open.tip')}</span></button>
+        <button type="button" data-go="tGen" class="rec">${ic('island', 32)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
+        <button type="button" data-go="tReal">${ic('map', 32)}<strong>${t('welcome.real')}</strong><span>${t('welcome.real.tip')}</span><em>${t('welcome.real.foot')}</em></button>
+        <button type="button" id="welcomeJoin">${ic('users', 32)}<strong>${t('welcome.join')}</strong><span>${t('welcome.join.tip')}</span><em>${t('welcome.join.foot')}</em></button>
       </div>
+      <div class="wfoot"><button type="button" data-go="pOpen" class="wfile" title="${t('welcome.open.tip')}">${ic('folder', 16)} ${t('welcome.file')}</button></div>
     </div>
     <div id="ctxMenu" class="ctxmenu" hidden></div>
+    <div class="mapdock">
+    <button id="helpFab" type="button" class="helpfab" title="${t('help.tip')}" aria-label="${t('help.tip')}" aria-haspopup="dialog">${ic('help', 22)}</button>
     <details id="layers" class="layers">
-      <summary>${t('layers.title')}</summary>
+      <summary>${t('layers.title')} ${info('info.layers')}</summary>
       ${LAYERS.map((l) => `<label class="check"><input type="checkbox" data-layer="${l}" checked> ${t(('layers.' + l) as Parameters<typeof t>[0])}</label>`).join('')}
       <div class="trace" title="${t('hint.trace')}">
         <label class="check">${t('layers.trace')} <input id="traceFile" type="file" accept="image/*"></label>
@@ -150,6 +189,19 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="traceClear" type="button">${t('btn.traceClear')}</button>
       </div>
     </details>
+    </div>
+    <div id="helpPanel" class="helppanel" role="dialog" aria-modal="false" aria-labelledby="helpTitle" hidden>
+      <div class="hphead"><h2 id="helpTitle">${t('help.title')}</h2><button id="helpClose" type="button" class="secondary icon" title="${t('help.close')}" aria-label="${t('help.close')}">${ic('x', 16)}</button></div>
+      <div class="hpbody">
+        ${t('help.what').split('\n').map((l) => `<p>${l}</p>`).join('')}
+        <h3>${t('help.steps')}</h3>
+        <ol class="hpsteps">${STEPS.map((st, i) => `<li><b>${String(i + 1).padStart(2, '0')}</b><span><strong>${t(st.label)}</strong> — ${t(st.lead)}</span><button type="button" class="secondary" data-help-go="${st.tab}">${t('help.go')}</button></li>`).join('')}</ol>
+        <h3>${t('help.controls')}</h3>
+        <ul class="hpkeys">${(['help.c1', 'help.c2', 'help.c3', 'help.c4', 'help.c5'] as const).map((k) => `<li>${t(k)}</li>`).join('')}</ul>
+        <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
+      </div>
+    </div>
+    <div id="tour" class="tour" hidden><div class="tourring"></div><div class="tourbox" role="dialog" aria-live="polite"><span id="tourN" class="kicker"></span><p id="tourText"></p><div class="row"><button id="tourSkip" type="button" class="secondary">${t('tour.skip')}</button><button id="tourNext" type="button">${t('tour.next')}</button></div></div></div>
     <div class="overlay">
       <span id="brushInfo"></span>
       <span class="hint">${t('hint.map')}</span>
@@ -160,7 +212,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <ol class="tabs stepper" id="tabs">
       ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.label)}</span><i class="badge"></i></button></li>`).join('')}
     </ol>
-    <div class="stephead"><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}">↻</button><p id="stepLead" class="lead"></p></div>
+    <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p></div>
 
     <div class="tab" data-tab="island">
       <div class="row">
@@ -171,7 +223,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
         <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
       </div>
-      <details class="adv"><summary>${t('ui.advanced')}</summary>
+      <details class="adv"><summary>${t('ui.advanced')} ${info('info.adv')}</summary>
       <div class="form">
         <label>${t('lbl.tSize')} <input id="tSize" type="number" value="4096"></label>
         <label>${t('lbl.tIslands')} <input id="tIslands" type="number" min="1" value="1"></label>
@@ -282,7 +334,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
         <span id="powerInfo" class="hint"></span>
       </details>
-      <details class="adv"><summary>${t('ui.advanced')}</summary>
+      <details class="adv"><summary>${t('ui.advanced')} ${info('info.adv')}</summary>
         <div class="form">
           <label>${t('lbl.roadSnap')} <input id="roadSnap" type="number" value="30"></label>
           <label>${t('lbl.roadWidth')} <input id="roadWidth" type="number" step="0.5" min="0" placeholder="${t('ph.auto')}"></label>
@@ -343,7 +395,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="generate" type="button">${t('btn.generate')}</button>
         <button id="clearZone" type="button" class="secondary">${t('btn.clearZone')}</button>
       </div>
-      <details class="adv"><summary>${t('ui.advanced')}</summary>
+      <details class="adv"><summary>${t('ui.advanced')} ${info('info.adv')}</summary>
       <div class="form">
         <label>${t('lbl.fieldSize')} <input id="fieldSize" type="number" value="90"></label>
         <label>${t('lbl.jitter')} <input id="jitter" type="number" step="0.1" value="0.6"></label>
@@ -389,10 +441,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </details>
     </div>
     <div id="collabView" class="collabview" hidden>
-      <div class="cvhead"><h2>👥 ${t('cv.title')}</h2><button id="cvClose" type="button" class="secondary" title="${t('cv.close.tip')}">✕</button></div>
+      <div class="cvhead"><h2>${ic('users')} ${t('cv.title')}</h2><button id="cvClose" type="button" class="secondary icon" title="${t('cv.close.tip')}" aria-label="${t('cv.close.tip')}">${ic('x', 16)}</button></div>
       <p class="cvconn"><span id="cvConn" class="hint"></span> <button id="cvJoin" type="button" class="secondary">${t('cv.connect')}</button></p>
       <details class="cvsec" open><summary>${t('cv.comments')} <i id="cvNCom" class="badge"></i></summary>
-        <button id="cvAdd" type="button">📌 ${t('cv.add')}</button>
+        <button id="cvAdd" type="button">${ic('pin', 16)} ${t('cv.add')}</button>
         <div id="cvDraft" class="cvdraft" hidden>
           <p class="hint">${t('cv.draft.hint')}</p>
           <textarea id="cvText" rows="3" placeholder="${t('cv.text')}"></textarea>
@@ -418,6 +470,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <pre id="log" class="log"></pre>
   </aside>
+  <footer class="statusbar"><span id="cursor"></span><span class="grow"></span><span>${t('foot.keys')}</span></footer>
 </div>`
 
 const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!
@@ -1263,10 +1316,44 @@ $('satShow').addEventListener('change', () => draw())
   a.addEventListener('input', () => { b.value = a.value; draw() })
   b.addEventListener('input', () => { a.value = b.value })
 }
-$<HTMLButtonElement>('lang').addEventListener('click', () => {
-  try { localStorage.setItem('reforger-mapper.lang', getLang() === 'fr' ? 'en' : 'fr') } catch { /* storage blocked */ }
-  location.reload()
-})
+// language selector: listbox (arrows / Enter / Esc), browser-language follow, export / import a translation
+{
+  const btn = $<HTMLButtonElement>('lang'), menu = $<HTMLDivElement>('langMenu'), list = $<HTMLDivElement>('langList')
+  const opts = () => [...list.querySelectorAll<HTMLDivElement>('[role=option]')]
+  let at = 0
+  const focusOpt = (i: number) => {
+    const o = opts(); at = (i + o.length) % o.length
+    o.forEach((x, j) => x.classList.toggle('cur', j === at))
+    list.setAttribute('aria-activedescendant', o[at].id)
+  }
+  const open = (on: boolean) => {
+    menu.hidden = !on; btn.setAttribute('aria-expanded', String(on))
+    if (on) { focusOpt(Math.max(0, opts().findIndex((o) => o.dataset.lang === getLang()))); list.focus() } else btn.focus()
+  }
+  const pick = (code: string) => { chooseLang(code, false); location.reload() }
+  btn.addEventListener('click', () => open(menu.hidden === true))
+  list.addEventListener('click', (e) => { const o = (e.target as HTMLElement).closest<HTMLDivElement>('[role=option]'); if (o) pick(o.dataset.lang!) })
+  menu.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); open(false) } else if (e.target !== list) return
+    else if (e.key === 'ArrowDown') { e.preventDefault(); focusOpt(at + 1) } else if (e.key === 'ArrowUp') { e.preventDefault(); focusOpt(at - 1) }
+    else if (e.key === 'Home') { e.preventDefault(); focusOpt(0) } else if (e.key === 'End') { e.preventDefault(); focusOpt(-1) }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(opts()[at].dataset.lang!) }
+    e.stopPropagation()
+  })
+  document.addEventListener('mousedown', (e) => { if (!menu.hidden && !(e.target as HTMLElement).closest('.langsel')) { menu.hidden = true; btn.setAttribute('aria-expanded', 'false') } })
+  $<HTMLInputElement>('langFollow').addEventListener('change', (e) => { chooseLang(getLang(), (e.target as HTMLInputElement).checked); location.reload() })
+  $<HTMLButtonElement>('langExport').addEventListener('click', () => {
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([exportLang()], { type: 'application/json' }))
+    a.download = `reforger-mapper-lang-${getLang()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  })
+  const file = $<HTMLInputElement>('langFile')
+  $<HTMLButtonElement>('langImport').addEventListener('click', () => file.click())
+  file.addEventListener('change', async () => {
+    const f = file.files?.[0]; if (!f) return
+    if (importLang(await f.text())) location.reload(); else alert(t('lang.importErr'))
+  })
+}
 $<HTMLButtonElement>('undo').addEventListener('click', () => restore(histAt - 1))
 $<HTMLButtonElement>('redo').addEventListener('click', () => restore(histAt + 1))
 window.addEventListener('keydown', (e) => {
@@ -1525,7 +1612,8 @@ ${t(`step.state.${state}`)}`
 function showStep(tab: string) {
   const i = STEPS.findIndex((s) => s.tab === tab)
   if (i < 0) return
-  $('stepTitle').textContent = `${i + 1}. ${t(STEPS[i].label)}`
+  $('stepKicker').textContent = t('step.kicker', { n: String(i + 1).padStart(2, '0'), total: String(STEPS.length).padStart(2, '0') })
+  $('stepTitle').textContent = t(STEPS[i].label)
   $('stepLead').textContent = t(STEPS[i].lead)
   $<HTMLButtonElement>('stepPrev').disabled = i === 0
   $<HTMLButtonElement>('stepNext').hidden = i === STEPS.length - 1
@@ -1541,6 +1629,45 @@ $('stepRegen').addEventListener('click', () => {
   const tab = tabButtons.find((x) => x.classList.contains('active'))?.dataset.tab ?? ''
   if (REGEN[tab]) $<HTMLButtonElement>(REGEN[tab]).click()
 })
+// help bubble + guided tour (5 stops, shown once on the first visit)
+{
+  const panel = $<HTMLDivElement>('helpPanel')
+  const show = (on: boolean) => { panel.hidden = !on; $('helpFab').classList.toggle('active', on); if (on) $<HTMLButtonElement>('helpClose').focus() }
+  $<HTMLButtonElement>('helpFab').addEventListener('click', () => show(panel.hidden === true))
+  $<HTMLButtonElement>('helpClose').addEventListener('click', () => { show(false); $<HTMLButtonElement>('helpFab').focus() })
+  panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); show(false); $<HTMLButtonElement>('helpFab').focus() } })
+  panel.querySelectorAll<HTMLButtonElement>('[data-help-go]').forEach((b) => b.addEventListener('click', () => {
+    document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${b.dataset.helpGo}"]`)?.click(); show(false)
+  }))
+  const TOUR_KEY = 'reforger-mapper.tour'
+  const stops: [string, Key][] = [['.app > .top', 'tour.1'], ['#tabs', 'tour.2'], ['.stage', 'tour.3'], ['.app > .side', 'tour.4'], ['#tabs [data-tab="wb"]', 'tour.5']]
+  const tour = $<HTMLDivElement>('tour'), ring = tour.querySelector<HTMLDivElement>('.tourring')!, box = tour.querySelector<HTMLDivElement>('.tourbox')!
+  let at = 0
+  const end = () => { tour.hidden = true; try { localStorage.setItem(TOUR_KEY, '1') } catch { /* private window */ } }
+  const place = () => {
+    const el = document.querySelector<HTMLElement>(stops[at][0]); if (!el) return end()
+    const r = el.getBoundingClientRect()
+    Object.assign(ring.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` })
+    $('tourN').textContent = `${at + 1} / ${stops.length}`
+    $('tourText').textContent = t(stops[at][1])
+    $('tourNext').textContent = t(at === stops.length - 1 ? 'tour.done' : 'tour.next')
+    const bw = 300, bh = box.offsetHeight || 140
+    let x = Math.min(Math.max(8, r.left), innerWidth - bw - 8), y = r.bottom + 12
+    if (y + bh > innerHeight - 8) y = Math.max(8, r.top - bh - 12)
+    if (r.height > innerHeight * 0.6) { y = Math.min(innerHeight - bh - 40, r.top + 80); x = r.left > innerWidth / 2 ? r.left - bw - 16 : Math.min(r.left + 40, innerWidth - bw - 8) }
+    Object.assign(box.style, { left: `${Math.max(8, x)}px`, top: `${y}px` })
+  }
+  const start = () => { show(false); at = 0; tour.hidden = false; place(); $<HTMLButtonElement>('tourNext').focus() }
+  $<HTMLButtonElement>('tourNext').addEventListener('click', () => { if (++at >= stops.length) end(); else place() })
+  $<HTMLButtonElement>('tourSkip').addEventListener('click', end)
+  tour.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); end() } })
+  addEventListener('resize', () => { if (!tour.hidden) place() })
+  $<HTMLButtonElement>('helpTour').addEventListener('click', start)
+  let seen = '1'
+  try { seen = localStorage.getItem(TOUR_KEY) ?? '' } catch { /* private window: never auto-start */ }
+  if (!seen) setTimeout(start, 600)
+}
+$<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
 document.querySelectorAll<HTMLButtonElement>('#welcome [data-go]').forEach((b) => b.addEventListener('click', () => $<HTMLButtonElement>(b.dataset.go!).click()))
 $('stepPrev').addEventListener('click', () => goStep(-1))
 $('stepNext').addEventListener('click', () => goStep(1))

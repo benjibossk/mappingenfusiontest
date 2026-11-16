@@ -32,6 +32,15 @@ Notes :
 | 5 | Étape 7 Envoyer | Vérification + gros bouton vert « Tout envoyer » ; envoi manuel replié | ⬜ |
 | 6 | Bouton 🌐 FR/EN | Toute l'interface change de langue, y compris les étapes et l'info-bulle | ⬜ |
 | 7 | Écran étroit (< 1100 px) | Les étapes n'affichent plus que leur numéro, rien ne déborde | ⬜ |
+| M1 | Thème MILSPEC | Fond encre, accents ambre, titres Oswald majuscules, données en police mono, coins 2 px ; aucune emoji dans l'en-tête | ⬜ |
+| M2 | Accueil (projet vide) | 3 cartes Nouvelle île / Lieu réel / Rejoindre un salon + « Ouvrir un fichier… » ; Rejoindre ouvre le panneau collab et le formulaire de connexion | ⬜ |
+| M3 | Étapes | Fait = carré vert ✓, à refaire = ambre, à faire = gris ; étape active cadre ambre ; en-tête « ÉTAPE 04 / 07 » | ⬜ |
+| M4 | Sélecteur de langue | Liste FR / EN avec % de traduction ; flèches + Entrée choisissent, Échap ferme ; « Suivre la langue du navigateur » mémorisé | ⬜ |
+| M5 | Exporter / importer la langue | Export = JSON des clés ; un JSON traduit importé apparaît comme langue « XX » (textes manquants en anglais) | ⬜ |
+| M6 | Barre d'état | Coordonnées X / Z / altitude du curseur en bas à gauche | ⬜ |
+| M7 | Bulle « ? » (bas gauche, au-dessus de Calques) | Panneau d'aide : présentation, 7 étapes avec bouton Aller, contrôles souris/clavier, lien GitHub | ⬜ |
+| M8 | Visite guidée | Lancée une seule fois à la 1re visite (5 arrêts, Passer/Échap), relançable depuis l'aide | ⬜ |
+| M9 | Écran 1100 px | En-tête sur une ligne (nom de langue masqué), panneau lisible | ⬜ |
 
 ## R3 — Limite de surfaces par bloc (ajouté le 2026-11-16)
 
