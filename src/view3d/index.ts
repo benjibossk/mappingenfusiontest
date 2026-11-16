@@ -37,6 +37,8 @@ export interface View3DOptions {
   /** project data for the realistic drape (default); without it, the map drape only */
   real?: RealLayers
   progress?: (stage: string, i: number, n: number) => void
+  /** short notice (render time after a drape switch): shown as a toast by the host */
+  notify?: (msg: string) => void
   onClose: (target: [number, number], span: number) => void
 }
 export interface View3D { refreshDrape(): void; close(): void; stats(): { frames: number; vertices: number; buildings: number; trees: number; drape: string; texture: number } }
@@ -52,16 +54,21 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const T = o.text
   const root = document.createElement('div')
   root.className = 'v3d'
-  root.innerHTML = `<div class="v3d-bar">
+  const seg = (v: string, label: string) => `<button type="button" role="radio" data-v="${v}" aria-checked="false">${label}</button>`
+  root.innerHTML = `<div class="v3d-bar" role="toolbar">
     <button type="button" class="v3d-back" data-k="back">${T.back}</button>
-    <label>${T.exag} <input type="range" min="1" max="3" step="0.25" value="1" data-k="exag"><output data-k="exagV">×1</output></label>
+    <span class="v3d-sep"></span>
+    <span class="v3d-lbl">${T.drape}</span>
+    <span class="v3d-seg" role="radiogroup" aria-label="${T.drape}" data-k="drape">${o.real ? seg('real', T.real) : ''}${seg('map', T.map)}${o.real?.sat ? seg('sat', T.sat) : ''}</span>
+    <span class="v3d-sep"></span>
+    <label class="v3d-relief">${T.exag} <input type="range" min="1" max="3" step="0.25" value="1" data-k="exag" aria-label="${T.exag}"><output data-k="exagV">×1</output></label>
+    <span class="v3d-sep"></span>
+    <label class="v3d-tog"><input type="checkbox" checked data-k="trees"> ${T.trees}</label>
+    <label class="v3d-tog"><input type="checkbox" checked data-k="grid"> ${T.grid}</label>
+    <span class="grow"></span>
     <button type="button" data-k="reset">${T.reset}</button>
     <button type="button" data-k="top">${T.top}</button>
-    <label class="check"><input type="checkbox" checked data-k="trees"> ${T.trees}</label>
-    <label class="check"><input type="checkbox" checked data-k="grid"> ${T.grid}</label>
-    <label>${T.drape} <select data-k="drape">${o.real ? `<option value="real">${T.real}</option>` : ''}<option value="map">${T.map}</option>${o.real?.sat ? `<option value="sat">${T.sat}</option>` : ''}</select></label>
-    <span class="v3d-ms" data-k="ms"></span>
-    <span class="v3d-help">${T.help}</span></div><div class="v3d-north" title="N">N</div>`
+    </div><div class="v3d-help">${T.help}</div><div class="v3d-north" title="N">N</div>`
   host.appendChild(root)
   const q = <E extends HTMLElement>(k: string) => root.querySelector<E>(`[data-k="${k}"]`)!
 
@@ -202,13 +209,13 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const big = renderer.capabilities.maxTextureSize >= 16384 && ((navigator as { deviceMemory?: number }).deviceMemory ?? 4) >= 8
   const maxTex = Math.min(4096, renderer.capabilities.maxTextureSize)
   const realTex = big ? 8192 : maxTex
-  const msEl = q('ms')
   let mode: 'real' | 'map' | 'sat' = o.real ? 'real' : 'map'
+  let announce = false // render time: a toast when the user switches the drape (the first one is in the opening toast)
   const drape = () => {
     const t0 = performance.now()
     const d = mode !== 'map' && o.real ? realDrape(realTex, hm, data.sea, o.real, data.buildings, mode) : o.drape(maxTex)
     if (!d) return
-    msEl.textContent = T.genMs(((performance.now() - t0) / 1000).toFixed(1))
+    if (announce) announce = false, o.notify?.(T.genMs(((performance.now() - t0) / 1000).toFixed(1)))
     dx0 = d.x0; dz0 = d.z0; dside = d.side
     setUV(); geo.attributes.uv.needsUpdate = true
     const tex = new CanvasTexture(d.canvas)
@@ -364,7 +371,13 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   q('top').addEventListener('click', () => look(controls.target.x, -controls.target.z, camera.position.distanceTo(controls.target), false))
   q<HTMLInputElement>('trees').addEventListener('change', (e) => { treesOn = (e.target as HTMLInputElement).checked; dirty = true })
   q<HTMLInputElement>('grid').addEventListener('change', (e) => { gridU.value = (e.target as HTMLInputElement).checked ? 1 : 0; dirty = true })
-  q<HTMLSelectElement>('drape').addEventListener('change', (e) => { mode = (e.target as HTMLSelectElement).value as typeof mode; drape(); dirty = true })
+  const segBtns = [...q('drape').querySelectorAll<HTMLButtonElement>('[data-v]')]
+  const markSeg = () => segBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === mode)))
+  markSeg()
+  segBtns.forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.v === mode) return
+    mode = b.dataset.v as typeof mode; markSeg(); announce = true; drape(); dirty = true
+  }))
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) { e.stopPropagation(); close() } }
   window.addEventListener('keydown', onKey, true)
   q('back').addEventListener('click', () => close())
