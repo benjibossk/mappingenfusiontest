@@ -276,7 +276,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <p class="hint">${t('wg.lead')}</p>
         <div class="form">
           <label><span class="lbl">${t('wg.seed')} ${info('info.wgSeed')}</span><span class="seedrow"><input id="rwSeed" type="number" step="1" value="1"><button id="rwDice" type="button" class="secondary icon" title="${t('wg.dice')}" aria-label="${t('wg.dice')}">${ic('dice', 16)}</button></span></label>
-          <label>${t('wg.size')} <select id="rwSize"><option value="2048">2 km</option><option value="4096" selected>4 km</option><option value="8192">8 km</option></select></label>
+          <label>${t('wg.size')} <select id="rwSize"><option value="2048">2 km</option><option value="4096" selected>4 km</option><option value="8192">8 km</option><option value="16384">16 km (≈ 1-2 min)</option></select></label>
           ${biomeField('rwBiome')}
           ${(['towns', 'villages', 'hamlets', 'industry', 'military', 'forests'] as const).map((k) => `<label class="rwslider"><span class="lbl">${t(('wg.' + k) as K)} ${info(('info.wg.' + k) as K)}</span><input id="rw_${k}" type="range" min="0" max="2" step="0.25" value="1"><output id="rw_${k}_v">×1</output></label>`).join('')}
         </div>
