@@ -1,6 +1,7 @@
 import './style.css'
 import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
-import { Collab, type Op } from './collab'
+import { Collab, type CollabEvents, type CollabTransport, type Op } from './collab'
+import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
 import { POWER_DEFAULTS, powerLineShape, routePowerLine, type PowerKind, type PowerLine } from './modules/power'
@@ -20,7 +21,7 @@ import { ROAD_COLOURS, ROAD_TYPES, carveRoads, layBeds, roadFurniture, roadHalf,
 const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'names'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
-let collab: Collab | null = null // shared room, see src/collab.ts
+let collab: CollabTransport | null = null // shared room: direct (src/p2p.ts) or server (src/collab.ts)
 let quietUntil = 0 // a project just received from the room is not sent back
 let remoteApply = false // a room project being loaded: its checkpoints are not logged as our changes
 let saveTimer = 0 // declared early: handlers registered above autosave() may fire first
@@ -89,6 +90,7 @@ import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
+var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
 // the side panel is a guided path: one step per tab, in the order a map is built
 const STEPS = [
@@ -111,6 +113,7 @@ const ICON: Record<string, string> = {
   island: '<path d="M3 17c2-1 4-1 6 0s4 1 6 0 4-1 6 0"/><path d="M6 13c1-4 4-6 7-6s5 2 6 6"/><path d="M12 7V3"/>',
   map: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14"/><path d="M15 6v14"/>',
   folder: '<path d="M3 6h6l2 2h10v11H3z"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   pin: '<path d="M12 21s-6-6-6-11a6 6 0 0 1 12 0c0 5-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
@@ -158,7 +161,7 @@ const LANG_NAME = LANGS.find((l) => l.code === getLang())?.name ?? getLang()
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <div class="app">
   <header class="top">
-    <strong class="brand">reforger-mapper</strong>
+    <button type="button" id="brandMenu" class="brand" title="${t('menu.tip')}" aria-label="${t('menu.tip')}">${ic('menu', 18)}<span>reforger-mapper</span></button>
     <button id="undo" class="hist" title="${t('app.undo')}" aria-label="${t('app.undo')}">${ic('undo')}</button>
     <button id="redo" class="hist" title="${t('app.redo')}" aria-label="${t('app.redo')}">${ic('redo')}</button>
     <span id="status" class="status" role="button" tabindex="0" title="${t('wb.chip.tip')}">${t('wb.chip.off')}</span>
@@ -182,12 +185,23 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   </header>
   <div id="collabBox" class="ctxmenu collabbox" hidden>
     <div class="title">${t('collab.title')}</div>
-    <label>${t('collab.server')} <input id="collabUrl" type="text"></label>
+    <label>${t('p2p.mode')} <select id="collabMode"><option value="direct">${t('p2p.mode.direct')}</option><option value="server">${t('p2p.mode.server')}</option></select></label>
+    <button id="p2pCreate" type="button">${t('p2p.create')}</button>
+    <div id="p2pShare" class="p2pshare" hidden><input id="p2pLink" type="text" readonly aria-label="${t('p2p.link')}"> <button id="p2pCopy" type="button" class="secondary">${t('p2p.copy')}</button><div class="info">${t('p2p.share.hint')}</div></div>
+    <label id="collabUrlRow">${t('collab.server')} <input id="collabUrl" type="text"></label>
     <label>${t('collab.room')} <input id="collabRoom" type="text"></label>
     <label>${t('collab.name')} <input id="collabName" type="text"></label>
     <label>${t('collab.key')} <input id="collabKey" type="password" autocomplete="off"></label>
+    <details class="p2padv"><summary>${t('p2p.adv')}</summary>
+      <label>${t('p2p.turn')} <input id="p2pTurn" type="text" placeholder="turn:turn.example.org:3478"></label>
+      <label>${t('p2p.turnUser')} <input id="p2pTurnUser" type="text" autocomplete="off"></label>
+      <label>${t('p2p.turnPass')} <input id="p2pTurnPass" type="password" autocomplete="off"></label>
+      <div class="info">${t('p2p.turn.hint')}</div>
+    </details>
     <button id="collabGo" type="button">${t('collab.join')}</button>
-    <div class="info">${t('collab.hint')}</div>
+    <div id="p2pStatus" class="info" role="status"></div>
+    <button id="p2pToServer" type="button" class="secondary" hidden>${t('p2p.toServer')}</button>
+    <div id="collabHint" class="info">${t('p2p.hint')}</div>
   </div>
 
   <nav class="rail" id="tools">
@@ -233,11 +247,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <span class="kicker">${t('welcome.kicker')}</span>
       <h2>reforger-mapper</h2>
       <p>${t('welcome.lead')}</p>
+      <button type="button" id="welcomeResume" class="secondary" hidden>${t('menu.resume')}</button>
       <div class="choices">
         <button type="button" data-go="tGen" class="rec">${ic('island', 32)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
         <button type="button" data-go="tRandom">${ic('dice', 32)}<strong>${t('welcome.random')}</strong><span>${t('welcome.random.tip')}</span><em>${t('welcome.random.foot')}</em></button>
         <button type="button" data-go="tReal">${ic('map', 32)}<strong>${t('welcome.real')}</strong><span>${t('welcome.real.tip')}</span><em>${t('welcome.real.foot')}</em></button>
         <button type="button" id="welcomeJoin">${ic('users', 32)}<strong>${t('welcome.join')}</strong><span>${t('welcome.join.tip')}</span><em>${t('welcome.join.foot')}</em></button>
+        <button type="button" id="welcomeAtelier">${ic('folder', 32)}<strong>${t('welcome.atelier')}</strong><span>${t('welcome.atelier.tip')}</span><em>${t('welcome.atelier.foot')}</em></button>
       </div>
       <div class="wfoot"><button type="button" data-go="pOpen" class="wfile" title="${t('welcome.open.tip')}">${ic('folder', 16)} ${t('welcome.file')}</button></div>
     </div>
@@ -267,9 +283,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         ${connectSteps()}
         <div class="row"><button type="button" class="secondary wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button></div>
         <h3>${t('help.faq')}</h3>
-        ${(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
+        ${(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
         <h3>${t('help.glossary')}</h3>
-        <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
+        <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget', 'p2p', 'host'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
         <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><button id="helpNews" type="button" class="secondary">${t('news.open')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
       </div>
     </div>
@@ -1175,42 +1191,133 @@ const collabName = collabField('collabName', 'reforger-mapper.collab.name', 'map
 const collabKey = $<HTMLInputElement>('collabKey') // the password is never stored
 $<HTMLButtonElement>('collab').addEventListener('click', () => showCollabView(!collabView.classList.contains('on')))
 $<HTMLButtonElement>('cvJoin').addEventListener('click', () => { collabBox.hidden = !collabBox.hidden })
-function leaveRoom() {
-  collab?.close()
+function leaveRoom(keepStatus = false) {
+  const c = collab
   collab = null
+  c?.close()
+  if (!keepStatus) p2pStatus.textContent = ''
   $<HTMLSpanElement>('collabInfo').textContent = ''
   $<HTMLButtonElement>('collabGo').textContent = t('collab.join')
   connInfo()
   draw()
 }
+const collabMode = collabField('collabMode', 'reforger-mapper.collab.mode', 'direct') as unknown as HTMLSelectElement
+const p2pTurn = collabField('p2pTurn', 'reforger-mapper.collab.turn', '')
+const p2pTurnUser = collabField('p2pTurnUser', 'reforger-mapper.collab.turnUser', '')
+const p2pTurnPass = $<HTMLInputElement>('p2pTurnPass')
+const p2pStatus = $<HTMLDivElement>('p2pStatus')
+function collabModeUi() {
+  const direct = collabMode.value !== 'server'
+  $('collabUrlRow').hidden = direct
+  $('p2pCreate').hidden = !direct
+  $('collabHint').textContent = direct ? t('p2p.hint') : t('collab.hint')
+}
+collabMode.addEventListener('change', () => { collabModeUi(); p2pStatus.textContent = ''; $('p2pToServer').hidden = true })
+collabModeUi()
+function shareLink(code: string, key: string) {
+  return `${location.origin}${location.pathname}#salon=${encodeURIComponent(code)}&cle=${encodeURIComponent(key)}`
+}
+$<HTMLButtonElement>('p2pCreate').addEventListener('click', () => {
+  if (collab) leaveRoom()
+  const r = newRoom()
+  collabRoom.value = r.code
+  collabKey.value = r.key
+  $<HTMLInputElement>('p2pLink').value = shareLink(r.code, r.key)
+  $('p2pShare').hidden = false
+  joinRoomNow(true)
+})
+$<HTMLButtonElement>('p2pCopy').addEventListener('click', () => {
+  const el = $<HTMLInputElement>('p2pLink')
+  el.select()
+  void navigator.clipboard?.writeText(el.value).then(() => { p2pStatus.textContent = t('p2p.copied') }, () => { /* select() left it ready for Ctrl+C */ })
+})
+$<HTMLButtonElement>('p2pToServer').addEventListener('click', () => {
+  leaveRoom()
+  collabMode.value = 'server'
+  try { localStorage.setItem('reforger-mapper.collab.mode', 'server') } catch { /* storage blocked */ }
+  collabModeUi()
+  $('p2pToServer').hidden = true
+  p2pStatus.textContent = t('p2p.serverHint')
+  $<HTMLInputElement>('collabUrl').focus()
+})
 $<HTMLButtonElement>('collabGo').addEventListener('click', () => {
   if (collab) return leaveRoom()
-  let received = false
-  collab = new Collab(collabUrl.value.trim(), collabRoom.value.trim() || 'map1', collabName.value.trim() || t('collab.anon'), collabKey.value, {
+  joinRoomNow(false)
+})
+function joinRoomNow(creator: boolean) {
+  let received = false, others = 0
+  const direct = collabMode.value !== 'server'
+  const room = collabRoom.value.trim() || 'map1', name = collabName.value.trim() || t('collab.anon')
+  $('p2pToServer').hidden = true
+  const events: CollabEvents = {
     project: (p, from) => {
       received = true
       quietUntil = performance.now() + 1500
       remoteApply = true
       try { loadProject(p) } catch (e) { remoteApply = false; logEl.textContent = t('err.generic', { msg: (e as Error).message }); return }
       remoteApply = false
-      logEl.textContent = t('collab.got', { name: from })
+      logEl.textContent = from === '💾' ? t('p2p.resumed') : t('collab.got', { name: from })
     },
     ops: (list, replace) => receiveOps(list, replace),
-    peers: (ps) => { $<HTMLSpanElement>('collabInfo').textContent = t('collab.peers', { room: collabRoom.value, n: ps.length + 1, names: ps.map((p) => p.name).join(', ') }); connInfo() },
+    peers: (ps) => {
+      others = ps.length
+      const names = ps.map((p) => p.name).join(', ')
+      $<HTMLSpanElement>('collabInfo').textContent = direct
+        ? t('p2p.peers', { n: ps.length + 1, names })
+        : t('collab.peers', { room: collabRoom.value, n: ps.length + 1, names })
+      if (direct && collab?.open) p2pStatus.textContent = t('p2p.connected', { n: ps.length + 1 })
+      connInfo()
+    },
+    host: (h) => { if (h && collab?.open) logEl.textContent = t('p2p.nowHost') },
     cursors: () => draw(),
     status: (s, detail) => {
-      if (s === 'connected') {
+      if (s === 'connecting') {
+        p2pStatus.textContent = t('p2p.connecting')
+      } else if (s === 'connected') {
         $<HTMLButtonElement>('collabGo').textContent = t('collab.leave')
-        collabBox.hidden = true
-        // an empty room gets our map; otherwise the room's map arrives right after joining
-        setTimeout(() => { if (!received) { const p = islandProject(); if (p) collab?.sendProject(p) } }, 1500)
+        if (direct) p2pStatus.textContent = t('p2p.connected', { n: others + 1 })
+        if (!direct || !creator) collabBox.hidden = true
+        // server room: an empty room gets our map; direct: the creator's map is the room's map
+        if (!direct) setTimeout(() => { if (!received) { const p = islandProject(); if (p) collab?.sendProject(p) } }, 1500)
+        else if (creator) { const p = islandProject(); if (p) collab?.sendProject(p) }
+        connInfo()
+      } else if (s === 'failed') {
+        p2pStatus.textContent = t('p2p.failed')
+        $('p2pToServer').hidden = false
+        collabBox.hidden = false
+        logEl.textContent = t('p2p.failed')
+        leaveRoom(true)
       } else {
+        if (collab !== self) return // we left on purpose (or after a failure): keep the message shown
         logEl.textContent = t('collab.closed', { detail: detail ?? '' })
         leaveRoom()
       }
     },
-  })
-})
+  }
+  $<HTMLButtonElement>('collabGo').textContent = t('collab.leave')
+  const self: CollabTransport = direct
+    ? new P2PCollab(room, collabKey.value, name, creator, events, p2pTurn.value.trim() ? { url: p2pTurn.value.trim(), user: p2pTurnUser.value.trim(), pass: p2pTurnPass.value } : undefined)
+    : new Collab(collabUrl.value.trim(), room, name, collabKey.value, events)
+  collab = self
+}
+// a share link: #salon=CODE&cle=KEY (hash, never sent to any server). Ask a name, then join directly.
+function joinFromHash() {
+  const h = new URLSearchParams(location.hash.slice(1))
+  const code = h.get('salon'), key = h.get('cle')
+  if (!code || !key) return
+  const name = window.prompt(t('p2p.askName'), collabName.value || '')
+  if (name === null) return
+  if (name.trim()) { collabName.value = name.trim(); try { localStorage.setItem('reforger-mapper.collab.name', collabName.value) } catch { /* storage blocked */ } }
+  collabMode.value = 'direct'
+  collabModeUi()
+  collabRoom.value = code
+  collabKey.value = key
+  if (collab) leaveRoom()
+  if (!$('collab').classList.contains('active')) showCollabView(true)
+  joinRoomNow(false)
+}
+window.addEventListener('hashchange', joinFromHash)
+setTimeout(joinFromHash, 0)
 function drawPeers() {
   if (!collab) return
   ctx.font = '12px sans-serif'
@@ -1218,7 +1325,7 @@ function drawPeers() {
   ctx.textBaseline = 'middle'
   for (const [id, c] of collab.cursors) {
     const [x, y] = toScreen(c.x, c.z)
-    const hue = (id * 97) % 360
+    const hue = typeof id === 'number' ? (id * 97) % 360 : [...id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7)
     ctx.fillStyle = `hsl(${hue}, 80%, 60%)`
     ctx.beginPath()
     ctx.moveTo(x, y); ctx.lineTo(x + 12, y + 4); ctx.lineTo(x + 4, y + 12); ctx.closePath()
@@ -1821,7 +1928,7 @@ function refreshSteps() {
   const btns = document.querySelectorAll<HTMLButtonElement>('#tabs [data-tab]')
   if (btns.length !== STEPS.length) return
   const welcome = document.getElementById('welcome')
-  if (welcome) welcome.hidden = !!sig[0]
+  if (welcome) { welcome.hidden = !menuOpen && !!sig[0]; $('welcomeResume').hidden = !sig[0] }
   STEPS.forEach((s, i) => {
     const up = UP[i].map((j) => sig[j]).join('|')
     let state: 'todo' | 'done' | 'stale' = 'todo'
@@ -2022,6 +2129,16 @@ function coachAfter(kind: Entry) {
 $<HTMLButtonElement>('coachClose').addEventListener('click', () => { $('coach').hidden = true })
 $('coach').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('coach').hidden = true })
 $<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { entry = 'join'; coachAfter('join'); if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
+// Mode Atelier (src/atelier/): own full-screen layout, loaded on demand; reopened after a language switch
+const openAtelier = () => void import('./atelier/ui').then((m) => m.openAtelier())
+$<HTMLButtonElement>('welcomeAtelier').addEventListener('click', openAtelier)
+// top-left Menu: back to the welcome screen (the current map stays; "Resume" or any path card closes it)
+const closeMenu = () => { menuOpen = false; if ($('welcomeResume').hidden === false) $('welcome').hidden = true }
+$<HTMLButtonElement>('brandMenu').addEventListener('click', () => { menuOpen = true; $('welcome').hidden = false; $('welcomeResume').hidden || $<HTMLButtonElement>('welcomeResume').focus() })
+$<HTMLButtonElement>('welcomeResume').addEventListener('click', closeMenu)
+$('welcome').addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('button[id^="welcome"]:not(#welcomeResume)')) menuOpen = false }, true)
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuOpen && !$('welcome').hidden) closeMenu() })
+try { if (sessionStorage.getItem('reforger-mapper.atelier.open') === '1') openAtelier() } catch { /* storage blocked */ }
 const ENTRY: Record<string, Entry> = { tGen: 'new', tRandom: 'random', tReal: 'real', pOpen: 'open' }
 document.querySelectorAll<HTMLButtonElement>('#welcome [data-go]').forEach((b) => b.addEventListener('click', () => {
   entry = ENTRY[b.dataset.go!] ?? null

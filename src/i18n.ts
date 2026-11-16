@@ -1,7 +1,10 @@
 // UI string tables. English is the base language (it defines Key and is the fallback).
 // To add a language, register a Partial<Record<Key, string>> in `langs`; the active code is
 // read from localStorage 'reforger-mapper.lang' (default 'en'). Placeholders use {name}.
+import { atelierEn, atelierFr } from './atelier/strings.ts'
+
 export const en = {
+  ...atelierEn, // Mode Atelier (src/atelier/strings.ts)
   'tool.zone.tip': 'Field zone (1)',
   'tool.zone': 'Zone',
   'tool.raise.tip': 'Raise (2)',
@@ -402,6 +405,35 @@ export const en = {
   'cv.conn.on': "{info}",
   'cv.conn.off': "Not in a shared room: history and comments stay in this browser and are sent when you join.",
   'cv.pick': "Click the map where the comment goes (or on a pin to open it).",
+  "p2p.mode": "Mode",
+  "p2p.mode.direct": "Direct (no server)",
+  "p2p.mode.server": "Server (npm run collab)",
+  "p2p.create": "Create a room",
+  "p2p.link": "Share link",
+  "p2p.copy": "Copy the link",
+  "p2p.copied": "Link copied: send it privately to your team.",
+  "p2p.share.hint": "Anyone with this link can join and edit: it contains the room key. Send it privately.",
+  "p2p.adv": "Advanced settings",
+  "p2p.turn": "TURN server (optional)",
+  "p2p.turnUser": "TURN user",
+  "p2p.turnPass": "TURN password",
+  "p2p.turn.hint": "Only if direct mode fails on a strict network: a TURN relay you run or rent. Empty = none.",
+  "p2p.toServer": "Use a server instead",
+  "p2p.serverHint": "Server mode: one mapper runs npm run collab and gives you its address and password.",
+  "p2p.hint": "Direct mode: browsers talk to each other, nobody hosts anything. Create a room and share the link, or open a link you received.",
+  "p2p.peers": "👥 {n} (direct: {names})",
+  "p2p.connecting": "Connecting…",
+  "p2p.connected": "Connected ({n} participants, direct)",
+  "p2p.failed": "Your connection blocks direct mode (or the key is wrong / nobody is in the room) — use a server",
+  "p2p.resumed": "Room resumed from this browser's copy",
+  "p2p.nowHost": "You now keep the room's reference copy",
+  "p2p.askName": "Your name in the shared room:",
+  "faq.q10": "How do I work with a friend without a server?",
+  "faq.a10": "Collaboration (👥) > Join a room… > Create a room, then copy the link and send it privately. Your friend opens it, types a name and is in. If it says the connection blocks direct mode, switch to a server.",
+  "gl.p2p": "Direct mode (P2P)",
+  "gl.p2p.d": "Browsers connect to each other (WebRTC). Public relays only help them find each other, encrypted with the room key; the map never goes through a server.",
+  "gl.host": "Room host",
+  "gl.host.d": "In direct mode, the mapper who joined first keeps the reference copy and gives it to newcomers. If they leave, the next oldest takes over.",
   'hist.road.add': "road added",
   'hist.road.del': "road deleted",
   'hist.road.edit': "road edited",
@@ -826,12 +858,15 @@ export const en = {
   'news.toast': "What's new in v{v}",
   'news.see': "see",
   'news.full': "Full history",
+  'menu.tip': "Menu: back to the home screen",
+  'menu.resume': "Back to my map",
 } as const
 
 export type Key = keyof typeof en
 
 // French table (complete).
 export const fr: Record<Key, string> = {
+  ...atelierFr,
   'tool.zone.tip': 'Zone de champs (1)',
   'tool.zone': 'Zone',
   'tool.raise.tip': 'Monter (2)',
@@ -1232,6 +1267,35 @@ export const fr: Record<Key, string> = {
   'cv.conn.on': "{info}",
   'cv.conn.off': "Pas dans un salon : historique et commentaires restent dans ce navigateur et partent quand tu rejoins.",
   'cv.pick': "Clique sur la carte à l'endroit du commentaire (ou sur une épingle pour l'ouvrir).",
+  "p2p.mode": "Mode",
+  "p2p.mode.direct": "Direct (sans serveur)",
+  "p2p.mode.server": "Serveur (npm run collab)",
+  "p2p.create": "Créer un salon",
+  "p2p.link": "Lien de partage",
+  "p2p.copy": "Copier le lien",
+  "p2p.copied": "Lien copié : envoie-le en privé à ton équipe.",
+  "p2p.share.hint": "Toute personne qui a ce lien peut rejoindre et modifier : il contient la clé du salon. Envoie-le en privé.",
+  "p2p.adv": "Réglages avancés",
+  "p2p.turn": "Serveur TURN (facultatif)",
+  "p2p.turnUser": "Utilisateur TURN",
+  "p2p.turnPass": "Mot de passe TURN",
+  "p2p.turn.hint": "Seulement si le direct échoue sur un réseau strict : un relais TURN que tu héberges ou loues. Vide = aucun.",
+  "p2p.toServer": "Utiliser un serveur",
+  "p2p.serverHint": "Mode serveur : un mappeur lance npm run collab et te donne son adresse et son mot de passe.",
+  "p2p.hint": "Mode direct : les navigateurs se parlent entre eux, personne n'héberge rien. Crée un salon et partage le lien, ou ouvre un lien reçu.",
+  "p2p.peers": "👥 {n} (direct : {names})",
+  "p2p.connecting": "Connexion…",
+  "p2p.connected": "Connecté ({n} participants, direct)",
+  "p2p.failed": "Ta connexion bloque le direct (ou la clé est fausse / personne dans le salon) — utilise un serveur",
+  "p2p.resumed": "Salon repris depuis la copie de ce navigateur",
+  "p2p.nowHost": "Tu gardes maintenant la copie de référence du salon",
+  "p2p.askName": "Ton nom dans le salon partagé :",
+  "faq.q10": "Comment travailler avec un ami sans serveur ?",
+  "faq.a10": "Collaboration (👥) > Rejoindre un salon… > Créer un salon, puis copie le lien et envoie-le en privé. Ton ami l'ouvre, tape un nom et il est dedans. Si un message dit que la connexion bloque le direct, passe en mode serveur.",
+  "gl.p2p": "Mode direct (P2P)",
+  "gl.p2p.d": "Les navigateurs se connectent entre eux (WebRTC). Des relais publics servent seulement à se trouver, chiffré avec la clé du salon ; la carte ne passe jamais par un serveur.",
+  "gl.host": "Hôte du salon",
+  "gl.host.d": "En mode direct, le mappeur arrivé le premier garde la copie de référence et la donne aux nouveaux. S'il part, le suivant le plus ancien prend le relais.",
   'hist.road.add': "route ajoutée",
   'hist.road.del': "route supprimée",
   'hist.road.edit': "route modifiée",
@@ -1656,6 +1720,8 @@ export const fr: Record<Key, string> = {
   'news.toast': "Nouveautés de la v{v}",
   'news.see': "voir",
   'news.full': "Historique complet",
+  'menu.tip': "Menu : retour à l'écran d'accueil",
+  'menu.resume': "Revenir à ma carte",
 }
 
 // Adding a language = adding a dictionary here (Partial: missing keys fall back to English, never a raw key).

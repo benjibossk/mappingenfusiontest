@@ -172,3 +172,14 @@ Navigateur (Playwright sur `vite preview`, relais lancé, copie de Normandy_Edit
 - [ ] A6 : sauvegarde listée → « Restaurer » ; fichier identique octet pour octet à l'original ; export `.rmatelier.zip`.
 - [ ] Bouton FR/EN : la page se recharge et rouvre l'Atelier dans l'autre langue.
 Dans Workbench (manuel) : ouvrir le monde corrigé, vérifier lacs/rivières régénérés ; importer le PNG (ToSRGB, Tiled off, Mips off) et le brancher sur `SCR_MapEntity` ; brancher le `.conf` via `SCR_MapConfigComponent` du GameMode.
+
+## R13 — Collaboration directe sans serveur (ajouté le 2026-11-16)
+
+Deux navigateurs (ou deux PC sur des réseaux différents, ex. box + partage 4G) :
+1. Navigateur A : générer une île, 👥 → Rejoindre un salon… → mode **Direct** → **Créer un salon**. Le statut dit « Connecté (1 participants, direct) ». **Copier le lien**.
+2. Navigateur B (fenêtre privée ou autre PC) : ouvrir le lien → demande d'un nom → « Connexion… » puis « Connecté (2 participants, direct) » ; la carte de A s'affiche.
+3. A pose un commentaire → visible chez B ; B répond → visible chez A. B modifie (ex. régénérer les routes) → A reçoit « Carte mise à jour par B ». Le curseur de B apparaît chez A.
+4. Fermer A → B garde la carte (« Tu gardes maintenant la copie de référence »). Un 3e navigateur C ouvre le lien → reçoit carte + commentaires depuis B.
+5. Lien avec une clé modifiée (`cle=autre`) → aucune connexion ; après ~15 s : « Ta connexion bloque le direct … — utilise un serveur » + bouton **Utiliser un serveur** qui bascule en mode serveur.
+6. Recharger B puis rouvrir le lien : la carte et les commentaires reviennent de la copie locale.
+7. Gros projet (8 km) : la synchro arrive en entier (messages découpés), pas d'erreur console.

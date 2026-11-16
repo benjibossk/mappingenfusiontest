@@ -1,7 +1,7 @@
 // Working on one map with several people: a room on the collab server (collab/server.mjs). Every change is
 // sent as the whole project (last writer wins, fine for a few mappers); cursors show where the others point.
 
-export interface Peer { id: number; name: string }
+export interface Peer { id: number | string; name: string }
 export interface RemoteCursor { name: string; x: number; z: number }
 
 /** targeted change kept in the room log (collab/data/<room>.jsonl); id/author/at are set by the server */
@@ -16,11 +16,26 @@ export interface CollabEvents {
   project: (p: unknown, from: string) => void
   peers: (peers: Peer[]) => void
   cursors: () => void
-  status: (s: 'connected' | 'closed', detail?: string) => void
+  /** 'connecting' / 'failed' only come from the direct (P2P) transport, see src/p2p.ts */
+  status: (s: 'connecting' | 'connected' | 'closed' | 'failed', detail?: string) => void
+  /** direct mode: whether this browser currently holds the room's reference copy */
+  host?: (isHost: boolean) => void
 }
 
-export class Collab {
-  readonly cursors = new Map<number, RemoteCursor>()
+/** what main.ts talks to: the server room (Collab, below) or the direct peer-to-peer room (P2PCollab) */
+export interface CollabTransport {
+  readonly cursors: Map<number | string, RemoteCursor>
+  readonly open: boolean
+  readonly direct: boolean
+  sendProject(project: unknown): void
+  sendOp(op: Partial<Op>): void
+  sendCursor(x: number, z: number): void
+  close(): void
+}
+
+export class Collab implements CollabTransport {
+  readonly cursors = new Map<number | string, RemoteCursor>()
+  readonly direct = false
   private ws: WebSocket
   private id = 0
   private lastCursor = 0

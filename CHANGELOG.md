@@ -9,6 +9,8 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [Unreleased]
 
 ### Added
+- **Direct collaboration (no server, default)**: WebRTC peer-to-peer rooms (Trystero 0.27.0, Nostr signalling encrypted with the room key, HMAC key check, public STUN, optional TURN). "Create a room" gives a `#salon=…&cle=…` share link + copy button; opening it asks a name and joins. Oldest peer is host (full sync for joiners, takeover when it leaves), room copy kept in IndexedDB, chunked messages. Clear failure after 15 s with a switch to server mode. `CollabTransport` interface (`src/collab.ts`) shared by the server and direct (`src/p2p.ts`) transports. FAQ + glossary, EN/FR.
+- Top-left **Menu** button (back to the welcome screen).
 - **Atelier mode** (welcome card "Open an existing Workbench project"): finish a project made in the Workbench, parity with giorbev's Map Generator Pro tools. Own layout (stepper A0-A6, layers | map | inspector, journal, X/Z/Y cursor, busy panel, help with FAQ + glossary, EN/FR).
   - A0 open a project folder through the relay (or read-only in the browser, File System Access), list worlds, summary (grid, heights, materials, .layer objects, water).
   - A1 tile diagnostic: textures per block vs. QTRE budget 5/7, problem list, texture search, per-tile table, CSV.

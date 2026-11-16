@@ -69,6 +69,10 @@ Aucun outil d'IA ni serveur MCP n'est nécessaire. Les plugins sont dans le menu
 
 ## Collaboration
 
+**Mode direct (par défaut, sans serveur) :** Partager → Rejoindre un salon… → **Créer un salon**, puis **Copier le lien** et l'envoyer en privé. Les autres ouvrent le lien, tapent un nom et sont dedans. Les navigateurs se connectent entre eux en WebRTC ([Trystero](https://github.com/dmotz/trystero), MIT) ; des relais Nostr publics servent seulement à se trouver, et tout ce qui y passe est chiffré avec la clé du salon (la partie `cle=` du lien, dans le `#`, donc jamais envoyée à un serveur). Chaque paire de navigateurs prouve aussi la clé par un défi HMAC. Le premier arrivé est l'hôte (copie de référence, donne carte + commentaires aux nouveaux) ; s'il part, le suivant le plus ancien prend le relais. Chaque navigateur garde une copie du salon (IndexedDB) : un salon rouvert reprend. STUN public seulement : certains réseaux stricts (entreprise, certains mobiles) bloquent — au bout de 15 s l'outil le dit et propose le mode serveur ; ou ajoute ton serveur TURN dans Réglages avancés.
+
+**Mode serveur :**
+
 1. Une personne lance `npm run collab` (port **5790**) ; il affiche un mot de passe.
 2. Chacun clique **Partager** (ou **Rejoindre un salon** à l'accueil), entre l'adresse du serveur, un nom de salon et le mot de passe.
 3. La carte se synchronise, les curseurs de chacun s'affichent. L'onglet Collaboration contient :
