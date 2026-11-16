@@ -199,3 +199,35 @@ catégorie `industrial` (aujourd'hui seulement maisons/ferme/civique/annexe/hang
 
 Conclusion : les générateurs « tout IA » ne produisent pas des prefabs Reforger ; l'apport réaliste =
 LLM pour paramétrer et nommer, image calque pour guider à la main. Le cœur reste procédural.
+
+---
+
+## 6. Base militaire — `src/modules/military.ts` (générateur pur)
+- `generateMilitary({ kind: 'checkpoint'|'outpost'|'main', x, z, yaw, seed, wall? }) → MilitarySite`
+  `{ area: Box, placements: SitePlacement[], entities: ProjectEntity[], shapes: ProjectShape[], roads: Box[], gate: [x,z], flatten: FlattenRequest }`.
+  Repère local : portail côté −Z (face à la route d'accès), tours de garde aux 4 coins (+2 au portail pour `main`),
+  rue principale portail → centre (+ rue transversale `main`), QG au bout, parc véhicules (bâches) près du portail,
+  héliport dans un coin du fond, casernes (`main`) / tentes (`outpost`) en rangées. Périmètre = polyligne ouverte au portail,
+  wall generator `WG_ConcreteWall_USSR_03` (main) / `WG_NetFence_USSR_01` (outpost). Pas de Hesco/sacs de sable en vanilla.
+- `flattenFor(site, heights, grid, maxGrade=0.02)` : plan au moindre carrés (pente ≤ 2 %) → `site.flatten`.
+- `suggestMilitary(heights, grid, { kind, seaLevel, keepOut, roads, coast, count })` → `{x,z,yaw,score,slope,relief,roadDist}[]`
+  (plat, en surplomb, route à ~60 m, loin des villages, biais côte optionnel ; `yaw` tourne le portail vers la route).
+- `MIL_PREFABS` / `MIL_WALLS` : chemins trouvés dans l'index du jeu (asset_search), **emprises estimées** (pas dans prefabs.txt).
+
+## 7. Aérodrome — `src/modules/airfield.ts` (générateur pur)
+- `AIRFIELD_SIZES` small/medium/large = piste 800/1100/1500 m × 25/35/45 m, taxiway 12–18 m, apron, 1–3 hangars.
+- `generateAirfield({ size, x, z, yaw, seed, side? }) → Airfield { runway, taxiways, apron, placements, entities, shapes, flatten[2] }` :
+  piste + taxiway parallèle (60 m du bord) + 3 bretelles, apron, hangars portes vers la piste, tour de contrôle + antenne,
+  dépôt carburant + pompe, balisage `LightRunway_01` tous les 60 m + seuils.
+- **Représentation de la piste** : splines de **road generator** (`RG_Road_Concrete_USSR_02` piste, `RG_Road_ConcretePanel_01`
+  taxiways/apron) avec `RoadWidth` explicite et `AdjustHeightMap=0`, même format que `roadShapes` — seul chemin que le plugin
+  sait déjà construire ; aucun prefab de piste en vanilla. **Non vérifié** : rendu d'un RoadWidth 30–45 m (repli : 2–3 splines de 15 m).
+- `flattenAirfield(a, heights, grid) → m³` : plan piste pente ≤ `MAX_RUNWAY_GRADE` (1 %) + 60 m de prolongement, la plate-forme
+  (taxiway/apron/bâtiments) prend le même plan (pas de marche). Appliquer avec `applyFlatten`.
+- `bestRunwayYaw(...)`, `suggestAirfield(heights, grid, { size, seaLevel, keepOut, count })` : balaye les caps 0–180°,
+  garde le moindre terrassement, terrain sec sur toute la bande.
+
+## 8. Helpers communs — `src/modules/gen-common.ts`
+`rng(seed)`, `Box` orienté (+Z = avant, yaw en degrés), `boxesOverlap`, `inBox`, `toWorld`, `heightAt`,
+`FlattenRequest {box,h0,h1,falloff}` + `applyFlatten(heights, grid, reqs) → m³`, `bestPlane`, `earthwork`, `maxSlope`,
+`toEntity`, `wallShape`, `roadShape`, `svgPreview`. Aucun import DOM / i18n (testable sous node/tsx).
