@@ -10,6 +10,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.5.0',
     date: '2026-11-16',
     items: [
+      { en: 'Biome choice at step 1 and in the random world: the exported ground surfaces follow it, saved and shared with the project. Library button and a dark asset library page.', fr: 'Choix du biome à l’étape 1 et dans le monde aléatoire : les sols exportés le suivent, sauvegardé et partagé avec le projet. Bouton Bibliothèque et page de bibliothèque d’assets en thème sombre.' },
       { en: 'A guided interface: a welcome screen, then 7 numbered steps from relief to sending to Workbench.', fr: 'Une interface guidée : un écran d\'accueil, puis 7 étapes numérotées, du relief à l\'envoi vers Workbench.' },
       { en: 'Random world: one number makes a whole map, tuned on Everon, Arland and Kolguyev.', fr: 'Monde aléatoire : un seul nombre fait une carte entière, réglée sur Everon, Arland et Kolguyev.' },
       { en: 'Livelier villages: organic streets, farm yards, gardens, a church, ports.', fr: 'Villages plus vivants : rues organiques, cours de ferme, jardins, une église, des ports.' },

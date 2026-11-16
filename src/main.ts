@@ -10,7 +10,7 @@ import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
-import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks } from './bridge'
+import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
 import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
@@ -90,6 +90,8 @@ import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
+import { BIOMES, biome, type BiomeId } from './data/biomes'
+import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
@@ -105,7 +107,19 @@ const STEPS = [
 ] as const
 
 // stroke icons for the UI chrome (MILSPEC style: 1.6px stroke, currentColor)
+// --- biome (docs/BIOMES_LIBRARY.md §5): step 1 + random-world dialog, stored in the project ---
+let currentBiome: BiomeId = DEFAULT_BIOME
+function biomeTip(id: BiomeId) {
+  const b = biome(id)!, fr = getLang() === 'fr'
+  return `${fr ? b.desc.fr : b.desc.en}\n${t('biome.missing')} ${fr ? b.missing.fr : b.missing.en}`
+}
+function biomeField(id: string) {
+  const fr = getLang() === 'fr'
+  const opts = BIOMES.map((b) => `<option value="${b.id}">${fr ? b.label.fr : b.label.en} · ${t(('biomeAvailability.' + b.availability) as K)}</option>`).join('')
+  return `<label class="biomesel"><span class="lbl">${t('biome')}</span><span class="biomeline"><select id="${id}" data-biome>${opts}</select><span class="biomebadge" data-avail="vanilla"></span></span></label>`
+}
 const ICON: Record<string, string> = {
+  book: '<path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z"/>',
   lock: '<rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   dice: '<rect x="4" y="4" width="16" height="16"/><path d="M8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
@@ -170,6 +184,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <span id="status" class="status" role="button" tabindex="0" title="${t('wb.chip.tip')}">${t('wb.chip.off')}</span>
     <span id="collabInfo" class="hint"></span>
     <span class="grow"></span>
+    <button id="libBtn" class="hist withlbl" type="button" title="${t('library.tip')}" aria-label="${t('library.tip')}">${ic('book')}<span>${t('library')}</span></button>
     <button id="collab" class="hist withlbl" title="${t('collab.tip')}" aria-label="${t('collab.tip')}">${ic('users')}<span>${t('collab.short')}</span></button>
     <div class="langsel">
       <button id="lang" class="langbtn" type="button" title="${t('lang.title')}" aria-haspopup="listbox" aria-expanded="false">${ic('globe', 16)}<span class="lcode">${getLang().toUpperCase()}</span><span class="lname"> · ${LANG_NAME}</span>${completion(getLang()) < 100 ? `<span class="lpct">${completion(getLang())}%</span>` : ''}${ic('caret', 14)}</button>
@@ -261,6 +276,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="form">
           <label><span class="lbl">${t('wg.seed')} ${info('info.wgSeed')}</span><span class="seedrow"><input id="rwSeed" type="number" step="1" value="1"><button id="rwDice" type="button" class="secondary icon" title="${t('wg.dice')}" aria-label="${t('wg.dice')}">${ic('dice', 16)}</button></span></label>
           <label>${t('wg.size')} <select id="rwSize"><option value="2048">2 km</option><option value="4096" selected>4 km</option><option value="8192">8 km</option></select></label>
+          ${biomeField('rwBiome')}
           ${(['towns', 'villages', 'hamlets', 'industry', 'military', 'forests'] as const).map((k) => `<label class="rwslider"><span class="lbl">${t(('wg.' + k) as K)} ${info(('info.wg.' + k) as K)}</span><input id="rw_${k}" type="range" min="0" max="2" step="0.25" value="1"><output id="rw_${k}_v">×1</output></label>`).join('')}
         </div>
         <div class="row">
@@ -370,6 +386,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p></div>
 
     <div class="tab" data-tab="island">
+      <div class="row biomerow">${biomeField('pBiome')}</div>
       <div class="row">
         <button id="tGen" type="button">${t('btn.tGen')}</button>
         <button id="tReroll" type="button" class="secondary">${t('btn.tReroll')}</button>
@@ -1987,6 +2004,9 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
   }),
 )
 
+/** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
+const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => writeMasksRaw(applyBiome(body, currentBiome))
+
 async function refreshStatus() {
   const s = await getStatus()
   statusEl.textContent = s.workbench ? t('wb.chip.on') : t('wb.chip.off')
@@ -2409,6 +2429,7 @@ function islandProject() {
     landCover: landCover && { cols: landCover.cols, n: landCover.data.length, rle: rle(landCover.data) },
     credits,
     power: powerLines,
+    biome: currentBiome,
   }
 }
 function autosave() {
@@ -2454,9 +2475,26 @@ function loadProject(p: any) {
     img.src = p.trace
   }
   removed = Array.isArray(p.removed) ? p.removed : []
+  setBiome(isBiome(p.biome) ? p.biome : DEFAULT_BIOME, false)
   waterInfo()
   recompose(true)
 }
+function setBiome(id: BiomeId, save = true) {
+  currentBiome = id
+  const b = biome(id)!
+  document.querySelectorAll<HTMLSelectElement>('select[data-biome]').forEach((sel) => {
+    sel.value = id
+    sel.title = biomeTip(id)
+    const badge = sel.parentElement!.querySelector<HTMLElement>('.biomebadge')!
+    badge.dataset.avail = b.availability
+    badge.textContent = t(('biomeAvailability.' + b.availability) as K)
+    badge.title = biomeTip(id)
+  })
+  if (save) autosave()
+}
+document.querySelectorAll<HTMLSelectElement>('select[data-biome]').forEach((sel) => sel.addEventListener('change', () => setBiome(sel.value as BiomeId)))
+setBiome(currentBiome, false)
+$<HTMLButtonElement>('libBtn').addEventListener('click', () => window.open('library.html', '_blank'))
 $<HTMLButtonElement>('pSave').addEventListener('click', async () => {
   const p = islandProject()
   if (!p) return void (logEl.textContent = t('log.genFirst'))

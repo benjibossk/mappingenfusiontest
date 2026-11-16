@@ -820,3 +820,13 @@ button.linkbtn:hover:not(:disabled) { background: none; border: 0; color: var(--
 .rwbox > p.hint { font-size: 15px; line-height: 1.45; color: var(--tx-3); margin: 0; }
 @media (max-width: 720px) { .overlay { display: none; } }
 @media (max-width: 520px) { .linkrow { flex-direction: column; } }
+
+/* biome selector (step 1 + random-world dialog, docs/BIOMES_LIBRARY.md §5) */
+.biomerow { margin-bottom: 4px; }
+.biomesel { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.biomeline { display: flex; gap: 6px; align-items: center; }
+.biomeline select { flex: 1; min-width: 0; }
+.biomebadge { flex: none; padding: 2px 6px; border: 1px solid var(--line-2); border-radius: var(--r); font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: .04em; color: var(--tx-2); cursor: help; white-space: nowrap; }
+.biomebadge[data-avail="vanilla"] { border-color: var(--green); color: var(--green-hi); }
+.biomebadge[data-avail="partial"] { border-color: var(--amber); color: var(--amber-hi); }
+.biomebadge[data-avail="mods"] { border-color: var(--red); color: #E07A6B; }

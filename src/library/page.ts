@@ -1,19 +1,18 @@
 // library.html: browse the public asset library (vanilla seed + every library/*.json pack in the
 // repo + packs imported locally), filter by biome / kind / tags / text, preview an asset or a
-// parcel template in 3D (viewer3d is lazy-loaded). FR/EN follows navigator.language.
+// parcel template in 3D (viewer3d is lazy-loaded). FR/EN follows the app language (i18n.ts).
 
 import './page.css'
 import { BIOMES, biome, type Biome, type BiomeId } from '../data/biomes.ts'
 import { ASSET_KINDS, buildLibrary, importPack, search, tagCounts, VANILLA_PACK, type Asset, type AssetKind, type AssetPack, type Library } from './index.ts'
 import { LOT_TEMPLATES, demoLot, generateParcel, lotTemplate } from '../biomes/parcel.ts'
+import { getLang, t as tr, type Key } from '../i18n.ts'
 import type { Viewer } from './viewer3d.ts'
 
-const FR = !/^en/i.test(navigator.language || 'fr')
-const L = (fr: string, en: string) => (FR ? fr : en)
+const FR = getLang() === 'fr' // same language as the app (i18n.ts)
 const lab = (o: { en: string; fr: string }) => (FR ? o.fr : o.en)
-const KIND_FR: Record<AssetKind, string> = { house: 'maison', farm: 'ferme', annex: 'annexe', shed: 'abri', civic: 'civique', religious: 'religieux', block: 'immeuble', industrial: 'industriel', military: 'militaire', fence: 'clôture', wall: 'mur', tree: 'arbre', bush: 'buisson', prop: 'objet' }
-const kindLabel = (k: AssetKind) => (FR ? KIND_FR[k] : k)
-const AVAIL = { vanilla: L('vanilla', 'vanilla'), partial: L('partiel', 'partial'), mods: L('mods requis', 'needs mods') }
+const kindLabel = (k: AssetKind) => tr(('lib.kind.' + k) as Key)
+const AVAIL = { vanilla: tr('lib.vanilla'), partial: tr('lib.partial'), mods: tr('lib.needs_mods') }
 
 // community packs committed in the repo (library/*.json), validated at load
 const repoPacks: AssetPack[] = []
@@ -28,25 +27,25 @@ const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', t
 
 const app = document.getElementById('lib-app')!
 app.innerHTML = `
-<header class="lb-head"><h1>${L('Bibliothèque d’assets', 'Asset library')}</h1>
-  <span class="lb-sub">${L('Biomes, prefabs et parcelles — publique, contributive', 'Biomes, prefabs and lots — public, contributable')}</span>
+<header class="lb-head"><h1>${tr('lib.title')}</h1>
+  <span class="lb-sub">${tr('lib.lead')}</span>
   <a class="lb-back" href="./">← reforger-mapper</a></header>
 <main class="lb-main">
   <aside class="lb-side">
-    <label>${L('Biome', 'Biome')}<select id="f-biome">${BIOMES.map((b) => `<option value="${b.id}">${lab(b.label)} · ${AVAIL[b.availability]}</option>`).join('')}</select></label>
+    <label>${tr('lib.biome')}<select id="f-biome">${BIOMES.map((b) => `<option value="${b.id}">${lab(b.label)} · ${AVAIL[b.availability]}</option>`).join('')}</select></label>
     <p id="b-desc" class="lb-desc"></p>
-    <label class="lb-check"><input type="checkbox" id="f-fb" checked> ${L('inclure le biome de repli', 'include fallback biome')}</label>
-    <label>${L('Type', 'Kind')}<select id="f-kind"><option value="">${L('tous', 'all')}</option>${ASSET_KINDS.map((k) => `<option value="${k}">${kindLabel(k)}</option>`).join('')}</select></label>
-    <label>${L('Recherche', 'Search')}<input id="f-text" type="search" placeholder="FarmHouse, pinus, ussr…"></label>
+    <label class="lb-check"><input type="checkbox" id="f-fb" checked> ${tr('lib.include_fallback_biome')}</label>
+    <label>${tr('lib.kind')}<select id="f-kind"><option value="">${tr('lib.all')}</option>${ASSET_KINDS.map((k) => `<option value="${k}">${kindLabel(k)}</option>`).join('')}</select></label>
+    <label>${tr('lib.search')}<input id="f-text" type="search" placeholder="FarmHouse, pinus, ussr…"></label>
     <div class="lb-tags" id="f-tags"></div>
     <div class="lb-packs" id="packs"></div>
-    <label class="lb-import">${L('Importer un pack JSON', 'Import a JSON pack')}<input id="f-import" type="file" accept=".json,application/json"></label>
+    <label class="lb-import">${tr('lib.import_a_json_pack')}<input id="f-import" type="file" accept=".json,application/json"></label>
     <p id="msg" class="lb-msg"></p>
   </aside>
   <section class="lb-list"><div class="lb-count" id="count"></div><ul id="list"></ul></section>
   <section class="lb-view">
     <div class="lb-tabs">
-      <button id="m-parcel" class="on">${L('Parcelle', 'Lot')}</button><button id="m-asset">${L('Asset', 'Asset')}</button>
+      <button id="m-parcel" class="on">${tr('lib.lot')}</button><button id="m-asset">${tr('lib.asset')}</button>
       <select id="f-tpl">${LOT_TEMPLATES.map((t) => `<option value="${t.id}">${lab(t.label)}</option>`).join('')}</select>
       <button id="reroll" title="seed">🎲</button>
     </div>
@@ -64,7 +63,7 @@ async function getViewer() {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
 function renderPacks() {
-  $('packs').innerHTML = `<b>${L('Packs', 'Packs')}</b>` + lib.packs.map((p) => `<div>${esc(p.name)} <small>(${p.count}) — ${esc(p.author)}</small></div>`).join('')
+  $('packs').innerHTML = `<b>${tr('lib.packs')}</b>` + lib.packs.map((p) => `<div>${esc(p.name)} <small>(${p.count}) — ${esc(p.author)}</small></div>`).join('')
     + (loadErrors.length ? `<div class="lb-err">${loadErrors.map(esc).join('<br>')}</div>` : '')
 }
 
@@ -74,11 +73,11 @@ function results(): Asset[] {
 
 function render() {
   const b = biome(st.biome)!
-  $('b-desc').innerHTML = `${esc(lab(b.desc))}<br><em>${L('Manque', 'Missing')} : ${esc(lab(b.missing))}</em><br><small>FF : ${b.ff}${b.maps.length ? ' · ' + b.maps.join(', ') : ''}</small>`
+  $('b-desc').innerHTML = `${esc(lab(b.desc))}<br><em>${tr('lib.missing')} : ${esc(lab(b.missing))}</em><br><small>FF : ${b.ff}${b.maps.length ? ' · ' + b.maps.join(', ') : ''}</small>`
   const res = results()
   const tags = tagCounts(search(lib, { biome: st.biome, kind: st.kind || undefined, fallback: st.fallback })).slice(0, 24)
   $('f-tags').innerHTML = tags.map(([t, n]) => `<button class="tag${st.tags.includes(t) ? ' on' : ''}" data-tag="${esc(t)}">${esc(t)} <small>${n}</small></button>`).join('')
-  $('count').textContent = `${res.length} ${L('assets', 'assets')}`
+  $('count').textContent = `${res.length} ${tr('lib.assets')}`
   $('list').innerHTML = res.slice(0, 300).map((a) => `<li data-guid="${esc(a.guid)}" class="${a.guid === st.sel ? 'sel' : ''}">
     <span class="k k-${a.kind}">${kindLabel(a.kind)}</span><span class="n">${esc(a.name ?? a.guid)}</span>
     <span class="t">${a.tags.slice(0, 4).map(esc).join(' · ')}</span></li>`).join('')
@@ -92,15 +91,15 @@ async function preview() {
   ;($('f-tpl') as HTMLSelectElement).style.display = st.mode === 'parcel' ? '' : 'none'
   if (st.mode === 'asset') {
     const a = lib.assets.find((x) => x.guid === st.sel) ?? results()[0]
-    if (!a) { $('info').textContent = L('Aucun asset', 'No asset'); return }
+    if (!a) { $('info').textContent = tr('lib.no_asset'); return }
     v.showAsset(a, b)
     const f = a.footprint
-    $('info').innerHTML = `<code>${esc(a.guid)}</code><br>${kindLabel(a.kind)} · ${(f.maxX - f.minX).toFixed(1)}×${(f.maxZ - f.minZ).toFixed(1)}×${f.h} m${f.measured ? '' : ' (' + L('estimé', 'estimated') + ')'} · ${esc(a.source)} · ${esc(a.author)} · ${esc(a.licence)}<br>${L('Biomes', 'Biomes')} : ${a.biomes.join(', ')}`
+    $('info').innerHTML = `<code>${esc(a.guid)}</code><br>${kindLabel(a.kind)} · ${(f.maxX - f.minX).toFixed(1)}×${(f.maxZ - f.minZ).toFixed(1)}×${f.h} m${f.measured ? '' : ' (' + tr('lib.estimated') + ')'} · ${esc(a.source)} · ${esc(a.author)} · ${esc(a.licence)}<br>${tr('lib.biomes')} : ${a.biomes.join(', ')}`
   } else {
     const t = lotTemplate(st.tpl)!
     const p = generateParcel(lib, st.biome, t, demoLot(t.size.w[1], t.size.d[1]), st.seed)
     v.showParcel(p, b)
-    $('info').innerHTML = `${esc(lab(t.label))} · ${t.size.w[1]}×${t.size.d[1]} m · ${p.items.length} ${L('objets', 'items')}, ${p.fences.length} ${L('clôtures', 'fences')} · seed ${st.seed}`
+    $('info').innerHTML = `${esc(lab(t.label))} · ${t.size.w[1]}×${t.size.d[1]} m · ${p.items.length} ${tr('lib.items')}, ${p.fences.length} ${tr('lib.fences')} · seed ${st.seed}`
       + (p.warnings.length ? `<br><span class="lb-warn">${p.warnings.map(esc).join('<br>')}</span>` : '')
   }
 }
@@ -129,7 +128,7 @@ $<HTMLInputElement>('f-import').onchange = async (e) => {
   try {
     localPacks.push(importPack(await f.text()))
     lib = buildLibrary([VANILLA_PACK, ...repoPacks, ...localPacks])
-    $('msg').textContent = L('Pack importé', 'Pack imported') + (lib.conflicts.length ? ` — ${lib.conflicts.length} ${L('doublons ignorés', 'duplicates skipped')}` : '')
+    $('msg').textContent = tr('lib.pack_imported') + (lib.conflicts.length ? ` — ${lib.conflicts.length} ${tr('lib.duplicates_skipped')}` : '')
     renderPacks(); render()
   } catch (err) { $('msg').textContent = (err as Error).message }
 }
