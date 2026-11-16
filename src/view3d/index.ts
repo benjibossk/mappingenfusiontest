@@ -276,7 +276,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   if (data.treeTint) { const tt = data.treeTint; for (const k of ['needle', 'broad', 'bush'] as Kind[]) KCOL[k] = KCOL[k].map((v, i) => Math.min(1, v * tt[k][i])) }
   const tcol = new Float32Array(nTree * 3)
   for (let t = 0; t < nTree; t++) {
-    const kc = KCOL[kindOf(t)], m = (0.8 + (((t * 2654435761) >>> 0) / 4294967296) * 0.4) * 0.78 // a touch darker: our drape is brighter than theirs
+    const kc = KCOL[kindOf(t)], m = (0.8 + (((t * 2654435761) >>> 0) / 4294967296) * 0.4) * (kindOf(t) === 'needle' ? 0.7 : 0.85) // conifers darker: our drape is brighter than theirs
     tcol[t * 3] = kc[0] * m; tcol[t * 3 + 1] = kc[1] * m; tcol[t * 3 + 2] = kc[2] * m
   }
   // far canopy: one lit-less point per tree, size in metres, faded in where the meshes stop
@@ -354,9 +354,9 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
         const h = ((i * 2246822519) >>> 0) / 4294967296, k = ((i * 3266489917) >>> 0) / 4294967296
         let ht: number, rd: number
         // realistic sizes (OpsTrack carries the prefab's): conifer 12-28 m / r 2-4 m, broadleaf 8-18 m / r 3-6 m, bush 1-3 m
-        if (ch.kind === 'needle') { ht = Math.min(26, (11 + k * 9) * f); rd = Math.min(4.5, (2.4 + h * 1.4) * (0.7 + f * 0.35)) }
-        else if (ch.kind === 'bush') { ht = 1 + k * 2 * f; rd = 0.8 + h * 1.4 * f }
-        else { ht = Math.min(18, (8 + k * 7) * f) * 0.87; rd = Math.min(4.5, (2.2 + h * 1.6) * (0.7 + f * 0.35)) }
+        if (ch.kind === 'needle') { ht = Math.min(30, (15 + k * 10) * f); rd = Math.min(5.5, (3.2 + h * 1.6) * (0.7 + f * 0.35)) }
+        else if (ch.kind === 'bush') { ht = 1.5 + k * 2 * f; rd = 1 + h * 1.2 * f }
+        else { ht = Math.min(12, (6 + k * 5) * f) * 0.87; rd = Math.min(3.2, (1.8 + h * 1.2) * (0.7 + f * 0.35)) } // 30-60 % of the conifers
         v.set(x, gy - 0.5, -z)
         qn.setFromAxisAngle(UP, h * Math.PI * 2)
         sc.set(rd * 2, ht, rd * 2)

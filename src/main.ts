@@ -4238,7 +4238,7 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
     tot += Math.abs(ar) / 2
     return [x0, z0, x1, z1]
   })
-  const sp = Math.max(8, Math.sqrt(tot / 400_000))
+  const sp = Math.max(9, Math.sqrt(tot / 350_000))
   const out: number[] = [], kind: number[] = []
   let seed = 1
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
@@ -4251,6 +4251,17 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
     return a + (b - a) * sz
   }
   const mixShare = mixedNeedle(currentBiome)
+  const lakeRings = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i + 1 < w.pts.length; i += 2) { x0 = Math.min(x0, w.pts[i]); x1 = Math.max(x1, w.pts[i]); z0 = Math.min(z0, w.pts[i + 1]); z1 = Math.max(z1, w.pts[i + 1]) }
+    return { p: w.pts, b: [x0, z0, x1, z1] }
+  })
+  const inLake = (x: number, z: number) => lakeRings.some(({ p, b }) => {
+    if (x < b[0] || x > b[2] || z < b[1] || z > b[3]) return false
+    let ins = false
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
+    return ins
+  })
   forests.forEach((a, n) => {
     const [x0, z0, x1, z1] = bb[n], p = a.pts
     for (let z = z0 + sp / 2; z < z1; z += sp) for (let x = x0 + sp / 2; x < x1; x += sp) {
@@ -4262,16 +4273,16 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
         const u = Math.max(0, Math.min(1, ((px - p[j]) * ex + (pz - p[j + 1]) * ez) / l2)), qx = p[j] + u * ex - px, qz = p[j + 1] + u * ez - pz
         d2 = Math.min(d2, qx * qx + qz * qz)
       }
-      if (!inside) continue
+      if (!inside || inLake(px, pz)) continue
       const d = Math.sqrt(d2), nz = noise(px, pz), r = rnd()
       // lace edge: trees thin out over the first ~25 m, clearings where the noise is low
-      if (r > Math.min(1, 0.35 + d / 25) || nz < 0.12) {
-        if (r < 0.75 && d < 30) { out.push(px, pz, 0.6 + rnd() * 0.8); kind.push(2) } // edge / clearing bushes
+      if (r > Math.min(1, 0.3 + d / 30) || nz < 0.4) { // groves and bands: ~40 % of the noise field is open ground
+        if (r < 0.35 && (d < 30 || nz > 0.3)) { out.push(px, pz, 0.6 + rnd() * 0.8); kind.push(2) } // edge / clearing bushes
         continue
       }
-      const needle = a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < mixShare)
-      out.push(px, pz, 0.55 + rnd() * 0.75 * (0.6 + nz * 0.8)); kind.push(needle ? 1 : 0)
-      if (rnd() < 0.3) { out.push(px + (rnd() - 0.5) * sp, pz + (rnd() - 0.5) * sp, 0.5 + rnd()); kind.push(2) } // undergrowth
+      const needle = a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < Math.max(0.85, mixShare)) // conifers dominate (OpsTrack ~85 %)
+      out.push(px, pz, 0.7 + rnd() * 0.5 * (0.6 + nz * 0.8)); kind.push(needle ? 1 : 0)
+      if (d < 25 && rnd() < 0.25) { out.push(px + (rnd() - 0.5) * sp, pz + (rnd() - 0.5) * sp, 0.5 + rnd()); kind.push(2) } // undergrowth
     }
   })
   // biome garden trees (not Everon)

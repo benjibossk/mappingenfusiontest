@@ -216,22 +216,11 @@ export function realDrape(size: number, hm: HeightGrid, sea: number, L: RealLaye
   // paved areas
   g.fillStyle = rgb(PAL.concrete, 0.95)
   for (const p of L.paved) { if (p.length >= 6) { ring(p, true); g.fill() } }
-  // forest canopy
-  const tile = canopyTile(), pat = g.createPattern(tile, 'repeat')!
-  pat.setTransform(new DOMMatrix().scale(0.22))
+  // forest floor: barely darker than the ground around (OpsTrack: the 3D trees draw the forest, not the drape)
   for (const f of L.forests) {
     if (f.pts.length < 6) continue
     ring(f.pts, true)
-    g.fillStyle = rgb([50 * forestMul[0], 74 * forestMul[1], 30 * forestMul[2]], 1 - f.needle * 0.18); g.fill()
-    g.save(); g.globalAlpha = 0.95; g.fillStyle = pat; g.fill(); g.restore()
-    if (forestMul[0] !== 1 || forestMul[1] !== 1 || forestMul[2] !== 1) { // biome: re-tint the crown pattern (multiply darkens, screen lightens)
-      const lo = forestMul.map((v) => Math.min(1, v) * 255 | 0), hi = forestMul.map((v) => Math.max(0, Math.min(1, v - 1)) * 255 | 0)
-      g.save(); g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${lo[0]},${lo[1]},${lo[2]})`; g.fill()
-      if (hi.some((v) => v > 0)) { g.globalCompositeOperation = 'screen'; g.fillStyle = `rgb(${hi[0]},${hi[1]},${hi[2]})`; g.fill() }
-      g.restore()
-    }
-    if (f.needle > 0.3) { g.save(); g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(160,176,170,${f.needle * 0.5})`; g.fill(); g.restore() }
-    g.strokeStyle = 'rgba(24,36,16,0.5)'; g.lineWidth = Math.max(minW, 2.5); g.stroke()
+    g.fillStyle = rgb([40 * forestMul[0], 46 * forestMul[1], 26 * forestMul[2]], 1, 0.16); g.fill()
   }
   // hedges
   g.strokeStyle = 'rgb(46,64,32)'; g.lineWidth = Math.max(minW, 3)
@@ -297,27 +286,6 @@ function grainTile() {
   for (let i = 0; i < 256 * 256; i++) { const v = 128 + (hash(i, 99) - 0.5) * 120; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255 }
   c.getContext('2d')!.putImageData(im, 0, 0)
   return (grain = c)
-}
-let canopy: HTMLCanvasElement | null = null
-/** 256 px tile of tree crowns (pattern scaled to ~56 m) */
-function canopyTile() {
-  if (canopy) return canopy
-  const c = document.createElement('canvas'); c.width = c.height = 256
-  const g = c.getContext('2d')!
-  g.fillStyle = 'rgb(28,44,20)'; g.fillRect(0, 0, 256, 256)
-  for (let i = 0; i < 900; i++) {
-    const x = hash(i, 1) * 256, y = hash(i, 2) * 256, r = 6 + hash(i, 3) * 11, t = hash(i, 4)
-    for (const [dx, dy] of [[0, 0], [256, 0], [-256, 0], [0, 256], [0, -256]]) {
-      const cx = x + dx, cy = y + dy
-      if (cx < -r || cx > 256 + r || cy < -r || cy > 256 + r) continue
-      g.fillStyle = 'rgba(14,22,10,0.55)'; g.beginPath(); g.arc(cx + r * 0.35, cy + r * 0.35, r, 0, 7); g.fill()
-      const gr = g.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r)
-      gr.addColorStop(0, `rgb(${96 + t * 34 | 0},${128 + t * 30 | 0},${50 + t * 12 | 0})`)
-      gr.addColorStop(1, `rgb(${42 + t * 16 | 0},${68 + t * 18 | 0},${26 + t * 6 | 0})`)
-      g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill()
-    }
-  }
-  return (canopy = c)
 }
 
 /** procedural field patchwork when the project has none: rectangular parcels around building clusters on flat, dry land */
