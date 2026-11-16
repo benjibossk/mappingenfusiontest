@@ -1,3 +1,5 @@
+/* any element with the hidden attribute stays hidden, whatever display its own class sets (closing a panel = setting hidden) */
+[hidden] { display: none !important; }
 :root { font-family: system-ui, sans-serif; color-scheme: dark; background: #1b1d21; color: #e6e6e6; }
 .mg { max-width: 900px; margin: 2rem auto; display: flex; flex-direction: column; gap: .75rem; }
 .status { margin: 0; padding: .5rem .75rem; border-radius: 6px; background: #3a2626; }
