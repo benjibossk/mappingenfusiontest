@@ -145,7 +145,7 @@ function nice(id: string, roadType?: string): string {
   const n = id.match(/(\d+)$/)?.[1] ?? ''
   let m = id.match(/^WATER_(RIVER|LAKE)_\d+$/)
   if (m) return t(m[1] === 'RIVER' ? 'name.river' : 'name.lake', { n })
-  m = id.match(/^(TOWN|VILLAGE|HAMLET)_\d+$/)
+  m = id.match(/^(TOWN|VILLAGE|HAMLET|FARM)_\d+$/)
   if (m) return t(('name.' + m[1].toLowerCase()) as K, { n })
   if (roadType && /^ROAD_/.test(id) && n) return `${t(('road.type.' + roadType) as K)} ${n}`
   return id
@@ -1891,7 +1891,8 @@ let runTour: (stops: [string, Key][]) => void = () => {}
   runTour = (s) => { stops = s; start() }
   let seen = '1'
   try { seen = localStorage.getItem(TOUR_KEY) ?? '' } catch { /* private window: never auto-start */ }
-  if (!seen) setTimeout(start, 600)
+  // never over the welcome screen: there the newcomer picks a path first, and each path offers its own mini tour
+  if (!seen) setTimeout(() => { if ($('welcome').hidden) start() }, 600)
 }
 
 // --- busy panel: every long action shows its name, a bar, the time spent; buttons are greyed meanwhile ---

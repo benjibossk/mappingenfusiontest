@@ -87,7 +87,7 @@ export function composeHeights(base: number[], g: Grid, waters: Water[], zones: 
   const auto = waters.some((w) => w.auto)
   const sim = computeRivers(h, g.cols, g.rows, g.step, { rain: WORLD.water.rain, windAngle: 0, threshold: auto ? riverThreshold(g.step) : WORLD.water.threshold, depth: auto ? 0 : 4 })
   if (beds && !auto) layBeds(h, beds)
-  return { heights: h, sim }
+  return { heights: h, sim, wet: wl?.wet }
 }
 
 /** river threshold in grid cells for the generated world: a catchment area, whatever the grid step */
@@ -157,7 +157,7 @@ function placeFarms(h: ArrayLike<number>, g: Grid, roads: Road[], sites: Site[],
 }
 
 /** places on a score map: flat, low, near water / coast, away from the edge; spacing per kind */
-export function placeWorldSites(h: ArrayLike<number>, g: Grid, river: Float32Array | undefined, p: WorldParams, seed: number): Site[] {
+export function placeWorldSites(h: ArrayLike<number>, g: Grid, river: Float32Array | undefined, p: WorldParams, seed: number, wet?: Uint8Array): Site[] {
   const S = WORLD.sites
   let land = 0, top = 1
   for (let i = 0; i < h.length; i++) { if (h[i] > 0.5) land++; top = Math.max(top, h[i]) }
@@ -191,7 +191,8 @@ export function placeWorldSites(h: ArrayLike<number>, g: Grid, river: Float32Arr
   const dry = (x: number, z: number, R: number) => {
     for (let a = 0; a < 16; a++) for (const f of [0.35, 0.7, 1]) {
       const c = Math.round((x + Math.cos((a / 16) * Math.PI * 2) * R * f - g.minX) / g.step), r = Math.round((z + Math.sin((a / 16) * Math.PI * 2) * R * f - g.minZ) / g.step)
-      if (c < 0 || r < 0 || c >= g.cols || r >= g.rows || h[r * g.cols + c] <= 0.5) return false
+      // sea, and lakes / rivers (wet cells): a place must not sit in the water
+      if (c < 0 || r < 0 || c >= g.cols || r >= g.rows || h[r * g.cols + c] <= 0.5 || (wet && wet[r * g.cols + c])) return false
     }
     return true
   }
@@ -269,7 +270,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   let cur = composeHeights(base, g, waters, zones, roads)
   // 3. places
   await step('sites')
-  let sites = placeWorldSites(cur.heights, g, cur.sim.river, p, seed)
+  let sites = placeWorldSites(cur.heights, g, cur.sim.river, p, seed, cur.wet)
   const siteDiscs = (extra: number) => sites.map((s) => ({ x: s.x, z: s.z, r: SITE_RADIUS[s.kind] + extra }))
   // 4. airfield: the flattest long strip, away from the places
   await step('airfield')
