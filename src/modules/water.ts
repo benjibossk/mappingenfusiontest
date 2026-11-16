@@ -11,13 +11,13 @@ export type WaterType = 'river' | 'lake' | 'lakeMountain' | 'lakeCain' | 'lakeDi
 
 //! generator: bare paths are resolved to GUIDs by the plugin
 export const WATER_TYPES: Record<WaterType, { label: string; generator: string; closed: boolean; colour: string }> = {
-  river: { label: t('water.type.river'), generator: 'Prefabs/WEGenerators/Water/River/R_RiverMedium_01.et', closed: false, colour: '#3f8fd8' },
+  river: { label: t('water.type.river'), generator: '{B7B923DFE6B4F9B9}Prefabs/WEGenerators/Water/River/R_RiverMedium_01.et', closed: false, colour: '#3f8fd8' },
   lake: { label: t('water.type.lake'), generator: '{1F2254A7C9C8AA57}Prefabs/WEGenerators/Water/Lake/LG_Lake_01.et', closed: true, colour: '#3a7fc4' },
-  lakeMountain: { label: t('water.type.lakeMountain'), generator: 'Prefabs/WEGenerators/Water/Lake/LG_LakeMountain_01.et', closed: true, colour: '#4c9ad6' },
-  lakeCain: { label: t('water.type.lakeCain'), generator: 'Prefabs/WEGenerators/Water/Lake/LG_CainLake_01.et', closed: true, colour: '#2e5f8a' },
-  lakeDirty: { label: t('water.type.lakeDirty'), generator: 'Prefabs/WEGenerators/Water/Lake/LG_LakeDirty_01.et', closed: true, colour: '#5b7a5a' },
-  drainage: { label: t('water.type.drainage'), generator: 'Prefabs/WEGenerators/Water/Lake/LG_DirtyDrainage_01.et', closed: true, colour: '#6b7a4a' },
-  pool: { label: t('water.type.pool'), generator: 'Prefabs/WEGenerators/Water/Pool/LG_Pool_01.et', closed: true, colour: '#5fc0e8' },
+  lakeMountain: { label: t('water.type.lakeMountain'), generator: '{5D258FD685D411E9}Prefabs/WEGenerators/Water/Lake/LG_LakeMountain_01.et', closed: true, colour: '#4c9ad6' },
+  lakeCain: { label: t('water.type.lakeCain'), generator: '{D0224BC8D6B29461}Prefabs/WEGenerators/Water/Lake/LG_CainLake_01.et', closed: true, colour: '#2e5f8a' },
+  lakeDirty: { label: t('water.type.lakeDirty'), generator: '{4E28608BE618F2D7}Prefabs/WEGenerators/Water/Lake/LG_LakeDirty_01.et', closed: true, colour: '#5b7a5a' },
+  drainage: { label: t('water.type.drainage'), generator: '{0263A3344F9DCAAD}Prefabs/WEGenerators/Water/Lake/LG_DirtyDrainage_01.et', closed: true, colour: '#6b7a4a' },
+  pool: { label: t('water.type.pool'), generator: '{5F7E82B65AE9A3EE}Prefabs/WEGenerators/Water/Pool/LG_Pool_01.et', closed: true, colour: '#5fc0e8' },
 }
 
 export interface Water {
@@ -540,7 +540,7 @@ export function riverBanks(waters: Water[], before: ArrayLike<number>, grid: Gri
 //! where they cross a lake, so the water leaves the lake at its outlet.
 export function placeLakes(
   heights: ArrayLike<number>, filled: ArrayLike<number>, grid: Grid, rivers: Omit<Water, 'id'>[],
-  opts: { minArea: number; sourceShare: number; depth: number; seed: number },
+  opts: { minArea: number; sourceShare: number; depth: number; seed: number; maxLakes?: number },
 ): { lakes: Omit<Water, 'id'>[]; rivers: Omit<Water, 'id'>[] } {
   const { cols, rows, step } = grid
   const n = cols * rows
@@ -611,6 +611,13 @@ export function placeLakes(
       pts.push(cx + Math.cos(an) * k, cz + Math.sin(an) * k)
     }
     lakes.push({ type: 'lake', pts, width: 0, depth: opts.depth, auto: true })
+  }
+  // optional cap: the biggest lakes win (before the rivers are cut, so a dropped lake leaves its river whole)
+  if (opts.maxLakes !== undefined && lakes.length > opts.maxLakes) {
+    const area = (p: number[]) => { let a = 0; for (let i = 0; i < p.length; i += 2) { const j = (i + 2) % p.length; a += p[i] * p[j + 1] - p[j] * p[i + 1] } return Math.abs(a) / 2 }
+    const keep = lakes.map((l) => ({ l, a: area(l.pts) })).sort((a, b) => b.a - a.a).slice(0, opts.maxLakes).map((q) => q.l)
+    lakes.length = 0
+    lakes.push(...keep)
   }
   // rivers: the parts inside a lake are dropped (one point kept inside to join the water)
   const wetAt = (x: number, z: number) => lakes.some((l) => inside(l.pts, x, z))

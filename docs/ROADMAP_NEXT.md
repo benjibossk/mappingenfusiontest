@@ -156,6 +156,50 @@ Sous-section de l'étape **Routes** (juste après le réseau routier, avant Vill
 6. **Petite ville** : îlots fermés (graphe planaire → faces), découpe OBB, puis champ tensoriel.
 7. **Raccordement** : chaque village reçoit une ligne BT (§2) et un transformateur.
 
+### 3.3 Fait (2026-11-16, module pur, pas encore branché à l'UI)
+Fichiers : `src/modules/village.ts` (orchestrateur), `villageStreets.ts` (croissance des rues),
+`villageLots.ts` (découpe OBB). `settlements.ts` : helpers exportés, `Placed.role?` et `Placed.ycm?`
+(pontons au-dessus de l'eau, repris par `settlementEntities`). `templates.ts` : parcelles capturées
+`Church|Chapel` → catégorie `civic`.
+1. **Rues organiques** : marche ramifiée depuis la route principale (segments 30–60 m, branches
+   90°±20°, virage vers la courbe de niveau au-delà de 10 %, arrêt eau / > `maxSlope` / rayon /
+   autre rue, accrochage 15 m → boucles).
+2. **Parcelles** : bandes de rue en boîtes orientées, découpe OBB récursive (façade min/max par
+   anneau centre/milieu/bord) ; maison en façade face à la rue, retrait, **jardin** derrière (réservé,
+   aucun bâtiment dedans), annexe au fond.
+3. **Cours de ferme en U** (anneau bord, façade ≥ 24 m) : ferme au fond, deux ailes annexe/hangar
+   tournées vers la cour, ouverte côté rue (rôles `farmhouse` / `farmyard`).
+4. **Une seule église** par village/ville (`role: 'church'`, id `SET_<site>_C1`) au-delà de la place,
+   face à elle ; aucun prefab d'église vanilla mesuré → pub `civic` en repli (une parcelle capturée
+   nommée Church/Chapel est prise en priorité).
+5. **Port** si de la mer (h < 0) est dans le rayon : `PierWooden_01_25m` vers le large (`ycm` = 100),
+   2–3 `BoatShed_01_land` sur la plage, `PierShed_01` en ville, ruelle `SET_<site>_LANE_H` + rue le
+   long du rivage. Pas de bateau (aucun prefab bateau mesuré). Lacs : pas de port.
+6. **Ville** (`variant: 'town'` ou site `town`) : lots 7–11 m au centre, retrait 0,5–2,5 m, 9–10 rues
+   quasi orthogonales, remplissage 97 %, pas de ferme.
+
+Tests : `scratchpad/village.test.ts` (colline, côte, ville) → déterministe, 0 chevauchement OBB,
+0 bâtiment sur route / dans l'eau, pente OK (rues ≤ 15 %), 1 église ; aperçus `village-*.svg`.
+
+**API pour le câblage (main.ts)** :
+```ts
+import { settleVillages, gardenFences, type VillageOptions, type VillageResult } from './modules/village'
+const res = settleVillages(sites, roads, waters, heights, grid, {
+  seed, density,             // comme settle()
+  variant: 'auto' | 'village' | 'town',  // défaut 'auto' (site.kind)
+  streets?: boolean, maxStreets?: number, farms?: boolean, church?: boolean, port?: boolean,
+  maxSlope?: number,          // 0.15
+  pool?: Building[], blocked?: [x0,z0,x1,z1][],
+}, keep?)
+// res.placed / res.lanes / res.paths ([] : garder settle() si on veut les sentiers) / res.squares
+//   → mêmes usages que settle() : settlementEntities(res.placed, parcels), settlementShapes(res), buildingMasks(res.placed)
+// res.lots[{site,corners,used}], res.gardens[{site,corners}], res.sites[{site,variant,coastal,church,streets,lots}]
+// gardenFences(res) → polylignes de clôture (arrière + côtés) pour le wall generator
+```
+Contrôles UI nécessaires (étape Villages) : case « Générateur v2 » (settleVillages vs settle),
+sélecteur variante (auto/village/ville), cases rues organiques / fermes en U / église / port,
+nombre de rues (0–10), pente max (%), et un affichage des jardins (couleur par `role` pour la carte).
+
 ---
 
 ## 4. Générateur de zones industrielles
@@ -185,6 +229,21 @@ catégorie `industrial` (aujourd'hui seulement maisons/ferme/civique/annexe/hang
 6. Poste électrique + ligne MT (§2).
 7. Variante ferme collective / silo.
 
+### 4.4 API (fait : `src/modules/industrial.ts`, non branché à l'UI)
+Générateur pur, déterministe (seed). Prefabs : `INDUSTRIAL` / `industrialFor(type, role)` dans
+`src/data/buildings.ts` (32 prefabs mesurés, rôles `main`/`annex`/`prop`, hors `BuildingCat` : le
+générateur de villages est inchangé). Pas de conteneur, palette ni portail mesuré : cours = citernes,
+silos, cabines, piles de blocs/briques, tours d'éclairage. Clôture = `FENCE_NET` (`WG_NetFence_01`, chemin nu).
+- `generateIndustrial(heightAt, roads, { type: 'factory'|'depot'|'quarry'|'farm'|'fuel', seed, polygon? | center+size?, lotMin, lotMax, rowDepth, setback, spineWidth, streetWidth, gateWidth, props, idPrefix })`
+  → `{ roads: Road[] (épine reliée à la route principale la plus proche + rues transversales), lots[{id, corners, gate{x,z,yaw,width}}], placed[{id,prefab,role,lot,x,z,yaw,corners}], fences: ProjectShape[] (polylignes ouvertes, trou = portail), shapes (roadShapes + fences), entities: ProjectEntity[], flatten, frame, warnings }`.
+- `flatten: { kind:'platform', polygon, height, falloff, slope }` — aucune requête d'aplanissement de zone
+  n'existait (les routes utilisent `Road.flatten` + `carveRoads`) : appliquer avec
+  `applyFlatten(heights, grid, flatten)` (en place, même format que `carveRoads`) AVANT `carveRoads`.
+- `suggestIndustrialSites(heightAt, roads, { type, bounds, size?, villages?: {x,z,r}[], waterDist?, isWater?, step?, n? })`
+  → `[{x,z,score,slope,roadDist,villageDist,waterDist}]` (top N espacés). Villages : `sites` + `SITE_RADIUS[kind]`.
+- Branchement : `shapes` → projet (splines/polylignes), `entities` → objets, `roads` éventuellement ajoutés
+  à la liste des routes (ids préfixés `ind_`).
+
 ---
 
 ## 5. Outils IA : ce qui peut vraiment aider
@@ -199,3 +258,48 @@ catégorie `industrial` (aujourd'hui seulement maisons/ferme/civique/annexe/hang
 
 Conclusion : les générateurs « tout IA » ne produisent pas des prefabs Reforger ; l'apport réaliste =
 LLM pour paramétrer et nommer, image calque pour guider à la main. Le cœur reste procédural.
+
+---
+
+## 6. Base militaire — `src/modules/military.ts` (générateur pur)
+- `generateMilitary({ kind: 'checkpoint'|'outpost'|'main', x, z, yaw, seed, wall? }) → MilitarySite`
+  `{ area: Box, placements: SitePlacement[], entities: ProjectEntity[], shapes: ProjectShape[], roads: Box[], gate: [x,z], flatten: FlattenRequest }`.
+  Repère local : portail côté −Z (face à la route d'accès), tours de garde aux 4 coins (+2 au portail pour `main`),
+  rue principale portail → centre (+ rue transversale `main`), QG au bout, parc véhicules (bâches) près du portail,
+  héliport dans un coin du fond, casernes (`main`) / tentes (`outpost`) en rangées. Périmètre = polyligne ouverte au portail,
+  wall generator `WG_ConcreteWall_USSR_03` (main) / `WG_NetFence_USSR_01` (outpost). Pas de Hesco/sacs de sable en vanilla.
+- `flattenFor(site, heights, grid, maxGrade=0.02)` : plan au moindre carrés (pente ≤ 2 %) → `site.flatten`.
+- `suggestMilitary(heights, grid, { kind, seaLevel, keepOut, roads, coast, count })` → `{x,z,yaw,score,slope,relief,roadDist}[]`
+  (plat, en surplomb, route à ~60 m, loin des villages, biais côte optionnel ; `yaw` tourne le portail vers la route).
+- `MIL_PREFABS` / `MIL_WALLS` : chemins trouvés dans l'index du jeu (asset_search), **emprises estimées** (pas dans prefabs.txt).
+
+## 7. Aérodrome — `src/modules/airfield.ts` (générateur pur)
+- `AIRFIELD_SIZES` small/medium/large = piste 800/1100/1500 m × 25/35/45 m, taxiway 12–18 m, apron, 1–3 hangars.
+- `generateAirfield({ size, x, z, yaw, seed, side? }) → Airfield { runway, taxiways, apron, placements, entities, shapes, flatten[2] }` :
+  piste + taxiway parallèle (60 m du bord) + 3 bretelles, apron, hangars portes vers la piste, tour de contrôle + antenne,
+  dépôt carburant + pompe, balisage `LightRunway_01` tous les 60 m + seuils.
+- **Représentation de la piste** : splines de **road generator** (`RG_Road_Concrete_USSR_02` piste, `RG_Road_ConcretePanel_01`
+  taxiways/apron) avec `RoadWidth` explicite et `AdjustHeightMap=0`, même format que `roadShapes` — seul chemin que le plugin
+  sait déjà construire ; aucun prefab de piste en vanilla. **Non vérifié** : rendu d'un RoadWidth 30–45 m (repli : 2–3 splines de 15 m).
+- `flattenAirfield(a, heights, grid) → m³` : plan piste pente ≤ `MAX_RUNWAY_GRADE` (1 %) + 60 m de prolongement, la plate-forme
+  (taxiway/apron/bâtiments) prend le même plan (pas de marche). Appliquer avec `applyFlatten`.
+- `bestRunwayYaw(...)`, `suggestAirfield(heights, grid, { size, seaLevel, keepOut, count })` : balaye les caps 0–180°,
+  garde le moindre terrassement, terrain sec sur toute la bande.
+
+## 8. Helpers communs — `src/modules/gen-common.ts`
+`rng(seed)`, `Box` orienté (+Z = avant, yaw en degrés), `boxesOverlap`, `inBox`, `toWorld`, `heightAt`,
+`FlattenRequest {box,h0,h1,falloff}` + `applyFlatten(heights, grid, reqs) → m³`, `bestPlane`, `earthwork`, `maxSlope`,
+`toEntity`, `wallShape`, `roadShape`, `svgPreview`. Aucun import DOM / i18n (testable sous node/tsx).
+
+## Masques depuis le satellite
+
+Idée de **Jove Chiere** (Discord, communauté Reforger) : indexer l'image satellite en 5 couleurs, une couleur = une surface, noir + R/G/B/A = 5 surfaces, importées comme masques dans le Workbench.
+
+Module pur : `src/modules/satmask.ts` (non branché).
+- `quantise(rgba, { k: 5, median, blur, minRegion })` : k-means déterministe en CIELAB → `{ index, palette, lab, share }`.
+- `suggestSurfaces(q)` : surface proposée par couleur (vert foncé → forêt, vert clair → herbe, beige → champ, brun → terre, gris → béton/roche, bleu → SeaBed).
+- `satelliteSurfaces(q, grid, { surfaces, override, cover, bounds })` → `SurfaceGrid[]` (même format que `computeSurfaces`, donc POST `/masks` tel quel), `override` par cellule (routes/eau OSM rasterisées) prioritaire, WorldCover départage les cellules ambiguës, puis `limitPerBlock` (0 bloc hors limite).
+- `packRgbaMask(surfaces, [R,G,B,A])` → PNG RGBA (noir = surface par défaut) + légende, pour import manuel. `previewRgba(q)` + `encodePng` pour l'aperçu.
+
+À câbler (main.ts) : source = `traceImg` (traceStore) dessiné dans un canvas → `getImageData`. UI : aperçu de l'image indexée, 5 pastilles de palette (avec % de couverture), une liste déroulante de surface par pastille (pré-remplie par `suggestSurfaces`), un curseur « lissage » (blur 0-4 + minRegion), cases « routes/eau OSM prioritaires » et « départager avec WorldCover », boutons « Envoyer les masques » et « Exporter PNG RGBA ».
+Limite connue : un override d'1 cellule de large (route fine) peut être sacrifié par `limitPerBlock` dans un bloc déjà plein.

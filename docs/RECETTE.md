@@ -102,3 +102,57 @@ HT béton `{F9CF7B0E9B97B012}PG_PowerLine_HV_01_Concrete.et`, BT `{20E4877A07D28
 - [ ] Île fictive → Champs et forêts → « Générer des forêts » : des bois apparaissent, loin des lieux et hors de l'eau.
 - [ ] Réseau auto : après « Relier les lieux », « Vérifier » ne signale aucune route trop raide ; aucun lieu à moitié dans la mer.
 - [ ] Carte : étiquettes « Rivière 1 », « Hameau 3 », « Ville 1 » (noms de route seulement en zoom rapproché) ; un seul bouton « Eau »/« Remettre » dans la barre de gauche.
+
+## R8 — Réseau réaliste + reliquats UX (ajouté le 2026-11-16)
+- [ ] Île graine 1 → « Relier les lieux » : villages reliés en **asphalte étroit**, hameaux en chemin de terre ; routes en lacets sur les pentes ; « Vérifier » → « Aucun problème détecté ».
+- [ ] Une route auto est aplanie (déblai/remblai visible sur le relief) ; un hameau longé par une route n'a pas de « aucune route ne dessert ce lieu ».
+- [ ] Sculpter → Monter, un trait : message « Trait terminé : sol monté jusqu'à X m ».
+- [ ] Calques : « Ruissellement (traits bleus fins) » avec info-bulle ; décocher → les traits bleus disparaissent.
+- [ ] Légende « ✓ vert = fait · ambre = à refaire » sous les étapes ; le statut se vide en changeant d'étape et n'est plus coupé.
+- [ ] Champs sur une zone montagneuse : message « N parcelles écartées : trop pentues… », pas de parcelle au sommet.
+- [ ] Panneau Partager : « Rejoindre un salon… », « Aperçu de la carte (photo ou relief) ».
+- [ ] Textes gris longs : 1re phrase + icône (i) au survol.
+
+## R9 — Générateurs branchés + monde aléatoire (ajouté le 2026-11-16)
+Navigateur (vérifié par Playwright, captures `world-*.png` du scratchpad) :
+- [ ] Accueil : 4e carte « Monde aléatoire » ; étape 1 : bouton « Monde aléatoire ». Fenêtre : numéro (dé), taille 2/4/8 km, 6 curseurs (×0 à ×2), aérodrome, lignes électriques.
+- [ ] « Fabriquer le monde » : barre « Étape i/11 : … », puis île + rivières + lieux + routes + villages + lignes + forêts + grands sites ; les étapes passent en vert ; Ctrl+Z ramène la carte d'avant.
+- [ ] Même numéro, mêmes réglages → même carte (test node : même empreinte SHA-1) ; changer « Hameaux » ne bouge pas les villes.
+- [ ] Annuler pendant le calcul : « Arrêté. Rien n'a été modifié. »
+- [ ] Villages : « Nouveau générateur de villages » coché par défaut (type de lieu, rues, cours de ferme, église, port) ; jardins en vert clair derrière les maisons.
+- [ ] Zones industrielles / Base militaire / Aérodrome : « Proposer des emplacements » → pastilles numérotées ; clic → site construit, sol aplani ; Échap annule ; « Retirer » vide.
+- [ ] Calques : « Industrie, bases, aérodromes » masque/affiche les sites.
+- [ ] Champs et forêts → « Surfaces depuis la photo satellite » : grisé sans photo ; avec photo : « Lire les couleurs » → 5 pastilles + % + liste de surfaces, aperçu sur la carte, « Enregistrer le PNG (R, V, B, A) ».
+
+Workbench (à faire par Benji, rien de neuf côté plugin : les sites partent comme formes + objets, comme les routes et les bâtiments) :
+| # | Action | Attendu | État |
+|---|---|---|---|
+| 1 | Monde aléatoire 4 km → Envoyer (relief puis tout) | Relief aplani sous l'aérodrome / les bases / les zones (pas de marche) | ⬜ |
+| 2 | Inspecter `AIR_1_air_…_rwy` | Spline `RG_Road_Concrete_USSR_02`, `RoadWidth` 35 : la piste s'affiche-t-elle en entier ? (sinon repli 2-3 splines de 15 m) | ⬜ |
+| 3 | Base militaire | Mur `WG_ConcreteWall_USSR_03` / grillage ouvert au portail, tours, casernes ; emprises **estimées** : chevauchements ? | ⬜ |
+| 4 | Zone industrielle | Rue reliée à la route principale, clôture `WG_NetFence_01` (chemin sans GUID), bâtiments sur la plateforme | ⬜ |
+| 5 | Village v2 en bord de mer | Ponton `PierWooden_01_25m` au-dessus de l'eau (ycm), abris à bateaux sur la plage | ⬜ |
+| 6 | « Envoyer comme masques du sol » (satellite) | Les 5 surfaces apparaissent dans le Workbench, aucun bloc > 5 surfaces | ⬜ |
+
+## R10 — Parcours d'entrée guidés + chargements (ajouté le 2026-11-16)
+Navigateur (vérifié par Playwright, contexte neuf, captures `onb-*.png` du scratchpad ; 0 erreur de page) :
+- [ ] Nouvelle île (carte d'accueil) : carte « Étape suivante » « Voilà ton île. » + liste Déjà fait / Reste à faire + bouton « Étape suivante : Routes » ; « Montre-moi » lance une mini-visite propre au parcours (relief, étapes, eau, calques, envoi). ~1,2 s.
+- [ ] Monde aléatoire : barre de la fenêtre avec « Étape i/n » + secondes écoulées ; à la fin toast « terminé (x s) » et carte « Voilà ton monde aléatoire » : étapes 1 à 6 en vert, bouton « Étape suivante : Envoyer ». ~6 s en 4 km.
+- [ ] Lieu réel (2 km autour d'Angers, Copernicus + OSM, passerelle lancée) : fenêtre en style MILSPEC (titre Oswald, barre ambre), barre « Étape i/5 … (s, total) » ; à la fin la fenêtre se ferme, toast, carte « Voilà ton lieu réel » : Relief, Eau, Routes, Champs et forêts en vert ; bouton « Étape suivante : Envoyer ». 20 s à 2 min selon Overpass.
+- [ ] Rejoindre un salon : carte d'aide « Rejoindre un salon » au-dessus du formulaire ; « Montre-moi » pointe le formulaire.
+- [ ] Ouvrir un fichier : panneau « Ouverture du projet », puis carte « Projet ouvert » vers la première étape non verte.
+- [ ] Toute action longue (Générer, Autre tirage, rivières, réseau de routes, placer les lieux, villages, lignes, forêts, industrie/base, analyse satellite, tous les envois au Workbench, chargement du terrain) : panneau « En cours » (nom de l'action, barre indéterminée ou étape i/n, secondes écoulées), boutons grisés pendant le calcul (pas de double clic), toast vert « terminé (x s) » ou rouge « échec ».
+- [ ] Carte : noms de rivières et lacs masqués à l'échelle de l'île, visibles en zoomant (comme les routes) ; aucun nom n'en chevauche un autre ; Calques > « Noms » les masque tous.
+- [ ] Aide > FAQ : « La page est-elle bloquée ? » et « Trop de noms sur la carte ? ».
+Limite connue : les générateurs synchrones (worldgen, réseau, villages) ne publient pas encore leurs sous-étapes : barre indéterminée + temps écoulé, Annuler seulement pour le monde aléatoire (dans sa fenêtre).
+
+## R11 — Calculs dans un Web Worker + relais + densité (ajouté le 2026-11-16)
+Navigateur (Playwright sur `vite preview` :5200, captures `wkr-*.png` du scratchpad ; 0 erreur de page) :
+- [ ] Monde aléatoire 8 km : le panneau « En cours » affiche un **pourcentage réel** (ex. « 11 % », « 52 % » pendant le réseau de routes) qui avance ; la page reste fluide (rAF ~6 ms pendant le calcul).
+- [ ] Annuler (panneau ou fenêtre) arrête le calcul tout de suite (worker terminé) ; toast « annulé » ; la carte reste celle d'avant (rien n'est appliqué).
+- [ ] Relancer jusqu'au bout : toast « terminé », résumé « … N hameaux, M fermes … » (les fermes ne sont plus comptées dans les hameaux).
+- [ ] Générer (île), réseau de routes, forêts, analyse satellite passent aussi par le worker (bar du réseau en %).
+- [ ] Lieu réel, source Copernicus, relais arrêté : encadré « Relais non connecté » (quoi lancer, `npm run bridge`), bouton Réessayer, et « Prendre Terrarium à la place » ; Terrarium / IGN marchent sans relais.
+- [ ] `npx tsx scripts/check-worker-determinism.ts 4096 3` : « IDENTICAL » (même hash direct / via worker).
+Bench 8 km (seeds 1-5) : remplissage des lots 30-34 % → 69-73 % ; bâtiments 597/401/351/416/572 → 880/662/565/673/913 ; 0 problème au contrôle ; 14-19 s.
+Limite connue : les rivières « en direct » (recompose) et les lignes électriques / villages manuels restent sur la page ; sans worker (navigateur ancien) tout tourne dans la page et Annuler n'agit qu'entre deux étapes.

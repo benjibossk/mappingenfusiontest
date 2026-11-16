@@ -41,6 +41,7 @@ export function validate(o: {
     })
     if (!served) out.push({ kind: 'isolated', id: s.id, x: s.x, z: s.z })
   }
-  for (const b of o.settled) if (at(b.x, b.z) < 0.5) out.push({ kind: 'buildingWet', id: b.id, x: b.x, z: b.z })
+  for (const b of o.settled) if (b.ycm === undefined && at(b.x, b.z) < 0.5) // piers (ycm) stand over the water on purpose
+    out.push({ kind: 'buildingWet', id: b.id, x: b.x, z: b.z })
   return out
 }

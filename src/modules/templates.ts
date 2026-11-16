@@ -30,7 +30,7 @@ function category(p: Parcel): BuildingCat | null {
   // small structures join parcels, they never lead one (same list as the capture plugin)
   if (/Pipeline|Container|Crane|FuelTank|Shed|Garage|Booth|Kiosk|Toilet/i.test(a)) return null
   if (/Farm/i.test(a)) return 'farm'
-  if (/Commercial|Civic|Pub/i.test(a)) return 'civic'
+  if (/Commercial|Civic|Pub|Church|Chapel/i.test(a)) return 'civic'
   if (!/Houses/i.test(a)) return null // factories, harbour: not village buildings
   const [x0, z0, x1, z1] = p.bounds
   const area = (x1 - x0) * (z1 - z0)

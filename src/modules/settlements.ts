@@ -24,7 +24,10 @@ export interface Placed {
   z: number
   yaw: number // integer degrees
   corners: number[] // footprint, 4 world X/Z pairs
+  role?: PlacedRole // village generator (village.ts): what the building is for
+  ycm?: number // absolute height in cm (piers over water); absent = on the terrain
 }
+export type PlacedRole = 'church' | 'house' | 'farmhouse' | 'farmyard' | 'annex' | 'quay' | 'boatshed' | 'harbour'
 
 export interface SettleParams {
   seed: number
@@ -40,7 +43,7 @@ const WATER_MARGIN = 5
 const GAP = 1 // minimal distance between two footprints
 const MAX_DROP: Record<BuildingCat, number> = { houseS: 1.2, houseM: 1.2, houseL: 1.0, farm: 1.5, civic: 1.0, block: 1.0, annex: 0.6, shed: 0.6 }
 
-function rng(seed: number) {
+export function rng(seed: number) {
   let a = seed >>> 0
   return () => {
     a = (a + 0x6d2b79f5) >>> 0
@@ -50,13 +53,13 @@ function rng(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
-const hash = (s: string, seed: number) => {
+export const hash = (s: string, seed: number) => {
   let h = seed ^ 0x9e3779b9
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193)
   return h >>> 0
 }
 
-const sampler = (heights: ArrayLike<number>, grid: Grid) => {
+export const sampler = (heights: ArrayLike<number>, grid: Grid) => {
   const { cols, rows, step, minX, minZ } = grid
   return (x: number, z: number) => {
     const gx = Math.min(Math.max((x - minX) / step, 0), cols - 1.001), gz = Math.min(Math.max((z - minZ) / step, 0), rows - 1.001)
@@ -69,7 +72,7 @@ const sampler = (heights: ArrayLike<number>, grid: Grid) => {
 }
 
 //! distance from (x, z) to a polyline (flat pairs)
-function lineDist(line: number[], x: number, z: number, closed = false) {
+export function lineDist(line: number[], x: number, z: number, closed = false) {
   let best = Infinity
   const n = line.length / 2
   for (let i = 0; i < (closed ? n : n - 1); i++) {
@@ -81,7 +84,7 @@ function lineDist(line: number[], x: number, z: number, closed = false) {
   }
   return best
 }
-function inside(ring: number[], x: number, z: number) {
+export function inside(ring: number[], x: number, z: number) {
   let r = false
   for (let i = 0, j = ring.length / 2 - 1; i < ring.length / 2; j = i++) {
     const xi = ring[i * 2], zi = ring[i * 2 + 1], xj = ring[j * 2], zj = ring[j * 2 + 1]
@@ -99,7 +102,7 @@ export function footprint(b: Building, x: number, z: number, yaw: number): numbe
 }
 
 //! separating-axis test between two convex quads, with `gap` metres of clearance
-function overlap(p: number[], q: number[], gap: number) {
+export function overlap(p: number[], q: number[], gap: number) {
   for (const poly of [p, q]) {
     for (let i = 0; i < 4; i++) {
       const j = (i + 1) % 4
@@ -118,7 +121,7 @@ function overlap(p: number[], q: number[], gap: number) {
 }
 
 //! points inside a footprint: corners, centre, and a ~4 m lattice
-function samples(c: number[]) {
+export function samples(c: number[]) {
   const out: number[] = []
   const ux = c[2] - c[0], uz = c[3] - c[1], vx = c[6] - c[0], vz = c[7] - c[1]
   const nu = Math.max(1, Math.ceil(Math.hypot(ux, uz) / 4)), nv = Math.max(1, Math.ceil(Math.hypot(vx, vz) / 4))
@@ -126,8 +129,8 @@ function samples(c: number[]) {
   return out
 }
 
-interface Line { pts: number[]; half: number; minX: number; minZ: number; maxX: number; maxZ: number }
-const boxed = (pts: number[], half: number): Line => {
+export interface Line { pts: number[]; half: number; minX: number; minZ: number; maxX: number; maxZ: number }
+export const boxed = (pts: number[], half: number): Line => {
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity
   for (let i = 0; i < pts.length; i += 2) {
     minX = Math.min(minX, pts[i]); maxX = Math.max(maxX, pts[i]); minZ = Math.min(minZ, pts[i + 1]); maxZ = Math.max(maxZ, pts[i + 1])
@@ -160,7 +163,7 @@ const PATH_TYPE: RoadType = 'trailDirt' // all trail types are 2 m wide: the pla
 const MIN_SEG = 5 // the road generator rejects shorter spline segments
 
 //! Chaikin smoothing (one pass, end points kept)
-function chaikin(p: number[]): number[] {
+export function chaikin(p: number[]): number[] {
   if (p.length < 6) return p
   const out = [p[0], p[1]]
   for (let i = 0; i < p.length / 2 - 1; i++) {
@@ -171,7 +174,7 @@ function chaikin(p: number[]): number[] {
   return out
 }
 //! drop points so that every segment is at least `min` metres (end points kept); null if too short
-function minSegments(p: number[], min = MIN_SEG): number[] | null {
+export function minSegments(p: number[], min = MIN_SEG): number[] | null {
   const n = p.length / 2
   if (n < 2) return null
   const out = [p[0], p[1]]
@@ -581,7 +584,11 @@ export function settlementEntities(placed: Placed[], parcels?: ParcelItems): Pro
   for (const q of placed) {
     const items = q.tpl && parcels ? parcels(q) : []
     // a parcel made in the library lays its main building itself (it may be turned or off-centre)
-    if (!items.some((e) => e.id === q.id)) out.push({ id: q.id, prefab: q.prefab, x: r2(q.x), z: r2(q.z), yaw: q.yaw })
+    if (!items.some((e) => e.id === q.id)) {
+      const e: ProjectEntity = { id: q.id, prefab: q.prefab, x: r2(q.x), z: r2(q.z), yaw: q.yaw }
+      if (q.ycm !== undefined) e.ycm = q.ycm
+      out.push(e)
+    }
     out.push(...items)
   }
   return out

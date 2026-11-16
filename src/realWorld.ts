@@ -2,7 +2,7 @@
 // area on a shaded preview (drag = move, wheel = size, Shift + wheel = turn), then build the terrain and,
 // when the file is georeferenced, bring OpenStreetMap roads, water, forests, fields and places with it.
 
-import { BRIDGE_URL, type WorldExport } from './bridge'
+import { BRIDGE_URL, getStatus, type WorldExport } from './bridge'
 import { t, type Key } from './i18n'
 import {
   type Area, type Dem, CRS_CHOICES, areaLonLat, buildWorld, copernicusTiles, mosaic, crsKnown, defaultArea, demRange,
@@ -187,6 +187,9 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       } catch (e) { msg.textContent = t('rw.copFail', { msg: (e as Error).message }) }
       return
     }
+    // Copernicus tiles come through the local relay (no CORS on the bucket): check it first, explain if it is off
+    msg.textContent = t('rw.relayCheck')
+    if (!(await getStatus()).bridge) return relayGuide()
     // every tile under a 0.3° window (about ±33 km, enough for a turned 32 km area), cut and joined
     const { box, tiles } = copernicusTiles(lat, lon, 0.3)
     try {
@@ -204,6 +207,13 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       await useDem(mosaic(got, box, `Copernicus ${lat.toFixed(3)} ${lon.toFixed(3)}`), [lat, lon])
       msg.textContent = ''
     } catch (e) { msg.textContent = t('rw.copFail', { msg: (e as Error).message }) }
+  }
+  /** relay off: what is needed, a Retry, and the sources that work without it */
+  function relayGuide() {
+    msg.innerHTML = `<div class="wbguide relayguide"><b>${t('rw.relayOff')}</b><p>${t('rw.relayHow')}</p><p class="hint">${t('rw.relayWithout')}</p>`
+      + `<div class="row"><button type="button" id="rwRelayRetry">${t('rw.relayRetry')}</button><button type="button" class="secondary" id="rwRelayTerr">${t('rw.relayUseTerr')}</button></div></div>`
+    $<HTMLButtonElement>('rwRelayRetry').onclick = () => void copDownload()
+    $<HTMLButtonElement>('rwRelayTerr').onclick = () => { $<HTMLSelectElement>('rwSrc').value = 'terrarium'; void copDownload() }
   }
   async function fetchTile(tile: { id: string; url: string }) {
     // the bucket sends no CORS header, so the local bridge fetches it (and keeps a copy); direct only without the bridge

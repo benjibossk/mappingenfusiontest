@@ -28,6 +28,8 @@ const ROWS: [string, BuildingCat, number, number, number, number][] = [
   ['{DC1CA32A90006916}Prefabs/Structures/Houses/Village/HouseAddon_Workshop_E_01/HouseAddon_Workshop_E_01.et', 'annex', -4, -4.2, 4.1, 2.8],
   ['{1B68F3EE279C97A1}Prefabs/Structures/Commercial/Pubs/PubVillage_E_2L01/PubVillage_E_2L01_V1.et', 'civic', -9.5, -9.7, 8.4, 7.3],
   ['{C7B11EF2ABFDF49F}Prefabs/Structures/Commercial/Pubs/PubVillage_E_2L01/PubVillage_E_2L01_V2.et', 'civic', -9.5, -9.7, 8.4, 7.3],
+  ['{5378B50CC2AC5F2A}Prefabs/Structures/Cultural/Chapels/Chapel_01/Chapel_01_white.et', 'civic', -4, -6, 4, 6], // est. (not measured yet)
+  ['{40BE566C8F18D8B3}Prefabs/Structures/Cultural/Churches/Church_01/Church_01_white.et', 'civic', -9, -18, 9, 18], // est. (not measured yet)
   ['{DD6953233EB10B88}Prefabs/Structures/Commercial/Pubs/PubVillage_E_1L01/PubVillage_E_1L01.et', 'civic', -8.2, -6.9, 8.2, 6.9],
   ['{18B2439FBF6CADFD}Prefabs/Structures/Houses/Farm/FarmHouse_E_1L01/FarmHouse_E_1L01_Wood.et', 'farm', -10.3, -9.5, 5.9, 11.7],
   ['{2A0DFE1E88D6D508}Prefabs/Structures/Houses/Village/House_Village_E_1L03/House_Village_E_1L03t_yellow.et', 'farm', -12.7, -5.3, 13.2, 20.3],
@@ -93,3 +95,60 @@ const ROWS: [string, BuildingCat, number, number, number, number][] = [
 
 export const BUILDINGS: Building[] = ROWS.map(([prefab, cat, minX, minZ, maxX, maxZ]) => ({ prefab, cat, minX, minZ, maxX, maxZ }))
 export const byCat = (c: BuildingCat) => BUILDINGS.filter((b) => b.cat === c)
+
+// ---------------------------------------------------------------------------------------------
+// Industrial zones (src/modules/industrial.ts). Kept apart from BuildingCat so the village
+// generator, its colours and its lists stay exactly as they are.
+// Measured in profile/MapGen/prefabs.txt (local bounds, metres). No shipping container, pallet or
+// gate prefab is in the measured list: yards use tanks, silos, cabins, block/brick piles instead.
+//   main: the lot's big building · annex: small building / tank group · prop: yard object
+// Tags say which zone types use a row (factory, depot, quarry, farm, fuel).
+export type IndustrialRole = 'main' | 'annex' | 'prop'
+export type IndustrialTag = 'factory' | 'depot' | 'quarry' | 'farm' | 'fuel'
+export interface IndustrialBuilding {
+  prefab: string
+  role: IndustrialRole
+  tags: IndustrialTag[]
+  minX: number
+  minZ: number
+  maxX: number
+  maxZ: number
+}
+const IND_ROWS: [string, IndustrialRole, string, number, number, number, number][] = [
+  ['{12310677867A85D4}Prefabs/Structures/Industrial/Houses/Warehouse_01/Warehouse_01.et', 'main', 'factory depot', -20.5, -8.3, 20.8, 10.9],
+  ['{B1F1B1BEB21102A7}Prefabs/Structures/Industrial/Houses/FactoryHall_E_01/FactoryHall_E_01.et', 'main', 'factory', -20.0, -7.8, 19.3, 18.3],
+  ['{405D52096F6F6DA2}Prefabs/Structures/Industrial/Houses/FactoryHall_E_01/FactoryHall_USSR_01.et', 'main', 'factory', -20.0, -7.8, 19.3, 18.3],
+  ['{07814673B75CDCFB}Prefabs/Structures/Industrial/Houses/BoilerHouse_E_02/BoilerHouse_E_02.et', 'main', 'factory', -17.0, -7.4, 17.0, 7.4],
+  ['{B57077CC7F07D01D}Prefabs/Structures/Industrial/Houses/Office_06/Office_E_06.et', 'main', 'depot', -21.2, -7.7, 23.1, 10.0],
+  ['{80A5B37A1472B084}Prefabs/Structures/Industrial/Garages/Garage_E_02/Garage_E_02.et', 'main', 'depot farm quarry', -14.0, -9.2, 14.1, 9.7],
+  ['{FDF784DAE9F5852B}Prefabs/Structures/Industrial/Garages/Garage_E_02/Garage_USSR_02.et', 'main', 'depot farm', -14.0, -9.2, 14.1, 9.7],
+  ['{1A18A755842DCA36}Prefabs/Structures/Industrial/Houses/Sawmill_E_01/Sawmill_E_01.et', 'main', 'farm', -13.3, -15.2, 13.8, 16.7],
+  ['{137E98DD5A116B68}Prefabs/Structures/Industrial/Sheds/ShedMetal_02/ShedMetal_02_long_nowalls.et', 'main', 'depot farm', -15.6, -5.5, 15.5, 5.7],
+  ['{A92A5F3B79FF56BE}Prefabs/Structures/Industrial/Houses/ConcretePlant_E_01/ConcretePlant_E_01.et', 'main', 'quarry', -6.2, -2.2, 6.6, 18.5],
+  ['{5F6FFBA678676161}Prefabs/Structures/Industrial/Silos/CoalSilo_01/CoalSilo_USSR_01.et', 'main', 'quarry', -23.7, -8.7, 23.6, 9.6],
+  ['{C312DEEAEA72E37F}Prefabs/Structures/Industrial/CoalMineShaft_01/CoalMineShaft_USSR_01_entry.et', 'main', 'quarry', -7.8, -10.1, 7.8, 10.8],
+  ['{D39297A56E6648F0}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_03/FuelTank_03_green.et', 'main', 'fuel', -7.6, -9.1, 8.4, 8.4],
+  ['{AAB10C30EE97D12D}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_03/FuelTank_03_grey.et', 'main', 'fuel', -7.6, -9.1, 8.4, 8.4],
+  ['{51F233A0BA73532A}Prefabs/Structures/Industrial/Houses/Office_E_01/Office_E_01.et', 'annex', 'factory depot fuel', -8.8, -7.7, 8.2, 7.4],
+  ['{DEBC2FB8DA61B83E}Prefabs/Structures/Industrial/Sheds/ShedMetal_02/ShedMetal_02_short_nowalls.et', 'annex', 'factory depot quarry farm', -8.0, -5.5, 8.2, 5.7],
+  ['{EBD26252635EDDCE}Prefabs/Structures/Industrial/Houses/HouseAddon_ShedMetal_01/HouseAddon_ShedMetal_01_Long.et', 'annex', 'depot farm quarry', -9.5, -2.4, 9.5, 2.4],
+  ['{CFFBF2762CF73C3C}Prefabs/Structures/Industrial/Cranes/CoalLoader_01/CoalLoader_01_tower.et', 'annex', 'quarry', -8.2, -4.2, 6.8, 4.2],
+  ['{2B6615E4983D11D9}Prefabs/Structures/Industrial/Cranes/GantryCrane_01/GantryCrane_E_01.et', 'annex', 'depot', -11.4, -3.9, 11.4, 3.7],
+  ['{3E9351A51C652BE7}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_02/FuelTank_02_Pump_yellow.et', 'annex', 'fuel', -5.0, -1.4, 6.1, 1.4],
+  ['{AF44CFF705C52B9B}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_02/FuelTank_02_grey.et', 'annex', 'fuel depot', -3.0, -1.4, 6.1, 1.4],
+  ['{00FD2B4A0BDEC271}Prefabs/Structures/Commercial/FuelStations/FuelStation_E_01/HouseAddons/FuelStation_E_01_building.et', 'annex', 'fuel', -5.8, -2.9, 5.1, 2.6],
+  ['{12C531A3B1CE3D56}Prefabs/Structures/Industrial/Smokestacks/SmokestackBrick_E_01/SmokestackBrick_E_01.et', 'annex', 'factory', -2.1, -1.9, 4.6, 2.0],
+  ['{D44E66C875C41446}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_01/FuelTank_01_green.et', 'prop', 'factory fuel farm', -2.6, -2.2, 2.5, 2.4],
+  ['{4D100F180B3EFEC1}Prefabs/Structures/Industrial/Containers/Silos/Silo_01/Silo_01.et', 'prop', 'farm', -1.2, -2.0, 1.2, 1.7],
+  ['{ECC9D2866789526D}Prefabs/Structures/Industrial/Containers/Silos/Silo_02/Silo_02_white.et', 'prop', 'farm factory', -1.7, -1.7, 1.7, 2.7],
+  ['{19FF1CEF92767E46}Prefabs/Structures/Industrial/Containers/Silos/Silo_02/Silo_02_blue_red.et', 'prop', 'farm', -1.7, -1.7, 1.7, 2.7],
+  ['{D445D04331B6809E}Prefabs/Structures/Industrial/Houses/PortableCabin_E_01/PortableCabin_E_01_white.et', 'prop', 'factory depot quarry fuel', -1.9, -3.3, 1.9, 3.2],
+  ['{A42182DF49D50A3B}Prefabs/Structures/Industrial/Houses/PortableCabin_E_02/PortableCabin_E_02.et', 'prop', 'depot quarry fuel', -1.8, -1.4, 1.8, 1.5],
+  ['{79C438B82CF2C769}Prefabs/Structures/Industrial/Houses/FactoryHallWIP_01/BlockPile_01.et', 'prop', 'factory depot quarry', -6.1, -0.0, 0.1, 1.4],
+  ['{791022081DE488DA}Prefabs/Structures/Industrial/Houses/FactoryHallWIP_01/BrickPile_02.et', 'prop', 'factory quarry', -4.3, -0.1, 0.0, 1.4],
+  ['{6391A9AAB77069C9}Prefabs/Structures/Industrial/Towers/LightTower_02/LightTower_02.et', 'prop', 'factory depot quarry fuel', -1.3, -1.3, 1.3, 1.3],
+]
+export const INDUSTRIAL: IndustrialBuilding[] = IND_ROWS.map(([prefab, role, tags, minX, minZ, maxX, maxZ]) => ({ prefab, role, tags: tags.split(' ') as IndustrialTag[], minX, minZ, maxX, maxZ }))
+export const industrialFor = (t: IndustrialTag, r: IndustrialRole) => INDUSTRIAL.filter((b) => b.role === r && b.tags.includes(t))
+//! chain-link fence (wall generator, GUID verified in resourceDatabase.rdb)
+export const FENCE_NET = '{78A5D964C7732D51}Prefabs/WEGenerators/Walls/Net/WG_NetFence_01.et'
