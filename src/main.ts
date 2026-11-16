@@ -105,6 +105,7 @@ const STEPS = [
 
 // stroke icons for the UI chrome (MILSPEC style: 1.6px stroke, currentColor)
 const ICON: Record<string, string> = {
+  lock: '<rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   dice: '<rect x="4" y="4" width="16" height="16"/><path d="M8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
@@ -162,6 +163,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <div class="app">
   <header class="top">
     <button type="button" id="brandMenu" class="brand" title="${t('menu.tip')}" aria-label="${t('menu.tip')}">${ic('menu', 18)}<span>reforger-mapper</span></button>
+    <button id="verLink" type="button" class="verbadge" title="${t('news.ver', { v: APP_VERSION })}" aria-label="${t('news.ver', { v: APP_VERSION })}">v${APP_VERSION}<i id="verDot" class="vdot" hidden></i></button>
     <button id="undo" class="hist" title="${t('app.undo')}" aria-label="${t('app.undo')}">${ic('undo')}</button>
     <button id="redo" class="hist" title="${t('app.redo')}" aria-label="${t('app.redo')}">${ic('redo')}</button>
     <span id="status" class="status" role="button" tabindex="0" title="${t('wb.chip.tip')}">${t('wb.chip.off')}</span>
@@ -182,6 +184,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
       </div>
     </div>
+    <button id="helpFab" type="button" class="hist helpbtn" title="${t('help.tip')} (F1)" aria-label="${t('help.tip')}" aria-haspopup="dialog" aria-keyshortcuts="F1">?</button>
   </header>
   <div id="collabBox" class="ctxmenu collabbox" hidden>
     <div class="title">${t('collab.title')}</div>
@@ -225,21 +228,29 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <button id="btn3d" type="button" class="v3d-toggle" title="${t('v3d.tip')}" aria-label="${t('v3d.tip')}">3D</button>
     <div id="shareDlg" class="rwdlg" hidden role="dialog" aria-modal="true" aria-labelledby="shareTitle">
       <div class="rwbox sharebox">
-        <h2 id="shareTitle">${ic('users')} ${t('share.title')}</h2>
+        <div class="dlghead"><h2 id="shareTitle">${t('share.title')}</h2><button id="shareX" type="button" class="secondary icon" title="${t('share.close')}" aria-label="${t('share.close')}">${ic('x', 16)}</button></div>
         <p class="hint">${t('share.lead')}</p>
-        <label class="sharename">${t('collab.name')} <input id="shareName" type="text" autocomplete="nickname"></label>
-        <div class="sharecards">
-          <section><h3>${t('share.create')}</h3><p>${t('share.create.tip')}</p>
-            <button id="shareCreate" type="button">${t('share.create.go')}</button>
-            <div id="shareLinkRow" hidden><input id="shareLink" type="text" readonly aria-label="${t('p2p.link')}"><button id="shareCopy" type="button" class="secondary">${t('p2p.copy')}</button><div class="info">${t('p2p.share.hint')}</div></div>
-          </section>
-          <section><h3>${t('share.join')}</h3><p>${t('share.join.tip')}</p>
-            <input id="shareJoinLink" type="text" placeholder="${t('share.join.ph')}" aria-label="${t('share.join.ph')}">
-            <button id="shareJoin" type="button">${t('share.join.go')}</button>
-          </section>
+        <div class="segtabs" role="tablist" aria-label="${t('share.title')}">
+          <button type="button" role="tab" id="shtCreate" aria-controls="shpCreate" aria-selected="true">${t('share.create')}</button>
+          <button type="button" role="tab" id="shtJoin" aria-controls="shpJoin" aria-selected="false" tabindex="-1">${t('share.join.tab')}</button>
         </div>
+        <label class="sharename">${t('share.name')} <input id="shareName" type="text" autocomplete="nickname"></label>
+        <section id="shpCreate" role="tabpanel" aria-labelledby="shtCreate" class="sharepane">
+          <p>${t('share.create.tip')}</p>
+          <button id="shareCreate" type="button" class="wide">${t('share.create.go')}</button>
+          <div id="shareLinkRow" hidden>
+            <span class="wglabel">${t('share.link.k')}</span>
+            <div class="linkrow"><input id="shareLink" type="text" readonly aria-label="${t('p2p.link')}"><button id="shareCopy" type="button">${t('p2p.copy')}</button></div>
+            <div class="sharewarn">${ic('lock', 16)}<span>${t('p2p.share.hint')}</span></div>
+          </div>
+        </section>
+        <section id="shpJoin" role="tabpanel" aria-labelledby="shtJoin" class="sharepane" hidden>
+          <p>${t('share.join.tip')}</p>
+          <input id="shareJoinLink" type="text" placeholder="${t('share.join.ph')}" aria-label="${t('share.join.ph')}">
+          <button id="shareJoin" type="button" class="wide">${t('share.join.go')}</button>
+        </section>
         <div id="shareStatus" class="info" role="status"></div>
-        <div class="row"><button id="shareAdv" type="button" class="secondary">${t('share.adv')}</button><button id="shareClose" type="button" class="secondary">${t('share.close')}</button></div>
+        <div class="dlgfoot"><button id="shareAdv" type="button" class="linkbtn">${t('share.adv')}</button><span class="grow"></span><button id="shareClose" type="button" class="secondary">${t('share.close')}</button></div>
       </div>
     </div>
     <div id="rwDlg" class="rwdlg" hidden role="dialog" aria-modal="true" aria-labelledby="rwTitle">
@@ -247,39 +258,51 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <h2 id="rwTitle">${ic('dice')} ${t('wg.title')}</h2>
         <p class="hint">${t('wg.lead')}</p>
         <div class="form">
-          <label>${t('wg.seed')} ${info('info.wgSeed')} <span class="seedrow"><input id="rwSeed" type="number" step="1" value="1"><button id="rwDice" type="button" class="secondary icon" title="${t('wg.dice')}" aria-label="${t('wg.dice')}">${ic('dice', 16)}</button></span></label>
+          <label><span class="lbl">${t('wg.seed')} ${info('info.wgSeed')}</span><span class="seedrow"><input id="rwSeed" type="number" step="1" value="1"><button id="rwDice" type="button" class="secondary icon" title="${t('wg.dice')}" aria-label="${t('wg.dice')}">${ic('dice', 16)}</button></span></label>
           <label>${t('wg.size')} <select id="rwSize"><option value="2048">2 km</option><option value="4096" selected>4 km</option><option value="8192">8 km</option></select></label>
-          ${(['towns', 'villages', 'hamlets', 'industry', 'military', 'forests'] as const).map((k) => `<label>${t(('wg.' + k) as K)} ${info(('info.wg.' + k) as K)} <input id="rw_${k}" type="range" min="0" max="2" step="0.25" value="1"><output id="rw_${k}_v">1</output></label>`).join('')}
+          ${(['towns', 'villages', 'hamlets', 'industry', 'military', 'forests'] as const).map((k) => `<label class="rwslider"><span class="lbl">${t(('wg.' + k) as K)} ${info(('info.wg.' + k) as K)}</span><input id="rw_${k}" type="range" min="0" max="2" step="0.25" value="1"><output id="rw_${k}_v">×1</output></label>`).join('')}
         </div>
         <div class="row">
           <label class="check"><input id="rwAir" type="checkbox" checked> ${t('wg.airfield')} ${info('info.wg.airfield')}</label>
           <label class="check"><input id="rwPower" type="checkbox" checked> ${t('wg.power')}</label>
         </div>
-        <div id="rwRun" hidden><progress id="rwProg" max="${WORLD_STAGES.length}" value="0"></progress> <span id="rwStage" class="hint"></span></div>
-        <p class="hint">${t('wg.replace')}</p>
-        <div class="row">
+        <div id="rwRun" class="rwrun" hidden>
+          <div class="rwnum"><span id="rwSeedK" class="kicker"></span><span class="grow"></span><b id="rwPct" class="busypct"></b><span id="rwEta" class="busytime"></span></div>
+          <progress id="rwProg" max="100" value="0"></progress>
+          <ul id="rwSteps" class="rwsteps">${WORLD_STAGES.map((k) => `<li data-st="${k}">${t(('wg.st.' + k) as K)}</li>`).join('')}</ul>
+          <span id="rwStage" class="hint" role="status"></span>
+        </div>
+        <p class="hint rwrepl">${t('wg.replace')}</p>
+        <div class="row rwact">
           <button id="rwGo" type="button">${t('wg.go')}</button>
           <button id="rwCancel" type="button" class="secondary">${t('wg.cancel')}</button>
         </div>
       </div>
     </div>
     <div id="welcome" class="welcome" hidden>
-      <span class="kicker">${t('welcome.kicker')}</span>
-      <h2>reforger-mapper</h2>
-      <p>${t('welcome.lead')}</p>
-      <button type="button" id="welcomeResume" class="secondary" hidden>${t('menu.resume')}</button>
-      <div class="choices">
-        <button type="button" data-go="tGen" class="rec">${ic('island', 32)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
-        <button type="button" data-go="tRandom">${ic('dice', 32)}<strong>${t('welcome.random')}</strong><span>${t('welcome.random.tip')}</span><em>${t('welcome.random.foot')}</em></button>
-        <button type="button" data-go="tReal">${ic('map', 32)}<strong>${t('welcome.real')}</strong><span>${t('welcome.real.tip')}</span><em>${t('welcome.real.foot')}</em></button>
-        <button type="button" id="welcomeJoin">${ic('users', 32)}<strong>${t('welcome.join')}</strong><span>${t('welcome.join.tip')}</span><em>${t('welcome.join.foot')}</em></button>
-        <button type="button" id="welcomeAtelier">${ic('folder', 32)}<strong>${t('welcome.atelier')}</strong><span>${t('welcome.atelier.tip')}</span><em>${t('welcome.atelier.foot')}</em></button>
+      <div class="wresume"><span class="kicker">${t('welcome.resume.k')}</span><span class="wrtext">${t('welcome.resume.lead')}</span><span class="grow"></span><button type="button" id="welcomeResume" hidden>${t('menu.resume')} →</button></div>
+      <div class="whead">
+        <span class="kicker">${t('welcome.kicker')}</span>
+        <h2>${t('welcome.title2')}</h2>
+        <p>${t('welcome.lead')}</p>
       </div>
-      <div class="wfoot"><button type="button" data-go="pOpen" class="wfile" title="${t('welcome.open.tip')}">${ic('folder', 16)} ${t('welcome.file')}</button></div>
+      <div class="wgroup">
+        <span class="wglabel">${t('welcome.g.create')}</span>
+        <div class="choices create">
+          <button type="button" data-go="tGen" class="rec">${ic('island', 28)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
+          <button type="button" data-go="tRandom">${ic('dice', 28)}<strong>${t('welcome.random')}</strong><span>${t('welcome.random.tip')}</span><em class="nocaps">${t('welcome.random.foot')}</em></button>
+          <button type="button" data-go="tReal">${ic('map', 28)}<strong>${t('welcome.real')}</strong><span>${t('welcome.real.tip')}</span><em>${t('welcome.real.foot')}</em></button>
+        </div>
+        <span class="wglabel">${t('welcome.g.existing')}</span>
+        <div class="choices existing">
+          <button type="button" id="welcomeJoin">${ic('users', 28)}<span class="wtxt"><strong>${t('welcome.join')}</strong><span>${t('welcome.join.tip')}</span></span><em>${t('welcome.join.foot')}</em></button>
+          <button type="button" id="welcomeAtelier">${ic('folder', 28)}<span class="wtxt"><strong>${t('welcome.atelier')}</strong><span>${t('welcome.atelier.tip')}</span></span><em>${t('welcome.atelier.foot')}</em></button>
+        </div>
+        <div class="wfoot"><button type="button" data-go="pOpen" class="wfile" title="${t('welcome.open.tip')}">${ic('folder', 16)} ${t('welcome.file')}</button></div>
+      </div>
     </div>
     <div id="ctxMenu" class="ctxmenu" hidden></div>
     <div class="mapdock">
-    <button id="helpFab" type="button" class="helpfab" title="${t('help.tip')}" aria-label="${t('help.tip')}" aria-haspopup="dialog">${ic('help', 22)}</button>
     <details id="layers" class="layers">
       <summary>${t('layers.title')} ${info('info.layers')}</summary>
       ${LAYERS.map((l) => `<label class="check"${l === 'runoff' ? ` title="${t('layers.runoff.tip')}"` : ''}><input type="checkbox" data-layer="${l}" checked> ${l === 'runoff' ? '<i class="swatch runoff"></i>' : ''}${t(('layers.' + l) as Parameters<typeof t>[0])}</label>`).join('')}
@@ -292,29 +315,41 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
     <div id="helpPanel" class="helppanel" role="dialog" aria-modal="false" aria-labelledby="helpTitle" hidden>
       <div class="hphead"><h2 id="helpTitle">${t('help.title')}</h2><button id="helpClose" type="button" class="secondary icon" title="${t('help.close')}" aria-label="${t('help.close')}">${ic('x', 16)}</button></div>
-      <div class="hpbody">
-        ${t('help.what').split('\n').map((l) => `<p>${l}</p>`).join('')}
+      <div class="hptabs" role="tablist" aria-label="${t('help.title')}">
+        <button type="button" role="tab" id="hpt-step" aria-controls="hp-step" aria-selected="true">${t('help.tab.step')}</button>
+        <button type="button" role="tab" id="hpt-faq" aria-controls="hp-faq" aria-selected="false" tabindex="-1">${t('help.tab.faq')}</button>
+        <button type="button" role="tab" id="hpt-gloss" aria-controls="hp-gloss" aria-selected="false" tabindex="-1">${t('help.tab.gloss')}</button>
+        <button type="button" role="tab" id="hpt-keys" aria-controls="hp-keys" aria-selected="false" tabindex="-1">${t('help.tab.keys')}</button>
+      </div>
+      <div class="hpbody" role="tabpanel" id="hp-step" aria-labelledby="hpt-step">
+        <div class="hpcur"><span id="helpCurK" class="kicker"></span><p id="helpCurLead"></p></div>
+        <p class="hplegend">${t('step.legend')}</p>
         <h3>${t('help.steps')}</h3>
-        <ol class="hpsteps">${STEPS.map((st, i) => `<li><b>${String(i + 1).padStart(2, '0')}</b><span><strong>${t(st.label)}</strong> — ${t(st.lead)}</span><button type="button" class="secondary" data-help-go="${st.tab}">${t('help.go')}</button></li>`).join('')}</ol>
-        <h3>${t('help.controls')}</h3>
-        <ul class="hpkeys">${(['help.c1', 'help.c2', 'help.c3', 'help.c4', 'help.c5'] as const).map((k) => `<li>${t(k)}</li>`).join('')}</ul>
+        <ol class="hpsteps">${STEPS.map((st, i) => `<li><button type="button" class="hpgo" data-help-go="${st.tab}"><b>${String(i + 1).padStart(2, '0')}</b><span><strong>${t(st.label)}</strong> — ${t(st.lead)}</span><span class="hparrow" aria-hidden="true">→</span></button></li>`).join('')}</ol>
+        <details class="faq hpwhat"><summary>${t('help.whatis')}</summary>${t('help.what').split('\n').map((l) => `<p>${l}</p>`).join('')}</details>
         <h3 id="helpConnect">${t('help.connect')}</h3>
         <p>${t('wb.how.lead')}</p>
         ${connectSteps()}
         <div class="row"><button type="button" class="secondary wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button></div>
-        <h3>${t('help.faq')}</h3>
-        ${(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
-        <h3>${t('help.glossary')}</h3>
-        <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget', 'p2p', 'host'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
-        <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><button id="helpNews" type="button" class="secondary">${t('news.open')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
       </div>
+      <div class="hpbody" role="tabpanel" id="hp-faq" aria-labelledby="hpt-faq" hidden>
+        ${(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
+      </div>
+      <div class="hpbody" role="tabpanel" id="hp-gloss" aria-labelledby="hpt-gloss" hidden>
+        <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget', 'p2p', 'host'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
+      </div>
+      <div class="hpbody" role="tabpanel" id="hp-keys" aria-labelledby="hpt-keys" hidden>
+        <ul class="hpkeys">${(['help.c1', 'help.c2', 'help.c3', 'help.c4', 'help.c5', 'help.c6'] as const).map((k) => `<li>${t(k)}</li>`).join('')}</ul>
+        <p class="hint">${t('hint.map')}</p>
+      </div>
+      <div class="hpfoot"><button id="helpTour" type="button" class="secondary">${t('help.tour')}</button><button id="helpNews" type="button" class="secondary">${t('news.open')}</button><span class="grow"></span><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
     </div>
     <div id="newsPanel" class="helppanel newspanel" role="dialog" aria-modal="false" aria-labelledby="newsTitle" hidden>
       <div class="hphead"><h2 id="newsTitle">${t('news.title')}</h2><button id="newsClose" type="button" class="secondary icon" title="${t('news.close')}" aria-label="${t('news.close')}">${ic('x', 16)}</button></div>
       <div class="hpbody">
         ${CHANGELOG.map((c) => `<section class="newsver"><h3>v${c.version} <span class="newsdate">${c.date}</span></h3><ul>${c.items.map((i) => `<li>${getLang() === 'fr' ? i.fr : i.en}</li>`).join('')}</ul></section>`).join('')}
-        <div class="row"><a href="https://github.com/benjibossk/mappingenfusiontest/blob/main/${getLang() === 'fr' ? 'CHANGELOG.fr.md' : 'CHANGELOG.md'}" target="_blank" rel="noopener">${t('news.full')}</a></div>
       </div>
+      <div class="hpfoot"><a href="https://github.com/benjibossk/mappingenfusiontest/blob/main/${getLang() === 'fr' ? 'CHANGELOG.fr.md' : 'CHANGELOG.md'}" target="_blank" rel="noopener">${t('news.full')}</a><span class="grow"></span><button id="newsOk" type="button">${t('news.ok')}</button></div>
     </div>
     <div id="tour" class="tour" hidden><div class="tourring"></div><div class="tourbox" role="dialog" aria-live="polite"><span id="tourN" class="kicker"></span><p id="tourText"></p><div class="row"><button id="tourSkip" type="button" class="secondary">${t('tour.skip')}</button><button id="tourNext" type="button">${t('tour.next')}</button></div></div></div>
     <div id="busy" class="busy" hidden role="status" aria-live="polite"><div class="busybox"><span class="kicker">${t('busy.kicker')}</span><b id="busyLabel"></b><span id="busyStage" class="hint"></span><progress id="busyBar"></progress><div class="row"><b id="busyPct" class="busypct"></b><span id="busyTime" class="busytime"></span><button id="busyCancel" type="button" class="secondary" hidden>${t('busy.cancel')}</button></div></div></div>
@@ -322,15 +357,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
     <div class="overlay">
       <span id="brushInfo"></span>
-      <span class="hint">${t('hint.map')}</span>
+      <span id="mapHint" class="hint">${t('hint.map')}<button id="mapHintX" type="button" class="hintx" title="${t('hint.hide')}" aria-label="${t('hint.hide')}">${ic('x', 12)}</button></span>
     </div>
   </section>
 
   <aside class="side">
+    <button id="sideToggle" type="button" class="secondary sidetog" aria-expanded="true" aria-controls="tabs">${ic('caret', 14)}<span>${t('side.toggle')}</span></button>
     <ol class="tabs stepper" id="tabs">
-      ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.label)}</span><i class="badge"></i></button></li>`).join('')}
+      ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.tab === 'camp' ? 'step.fields.short' : s.label)}</span><i class="badge"></i></button></li>`).join('')}
     </ol>
-    <p class="steplegend">${t('step.legend')}</p>
     <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p></div>
 
     <div class="tab" data-tab="island">
@@ -619,6 +654,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div id="collabView" class="collabview" hidden>
       <div class="cvhead"><h2>${ic('users')} ${t('cv.title')}</h2><button id="cvClose" type="button" class="secondary icon" title="${t('cv.close.tip')}" aria-label="${t('cv.close.tip')}">${ic('x', 16)}</button></div>
       <p class="cvconn"><span id="cvConn" class="hint"></span> <button id="cvJoin" type="button" class="secondary">${t('cv.connect')}</button></p>
+      <div id="cvOnline" class="cvonline" hidden><span class="wglabel" id="cvOnN"></span><ul id="cvPeers" class="cvpeers"></ul></div>
       <details class="cvsec" open><summary>${t('cv.comments')} <i id="cvNCom" class="badge"></i></summary>
         <button id="cvAdd" type="button">${ic('pin', 16)} ${t('cv.add')}</button>
         <div id="cvDraft" class="cvdraft" hidden>
@@ -638,6 +674,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label class="check"><input id="satShow" type="checkbox" checked> ${t('cv.sat.show')}</label>
         <label>${t('cv.sat.alpha')} <input id="cvAlpha" type="range" min="0" max="1" step="0.05" value="0.6"></label>
       </details>
+      <div class="cvfoot"><button id="cvLeave" type="button" class="danger" hidden>${t('collab.leave')}</button></div>
     </div>
     <div class="stepnav">
       <button id="stepPrev" type="button" class="secondary">← ${t('ui.prev')}</button>
@@ -646,7 +683,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <pre id="log" class="log"></pre>
   </aside>
-  <footer class="statusbar"><span id="cursor"></span><span class="grow"></span><span>${t('foot.keys')}</span><button id="verLink" type="button" class="verlink" title="${t('news.ver', { v: APP_VERSION })}">v${APP_VERSION}</button></footer>
+  <footer class="statusbar"><span id="cursor"></span><span class="grow"></span><span>${t('foot.keys')}</span></footer>
 </div>`
 
 const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!
@@ -1216,6 +1253,18 @@ const collabName = collabField('collabName', 'reforger-mapper.collab.name', 'map
 const collabKey = $<HTMLInputElement>('collabKey') // the password is never stored
 // Share: outside a room it asks first "create or join"; inside one it opens the collaboration panel
 const shareDlg = $('shareDlg')
+{
+  const tabs = [$<HTMLButtonElement>('shtCreate'), $<HTMLButtonElement>('shtJoin')]
+  const pick = (b: HTMLButtonElement, focus = false) => tabs.forEach((x) => {
+    const on = x === b; x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1
+    $(x.getAttribute('aria-controls')!).hidden = !on; if (on && focus) x.focus()
+  })
+  tabs.forEach((b, i) => {
+    b.addEventListener('click', () => pick(b))
+    b.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); pick(tabs[1 - i], true) } })
+  })
+  $<HTMLButtonElement>('shareX').addEventListener('click', () => $<HTMLButtonElement>('shareClose').click())
+}
 const openShare = () => { $<HTMLInputElement>('shareName').value = collabName.value; $('shareStatus').textContent = ''; shareDlg.hidden = false; $<HTMLButtonElement>('shareCreate').focus() }
 const closeShare = () => { shareDlg.hidden = true }
 $<HTMLButtonElement>('collab').addEventListener('click', () => {
@@ -1255,7 +1304,10 @@ $<HTMLButtonElement>('shareClose').addEventListener('click', closeShare)
 shareDlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeShare() })
 shareDlg.addEventListener('click', (e) => { if (e.target === shareDlg) closeShare() })
 $<HTMLButtonElement>('cvJoin').addEventListener('click', () => { collabBox.hidden = !collabBox.hidden })
+let roster: { self: string; names: string[]; direct: boolean } | null = null
+$<HTMLButtonElement>('cvLeave').addEventListener('click', () => leaveRoom())
 function leaveRoom(keepStatus = false) {
+  roster = null
   const c = collab
   collab = null
   c?.close()
@@ -1325,6 +1377,7 @@ function joinRoomNow(creator: boolean) {
     ops: (list, replace) => receiveOps(list, replace),
     peers: (ps) => {
       others = ps.length
+      roster = { self: name, names: ps.map((p) => p.name), direct }
       const names = ps.map((p) => p.name).join(', ')
       $<HTMLSpanElement>('collabInfo').textContent = direct
         ? t('p2p.peers', { n: ps.length + 1, names })
@@ -1565,11 +1618,28 @@ function renderCollab() {
   }
   renderMini()
 }
+const PEER_COLORS = ['#E0A233', '#4A8CC9', '#B07CD8', '#5FA24A', '#C9784A', '#4AB0A6']
 function connInfo() {
   $('cvConn').textContent = collab?.open
     ? t('cv.conn.on', { room: collabRoom.value, info: $<HTMLSpanElement>('collabInfo').textContent ?? '' })
     : t('cv.conn.off')
-  $('cvJoin').textContent = collab?.open ? t('collab.leave') + '…' : t('cv.connect')
+  $('cvJoin').textContent = t('cv.connect')
+  $('cvJoin').hidden = !!collab?.open
+  $('cvLeave').hidden = !collab?.open
+  const ul = $('cvPeers'), r = collab?.open ? roster : null
+  $('cvOnline').hidden = !r
+  ul.textContent = ''
+  if (r) {
+    $('cvOnN').textContent = t('cv.online', { n: r.names.length + 1 })
+    for (const [n, me] of [[r.self, true], ...r.names.map((x) => [x, false])] as [string, boolean][]) {
+      const li = document.createElement('li')
+      const av = document.createElement('span'); av.className = 'cvav'; av.textContent = (n.trim()[0] ?? '?').toUpperCase()
+      av.style.background = PEER_COLORS[[...n].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PEER_COLORS.length]
+      const nm = document.createElement('span'); nm.className = 'cvname'; nm.textContent = me ? t('cv.you', { name: n }) : n
+      const md = document.createElement('span'); md.className = 'cvmode'; md.dataset.mode = r.direct ? 'direct' : 'relay'; md.textContent = t(r.direct ? 'cv.mode.direct' : 'cv.mode.relay')
+      li.append(av, nm, md); ul.append(li)
+    }
+  }
 }
 function showCollabView(on: boolean) {
   collabView.hidden = !on
@@ -2030,13 +2100,55 @@ $('stepRegen').addEventListener('click', () => {
   const tab = tabButtons.find((x) => x.classList.contains('active'))?.dataset.tab ?? ''
   if (REGEN[tab]) $<HTMLButtonElement>(REGEN[tab]).click()
 })
+// phone layout: the step panel folds down to its step list (drawer)
+$<HTMLButtonElement>('sideToggle').addEventListener('click', (e) => {
+  const min = document.querySelector('.app')!.classList.toggle('side-min')
+  ;(e.currentTarget as HTMLButtonElement).setAttribute('aria-expanded', String(!min))
+})
+// map hint (bottom centre): can be hidden for good
+{
+  const K = 'reforger-mapper.mapHint'
+  try { if (localStorage.getItem(K) === '0') $('mapHint').hidden = true } catch { /* private window */ }
+  $<HTMLButtonElement>('mapHintX').addEventListener('click', () => { $('mapHint').hidden = true; try { localStorage.setItem(K, '0') } catch { /* */ } })
+}
 // help bubble + guided tour (5 stops, shown once on the first visit)
 let runTour: (stops: [string, Key][]) => void = () => {}
 {
   const panel = $<HTMLDivElement>('helpPanel')
   const show = (on: boolean) => { panel.hidden = !on; $('helpFab').classList.toggle('active', on); if (on) $<HTMLButtonElement>('helpClose').focus() }
   $<HTMLButtonElement>('helpFab').addEventListener('click', () => show(panel.hidden === true))
-  openHelp = (section) => { show(true); if (section) document.getElementById(section)?.scrollIntoView({ block: 'start' }) }
+  const tabsEl = [...panel.querySelectorAll<HTMLButtonElement>('[role=tab]')]
+  const pick = (id: string, focus = false) => {
+    for (const b of tabsEl) {
+      const on = b.id === id
+      b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1
+      $(b.getAttribute('aria-controls')!).hidden = !on
+      if (on && focus) b.focus()
+    }
+  }
+  tabsEl.forEach((b, i) => {
+    b.addEventListener('click', () => pick(b.id))
+    b.addEventListener('keydown', (e) => {
+      const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+      if (d) { e.preventDefault(); pick(tabsEl[(i + d + tabsEl.length) % tabsEl.length].id, true) }
+    })
+  })
+  const fillCur = () => {
+    $('helpCurK').textContent = [$('stepKicker').textContent, $('stepTitle').textContent].filter(Boolean).join(' · ')
+    $('helpCurLead').textContent = $('stepLead').textContent ?? ''
+  }
+  new MutationObserver(() => { if (!panel.hidden) fillCur() }).observe(panel, { attributes: true, attributeFilter: ['hidden'] })
+  openHelp = (section) => {
+    show(true)
+    const el = section ? document.getElementById(section) : null
+    pick(el?.closest('[role=tabpanel]')?.id ? 'hpt-' + el.closest('[role=tabpanel]')!.id.slice(3) : 'hpt-step')
+    el?.scrollIntoView({ block: 'start' })
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'F1') return
+    e.preventDefault()
+    if (panel.hidden) openHelp(); else show(false)
+  })
   $<HTMLButtonElement>('helpClose').addEventListener('click', () => { show(false); $<HTMLButtonElement>('helpFab').focus() })
   panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); show(false); $<HTMLButtonElement>('helpFab').focus() } })
   panel.querySelectorAll<HTMLButtonElement>('[data-help-go]').forEach((b) => b.addEventListener('click', () => {
@@ -2080,11 +2192,25 @@ const busyEl = $('busy')
 document.body.append(busyEl, $('coach'), $('toast')) // above the map and side panels (own stacking context)
 let busyT0 = 0, busyTick = 0, busyName = ''
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)))
-function toast(msg: string, kind: 'ok' | 'err' = 'ok') {
-  const el = $('toast')
-  el.textContent = msg; el.dataset.kind = kind; el.hidden = false
-  clearTimeout(Number(el.dataset.timer))
-  el.dataset.timer = String(setTimeout(() => (el.hidden = true), 4000))
+/** toasts: bottom centre of the map, newest at the bottom, 3 at most; success/info fade after 4 s, errors stay until closed */
+function toast(msg: string, kind: 'ok' | 'err' | 'info' = 'ok', action?: { label: string; run: () => void }, ms = 4000) {
+  const box = $('toast')
+  const it = document.createElement('div')
+  it.className = 'toastitem'; it.dataset.kind = kind
+  const mark = document.createElement('span'); mark.className = 'tmark'; mark.setAttribute('aria-hidden', 'true')
+  mark.textContent = kind === 'err' ? '!' : kind === 'info' ? 'i' : '✓'
+  const txt = document.createElement('span'); txt.className = 'ttext'; txt.textContent = msg
+  it.append(mark, txt)
+  const drop = () => { it.remove(); box.hidden = !box.childElementCount }
+  if (action) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'linkbtn'; b.textContent = action.label
+    b.addEventListener('click', () => { drop(); action.run() }); it.append(b)
+  }
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'tclose'; x.textContent = '✕'
+  x.title = t('help.close'); x.setAttribute('aria-label', t('help.close')); x.addEventListener('click', drop); it.append(x)
+  box.append(it); box.hidden = false
+  while (box.childElementCount > 3) box.firstElementChild!.remove()
+  if (kind !== 'err') setTimeout(drop, ms)
 }
 /** stage of the current busy job: i/n gives a real bar, nothing gives an indeterminate one */
 function busyStage(name: string, i?: number, n?: number, pct?: number) {
@@ -2105,13 +2231,13 @@ async function busy<T>(label: string, f: () => Promise<T> | T, cancel?: () => vo
   showTime(); busyTick = window.setInterval(showTime, 500)
   busyEl.hidden = false
   document.body.classList.add('is-busy')
-  const off = [...document.querySelectorAll<HTMLButtonElement>('.app button:not(:disabled), #welcome button:not(:disabled)')].filter((b) => !busyEl.contains(b))
+  const off = [...document.querySelectorAll<HTMLButtonElement>('.app button:not(:disabled), #welcome button:not(:disabled)')].filter((b) => !busyEl.contains(b) && b.id !== 'rwCancel') // the random-world dialog keeps its own Cancel
   off.forEach((b) => (b.disabled = true))
   await nextFrame() // let the panel paint before the heavy work starts
   try {
     const r = await f()
     const s = Math.round((performance.now() - busyT0) / 100) / 10
-    if (busyStop) toast(t('busy.cancelled', { label }), 'err')
+    if (busyStop) toast(t('busy.cancelled', { label }), 'info')
     else if (busyFailed) toast(t('busy.fail', { label }), 'err')
     else toast(t('busy.done', { label, s }))
     return r
@@ -3662,25 +3788,26 @@ refreshStatus()
 // "What's new" panel (data: src/data/changelog.ts): help panel button, status-bar version, toast once per new version
 {
   const panel = $<HTMLDivElement>('newsPanel')
-  const open = () => { panel.hidden = false; $<HTMLButtonElement>('newsClose').focus() }
+  const READ_KEY = 'reforger-mapper.newsRead'
+  const dot = $('verDot')
+  try { dot.hidden = localStorage.getItem(READ_KEY) === APP_VERSION } catch { dot.hidden = true }
+  if (!dot.hidden) $('verLink').title = t('news.unread')
+  const open = () => {
+    panel.hidden = false; $<HTMLButtonElement>('newsClose').focus()
+    dot.hidden = true; $('verLink').title = t('news.ver', { v: APP_VERSION })
+    try { localStorage.setItem(READ_KEY, APP_VERSION) } catch { /* private window */ }
+  }
   const shut = () => { panel.hidden = true; $<HTMLButtonElement>('verLink').focus() }
   $<HTMLButtonElement>('verLink').addEventListener('click', () => (panel.hidden ? open() : shut()))
   $<HTMLButtonElement>('helpNews').addEventListener('click', open)
   $<HTMLButtonElement>('newsClose').addEventListener('click', shut)
+  $<HTMLButtonElement>('newsOk').addEventListener('click', shut)
   panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); shut() } })
   const SEEN_KEY = 'reforger-mapper.seenVersion'
   let seen: string | null = null, fresh = true
   try { seen = localStorage.getItem(SEEN_KEY); localStorage.setItem(SEEN_KEY, APP_VERSION) } catch { fresh = false /* private window: no toast */ }
   // only after an update (a first-ever visit gets the welcome screen and the tour instead)
-  if (fresh && seen !== null && seen !== APP_VERSION) setTimeout(() => {
-    const el = $('toast')
-    el.textContent = t('news.toast', { v: APP_VERSION }) + ' — '
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'linkbtn'; b.textContent = t('news.see')
-    b.addEventListener('click', () => { el.hidden = true; open() })
-    el.append(b); el.dataset.kind = 'ok'; el.hidden = false
-    clearTimeout(Number(el.dataset.timer))
-    el.dataset.timer = String(setTimeout(() => (el.hidden = true), 9000))
-  }, 1500)
+  if (fresh && seen !== null && seen !== APP_VERSION) setTimeout(() => toast(t('news.toast', { v: APP_VERSION }), 'info', { label: t('news.see'), run: open }, 9000), 1500)
 }
 
 // --- big sites (tab Villages): industrial zones, military bases, airfields (zones.ts) ---
@@ -3973,9 +4100,14 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
   box.querySelectorAll('input,select,button').forEach((x) => { if (x.id !== 'rwCancel') (x as HTMLInputElement).disabled = true })
   $<HTMLButtonElement>('rwGo').disabled = true
   $('rwRun').hidden = false
+  box.classList.add('running'); document.body.classList.add('rw-running')
   const prog = $<HTMLProgressElement>('rwProg'), stage = $('rwStage')
+  prog.value = 0; $('rwPct').textContent = '0 %'; $('rwEta').textContent = ''
+  const steps = [...$('rwSteps').children] as HTMLElement[]
+  steps.forEach((li) => delete li.dataset.state)
   const v = (k: string) => Number($<HTMLInputElement>('rw_' + k).value)
   const t0 = performance.now()
+  $('rwSeedK').textContent = t('wg.run.k', { seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1 })
   const params = {
     seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
     towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
@@ -3988,7 +4120,12 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
       const pct = worldPct(s, f)
       prog.max = 100; prog.value = pct
       const txt = t('wg.stage', { i: i + 1, n, s: t(('wg.st.' + s) as K) })
-      stage.textContent = txt + ` · ${Math.round(pct)} % · ` + t('busy.elapsed', { s: Math.round((performance.now() - t0) / 1000) })
+      stage.textContent = txt
+      const el = (performance.now() - t0) / 1000
+      $('rwPct').textContent = `${Math.round(pct)} %`
+      $('rwEta').textContent = pct > 3 && pct < 100 ? t('wg.eta', { s: Math.max(1, Math.round((el * (100 - pct)) / pct)) }) : t('busy.elapsed', { s: Math.round(el) })
+      const at = WORLD_STAGES.indexOf(s as (typeof WORLD_STAGES)[number])
+      steps.forEach((li, j) => { li.dataset.state = j < at ? 'done' : j === at ? 'now' : '' })
       busyStage(t(('wg.st.' + s) as K), i, n, pct)
     },
   })
@@ -4010,6 +4147,7 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
     stage.textContent = (e as Error).message
   } finally {
     rwBusy = false
+    box.classList.remove('running'); document.body.classList.remove('rw-running')
     box.querySelectorAll('input,select,button').forEach((x) => ((x as HTMLInputElement).disabled = false))
     $<HTMLButtonElement>('rwGo').disabled = false
   }
@@ -4131,6 +4269,7 @@ btn3d.addEventListener('click', () => void (async () => {
       drape: drapeCanvas,
       real: realLayers(hm),
       progress: (s, i, n) => busyStage(s, i, n),
+      notify: (m) => toast(m, 'info'),
       onClose: (tg, span) => {
         v3d = null
         btn3d.classList.remove('on')
