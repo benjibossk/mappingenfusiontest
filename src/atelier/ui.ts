@@ -73,7 +73,7 @@ const yieldUI = () => new Promise((r) => setTimeout(r, 0))
 function log(msg: string, err = false) {
   const d = new Date(), line = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${msg}`
   S.journal.unshift(line)
-  const j = $('atJournal'); j.textContent = line; j.classList.toggle('err', err)
+  const j = $('atJournal'); j.textContent = line; j.title = line; j.classList.toggle('err', err) // textContent: Windows paths keep their backslashes
 }
 
 // ---------------------------------------------------------------- layout
@@ -84,13 +84,13 @@ export function openAtelier() {
   root.id = 'atelier'; root.className = 'atelier'
   root.innerHTML = `
   <header class="at-top">
-    <b class="at-brand">RM ▸ ${t('at.title' as K).toUpperCase()}</b>
+    <button id="atBack" type="button" class="secondary at-backbtn" title="${t('at.back' as K)}">← ${t('at.backShort' as K)}</button>
+    <b class="at-brand">${t('at.title' as K).toUpperCase()}</b>
     <span id="atProj" class="at-proj">${t('at.noProject' as K)}</span>
     <span id="atWb" class="at-wb" data-st="unknown">${t('at.wb.unknown' as K)}</span>
     <span class="at-sp"></span>
-    <button id="atLang" type="button" class="secondary" title="${t('at.lang' as K)}">${getLang() === 'fr' ? 'FR' : 'EN'} ⇄</button>
+    <label class="at-langsel" title="${t('at.lang' as K)}"><select id="atLang" aria-label="${t('at.lang' as K)}">${[['fr', 'Français'], ['en', 'English']].map(([c, n]) => `<option value="${c}"${getLang() === c ? ' selected' : ''}>${c.toUpperCase()} · ${n}</option>`).join('')}</select></label>
     <button id="atHelpBtn" type="button" class="secondary" title="${t('at.help' as K)}" aria-haspopup="dialog">?</button>
-    <button id="atBack" type="button" class="secondary">${t('at.back' as K)}</button>
   </header>
   <ol class="at-steps" id="atSteps">${STEPS.map((s, i) => `<li><button type="button" data-step="${s}"><b>A${i}</b><span>${tk('at.' + s)}</span></button></li>`).join('')}</ol>
   <div class="at-main">
@@ -101,7 +101,7 @@ export function openAtelier() {
       <h4>${t('at.legend' as K)}</h4><div id="atLegend" class="at-legend"></div>
     </aside>
     <div class="at-stage"><canvas id="atMap"></canvas></div>
-    <section class="at-side"><h3 id="atPanelTitle"></h3><p id="atPanelLead" class="hint"></p><div id="atPanel"></div>
+    <section class="at-side"><span id="atPanelK" class="kicker"></span><h3 id="atPanelTitle"></h3><div id="atKpis" class="at-kpis" hidden></div><p id="atPanelLead" class="hint"></p><div id="atPanel"></div>
       <div class="at-nav"><button id="atPrev" type="button" class="secondary">${t('at.prev' as K)}</button><button id="atNext" type="button">${t('at.next' as K)}</button></div></section>
   </div>
   <footer class="at-foot"><span class="at-jl">${t('at.journal' as K)} :</span><span id="atJournal">${t('at.journal.empty' as K)}</span><span id="atCursor" class="at-cursor"></span></footer>
@@ -127,7 +127,7 @@ export function openAtelier() {
   $('atHelpBtn').addEventListener('click', () => { $('atHelp').hidden = !$('atHelp').hidden })
   $('atHelpClose').addEventListener('click', () => { $('atHelp').hidden = true })
   $('atHelp').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('atHelp').hidden = true })
-  $('atLang').addEventListener('click', () => { setLang(getLang() === 'fr' ? 'en' : 'fr'); location.reload() })
+  $<HTMLSelectElement>('atLang').addEventListener('change', (e) => { setLang((e.target as HTMLSelectElement).value); location.reload() })
   $('atPrev').addEventListener('click', () => { const i = STEPS.indexOf(S.step); if (i > 0) go(STEPS[i - 1]) })
   $('atNext').addEventListener('click', () => { const i = STEPS.indexOf(S.step); if (i < STEPS.length - 1) go(STEPS[i + 1]) })
   $('atFit').addEventListener('click', () => { userMoved = false; fit(); draw() })
@@ -145,6 +145,7 @@ async function pollWb() {
   if (S.src?.kind === 'fsa') { el.dataset.st = 'ro'; el.textContent = tk('at.readonly'); return }
   el.dataset.st = S.wb === null ? 'unknown' : S.wb ? 'open' : 'closed'
   el.textContent = tk(S.wb === null ? 'at.wb.unknown' : S.wb ? 'at.wb.open' : 'at.wb.closed')
+  el.title = tk(S.wb === null ? 'at.wb.unknown.tip' : S.wb ? 'at.wb.open.tip' : 'at.wb.closed.tip')
 }
 
 function header() {
@@ -153,19 +154,36 @@ function header() {
   root.querySelectorAll<HTMLButtonElement>('[data-step]').forEach((b) => {
     const s = b.dataset.step as Step
     b.classList.toggle('active', s === S.step); b.classList.toggle('done', S.done.has(s))
+    if (s === S.step) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current')
     b.classList.toggle('warn', (s === 's1' && !!S.diag && S.diag.problems.some((p) => p.kind === 'overBudget')) || (s === 's3' && !!S.water && S.water.some((p) => p.status === 'modified')))
   })
+  // key figures of the loaded world, at the head of the step panel
+  const k = $('atKpis'), d = S.diag
+  const kp: [string | number, string, string][] = []
+  if (d && S.step === 's1') {
+    const over = d.problems.filter((p) => p.kind === 'overBudget').length
+    const at = d.problems.filter((p) => p.kind === 'atBudget').length
+    kp.push([over, tk('at.kpi.over'), over ? 'err' : 'ok'], [at, tk('at.kpi.at'), at ? 'warn' : 'ok'], [S.tiles.length, tk('at.kpi.tiles'), ''])
+  } else if (S.terr && S.step !== 's0') kp.push([S.tiles.length, tk('at.kpi.tiles'), ''], [S.bodies.length, tk('at.kpi.water'), ''], [S.objects?.entities ?? 0, tk('at.kpi.objects'), ''])
+  k.hidden = !kp.length
+  k.innerHTML = kp.map(([n, l, c]) => `<div><b class="${c}">${n}</b><span>${esc(l)}</span></div>`).join('')
 }
 
 function go(step: Step) {
   S.step = step
-  $('atPanelTitle').textContent = `A${STEPS.indexOf(step)} — ${tk('at.' + step)}`
+  $('atPanelK').textContent = tk('at.stepOf', { i: STEPS.indexOf(step), n: STEPS.length - 1 })
+  $('atPanelTitle').textContent = tk('at.' + step)
   $('atPanelLead').textContent = tk('at.' + step + '.lead')
   const p = $('atPanel'); p.innerHTML = ''
   ;({ s0: panelProject, s1: panelDiag, s2: panelSurfaces, s3: panelWater, s4: panelMap, s5: panelContours, s6: panelExport })[step](p)
   header(); legend(); draw()
 }
-const needWorld = (p: HTMLElement) => { if (S.terr && S.H) return false; p.innerHTML = `<p class="at-note">${tk('at.needWorld')}</p>`; return true }
+const needWorld = (p: HTMLElement) => {
+  if (S.terr && S.H) return false
+  p.innerHTML = `<div class="at-empty"><b>${tk('at.empty.title')}</b><p>${tk('at.needWorld')}</p><button type="button" id="atGoA0">${tk('at.empty.go')}</button></div>`
+  p.querySelector('#atGoA0')!.addEventListener('click', () => go('s0'))
+  return true
+}
 
 // ---------------------------------------------------------------- A0 project
 function panelProject(p: HTMLElement) {
@@ -194,7 +212,7 @@ function panelProject(p: HTMLElement) {
 
 function afterOpen() {
   resetWorld(); worldsList(); void pollWb(); header()
-  log(`${S.src!.info.title}: ${S.src!.info.worlds.length} world(s), ${S.src!.info.terrains.length} terrain(s)`)
+  log(`${S.src!.info.root}: ${S.src!.info.worlds.length} world(s), ${S.src!.info.terrains.length} terrain(s)`)
   const w = S.src!.info.worlds.find((x) => x.terrain && x.layers) ?? S.src!.info.worlds.find((x) => x.terrain)
   if (w && S.src!.info.worlds.length === 1) void loadWorld(w)
 }
@@ -389,7 +407,7 @@ function panelWater(p: HTMLElement) {
       const fix = x.status === 'modified' ? (x.kind === 'lake' ? tk('at.water.fixLake', { k: x.note, n: x.nptsNew ?? 0 }) : tk('at.water.fixRiver', { w: x.note, b: x.width ?? '' })) : ''
       return `<li class="${S.selWater === i ? 'sel' : ''} st-${x.status}"><button type="button" class="linkish" data-w="${i}"><b>${tk('at.water.' + x.kind)}</b> ${esc(x.name || `x ${x.cx} z ${x.cz}`)}</button>
         <small>${tk('at.water.pts', { n: x.npts })}${x.level !== undefined ? ' · ' + tk('at.water.level', { v: x.level }) : ''}${x.waterM2 !== undefined ? ' · ' + tk('at.water.area', { a: ha(x.mapBeforeM2), b: ha(x.mapAfterM2 ?? x.mapBeforeM2), w: ha(x.waterM2) }) : ''}</small>
-        <span class="at-st">${esc(st)}</span>${x.problems.length ? `<span class="err">⚠ ${x.problems.map((q) => esc(tk('at.water.pr.' + q))).join(', ')}</span>` : ''}
+        <span class="at-st">${esc(st)}</span>${x.problems.length ? `<span class="err">! ${x.problems.map((q) => esc(tk('at.water.pr.' + q))).join(', ')}</span>` : ''}
         ${fix ? `<label><input type="checkbox" data-use="${i}" ${S.use.has(i) ? 'checked' : ''}> ${tk('at.water.use')} — ${esc(fix)}</label>` : ''}
         <small class="hint">${esc(x.file)}</small></li>`
     }).join('')}</ul>
@@ -447,7 +465,7 @@ function panelMap(p: HTMLElement) {
   p.innerHTML = `<label class="at-field">${tk('at.map.style')}<select id="atStyle"><option value="military" ${S.style === 'military' ? 'selected' : ''}>${tk('at.map.military')}</option><option value="realistic" ${S.style === 'realistic' ? 'selected' : ''}>${tk('at.map.realistic')}</option></select></label>
     <label class="at-field">${tk('at.map.size')}<select id="atSize">${[2048, 4096, 8192].map((n) => `<option ${S.size === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     <div class="at-checks">${(Object.keys(S.mapLayers) as (keyof MapLayers)[]).map((k) => `<label><input type="checkbox" data-ml="${k}" ${S.mapLayers[k] ? 'checked' : ''}> ${tk('at.map.l.' + k)}</label>`).join('')}</div>
-    <div class="row"><button id="atPreview" type="button">${tk('at.map.preview')}</button><button id="atPng" type="button" class="secondary">${tk('at.map.export')}</button>${S.src!.canWrite ? `<button id="atPngSave" type="button" class="secondary">${tk('at.map.save')}</button>` : ''}</div>
+    <div class="row"><button id="atPreview" type="button">${tk('at.map.preview')}</button><button id="atPng" type="button" class="secondary">${tk('at.map.export')}</button><button id="atV3d" type="button" class="secondary" title="${esc(tk('at.v3d.tip'))}">${tk('at.v3d')}</button>${S.src!.canWrite ? `<button id="atPngSave" type="button" class="secondary">${tk('at.map.save')}</button>` : ''}</div>
     ${S.mapUrl ? `<img class="at-thumb" src="${S.mapUrl}" alt="">` : ''}
     <p class="hint">${tk('at.map.water')}</p><p class="at-note">${tk('at.map.import')}</p><p class="hint">${tk('at.map.partial')}</p>`
   $<HTMLSelectElement>('atStyle').addEventListener('change', (e) => { S.style = (e.target as HTMLSelectElement).value as MapStyle; legend() })
@@ -456,6 +474,7 @@ function panelMap(p: HTMLElement) {
   $('atPreview').addEventListener('click', () => void busy(tk('at.map.rendering'), async () => {
     const c = renderTo(1024); S.mapUrl = c.toDataURL('image/png'); mapBg = c; S.show.mapbg = true; S.done.add('s4'); go('s4')
   }))
+  $('atV3d').addEventListener('click', () => void open3dAtelier())
   const big = async () => { const c = renderTo(S.size); return new Promise<Blob>((r) => c.toBlob((b) => r(b!), 'image/png')) }
   const fname = () => `${S.world!.name}_MapBackground_${S.style}_${mapSize(S.size)}.png`
   $('atPng').addEventListener('click', () => void busy(tk('at.map.rendering') + ` ${S.size}`, async () => download(fname(), await big(), 'image/png')))
@@ -463,6 +482,45 @@ function panelMap(p: HTMLElement) {
     const b = new Uint8Array(await (await big()).arrayBuffer()), dest = `UI/Textures/Map/${fname()}`
     try { await bridgeWrite(dest, b, null); log(tk('at.map.saved', { f: dest })) } catch (e) { writeErr(e, dest) }
   }))
+}
+// ---------------------------------------------------------------- 3D view of the opened world (src/view3d)
+// real data as OpsTrack: decoded heights, the realistic map (satellite supertexture + forests, roads, buildings) as drape,
+// trees and buildings from the .layer entities
+let v3dOpen: { close(): void } | null = null
+async function open3dAtelier() {
+  if (v3dOpen) return v3dOpen.close()
+  if (!S.H || !S.terr || !S.objects) return
+  await busy(tk('at.v3d.busy'), async (stage) => {
+    stage(tk('at.v3d.load'))
+    const mod = await import('../view3d')
+    const tr = S.terr!, G = S.H!, side = Math.max(tr.sizeX, tr.sizeZ)
+    const hm = { minX: 0, minZ: 0, step: G.cell, cols: G.cols, rows: G.rows, heights: G.h }
+    const ob = S.objects!
+    const trees = new Float32Array(ob.trees.length * 3), needle = new Uint8Array(ob.trees.length)
+    ob.trees.forEach((x, i) => { trees[i * 3] = x.x; trees[i * 3 + 1] = x.z; trees[i * 3 + 2] = 0.8 + ((i * 2654435761) >>> 0) / 4294967296 * 0.4; needle[i] = x.type === 'conifer' ? 1 : 0 })
+    const buildings = ob.buildings.map((b, i) => { const big2 = b.type !== 'house'; return { cx: b.x, cz: b.z, w: big2 ? 18 : 9, d: big2 ? 14 : 8, h: big2 ? 9 : 6, yaw: (((i * 40503) % 360) * Math.PI) / 180 } })
+    const drape = (size: number) => {
+      const sv = { style: S.style, legend: S.mapLayers.legend, slopes: S.mapLayers.slopes }
+      S.style = 'realistic'; S.mapLayers.legend = false; S.mapLayers.slopes = false
+      try {
+        const m = renderTo(size), out = document.createElement('canvas'); out.width = out.height = size
+        const k = size / side
+        out.getContext('2d')!.drawImage(m, 0, (side - tr.sizeZ) * k, tr.sizeX * k, tr.sizeZ * k) // row 0 = north edge of the square
+        return { canvas: out, x0: 0, z0: 0, side }
+      } finally { S.style = sv.style; S.mapLayers.legend = sv.legend; S.mapLayers.slopes = sv.slopes }
+    }
+    const host = $('atMap').parentElement!
+    const T = (k: string) => tk('at.v3d.' + k)
+    v3dOpen = await mod.open3d(host, {
+      hm, sea: 0, buildings, trees, treeNeedle: needle, lakes: [], target: [tr.sizeX / 2, tr.sizeZ / 2], span: side,
+    }, {
+      text: { back: T('back'), exag: T('exag'), reset: T('reset'), top: T('top'), trees: T('trees'), help: T('help'), grid: T('grid'),
+        drape: T('drape'), real: T('real'), map: T('map'), sat: T('sat'), genMs: (x) => tk('at.v3d.genMs', { s: x }), stage: (k) => T('st.' + k) },
+      drape, progress: (st) => stage(st),
+      onClose: () => { v3dOpen = null; (window as unknown as { __view3d: unknown }).__view3d = null },
+    })
+    ;(window as unknown as { __view3d: unknown }).__view3d = v3dOpen
+  })
 }
 function writeErr(e: unknown, f: string) {
   const m = (e as Error).message

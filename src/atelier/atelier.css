@@ -81,3 +81,47 @@
 .at-calib input { width: 100%; min-width: 0; box-sizing: border-box; }
 .at-sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.3); vertical-align: middle; }
 .at-preview { width: 100%; max-width: 360px; image-rendering: pixelated; border: 1px solid rgba(0,0,0,.25); border-radius: 4px; margin: 6px 0; }
+
+/* UI polish (docs/UI_POLISH_PLAN.md 09, 10, 18): header like the generator, status chip, stepper, empty state, key figures */
+.at-top { height: 52px; box-sizing: border-box; padding: 0 16px; gap: 14px; }
+.atelier .at-backbtn { height: 36px; padding: 0 12px; font-size: 13px; letter-spacing: .1em; background: transparent; color: var(--tx-1); border: 1px solid var(--line-2); }
+.at-brand { color: var(--tx-1); font-size: 20px; font-weight: 600; }
+.at-proj { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.at-wb { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--line-1); border-radius: var(--r); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--tx-3); white-space: nowrap; cursor: help; }
+.at-wb::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--tx-4); flex: none; }
+.at-wb[data-st="closed"] { color: var(--tx-2); }
+.at-wb[data-st="closed"]::before { background: var(--green); }
+.at-wb[data-st="open"] { color: var(--amber-hi); border-color: #6B5320; background: #1A1608; }
+.at-wb[data-st="open"]::before { background: var(--amber); }
+.at-langsel select { height: 32px; padding: 0 8px; background: var(--ink-3); border: 1px solid var(--line-2); color: var(--tx-1); font: 13px var(--f-mono); border-radius: var(--r); cursor: pointer; }
+.at-langsel select:hover, .at-langsel select:focus { border-color: var(--amber); }
+.atelier #atHelpBtn { width: 32px; height: 32px; padding: 0; font-size: 15px; background: var(--ink-3); color: var(--tx-1); }
+.at-steps { padding: 10px 16px; gap: 6px; background: #0E0F11; }
+.at-steps button { justify-content: flex-start; height: 44px; padding: 0 12px; font-size: 13px; letter-spacing: .08em; }
+.at-steps button.done { background: #13201A !important; border-color: #3F6B33 !important; color: var(--tx-2) !important; }
+.at-steps button.done b { color: var(--green-hi); }
+.at-steps button.done b::before { content: '✓ '; }
+.at-steps button.done b::after { content: none; }
+.at-steps button.active { background: #1A1608 !important; border-color: var(--amber) !important; color: var(--tx-1) !important; }
+.at-steps button.active b { color: var(--amber-hi); }
+.at-steps button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-side { padding: 18px 20px; gap: 8px; }
+.at-side h3 { font-size: 26px; font-weight: 500; letter-spacing: .06em; }
+#atPanelLead { margin: 0; font-size: 15px; line-height: 1.45; color: var(--tx-2); }
+.at-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 8px -20px; background: var(--line-1); border-block: 1px solid var(--line-1); }
+.at-kpis[hidden] { display: none; }
+.at-kpis div { padding: 10px 16px; background: var(--ink-2); display: flex; flex-direction: column; }
+.at-kpis b { font: 500 24px var(--f-head); color: var(--tx-1); }
+.at-kpis b.err { color: var(--red-hi, #E58A80); }
+.at-kpis b.warn { color: var(--amber-hi); }
+.at-kpis b.ok { color: var(--green-hi); }
+.at-kpis span { font-size: 13px; color: var(--tx-3); }
+.at-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; border: 1px dashed var(--line-2); background: var(--ink-3); }
+.at-empty b { font-family: var(--f-head); text-transform: uppercase; letter-spacing: .08em; color: var(--tx-1); }
+.at-empty p { margin: 0; color: var(--tx-2); }
+.atelier .at-empty button { height: 40px; padding: 0 16px; font-size: 13px; }
+.at-nav button { height: 44px; padding: 0 16px; font-size: 14px; }
+.at-foot { height: 32px; box-sizing: border-box; font-size: 12px; }
+#atJournal { color: var(--tx-2); }
+@media (max-width: 760px) { .at-proj, .at-brand { display: none; } .at-wb { font-size: 0; gap: 0; padding: 0 12px; } }
+.at-top > *, .at-nav > * { align-self: center; }
