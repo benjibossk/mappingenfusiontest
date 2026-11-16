@@ -156,6 +156,50 @@ Sous-section de l'étape **Routes** (juste après le réseau routier, avant Vill
 6. **Petite ville** : îlots fermés (graphe planaire → faces), découpe OBB, puis champ tensoriel.
 7. **Raccordement** : chaque village reçoit une ligne BT (§2) et un transformateur.
 
+### 3.3 Fait (2026-11-16, module pur, pas encore branché à l'UI)
+Fichiers : `src/modules/village.ts` (orchestrateur), `villageStreets.ts` (croissance des rues),
+`villageLots.ts` (découpe OBB). `settlements.ts` : helpers exportés, `Placed.role?` et `Placed.ycm?`
+(pontons au-dessus de l'eau, repris par `settlementEntities`). `templates.ts` : parcelles capturées
+`Church|Chapel` → catégorie `civic`.
+1. **Rues organiques** : marche ramifiée depuis la route principale (segments 30–60 m, branches
+   90°±20°, virage vers la courbe de niveau au-delà de 10 %, arrêt eau / > `maxSlope` / rayon /
+   autre rue, accrochage 15 m → boucles).
+2. **Parcelles** : bandes de rue en boîtes orientées, découpe OBB récursive (façade min/max par
+   anneau centre/milieu/bord) ; maison en façade face à la rue, retrait, **jardin** derrière (réservé,
+   aucun bâtiment dedans), annexe au fond.
+3. **Cours de ferme en U** (anneau bord, façade ≥ 24 m) : ferme au fond, deux ailes annexe/hangar
+   tournées vers la cour, ouverte côté rue (rôles `farmhouse` / `farmyard`).
+4. **Une seule église** par village/ville (`role: 'church'`, id `SET_<site>_C1`) au-delà de la place,
+   face à elle ; aucun prefab d'église vanilla mesuré → pub `civic` en repli (une parcelle capturée
+   nommée Church/Chapel est prise en priorité).
+5. **Port** si de la mer (h < 0) est dans le rayon : `PierWooden_01_25m` vers le large (`ycm` = 100),
+   2–3 `BoatShed_01_land` sur la plage, `PierShed_01` en ville, ruelle `SET_<site>_LANE_H` + rue le
+   long du rivage. Pas de bateau (aucun prefab bateau mesuré). Lacs : pas de port.
+6. **Ville** (`variant: 'town'` ou site `town`) : lots 7–11 m au centre, retrait 0,5–2,5 m, 9–10 rues
+   quasi orthogonales, remplissage 97 %, pas de ferme.
+
+Tests : `scratchpad/village.test.ts` (colline, côte, ville) → déterministe, 0 chevauchement OBB,
+0 bâtiment sur route / dans l'eau, pente OK (rues ≤ 15 %), 1 église ; aperçus `village-*.svg`.
+
+**API pour le câblage (main.ts)** :
+```ts
+import { settleVillages, gardenFences, type VillageOptions, type VillageResult } from './modules/village'
+const res = settleVillages(sites, roads, waters, heights, grid, {
+  seed, density,             // comme settle()
+  variant: 'auto' | 'village' | 'town',  // défaut 'auto' (site.kind)
+  streets?: boolean, maxStreets?: number, farms?: boolean, church?: boolean, port?: boolean,
+  maxSlope?: number,          // 0.15
+  pool?: Building[], blocked?: [x0,z0,x1,z1][],
+}, keep?)
+// res.placed / res.lanes / res.paths ([] : garder settle() si on veut les sentiers) / res.squares
+//   → mêmes usages que settle() : settlementEntities(res.placed, parcels), settlementShapes(res), buildingMasks(res.placed)
+// res.lots[{site,corners,used}], res.gardens[{site,corners}], res.sites[{site,variant,coastal,church,streets,lots}]
+// gardenFences(res) → polylignes de clôture (arrière + côtés) pour le wall generator
+```
+Contrôles UI nécessaires (étape Villages) : case « Générateur v2 » (settleVillages vs settle),
+sélecteur variante (auto/village/ville), cases rues organiques / fermes en U / église / port,
+nombre de rues (0–10), pente max (%), et un affichage des jardins (couleur par `role` pour la carte).
+
 ---
 
 ## 4. Générateur de zones industrielles
