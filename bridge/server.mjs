@@ -4,6 +4,7 @@
 //     1. writes it to <Workbench profile>/MapGen/mapgen.json
 //     2. calls the MG_ApplyProject NET API handler (addon Mapgenerator) on the Workbench
 //   GET  /status  is the Workbench reachable?
+//   /atelier/*  Mode Atelier: read an existing project from disk, safe writes (bridge/atelier.mjs)
 //   GET  /entities  objects and shapes already in the open world (MG_ExportEntities)
 //   GET  /heights?step=8   terrain height grid of the open world (MG_ExportHeights)
 //   POST /surfaces  body = {addon, world: "Worlds/X"}  preload the vanilla surfaces into Worlds/X/X.terr
@@ -27,6 +28,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareTerrain } from "./terrain-file.mjs";
 import { maskSide, writeMasks, writeSatellite } from "./terrain-masks.mjs";
+import { handleAtelier } from "./atelier.mjs";
 
 const PORT = Number(process.env.MAPGEN_BRIDGE_PORT ?? 5780);
 const WB_HOST = process.env.MAPGEN_WB_HOST ?? "127.0.0.1";
@@ -124,6 +126,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "OPTIONS") return send(res, 204, {});
 
   try {
+    if (await handleAtelier(req, res, send, readBody)) return; // Mode Atelier: bridge/atelier.mjs
     if (req.method === "GET" && req.url === "/status") {
       const state = await callWorkbench("MG_Status", {}, 5_000).catch((e) => ({ error: e.message }));
       return send(res, 200, { bridge: "ok", projectFile: PROJECT_FILE, workbench: state });
