@@ -37,7 +37,7 @@ Notes :
 
 | # | Étape | Attendu | Statut |
 |---|-------|---------|--------|
-| 1 | Générer une île fictive (Relief → Générer, seed 1) | Pas d'alerte « blocks exceed 5 surfaces » dans le journal (vu : 1 bloc en dépassement) | ❌ 2026-11-16 |
+| 1 | Générer une île fictive (Relief → Générer, seed 1) | Pas d'alerte « blocks exceed 5 surfaces » dans le journal (vu : 1 bloc en dépassement ; corrigé : limitPerBlock garanti ≤ 4 surfaces/bloc voisins compris, test seeds 1-20 à 2 m : 0 bloc) | ✅ 2026-11-16 (test auto) |
 | 2 | Envoyer au Workbench | Pas de « Surface import: Too many layers » | ⬜ |
 
 ## R4 — Apports ARTE (ajouté le 2026-11-16)
