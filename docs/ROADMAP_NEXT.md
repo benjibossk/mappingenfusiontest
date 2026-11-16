@@ -185,6 +185,21 @@ catégorie `industrial` (aujourd'hui seulement maisons/ferme/civique/annexe/hang
 6. Poste électrique + ligne MT (§2).
 7. Variante ferme collective / silo.
 
+### 4.4 API (fait : `src/modules/industrial.ts`, non branché à l'UI)
+Générateur pur, déterministe (seed). Prefabs : `INDUSTRIAL` / `industrialFor(type, role)` dans
+`src/data/buildings.ts` (32 prefabs mesurés, rôles `main`/`annex`/`prop`, hors `BuildingCat` : le
+générateur de villages est inchangé). Pas de conteneur, palette ni portail mesuré : cours = citernes,
+silos, cabines, piles de blocs/briques, tours d'éclairage. Clôture = `FENCE_NET` (`WG_NetFence_01`, chemin nu).
+- `generateIndustrial(heightAt, roads, { type: 'factory'|'depot'|'quarry'|'farm'|'fuel', seed, polygon? | center+size?, lotMin, lotMax, rowDepth, setback, spineWidth, streetWidth, gateWidth, props, idPrefix })`
+  → `{ roads: Road[] (épine reliée à la route principale la plus proche + rues transversales), lots[{id, corners, gate{x,z,yaw,width}}], placed[{id,prefab,role,lot,x,z,yaw,corners}], fences: ProjectShape[] (polylignes ouvertes, trou = portail), shapes (roadShapes + fences), entities: ProjectEntity[], flatten, frame, warnings }`.
+- `flatten: { kind:'platform', polygon, height, falloff, slope }` — aucune requête d'aplanissement de zone
+  n'existait (les routes utilisent `Road.flatten` + `carveRoads`) : appliquer avec
+  `applyFlatten(heights, grid, flatten)` (en place, même format que `carveRoads`) AVANT `carveRoads`.
+- `suggestIndustrialSites(heightAt, roads, { type, bounds, size?, villages?: {x,z,r}[], waterDist?, isWater?, step?, n? })`
+  → `[{x,z,score,slope,roadDist,villageDist,waterDist}]` (top N espacés). Villages : `sites` + `SITE_RADIUS[kind]`.
+- Branchement : `shapes` → projet (splines/polylignes), `entities` → objets, `roads` éventuellement ajoutés
+  à la liste des routes (ids préfixés `ind_`).
+
 ---
 
 ## 5. Outils IA : ce qui peut vraiment aider
