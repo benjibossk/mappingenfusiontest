@@ -38,6 +38,8 @@ export interface VillageResult extends Settlement {
   lots: { site: string; corners: number[]; used: boolean }[]
   gardens: { site: string; corners: number[] }[] // back gardens (fence / hedge polylines for the wall generator)
   sites: VillageSite[]
+  tried?: number // lots that drew a building (fill roll passed)
+  housed?: number // ... and got one (the rest: no footprint fits: slope, water, roads)
 }
 
 // measured in profile/MapGen/prefabs.txt (local bounds X/Z); no boat prefab is measured: none placed
@@ -345,9 +347,21 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       const rec = { site: site.id, corners: lotCorners(lot), used: false }
       res.lots.push(rec)
       if (rand() > P.fill[k] * o.density) continue
+      // a lot already covered by a building of a crossing street (corner lots overlap) is not a free lot
+      if (placed.some((q) => Math.abs(q.x - lot.cx) < 60 && Math.abs(q.z - lot.cz) < 60 && overlap(rec.corners, q.corners, 0) && inside(rec.corners, q.x, q.z))) continue
+      {
+        const [px, pz] = lotPoint(lot, 0, Math.min(lot.d / 2, 8)) // where the house would stand
+        if (placed.some((q) => Math.abs(q.x - px) < 40 && Math.abs(q.z - pz) < 40 && inside(q.corners, px, pz))) continue
+        if (reserved.some((g) => Math.abs(g[0] - px) < 80 && Math.abs(g[1] - pz) < 80 && inside(g, px, pz))) continue
+        if (roadDist(px, pz) < ROAD_MARGIN || wet(px, pz, 0)) continue
+      }
       const setback = P.setback[0] + rand() * (P.setback[1] - P.setback[0]) * (k === 0 ? 0.5 : 1)
       const [fx0, fz0] = lotPoint(lot, 0, 0) // front centre
       const fx = -lot.nx, fz = -lot.nz // the house faces the street
+      const garden = variant === 'town' && k === 0 ? 3 : 6
+      const sized = (b: Building, gm = garden) => { const r = putFacing(b, fx0, fz0, fx, fz, setback); return r.width <= lot.w + (k === 0 ? 2 : 0) && setback + r.depth + gm <= lot.d }
+      if (!pool(['houseS', 'houseM']).some((b) => sized(b, 1))) continue // too small a lot for any house
+      res.tried = (res.tried ?? 0) + 1
 
       // farm courtyard (U): farmhouse at the back, two wings facing the court, open to the street
       if (o.farms !== false && k === 2 && lot.w >= 24 && variant !== 'town' && rand() < 0.7) {
@@ -386,7 +400,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
           ok = true
           break
         }
-        if (ok) { rec.used = true; continue }
+        if (ok) { rec.used = true; res.housed = (res.housed ?? 0) + 1; continue }
       }
 
       const cats: BuildingCat[] =
@@ -394,16 +408,22 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
         : variant === 'hamlet' ? ['houseS', 'houseM', 'farm']
         : k === 0 ? ['houseM', 'houseL', 'houseL', 'block'] : k === 1 ? ['houseS', 'houseM', 'houseM', 'farm'] : ['houseS', 'houseM', 'farm', 'farm']
       let house: { b: Building; r: ReturnType<typeof putFacing> } | null = null
-      for (let t = 0; t < 5 && !house; t++) {
-        const cs = pool([cats[Math.floor(rand() * cats.length)]])
+      for (let t = 0; t < 12 && !house; t++) {
+        // only the models that fit the lot (a wide house drawn on a narrow lot used to waste the try);
+        // the last tries fall back to any category of the list
+        const cs = pool(t < 5 ? [cats[Math.floor(rand() * cats.length)]] : t < 9 ? cats : ['houseS', 'houseM']).filter((b) => sized(b, t < 9 ? garden : 1))
         if (!cs.length) continue
         const b = cs[Math.floor(rand() * cs.length)]
-        const r = putFacing(b, fx0, fz0, fx, fz, setback)
-        const garden = variant === 'town' && k === 0 ? 3 : 6
-        if (r.width > lot.w + (k === 0 ? 2 : 0) || setback + r.depth + garden > lot.d) continue
+        let r = putFacing(b, fx0, fz0, fx, fz, setback)
+        // later tries slide the house across the lot / a little deeper (off a road edge, a wet corner, a bump)
+        if (t >= 2) {
+          const sh = (rand() - 0.5) * Math.max(0, lot.w - r.width), deep = setback + rand() * Math.max(0, lot.d - garden - setback - r.depth)
+          r = putFacing(b, fx0, fz0, fx, fz, deep, sh)
+        }
         if (fits(b, r.corners)) house = { b, r }
       }
       if (!house) continue
+      res.housed = (res.housed ?? 0) + 1
       rec.used = true
       const q = add(id('H'), site.id, house.b, house.r, 'house')
       // garden: the lot behind the house, reserved (fences / hedges along its edges)

@@ -72,7 +72,7 @@ const toWb = async (p: Project) => {
   autosave()
   return (lostPts > 0 || crumbs ? t('log.cleaned', { pts: lostPts, crumbs }) + '\n' : '') + msg
 }
-import { SITE_RADIUS, buildNetwork, pickSites, type Site, type SiteKind } from './modules/network'
+import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
 import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
@@ -85,8 +85,9 @@ import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zon
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, type IndustrialType } from './modules/industrial'
 import { suggestMilitary, type MilitaryKind } from './modules/military'
 import { suggestAirfield, type AirfieldSize } from './modules/airfield'
-import { quantise, suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
-import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, generateWorld, type WorldResult } from './modules/worldgen'
+import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
+import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
+import { runGen } from './workers/genClient'
 
 // the side panel is a guided path: one step per tab, in the order a map is built
 const STEPS = [
@@ -272,7 +273,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
     </div>
     <div id="tour" class="tour" hidden><div class="tourring"></div><div class="tourbox" role="dialog" aria-live="polite"><span id="tourN" class="kicker"></span><p id="tourText"></p><div class="row"><button id="tourSkip" type="button" class="secondary">${t('tour.skip')}</button><button id="tourNext" type="button">${t('tour.next')}</button></div></div></div>
-    <div id="busy" class="busy" hidden role="status" aria-live="polite"><div class="busybox"><span class="kicker">${t('busy.kicker')}</span><b id="busyLabel"></b><span id="busyStage" class="hint"></span><progress id="busyBar"></progress><div class="row"><span id="busyTime" class="busytime"></span><button id="busyCancel" type="button" class="secondary" hidden>${t('busy.cancel')}</button></div></div></div>
+    <div id="busy" class="busy" hidden role="status" aria-live="polite"><div class="busybox"><span class="kicker">${t('busy.kicker')}</span><b id="busyLabel"></b><span id="busyStage" class="hint"></span><progress id="busyBar"></progress><div class="row"><b id="busyPct" class="busypct"></b><span id="busyTime" class="busytime"></span><button id="busyCancel" type="button" class="secondary" hidden>${t('busy.cancel')}</button></div></div></div>
     <div id="coach" class="coach" hidden role="dialog" aria-live="polite"><span id="coachKicker" class="kicker"></span><b id="coachTitle"></b><p id="coachText"></p><ul id="coachSteps"></ul><div class="row"><button id="coachClose" type="button" class="secondary">${t('coach.close')}</button><button id="coachTour" type="button" class="secondary">${t('coach.tour')}</button><button id="coachNext" type="button"></button></div></div>
     <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
     <div class="overlay">
@@ -1630,11 +1631,12 @@ async function runJob(label: string, f: () => Promise<string>, onOk?: () => void
   }
 }
 
+/** the island now, on this thread (callers that use it on the next line) */
+function islandNow() { islandSync = true; try { $<HTMLButtonElement>('tGen').click() } finally { islandSync = false } }
+let islandSync = false // applyWorld: the same island right now, on this thread (the world is applied in one go)
 $<HTMLButtonElement>('tGen').addEventListener('click', () => {
-  imported = null
-  existing = { objects: [], shapes: [] }
   const size = num('tSize')
-  island = generateIsland({
+  const p = {
     size,
     step: Math.max(4, size / 512),
     maxHeight: num('tMax'),
@@ -1643,15 +1645,23 @@ $<HTMLButtonElement>('tGen').addEventListener('click', () => {
     roughness: num('tRough'),
     seed: num('tSeed'),
     islands: num('tIslands'),
-  })
-  sink = undefined
-  sculpt = new Sculpt(island.grid.cols, island.grid.step, num('tMax'), num('tSeed'), island.heights)
-  rivers = undefined
-  view.x = view.z = size / 2
-  view.mpp = size / map.width
-  logEl.textContent = t('log.island', { cols: island.grid.cols, rows: island.grid.rows, step: island.grid.step })
-  recompose(true)
-  coachAfter('new')
+  }
+  const use = (isl: Island) => {
+    imported = null
+    existing = { objects: [], shapes: [] }
+    island = isl
+    sink = undefined
+    sculpt = new Sculpt(island.grid.cols, island.grid.step, num('tMax'), num('tSeed'), island.heights)
+    rivers = undefined
+    view.x = view.z = size / 2
+    view.mpp = size / map.width
+    logEl.textContent = t('log.island', { cols: island.grid.cols, rows: island.grid.rows, step: island.grid.step })
+    recompose(true)
+    coachAfter('new')
+  }
+  if (islandSync) return use(generateIsland(p))
+  // in the generator worker: the busy panel paints and the page answers meanwhile
+  void track(runGen<Island>('island', [p]).promise.then(use, (e) => { busyFailed = true; logEl.textContent = t('run.error', { label: 'island', msg: (e as Error).message }) }))
 })
 // load the world open in the Workbench (relief + ground materials) to carry on a map in progress
 /** world imported from the Workbench (null = generated island); kept so the project survives a reload */
@@ -1897,16 +1907,18 @@ function toast(msg: string, kind: 'ok' | 'err' = 'ok') {
   el.dataset.timer = String(setTimeout(() => (el.hidden = true), 4000))
 }
 /** stage of the current busy job: i/n gives a real bar, nothing gives an indeterminate one */
-function busyStage(name: string, i?: number, n?: number) {
+function busyStage(name: string, i?: number, n?: number, pct?: number) {
   $('busyStage').textContent = i !== undefined && n ? t('busy.stage', { i: i + 1, n, s: name }) : name
   const bar = $<HTMLProgressElement>('busyBar')
-  if (i !== undefined && n) { bar.max = n; bar.value = i } else bar.removeAttribute('value')
+  if (pct !== undefined) { bar.max = 100; bar.value = pct } else if (i !== undefined && n) { bar.max = n; bar.value = i } else bar.removeAttribute('value')
+  $('busyPct').textContent = pct !== undefined ? `${Math.round(pct)} %` : ''
 }
 async function busy<T>(label: string, f: () => Promise<T> | T, cancel?: () => void): Promise<T | undefined> {
   if (busyDepth++ > 0) { try { return await f() } finally { busyDepth-- } } // nested: the outer panel shows
   busyFailed = false; busyStop = false; busyName = label; busyT0 = performance.now()
   $('busyLabel').textContent = label
   busyStage(t('busy.wait'))
+  $('busyPct').textContent = ''
   const cb = $<HTMLButtonElement>('busyCancel')
   cb.hidden = !cancel; cb.onclick = () => { busyStop = true; cancel?.() }
   const showTime = () => { $('busyTime').textContent = t('busy.elapsed', { s: Math.round((performance.now() - busyT0) / 1000) }) }
@@ -2096,7 +2108,7 @@ function loadProject(p: any) {
     else el.value = String(v)
   }
   if (p.imported) useWorld({ ...p.imported, heights: [...new Float32Array(unb64(p.imported.heights).buffer)] })
-  else $<HTMLButtonElement>('tGen').click() // rebuilds grid + sculpt with the saved settings
+  else islandNow() // rebuilds grid + sculpt with the saved settings
   if (!island || !sculpt) return
   const macro = new Float32Array(unb64(p.macro).buffer)
   if (macro.length !== sculpt.macro.length) throw new Error(t('err.gridMismatch'))
@@ -2456,7 +2468,7 @@ roadInfo()
 
 // --- quick road test ---
 function testRoads(): Road[] {
-  if (!island) $<HTMLButtonElement>('tGen').click()
+  if (!island) islandNow()
   if (!island) return []
   const { cols, rows, step } = island.grid
   const h = island.heights
@@ -2585,7 +2597,7 @@ function netParams() {
   }
 }
 $<HTMLButtonElement>('sitesPlace').addEventListener('click', () => {
-  if (!island) $<HTMLButtonElement>('tGen').click()
+  if (!island) islandNow()
   if (!island) return
   sites = pickSites(island.heights, island.grid, rivers, netParams())
   if (sites.length < 2) return void (logEl.textContent = t('log.netNone'))
@@ -2594,12 +2606,18 @@ $<HTMLButtonElement>('sitesPlace').addEventListener('click', () => {
   recompose(true)
 })
 $<HTMLButtonElement>('netGen').addEventListener('click', () => {
-  if (!island) $<HTMLButtonElement>('tGen').click()
+  if (!island) islandNow()
   if (!island) return
   if (sites.length < 2) $<HTMLButtonElement>('sitesPlace').click()
   if (sites.length < 2) return
-  roads = roads.filter((r) => !r.auto)
-  const made = buildNetwork(island.heights, island.grid, rivers, sites, netParams(), roads)
+  const isl = island, keep = roads.filter((r) => !r.auto)
+  // routed in the generator worker (the bar follows the tree then the loops); applied only once it is done
+  void track(runGen<Road[]>('network', [isl.heights, isl.grid, rivers, sites, netParams(), keep], {
+    progress: (_s, _i, _n, f) => { if (busyDepth) busyStage(t('wg.st.roads'), undefined, undefined, 100 * (f ?? 0)) },
+  }).promise.then((made) => { if (island === isl) netApply(keep, made) }, (e) => { busyFailed = true; logEl.textContent = t('run.error', { label: 'network', msg: (e as Error).message }) }))
+})
+function netApply(keep: Road[], made: Road[]) {
+  roads = keep
   for (const r of made) {
     r.auto = true
     r.id = nextRoadId(r.type)
@@ -2621,7 +2639,7 @@ $<HTMLButtonElement>('netGen').addEventListener('click', () => {
   }
   logEl.textContent = t('log.netDone', { sites: sites.length, roads: made.length - drop.length, km: (km / 1000).toFixed(1) })
     + (drop.length ? ' ' + t('log.netSteep', { n: drop.length }) : '')
-})
+}
 $<HTMLButtonElement>('netClear').addEventListener('click', () => {
   roads = roads.filter((r) => !r.auto)
   roadInfo()
@@ -2941,11 +2959,14 @@ $<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = [];
 // forests for a fictive island (a real place brings its own): replaces the previously generated ones only
 $<HTMLButtonElement>('forestGen').addEventListener('click', () => {
   if (!island) return void (logEl.textContent = t('log.genFirst'))
-  const made = generateForests(island.heights, island.grid, { seed: num('tSeed'), cover: 0.35, sites })
-  areas = areas.filter((a) => !a.id.startsWith('FOREST_GEN_'))
-  made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
-  logEl.textContent = made.length ? t('log.forestGen', { n: made.length }) : t('err.forestGenNone')
-  recompose(true); draw(); autosave()
+  const isl = island
+  void track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites }]).promise.then((made) => {
+    if (island !== isl) return
+    areas = areas.filter((a) => !a.id.startsWith('FOREST_GEN_'))
+    made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
+    logEl.textContent = made.length ? t('log.forestGen', { n: made.length }) : t('err.forestGenNone')
+    recompose(true); draw(); autosave()
+  }, (e) => { busyFailed = true; logEl.textContent = t('run.error', { label: 'forests', msg: (e as Error).message }) }))
 })
 
 // --- water: rivers and lakes drawn by hand (tab Eau) ---
@@ -3154,7 +3175,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Backspace' && waterDraft) { waterDraft.pts.length -= 2; draw() }
 })
 $<HTMLButtonElement>('wGen').addEventListener('click', () => {
-  if (!island) $<HTMLButtonElement>('tGen').click()
+  if (!island) islandNow()
   if (!island) return
   if (!riverSim) { $<HTMLInputElement>('rLive').checked = true; recompose(false) }
   if (!riverSim) return
@@ -3635,7 +3656,13 @@ $<HTMLButtonElement>('satAnalyse').addEventListener('click', () => {
   c2.drawImage(src, 0, 0, cv.width, cv.height)
   const img = c2.getImageData(0, 0, cv.width, cv.height)
   const sm = num('satSmooth')
-  satQ = quantise({ width: img.width, height: img.height, data: img.data }, { k: 5, blur: sm, median: sm > 0, minRegion: sm * 8 })
+  const isl = island
+  void track(runGen<Quantised>('quantise', [{ width: img.width, height: img.height, data: img.data }, { k: 5, blur: sm, median: sm > 0, minRegion: sm * 8 }]).promise.then((q) => {
+    if (island === isl) satApply(q, t0)
+  }, (e) => { busyFailed = true; logEl.textContent = t('run.error', { label: 'satellite', msg: (e as Error).message }) }))
+})
+function satApply(q: Quantised, t0: number) {
+  satQ = q
   satSurf = suggestSurfaces(satQ).map((s) => (SAT_SURFACES.includes(s) ? s : SAT_SURFACES[0]))
   const pv = previewRgba(satQ)
   satCanvas = document.createElement('canvas')
@@ -3644,7 +3671,7 @@ $<HTMLButtonElement>('satAnalyse').addEventListener('click', () => {
   renderSwatches()
   $('satInfo').textContent = t('sat.done', { w: satQ.width, h: satQ.height, ms: Math.round(performance.now() - t0) })
   draw()
-})
+}
 $<HTMLInputElement>('satPreview').addEventListener('change', () => draw())
 $<HTMLButtonElement>('satPng').addEventListener('click', () => {
   const s = satSurfaces()
@@ -3673,7 +3700,7 @@ satAvail()
 
 // --- random world (worldgen.ts): one seed -> relief, water, places, sites, roads, villages, power, forests ---
 const rwDlg = $<HTMLDivElement>('rwDlg')
-let rwBusy = false, rwStop = false
+let rwBusy = false
 const RW_SLIDERS = ['towns', 'villages', 'hamlets', 'industry', 'military', 'forests'] as const
 for (const k of RW_SLIDERS) {
   const inp = $<HTMLInputElement>('rw_' + k), out = $('rw_' + k + '_v')
@@ -3690,7 +3717,7 @@ $<HTMLButtonElement>('tRandom').addEventListener('click', () => {
   rwDlg.hidden = false
   $<HTMLButtonElement>('rwGo').focus()
 })
-$<HTMLButtonElement>('rwCancel').addEventListener('click', () => { if (rwBusy) rwStop = true; else rwDlg.hidden = true })
+$<HTMLButtonElement>('rwCancel').addEventListener('click', () => { if (rwBusy) $<HTMLButtonElement>('busyCancel').click(); else rwDlg.hidden = true })
 rwDlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') $<HTMLButtonElement>('rwCancel').click() })
 function applyWorld(w: WorldResult) {
   const set = (id: string, v: number) => { $<HTMLInputElement>(id).value = String(v) }
@@ -3698,7 +3725,7 @@ function applyWorld(w: WorldResult) {
   set('tLand', w.island.landRatio); set('tRough', w.island.roughness); set('tIslands', 1); set('tSeaLevel', 0)
   set('rThreshold', 400); set('rRain', 1); set('rWind', 0)
   $<HTMLInputElement>('rLive').checked = true
-  $<HTMLButtonElement>('tGen').click() // same island (same function and seed), fresh sculpt + history base
+  islandNow() // same island (same function and seed), fresh sculpt + history base
   waters = w.waters
   sites = w.sites
   roads = w.roads
@@ -3716,9 +3743,16 @@ function applyWorld(w: WorldResult) {
   draw()
   refreshSteps()
 }
+// share of the run time of each stage (8 km bench): the bar moves by real time, not by stage count
+const WG_WEIGHT: Record<string, number> = { relief: 4, water: 3, sites: 1, airfield: 1, military: 2, roads: 60, industry: 14, villages: 5, power: 6, forests: 1, surfaces: 3 }
+function worldPct(s: string, f = 0) {
+  let tot = 0, before = 0
+  for (const k of WORLD_STAGES) { if (k === s) before = tot; tot += WG_WEIGHT[k] }
+  return (100 * (before + WG_WEIGHT[s] * Math.min(1, f))) / tot
+}
 $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
   if (rwBusy) return
-  rwBusy = true; rwStop = false
+  rwBusy = true
   const box = rwDlg.querySelector('.rwbox') as HTMLElement
   box.querySelectorAll('input,select,button').forEach((x) => { if (x.id !== 'rwCancel') (x as HTMLInputElement).disabled = true })
   $<HTMLButtonElement>('rwGo').disabled = true
@@ -3726,28 +3760,38 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
   const prog = $<HTMLProgressElement>('rwProg'), stage = $('rwStage')
   const v = (k: string) => Number($<HTMLInputElement>('rw_' + k).value)
   const t0 = performance.now()
+  const params = {
+    seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
+    towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
+    airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked,
+  }
+  // the whole pipeline runs in the generator worker: the page (busy panel, bar, Cancel) stays live.
+  // Nothing is applied until it succeeds, so Cancel leaves the current map as it was.
+  const job = runGen<WorldResult>('world', [params], {
+    progress: (s, i, n, f) => {
+      const pct = worldPct(s, f)
+      prog.max = 100; prog.value = pct
+      const txt = t('wg.stage', { i: i + 1, n, s: t(('wg.st.' + s) as K) })
+      stage.textContent = txt + ` · ${Math.round(pct)} % · ` + t('busy.elapsed', { s: Math.round((performance.now() - t0) / 1000) })
+      busyStage(t(('wg.st.' + s) as K), i, n, pct)
+    },
+  })
   try {
-    const w = await generateWorld({
-      seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
-      towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
-      airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked,
-    }, {
-      progress: (s, i, n) => { prog.value = i; stage.textContent = t('wg.stage', { i: i + 1, n, s: t(('wg.st.' + s) as K) }) + ' · ' + t('busy.elapsed', { s: Math.round((performance.now() - t0) / 1000) }) },
-      cancelled: () => rwStop,
-    })
-    prog.value = WORLD_STAGES.length
+    const w = await busy(t('welcome.random'), async () => {
+      try { return await job.promise } catch (e) { if (e instanceof Cancelled) return undefined; throw e }
+    }, () => job.cancel())
+    if (!w) { stage.textContent = t('wg.cancelled'); return }
+    prog.value = 100
     applyWorld(w)
     rwDlg.hidden = true
-    toast(t('busy.done', { label: t('welcome.random'), s: Math.round((performance.now() - t0) / 100) / 10 }))
     coachAfter('random')
-    const c = (k: string) => w.sites.filter((q) => q.kind === k).length
+    const c = (k: string) => w.sites.filter((q) => q.kind === k && !q.id.startsWith('FARM_')).length
     logEl.textContent = t('log.world', {
-      seed: w.params.seed, town: c('town'), village: c('village'), hamlet: c('hamlet'), roads: w.roads.length, zones: w.zones.length,
+      seed: w.params.seed, town: c('town'), village: c('village'), hamlet: c('hamlet'), farm: w.sites.filter((q) => q.id.startsWith('FARM_')).length, roads: w.roads.length, zones: w.zones.length,
       b: w.settlement.placed.length, ms: Math.round(performance.now() - t0),
-    }) + (w.issues.length ? ' · ' + t('log.worldIssues', { n: w.issues.length }) : '')
+    }) + (w.issues.length ? ' · ' + t('log.worldIssues', { n: w.issues.length }) : '') + (job.inWorker ? '' : ' · ' + t('log.noWorker'))
   } catch (e) {
-    if (e instanceof Cancelled) stage.textContent = t('wg.cancelled')
-    else stage.textContent = (e as Error).message
+    stage.textContent = (e as Error).message
   } finally {
     rwBusy = false
     box.querySelectorAll('input,select,button').forEach((x) => ((x as HTMLInputElement).disabled = false))

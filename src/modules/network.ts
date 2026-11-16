@@ -62,6 +62,7 @@ export function bedGrade(pts: number[], h: ArrayLike<number>, g: Grid): number {
 }
 const ORDER: Record<SiteKind, number> = { town: 0, village: 1, hamlet: 2 }
 export interface NetworkParams {
+  progress?: (f: number) => void // 0..1 while the tree then the loops are routed (the busy bar)
   sites: number // how many places to link
   spacing: number // minimum distance between two sites (m)
   maxSlope: number // comfortable slope, in % (above: very expensive)
@@ -329,6 +330,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
       Math.min(...connected.map((c) => dist(c, a))) - Math.min(...connected.map((c) => dist(c, b))))
     const s = todo.shift()!
     connected.push(s)
+    p.progress?.((0.8 * (order.length - 1 - todo.length)) / Math.max(1, order.length - 1))
     const start = cellOf(s.x, s.z)
     // a road already passes through the settlement: nothing to build
     const R = Math.ceil(SITE_RADIUS[s.kind] / g.step), c0 = start % g.cols, r0 = Math.floor(start / g.cols)
@@ -461,6 +463,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     let made = 0, tries = 0, t0: number[] | null = null // t0: the roads as they stand, carved once per accepted loop
     for (const [a, b, d] of pairs) {
       if (made >= p.loops! || tries >= p.loops! * 2) break
+      p.progress?.(0.8 + 0.2 * Math.min(1, Math.max(made / p.loops!, tries / (p.loops! * 2))))
       const ca = roadCellsNear(a), cb = roadCellsNear(b)
       if (!ca.length || !cb.length) continue
       const netD = roadDist(ca[0], new Set(cb), d * detour)

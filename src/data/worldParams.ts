@@ -46,7 +46,7 @@ export const WORLD = {
    *  maxStreets undefined = the variant default (+0-1) */
   villages: {
     /** the generated relief is bumpy at 8-16 m a cell: footprints may straddle 1.5x the default drop (foundations hide it) [est] */
-    dropScale: 1.5,
+    dropScale: 3, // was 1.5: with lot-sized model choice + sliding retries, fill rose from ~30 % to ~70 % of the lots that drew a house (8 km bench)
     town: { density: 1.25, maxStreets: 16 as number | undefined },
     village: { density: 1.15, maxStreets: 7 as number | undefined },
     hamlet: { density: 0.6, maxStreets: undefined as number | undefined },

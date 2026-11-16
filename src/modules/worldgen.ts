@@ -50,7 +50,7 @@ export interface WorldResult {
   sites: Site[]
   roads: Road[]
   zones: ZoneItem[]
-  settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[] }
+  settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[]; tried?: number; housed?: number }
   power: (PowerLine & { id: string })[]
   areas: WorldArea[]
   surfaces: SurfaceGrid[]
@@ -225,7 +225,7 @@ export function placeWorldSites(h: ArrayLike<number>, g: Grid, river: Float32Arr
   return out
 }
 
-export async function generateWorld(p: WorldParams, cb: { progress?: (stage: WorldStage, i: number, n: number) => void; cancelled?: () => boolean } = {}): Promise<WorldResult> {
+export async function generateWorld(p: WorldParams, cb: { progress?: (stage: WorldStage, i: number, n: number, f?: number) => void; cancelled?: () => boolean } = {}): Promise<WorldResult> {
   const N = WORLD_STAGES.length
   const step = async (s: WorldStage) => {
     if (cb.cancelled?.()) throw new Cancelled()
@@ -308,7 +308,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     loops: Math.round(WORLD.roads.loopsPerKm2 * landKm2), loopDetour: WORLD.roads.loopDetour, loopMaxM: WORLD.roads.loopMaxM, loopType: WORLD.roads.loopType as RoadType }
   const rid = roadIdMaker()
   const linked = [...sites, ...access.filter((a) => a.x > g.minX && a.z > g.minZ && a.x < g.minX + (g.cols - 1) * g.step && a.z < g.minZ + (g.rows - 1) * g.step)]
-  roads = linked.length >= 2 ? buildNetwork(cur.heights, g, cur.sim.river, linked, net, []) : []
+  const ri = WORLD_STAGES.indexOf('roads')
+  roads = linked.length >= 2 ? buildNetwork(cur.heights, g, cur.sim.river, linked, { ...net, progress: (f) => cb.progress?.('roads', ri, WORLD_STAGES.length, 0.85 * f) }, []) : []
   // farmsteads: [M] Everon 197 lone buildings (1-2) and 136 km of dirt + 74 km of paths for 344 km: a dirt track
   // leaves the network for each farm, which adds the T junctions a tree of places lacks
   if (roads.length) {
@@ -381,6 +382,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const V = WORLD.villages[kind]
     const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: subSeed(seed, 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones) }, settlement.placed)
     settlement.placed = vr.placed
+    settlement.tried = (settlement.tried ?? 0) + (vr.tried ?? 0); settlement.housed = (settlement.housed ?? 0) + (vr.housed ?? 0)
     settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)
   }
   // 9. power lines: HV tree between towns and villages, LV to the hamlets along the roads

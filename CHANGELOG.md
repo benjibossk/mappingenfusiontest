@@ -8,6 +8,14 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+### Changed
+- **Heavy generators run in a Web Worker** (`src/workers/gen.worker.ts`, `genClient.ts`): random world, island, road network, forests, satellite colours. The busy panel shows a real percentage (stage weights + sub-progress of the road network), the page stays responsive, Cancel terminates the worker and nothing is applied. Height grids travel as Float64Array (transferred, bit-identical: `scripts/check-worker-determinism.ts`). Main-thread fallback when no worker can be made.
+- **Denser villages in the random world**: house models chosen among those that fit the lot, later tries slide the house across / deeper in the lot, small lots take a small house, ground drop tolerance 1.5 -> 3 (foundations). Fill of the lots that draw a house: ~30 % -> ~70 % (8 km bench), +45-60 % buildings, checker still 0.
+
+### Fixed
+- Real place, Copernicus: the relay is checked first; when it is off a guide says what to start (`npm run bridge`), with Retry and "Use Terrarium instead" (Terrarium / IGN work without it).
+- Random world summary counts farms separately from hamlets.
+
 ### Added
 - **Random world**: one number makes a whole map (relief, rivers / lakes, places on a score map, airfield, military bases, road network, industrial zones, villages v2, power lines, forests, surfaces). Dialog with seed + dice, map size, density sliders, airfield / power toggles, per-stage progress, Cancel. Deterministic per seed with sub-seeds per stage and zone (`src/modules/worldgen.ts`), numbers in `src/data/worldParams.ts` from MAP_KNOWLEDGE_BASE.md (enfumap + measured Everon / Arland / Kolguyev). The result lands in the normal steps (undo, autosave, history).
 - **Villages v2 wired**: new village maker on by default (kind of place, side streets, farm yards, church, port, streets per place); back gardens drawn.

@@ -145,3 +145,14 @@ Navigateur (vérifié par Playwright, contexte neuf, captures `onb-*.png` du scr
 - [ ] Carte : noms de rivières et lacs masqués à l'échelle de l'île, visibles en zoomant (comme les routes) ; aucun nom n'en chevauche un autre ; Calques > « Noms » les masque tous.
 - [ ] Aide > FAQ : « La page est-elle bloquée ? » et « Trop de noms sur la carte ? ».
 Limite connue : les générateurs synchrones (worldgen, réseau, villages) ne publient pas encore leurs sous-étapes : barre indéterminée + temps écoulé, Annuler seulement pour le monde aléatoire (dans sa fenêtre).
+
+## R11 — Calculs dans un Web Worker + relais + densité (ajouté le 2026-11-16)
+Navigateur (Playwright sur `vite preview` :5200, captures `wkr-*.png` du scratchpad ; 0 erreur de page) :
+- [ ] Monde aléatoire 8 km : le panneau « En cours » affiche un **pourcentage réel** (ex. « 11 % », « 52 % » pendant le réseau de routes) qui avance ; la page reste fluide (rAF ~6 ms pendant le calcul).
+- [ ] Annuler (panneau ou fenêtre) arrête le calcul tout de suite (worker terminé) ; toast « annulé » ; la carte reste celle d'avant (rien n'est appliqué).
+- [ ] Relancer jusqu'au bout : toast « terminé », résumé « … N hameaux, M fermes … » (les fermes ne sont plus comptées dans les hameaux).
+- [ ] Générer (île), réseau de routes, forêts, analyse satellite passent aussi par le worker (bar du réseau en %).
+- [ ] Lieu réel, source Copernicus, relais arrêté : encadré « Relais non connecté » (quoi lancer, `npm run bridge`), bouton Réessayer, et « Prendre Terrarium à la place » ; Terrarium / IGN marchent sans relais.
+- [ ] `npx tsx scripts/check-worker-determinism.ts 4096 3` : « IDENTICAL » (même hash direct / via worker).
+Bench 8 km (seeds 1-5) : remplissage des lots 30-34 % → 69-73 % ; bâtiments 597/401/351/416/572 → 880/662/565/673/913 ; 0 problème au contrôle ; 14-19 s.
+Limite connue : les rivières « en direct » (recompose) et les lignes électriques / villages manuels restent sur la page ; sans worker (navigateur ancien) tout tourne dans la page et Annuler n'agit qu'entre deux étapes.

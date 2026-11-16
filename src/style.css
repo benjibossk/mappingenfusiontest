@@ -557,3 +557,4 @@ body.is-busy .stage canvas { cursor: progress; }
 .toast[data-kind="err"] { border-left-color: var(--red); }
 .toast[hidden] { display: none; }
 .coach [hidden], .busybox [hidden] { display: none; }
+.busypct { font: 600 13px var(--f-mono); color: var(--tx-1); margin-right: auto; }
