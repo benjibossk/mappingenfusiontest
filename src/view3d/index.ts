@@ -8,6 +8,7 @@ import {
   Vector2, Vector3, WebGLRenderer, type Material, type Texture,
 } from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { realDrape, type RealLayers } from './drape'
 export type { RealLayers } from './drape'
 
@@ -241,7 +242,8 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   // trees: per 1 km square, two kinds (broadleaf crown / conifer cone), two levels of detail sharing the
   // same instance matrices and colours; beyond TREE_FAR the canopy of the drape stands for the forest
   const geos = {
-    broad: [new IcosahedronGeometry(0.5, 0).scale(1, 0.85, 1).translate(0, 0.62, 0), new ConeGeometry(0.5, 1, 3, 1, true).translate(0, 0.5, 0)],
+    // rounded crown: subdivided + welded so normals are smooth (no faceted "diamond" look)
+    broad: [(() => { const g = mergeVertices(new IcosahedronGeometry(0.5, 1).deleteAttribute('normal').deleteAttribute('uv')); g.computeVertexNormals(); return g.scale(1, 0.8, 1).translate(0, 0.6, 0) })(), new ConeGeometry(0.5, 1, 3, 1, true).translate(0, 0.5, 0)],
     needle: [new ConeGeometry(0.36, 1, 6, 1, true).translate(0, 0.5, 0), new ConeGeometry(0.36, 1, 3, 1, true).translate(0, 0.5, 0)],
   }
   const treeMat = new MeshLambertMaterial({ color: 0xffffff })
@@ -276,8 +278,9 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
       const far = new InstancedMesh(geos[kind][1], treeMat, list.length)
       list.forEach((i, j) => {
         const t = ((i * 2654435761) >>> 0) / 4294967296
-        if (kind === 'needle') col.setRGB(0.15 + t * 0.05, 0.25 + t * 0.07, 0.15 + t * 0.04, SRGBColorSpace)
-        else col.setRGB(0.22 + t * 0.1, 0.33 + t * 0.1, 0.12 + t * 0.05, SRGBColorSpace)
+        const u = ((i * 40503 + 977) % 1009) / 1009 // second hash: hue shift independent of brightness
+        if (kind === 'needle') col.setRGB(0.12 + t * 0.07, 0.21 + t * 0.1, 0.13 + t * 0.05, SRGBColorSpace)
+        else col.setRGB(0.17 + t * 0.12 + u * 0.08, 0.27 + t * 0.14, 0.09 + t * 0.05 + u * 0.03, SRGBColorSpace)
         near.setColorAt(j, col)
       })
       far.instanceMatrix = near.instanceMatrix
@@ -306,13 +309,16 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
       })
       brg.instanceMatrix.needsUpdate = true; brg.computeBoundingSphere()
     }
-    const m4 = new Matrix4(), qn = new Quaternion(), v = new Vector3(), sc = new Vector3()
+    const m4 = new Matrix4(), qn = new Quaternion(), v = new Vector3(), sc = new Vector3(), UP = new Vector3(0, 1, 0)
     for (const ch of treeChunks) {
       const near = ch.lods[0][0], far = ch.lods[1][0]
       ch.list.forEach((i, j) => {
         const x = data.trees[i], z = data.trees[i + 1], f = data.trees[i + 2]
         v.set(x, groundAt(x, z) * ex - 0.8, -z)
-        if (ch.kind === 'needle') sc.set(7 * f, 17 * f, 7 * f); else sc.set(10 * f, 13 * f, 10 * f)
+        // random yaw + slight size/aspect jitter so neighbouring crowns never line up
+        const h = ((i * 2246822519) >>> 0) / 4294967296, k = ((i * 3266489917) >>> 0) / 4294967296
+        qn.setFromAxisAngle(UP, h * Math.PI * 2)
+        if (ch.kind === 'needle') sc.set(7 * f, (15 + k * 5) * f, 7 * f); else sc.set((9 + k * 3) * f, (11 + h * 4) * f, (9 + h * 3) * f)
         m4.compose(v, qn, sc); near.setMatrixAt(j, m4)
       })
       near.instanceMatrix.needsUpdate = true; near.computeBoundingSphere(); far.boundingSphere = near.boundingSphere
