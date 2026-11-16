@@ -507,3 +507,11 @@ button.icon { width: 32px; height: 32px; padding: 0; }
 .helppanel dl.gloss { display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; margin: 6px 0; }
 .helppanel dl.gloss dt { font-weight: 600; color: var(--tx-1); }
 .helppanel dl.gloss dd { margin: 0; color: var(--tx-2); }
+
+/* status line: whole message visible (wraps, scrolls past a few lines) */
+.log { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9rem; overflow-y: auto; }
+/* legend under the step list: what green / amber mean */
+.steplegend { margin: .25rem 0 .5rem; font-size: 11px; color: var(--tx-3, #8a8f98); line-height: 1.35; }
+/* colour sample in the Layers list */
+.swatch { display: inline-block; width: 14px; height: 3px; margin: 0 6px 2px 0; vertical-align: middle; border-radius: 2px; }
+.swatch.runoff { background: rgb(40, 110, 220); }

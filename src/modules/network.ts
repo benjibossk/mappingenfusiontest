@@ -5,7 +5,7 @@
 // 3. each link is routed with A* over the heights: slope costs, sea is forbidden, rivers are crossed
 //    rarely, cells already on a road are cheaper so roads share corridors instead of running side by side
 import type { Grid } from './island'
-import { centreLine, type Road, type RoadType } from './roads'
+import { carveRoads, centreLine, type Road, type RoadType } from './roads'
 
 export type SiteKind = 'town' | 'village' | 'hamlet'
 export interface Site { id: string; x: number; z: number; kind: SiteKind }
@@ -30,6 +30,35 @@ export function worstGrade(pts: number[], h: ArrayLike<number>, g: Grid): { grad
     if (gr > grade) { grade = gr; x = (line[i] + line[i - 2]) / 2; z = (line[i + 1] + line[i - 1]) / 2 }
   }
   return { grade, x, z }
+}
+/** steepest grade of the road bed once carved: carveRoads lays the road on the terrain profile averaged over
+ *  ~80 m (cut through the bumps, fill the dips), so the bed is gentler than the raw ground under it.
+ *  Same 20 m measure as worstGrade, on that smoothed profile. */
+export function bedGrade(pts: number[], h: ArrayLike<number>, g: Grid): number {
+  const { cols, rows, step } = g
+  const at = (x: number, z: number) => {
+    const gx = Math.min(Math.max((x - g.minX) / step, 0), cols - 1.001), gz = Math.min(Math.max((z - g.minZ) / step, 0), rows - 1.001)
+    const c = Math.floor(gx), r = Math.floor(gz), fx = gx - c, fz = gz - r, i = r * cols + c
+    const a = h[i] + (h[i + 1] - h[i]) * fx, b = h[i + cols] + (h[i + cols + 1] - h[i + cols]) * fx
+    return a + (b - a) * fz
+  }
+  const line = centreLine(pts, step / 2), m = line.length / 2
+  if (m < 2) return 0
+  const raw = Array.from({ length: m }, (_, i) => at(line[i * 2], line[i * 2 + 1]))
+  const win = Math.max(1, Math.round(40 / (step / 2)))
+  const pre = new Float64Array(m + 1)
+  for (let i = 0; i < m; i++) pre[i + 1] = pre[i] + raw[i]
+  const prof = raw.map((_, i) => {
+    const a = Math.max(0, i - win), b = Math.min(m - 1, i + win)
+    return Math.max(0.8, (pre[b + 1] - pre[a]) / (b - a + 1))
+  })
+  const k = Math.max(1, Math.round(20 / (step / 2)))
+  let worst = 0
+  for (let i = k; i < m; i++) {
+    const d = Math.hypot(line[i * 2] - line[(i - k) * 2], line[i * 2 + 1] - line[(i - k) * 2 + 1])
+    if (d > 5) worst = Math.max(worst, Math.abs(prof[i] - prof[i - k]) / d)
+  }
+  return worst
 }
 const ORDER: Record<SiteKind, number> = { town: 0, village: 1, hamlet: 2 }
 export interface NetworkParams {
@@ -297,11 +326,16 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     const start = cellOf(s.x, s.z)
     // a road already passes through the settlement: nothing to build
     const R = Math.ceil(SITE_RADIUS[s.kind] / g.step), c0 = start % g.cols, r0 = Math.floor(start / g.cols)
-    let served = false
+    let served: Road | undefined
     for (let r = Math.max(0, r0 - R); r <= Math.min(g.rows - 1, r0 + R) && !served; r++)
       for (let c = Math.max(0, c0 - R); c <= Math.min(g.cols - 1, c0 + R); c++)
-        if (onRoad[r * g.cols + c] && Math.hypot(c - c0, r - r0) <= R) { served = true; break }
-    if (served) continue
+        if (onRoad[r * g.cols + c] && Math.hypot(c - c0, r - r0) <= R) { served = owner.get(r * g.cols + c); break }
+    if (served) {
+      // the road passing by gets a control point in front of the place (the check looks for one nearby)
+      const [px, pz] = nearestOn(served.pts, s.x, s.z)
+      insertPoint(served, px, pz)
+      continue
+    }
     // towns are joined to the nearest town; villages and hamlets to the nearest site or any road
     const pool = s.kind === 'town' ? connected.filter((c) => c !== s && c.kind === 'town') : connected.filter((c) => c !== s)
     if (!pool.length) continue
@@ -309,13 +343,17 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     const goal = new Set<number>([cellOf(target.x, target.z)])
     if (s.kind !== 'town') owner.forEach((_, i) => goal.add(i))
     const want = s.kind === 'town' ? p.main : s.kind === 'village' ? p.minor : p.lane
-    // The route is held under the road type's grade limit (the one the pre-send check uses), tighter on each retry
-    // since smoothing can cut up a slope the route went round; a hill too steep for that type turns the link into
-    // a dirt track (steeper limit). No road rather than one the check would flag.
-    let type = want, pts: number[] = [], cells: number[] = []
-    search: for (const tt of maxGrade(want) < maxGrade('dirt') ? [want, 'dirt' as RoadType] : [want])
-      for (const f of [0.9, 0.65, 0.45]) {
-        const path = route(h, g, river, onRoad, start, goal, [target.x, target.z], p.maxSlope, maxGrade(tt) * f)
+    // Slope-aware routing, like a real road engineer: A* pays for grade and may wind up the hill (serpentines,
+    // one heading notch per step), each step held under a per-step limit. The accepted test is the grade of
+    // the bed once carved (cut/fill over ~80 m, see bedGrade), not of the raw bumpy ground. The per-step limit
+    // starts a bit above the type's limit (carving evens the bumps) and tightens on each retry; only when no
+    // route keeps the bed under the limit does the link fall back to a dirt track (steeper limit).
+    let type = want, pts: number[] = [], cells: number[] = [], joined: number[] | null = null
+    // fallback ladder: asphalt -> dirt road -> dirt trail (each one steeper)
+    const ladder = [want, ...(['dirt', 'trailDirt'] as RoadType[]).filter((x) => maxGrade(x) > maxGrade(want))]
+    search: for (const tt of ladder)
+      for (const f of [1.25, 1, 0.8, 0.6, 0.45]) {
+        const path = route(h, g, river, onRoad, start, goal, [target.x, target.z], Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt) * f)
         if (!path || path.length < 2) break // no way under this limit: a tighter one will not find any either
         // stop where the path joins an existing road (it would only run on top of it)
         let end = path.length - 1
@@ -325,18 +363,48 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
         cl.forEach((i) => flat.push(...xyOf(i)))
         for (const tol of [0.9, 0.4, 0]) {
           const cand = easeCorners(tol ? simplify(flat, g.step * tol) : flat, 60)
-          if (cand.length >= 4 && worstGrade(cand, h, g).grade <= maxGrade(tt)) { pts = cand; cells = cl; type = tt; break search }
+          if (cand.length < 4 || bedGrade(cand, h, g) > maxGrade(tt)) continue
+          // the real test: carve it with the roads already there (junctions included), measure like the check
+          // (the T junction adds a control point to the road it reaches: tested on a copy of that road)
+          const hit = owner.get(cl[cl.length - 1])
+          const hitCopy = hit ? { ...hit, pts: hit.pts.slice() } : null
+          if (hitCopy) {
+            // the end lands exactly on the road reached (its shape untouched), and becomes one of its control points
+            const [jx, jz] = nearestOn(hitCopy.pts, cand[cand.length - 2], cand[cand.length - 1])
+            cand[cand.length - 2] = jx; cand[cand.length - 1] = jz
+            insertPoint(hitCopy, jx, jz)
+          }
+          const swap = (r: Road) => (r === hit ? hitCopy! : r)
+          const test = h.slice()
+          carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }])
+          if (worstGrade(cand, test, g).grade <= maxGrade(tt) * 0.9 && roads.map(swap).every((o) => worstGrade(o.pts, test, g).grade <= maxGrade(o.type))) {
+            pts = cand; cells = cl; type = tt; joined = hitCopy && hitCopy.pts
+            break search
+          }
         }
       }
     if (pts.length < 4) continue
-    const road: Road = { id: `ROAD_AUTO_${++n}`, type, pts }
+    const road: Road = { id: `ROAD_AUTO_${++n}`, type, pts, flatten: true } // cut/fill: the bed follows the smoothed profile bedGrade measured
     // T junction: the end point must also be a control point of the road it reaches
     const hit = owner.get(cells[cells.length - 1])
-    if (hit) insertPoint(hit, pts[pts.length - 2], pts[pts.length - 1])
+    if (hit && joined) hit.pts = joined
     roads.push(road)
     mark(road, cells)
   }
   return roads
+}
+
+//! closest point to (x, z) on a polyline
+function nearestOn(p: number[], x: number, z: number): [number, number] {
+  let best: [number, number] = [p[0], p[1]], bd = Infinity
+  for (let k = 2; k + 1 < p.length; k += 2) {
+    const [ax, az, bx, bz] = [p[k - 2], p[k - 1], p[k], p[k + 1]]
+    const L = (bx - ax) ** 2 + (bz - az) ** 2 || 1
+    const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / L))
+    const qx = ax + t * (bx - ax), qz = az + t * (bz - az), d = Math.hypot(qx - x, qz - z)
+    if (d < bd) { bd = d; best = [qx, qz] }
+  }
+  return best
 }
 
 //! adds (x, z) as a control point of `road`, on its closest segment (no-op if already there)

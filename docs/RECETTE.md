@@ -102,3 +102,13 @@ HT béton `{F9CF7B0E9B97B012}PG_PowerLine_HV_01_Concrete.et`, BT `{20E4877A07D28
 - [ ] Île fictive → Champs et forêts → « Générer des forêts » : des bois apparaissent, loin des lieux et hors de l'eau.
 - [ ] Réseau auto : après « Relier les lieux », « Vérifier » ne signale aucune route trop raide ; aucun lieu à moitié dans la mer.
 - [ ] Carte : étiquettes « Rivière 1 », « Hameau 3 », « Ville 1 » (noms de route seulement en zoom rapproché) ; un seul bouton « Eau »/« Remettre » dans la barre de gauche.
+
+## R8 — Réseau réaliste + reliquats UX (ajouté le 2026-11-16)
+- [ ] Île graine 1 → « Relier les lieux » : villages reliés en **asphalte étroit**, hameaux en chemin de terre ; routes en lacets sur les pentes ; « Vérifier » → « Aucun problème détecté ».
+- [ ] Une route auto est aplanie (déblai/remblai visible sur le relief) ; un hameau longé par une route n'a pas de « aucune route ne dessert ce lieu ».
+- [ ] Sculpter → Monter, un trait : message « Trait terminé : sol monté jusqu'à X m ».
+- [ ] Calques : « Ruissellement (traits bleus fins) » avec info-bulle ; décocher → les traits bleus disparaissent.
+- [ ] Légende « ✓ vert = fait · ambre = à refaire » sous les étapes ; le statut se vide en changeant d'étape et n'est plus coupé.
+- [ ] Champs sur une zone montagneuse : message « N parcelles écartées : trop pentues… », pas de parcelle au sommet.
+- [ ] Panneau Partager : « Rejoindre un salon… », « Aperçu de la carte (photo ou relief) ».
+- [ ] Textes gris longs : 1re phrase + icône (i) au survol.

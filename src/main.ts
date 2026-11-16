@@ -13,10 +13,10 @@ import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type 
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { generateCampaign, type CampaignResult } from './modules/campaign'
-import { ROAD_COLOURS, ROAD_TYPES, carveRoads, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
+import { ROAD_COLOURS, ROAD_TYPES, carveRoads, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'fields', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
+const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
 let collab: Collab | null = null // shared room, see src/collab.ts
@@ -79,7 +79,7 @@ import { worldToIsland } from './modules/importWorld'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
-import { isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
+import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 
 // the side panel is a guided path: one step per tab, in the order a map is built
 const STEPS = [
@@ -113,6 +113,14 @@ const ICON: Record<string, string> = {
 const ic = (n: string, size = 18) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICON[n]}</svg>`
 const info = (k: Key) => `<i class="info" title="${t(k)}" aria-label="${t(k)}" role="img">${ic('info', 13)}</i>`
 type K = Parameters<typeof t>[0]
+/** grey help line: a short text stays as is; a long one shows its first sentence, the rest behind an (i) tooltip */
+function hint(k: Key) {
+  const full = t(k)
+  if (full.length <= 110) return `<p class="hint">${full}</p>`
+  const m = /^(.{20,110}?[.:!?])\s/.exec(full)
+  const head = m ? m[1] : full.slice(0, 90).replace(/\s\S*$/, '') + '…'
+  return `<p class="hint">${head} ${info(k)}</p>`
+}
 /** friendly, localised map label for a Workbench id (the id stays in the data and the tooltips) */
 function nice(id: string, roadType?: string): string {
   const n = id.match(/(\d+)$/)?.[1] ?? ''
@@ -196,7 +204,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <button id="helpFab" type="button" class="helpfab" title="${t('help.tip')}" aria-label="${t('help.tip')}" aria-haspopup="dialog">${ic('help', 22)}</button>
     <details id="layers" class="layers">
       <summary>${t('layers.title')} ${info('info.layers')}</summary>
-      ${LAYERS.map((l) => `<label class="check"><input type="checkbox" data-layer="${l}" checked> ${t(('layers.' + l) as Parameters<typeof t>[0])}</label>`).join('')}
+      ${LAYERS.map((l) => `<label class="check"${l === 'runoff' ? ` title="${t('layers.runoff.tip')}"` : ''}><input type="checkbox" data-layer="${l}" checked> ${l === 'runoff' ? '<i class="swatch runoff"></i>' : ''}${t(('layers.' + l) as Parameters<typeof t>[0])}</label>`).join('')}
       <div class="trace" title="${t('hint.trace')}">
         <label class="check">${t('layers.trace')} <input id="traceFile" type="file" accept="image/*"></label>
         <input id="traceAlpha" type="range" min="0" max="1" step="0.05" value="0.6">
@@ -234,6 +242,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <ol class="tabs stepper" id="tabs">
       ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.label)}</span><i class="badge"></i></button></li>`).join('')}
     </ol>
+    <p class="steplegend">${t('step.legend')}</p>
     <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p></div>
 
     <div class="tab" data-tab="island">
@@ -262,15 +271,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="pOpen" type="button" class="secondary">${t('btn.pOpen')}</button>
         <input id="pFile" type="file" accept=".json,application/json" hidden>
       </div>
-      <p class="hint">${t('hint.island')}</p>
+      ${hint('hint.island')}
     </div>
 
     <div class="tab" data-tab="brush" hidden>
       <div class="form">
         <label>${t('lbl.bRadius')} <input id="bRadius" type="number" value="200"></label>
-        <label>${t('lbl.bStrength')} <input id="bStrength" type="number" value="4"></label>
+        <label>${t('lbl.bStrength')} <input id="bStrength" type="number" value="6"></label>
       </div>
-      <p class="hint">${t('hint.brush')}</p>
+      ${hint('hint.brush')}
     </div>
 
     <div class="tab" data-tab="water" hidden>
@@ -291,7 +300,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <details class="adv"><summary>${t('ui.tests')}</summary>
         <button id="wTest" type="button" class="secondary">${t('btn.waterTest')}</button>
       </details>
-      <p class="hint">${t('hint.water')}</p>
+      ${hint('hint.water')}
       <ul id="wList" class="roadlist"></ul>
       <details class="adv"><summary>${t('legend.waterSim')}</summary>
       <label class="check"><input id="rLive" type="checkbox" checked> ${t('lbl.rLive')}</label>
@@ -307,7 +316,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="rRun" type="button" class="secondary">${t('btn.rRun')}</button>
         <button id="rClear" type="button" class="secondary">${t('btn.rClear')}</button>
       </div>
-      <p class="hint">${t('hint.rivers')}</p>
+      ${hint('hint.rivers')}
       </details>
     </div>
 
@@ -320,7 +329,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="roadUndo" type="button" class="secondary">${t('btn.roadUndo')}</button>
         <button id="roadClear" type="button" class="secondary">${t('btn.roadClear')}</button>
       </div>
-      <p class="hint">${t('hint.roads')}</p>
+      ${hint('hint.roads')}
       <details class="adv"><summary>${t('legend.net')}</summary>
         <div class="form">
           <label>${t('lbl.netSites')} <input id="netSites" type="number" min="2" max="40" value="8"></label>
@@ -330,14 +339,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label>${t('lbl.netMinor')} <select id="netMinor">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}"${k === 'asphaltNarrow' ? ' selected' : ''}>${rt.label}</option>`).join('')}</select></label>
           <label>${t('lbl.netLane')} <select id="netLane">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}"${k === 'dirt' ? ' selected' : ''}>${rt.label}</option>`).join('')}</select></label>
         </div>
-        <p class="hint">${t('hint.net')}</p>
+        ${hint('hint.net')}
         <div class="row">
           <button id="sitesPlace" type="button">${t('btn.sitesPlace')}</button>
           <button id="netGen" type="button">${t('btn.netGen')}</button>
           <button id="sitesClear" type="button" class="secondary">${t('btn.sitesClear')}</button>
           <button id="netClear" type="button" class="secondary">${t('btn.netClear')}</button>
         </div>
-        <p class="hint">${t('hint.roadGen')}</p>
+        ${hint('hint.roadGen')}
       </details>
       <details class="adv" id="powerBox"><summary>${t('legend.power')}</summary>
         <label class="check"><input id="powHV" type="checkbox" checked> ${t('lbl.powHV')}</label>
@@ -349,7 +358,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="form">
           <label>${t('lbl.powLVMax')} <input id="powLVMax" type="number" step="100" min="200" value="2500"></label>
         </div>
-        <p class="hint">${t('hint.power')}</p>
+        ${hint('hint.power')}
         <div class="row">
           <button id="powerGen" type="button">${t('btn.powerGen')}</button>
           <button id="powerClear" type="button" class="secondary">${t('btn.powerClear')}</button>
@@ -375,7 +384,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </fieldset>
       </details>
       <details class="adv"><summary>${t('ui.tests')}</summary>
-        <p class="hint">${t('hint.roadTest')}</p>
+        ${hint('hint.roadTest')}
         <div class="row">
           <button id="roadTestDraw" type="button" class="secondary">${t('btn.roadTestDraw')}</button>
           <button id="roadTestAll" type="button" class="secondary">${t('btn.roadTestAll')}</button>
@@ -383,7 +392,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </details>
       <button id="roadSend" type="button">${t('btn.roadSend')}</button>
       <span id="roadInfo" class="hint"></span>
-      <p class="hint">${t('hint.roadEdit')}</p>
+      ${hint('hint.roadEdit')}
       <ul id="roadList" class="roadlist"></ul>
     </div>
 
@@ -399,7 +408,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="setParcels" type="checkbox"> ${t('lbl.setParcels')}</label>
         </div>
         <button id="parcelLib" type="button">${t('pc.open')}</button>
-        <p class="hint">${t('hint.set')}</p>
+        ${hint('hint.set')}
         <div class="row">
           <button id="setGen" type="button">${t('btn.setGen')}</button>
           <button id="setClear" type="button" class="secondary">${t('btn.setClear')}</button>
@@ -412,7 +421,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="form">
         <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
-      <p class="hint">${t('hint.zone')}</p>
+      ${hint('hint.zone')}
       <div class="row">
         <button id="generate" type="button">${t('btn.generate')}</button>
         <button id="clearZone" type="button" class="secondary">${t('btn.clearZone')}</button>
@@ -433,7 +442,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="forestSend" type="button" class="secondary">${t('btn.forestSend')}</button>
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
-      <p class="hint">${t('hint.areas')}</p>
+      ${hint('hint.areas')}
     </div>
 
     <div class="tab" data-tab="wb" hidden>
@@ -443,7 +452,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
       <fieldset class="test">
         <legend>${t('legend.check')}</legend>
-        <p class="hint">${t('hint.check')}</p>
+        ${hint('hint.check')}
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <ul id="checkList" class="issues"></ul>
       </fieldset>
@@ -459,7 +468,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <li><button id="tHeight" type="button" class="secondary">${t('btn.tHeight')}</button><span class="hint">${t('wb.open')}</span></li>
           <li><button id="tMasks" type="button" class="secondary">${t('btn.tMasks')}</button><span class="hint">${t('wb.thenImport')}</span></li>
         </ol>
-        <p class="hint">${t('hint.wbImport')}</p>
+        ${hint('hint.wbImport')}
         <button id="loadTerrain" type="button" class="secondary">${t('btn.loadTerrain')}</button>
         <button id="send" type="button" class="secondary">${t('btn.send')}</button>
         <details>
@@ -474,7 +483,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <details class="cvsec" open><summary>${t('cv.comments')} <i id="cvNCom" class="badge"></i></summary>
         <button id="cvAdd" type="button">${ic('pin', 16)} ${t('cv.add')}</button>
         <div id="cvDraft" class="cvdraft" hidden>
-          <p class="hint">${t('cv.draft.hint')}</p>
+          ${hint('cv.draft.hint')}
           <textarea id="cvText" rows="3" placeholder="${t('cv.text')}"></textarea>
           <button id="cvPost" type="button">${t('cv.post')}</button> <button id="cvCancel" type="button" class="secondary">${t('cv.cancel')}</button>
         </div>
@@ -649,6 +658,21 @@ function drawBrush() {
   ctx.stroke()
 }
 
+const FIELD_MAX_SLOPE = 0.15 // 15 %: steeper ground is left to pasture / forest
+/** gentle and low enough for a ploughed field: slope under 15 %, below 60 % of the highest ground */
+function farmable(tr: Heightmap, x: number, z: number) {
+  const d = tr.step * 2
+  const gx = (heightAt(tr, x + d, z) - heightAt(tr, x - d, z)) / (2 * d), gz = (heightAt(tr, x, z + d) - heightAt(tr, x, z - d)) / (2 * d)
+  topCache ??= { h: tr.heights, top: tr.heights.reduce((a, b) => Math.max(a, b), 0) }
+  if (topCache.h !== tr.heights) topCache = { h: tr.heights, top: tr.heights.reduce((a, b) => Math.max(a, b), 0) }
+  return Math.hypot(gx, gz) <= FIELD_MAX_SLOPE && heightAt(tr, x, z) - tr.ocean <= (topCache.top - tr.ocean) * 0.6
+}
+let topCache: { h: ArrayLike<number>; top: number } | null = null
+const centroid = (ring: number[][]): [number, number] => {
+  let x = 0, z = 0
+  for (const p of ring) { x += p[0]; z += p[1] }
+  return [x / ring.length, z / ring.length]
+}
 function generate() {
   const zone = zonePoints()
   if (zone.length < 6) {
@@ -665,14 +689,25 @@ function generate() {
     minHedge: num('minHedge'),
     seed: num('seed'),
     prefix: $<HTMLInputElement>('prefix').value,
-    isLand: tr ? (x, zz) => isLand(tr, x, zz) : undefined,
+    isLand: tr ? (x, zz) => isLand(tr, x, zz) && farmable(tr, x, zz) : undefined,
   })
+  // fields only on gentle, low ground: a plot (or hedge) whose centre is steep or near the summits is dropped
+  let dropped = 0
+  if (tr) {
+    const before = result.fields.length
+    result.fields = result.fields.filter((f) => { const [x, z] = centroid(f); return farmable(tr, x, z) })
+    dropped = before - result.fields.length
+    const keep = result.hedges.map((h) => { const m = h[Math.floor(h.length / 2)]; return farmable(tr, m[0], m[1]) })
+    result.hedges = result.hedges.filter((_, i) => keep[i])
+    result.shapes = result.shapes.filter((_, i) => keep[i])
+  }
   autosave()
 
   const project: Project = { version: 0, shapes: result.shapes }
   projectEl.value = JSON.stringify(project, null, 1)
   logEl.textContent =
     t('log.fieldsDone', { fields: result.fields.length, hedges: result.hedges.length }) +
+    (dropped ? ' ' + t('log.fieldsSteep', { n: dropped }) : '') +
     (tr ? '' : t('log.noTerrain'))
   draw()
 }
@@ -761,6 +796,7 @@ map.addEventListener('mousedown', (e) => {
   }
   if (e.button === 0 && tool() !== 'zone' && tool() !== 'road' && island) {
     painting = true
+    strokeBefore = island.heights.slice()
     paintAt(...toWorld(...eventPos(e)))
   }
   if (e.button === 1) {
@@ -783,6 +819,7 @@ window.addEventListener('mouseup', () => {
   if (painting) {
     painting = false
     afterRelief()
+    strokeFeedback()
   }
 })
 map.addEventListener('mousemove', (e) => {
@@ -894,6 +931,19 @@ window.addEventListener('keydown', (e) => {
 })
 setTool('zone')
 
+/** heights before the current stroke, to tell how much it changed (feedback once released) */
+let strokeBefore: number[] | null = null
+function strokeFeedback() {
+  const before = strokeBefore
+  strokeBefore = null
+  if (!before || !island || tool() === 'dry' || tool() === 'wet') return
+  let up = 0, down = 0
+  const h = island.heights
+  for (let i = 0; i < h.length; i++) { const d = h[i] - before[i]; if (d > up) up = d; if (-d > down) down = -d }
+  const v = { up: up.toFixed(1), down: down.toFixed(1) }
+  logEl.textContent = up < 0.05 && down < 0.05 ? t('brush.none')
+    : tool() === 'raise' ? t('brush.up', v) : tool() === 'lower' || tool() === 'sea' ? t('brush.down', v) : t('brush.done', v)
+}
 function paintAt(x: number, z: number) {
   if (!island || !sculpt) return
   if (tool() === 'dry' || tool() === 'wet') paintSink(x, z, tool() === 'dry' ? 1 : 0)
@@ -925,7 +975,7 @@ function recompose(final: boolean) {
   island.heights = sculpt.compose().map((h) => h - seaLevel)
   preWater = island.heights.slice()
   const wl = waters.length ? carveWater(island.heights, g, waters) : undefined
-  if (roads.length) carveRoads(island.heights, g, roads, { water: wl })
+  const beds = roads.length ? carveRoads(island.heights, g, roads, { water: wl }) : null
   rivers = undefined
   riverSim = undefined
   if ($<HTMLInputElement>('rLive').checked) {
@@ -936,6 +986,9 @@ function recompose(final: boolean) {
     })
     rivers = sim.river
     riverSim = sim
+    // the runoff carved its beds into the relief, road beds included: lay the roads again on top (a culvert
+    // under the road; real rivers, traced in the Water step, keep their bridges)
+    if (beds && !waters.some((w) => w.auto) && num('rDepth') > 0) layBeds(island.heights, beds)
   }
   if (final) {
     island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined))
@@ -1014,7 +1067,7 @@ function leaveRoom() {
 $<HTMLButtonElement>('collabGo').addEventListener('click', () => {
   if (collab) return leaveRoom()
   let received = false
-  collab = new Collab(collabUrl.value.trim(), collabRoom.value.trim() || 'map1', collabName.value.trim() || 'mapper', collabKey.value, {
+  collab = new Collab(collabUrl.value.trim(), collabRoom.value.trim() || 'map1', collabName.value.trim() || t('collab.anon'), collabKey.value, {
     project: (p, from) => {
       received = true
       quietUntil = performance.now() + 1500
@@ -1066,7 +1119,7 @@ let draftPos: [number, number] | null = null
 let toolBeforeComment = 'zone'
 function saveOps() { try { localStorage.setItem(OPS_KEY, JSON.stringify(ops.slice(-500))) } catch { /* storage full or blocked */ } }
 function addOp(p: Partial<Op>) {
-  const op = { ...p, id: 'l' + Math.random().toString(36).slice(2, 10), author: collabName.value.trim() || 'mapper', at: Date.now() } as Op
+  const op = { ...p, id: 'l' + Math.random().toString(36).slice(2, 10), author: collabName.value.trim() || t('collab.anon'), at: Date.now() } as Op
   if (collab?.open) return collab.sendOp(op) // comes back stamped by the server
   ops.push({ ...op, local: true })
   saveOps()
@@ -1413,7 +1466,7 @@ function showIsland() {
     }
     tctx.putImageData(img, 0, 0)
   }
-  if (rivers) {
+  if (rivers && layer('runoff')) {
     const g = island.grid
     const tctx = terrainImg.getContext('2d')!
     const img = tctx.getImageData(0, 0, g.cols, g.rows)
@@ -1659,6 +1712,7 @@ function showStep(tab: string) {
   $('stepKicker').textContent = t('step.kicker', { n: String(i + 1).padStart(2, '0'), total: String(STEPS.length).padStart(2, '0') })
   $('stepTitle').textContent = t(STEPS[i].label)
   $('stepLead').textContent = t(STEPS[i].lead)
+  logEl.textContent = '' // a message from another step would only confuse
   $<HTMLButtonElement>('stepPrev').disabled = i === 0
   $<HTMLButtonElement>('stepNext').hidden = i === STEPS.length - 1
   $<HTMLButtonElement>('stepRegen').hidden = !REGEN[tab]
@@ -3008,7 +3062,8 @@ function roadShapesWithFurniture() {
 document.querySelectorAll<HTMLInputElement>('#layers [data-layer]').forEach((el) => el.addEventListener('change', () => {
   if (el.checked) hiddenLayers.delete(el.dataset.layer!)
   else hiddenLayers.add(el.dataset.layer!)
-  draw()
+  if (el.dataset.layer === 'runoff') showIsland() // the runoff is baked into the relief image
+  else draw()
 }))
 
 // --- checks before sending: markers on the map + list in the Workbench tab; never blocks a send ---

@@ -147,6 +147,14 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
       for (let j = Math.max(0, i - win); j <= Math.min(m - 1, i + win); j++) { s += raw[j]; k++ }
       return Math.max(0.8, s / k)
     })
+    // T junction: an end that lands on a bed already carved eases onto its height over ~60 m (no step)
+    const ramp = Math.max(2, Math.round(60 / (step / 2)))
+    for (const [e, dir] of [[0, 1], [m - 1, -1]]) {
+      const k = Math.min(rows - 1, Math.max(0, Math.round(line[e * 2 + 1] / step))) * cols + Math.min(cols - 1, Math.max(0, Math.round(line[e * 2] / step)))
+      if (!(weight[k] >= 0.99)) continue
+      const d = target[k] - prof[e]
+      for (let s = 0; s < Math.min(ramp, m); s++) prof[e + dir * s] += d * (1 - s / ramp)
+    }
     const flat = roadHalf(road) * widthMul + T.edge + step
     const reach = flat + 3 * step
     for (let i = 0; i < m - 1; i++) {
@@ -173,8 +181,15 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
         }
     }
   }
+  layBeds(heights, { target, weight })
+  return { target, weight }
+}
+/** road beds computed by carveRoads, as (target height, blend weight) per cell */
+export interface RoadBeds { target: Float32Array; weight: Float32Array }
+//! lays road beds (from carveRoads) on the relief again, e.g. after the runoff dug its channels across them
+export function layBeds(heights: number[], b: RoadBeds) {
   for (let k = 0; k < heights.length; k++)
-    if (weight[k] > 0) heights[k] = heights[k] + (target[k] - heights[k]) * weight[k]
+    if (b.weight[k] > 0) heights[k] = heights[k] + (b.target[k] - heights[k]) * b.weight[k]
 }
 
 //! spline shapes for the Workbench (points every ~25 m: few, regular points as the wiki advises)
