@@ -29,15 +29,15 @@ export const AIRFIELD_SIZES: Record<AirfieldSize, { length: number; width: numbe
 
 //! base-game paths (enfusion-mcp asset_search 2026-11-16); footprints are ESTIMATES (not in prefabs.txt)
 export const AIR_PREFABS = {
-  hangar: { p: 'Prefabs/Structures/Airport/Hangar_01/Hangar_01.et', hw: 18, hd: 22 },
-  tower: { p: 'Prefabs/Structures/Airport/ControlTower_01/ControlTower_01.et', hw: 6, hd: 6 },
-  fuel: { p: 'Prefabs/Structures/Industrial/FuelTank_01/FuelTank_01.et', hw: 2, hd: 5 }, // inferred from PrefabLibrary
-  pump: { p: 'Prefabs/Structures/Airport/AirfieldPipeline_01/AirfieldPipeline_01_pump.et', hw: 1.5, hd: 1.5 },
-  antenna: { p: 'Prefabs/Structures/Airport/AntennaAirport_01/AntennaAirport_01.et', hw: 1, hd: 1 },
-  light: { p: 'Prefabs/Structures/Airport/LightRunway_01/LightRunway_01_white.et', hw: 0.3, hd: 0.3 },
-  lightEnd: { p: 'Prefabs/Structures/Airport/LightRunway_01/LightRunway_01_green_red.et', hw: 0.3, hd: 0.3 },
+  hangar: { p: '{CEB1F71D46592F3C}Prefabs/Structures/Airport/Hangar_01/Hangar_01.et', hw: 18, hd: 22 },
+  tower: { p: '{9CEC8BB63429FF28}Prefabs/Structures/Airport/ControlTower_01/ControlTower_01.et', hw: 6, hd: 6 },
+  fuel: { p: '{D44E66C875C41446}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_01/FuelTank_01_green.et', hw: 2, hd: 5 }, // verified in resourceDatabase.rdb, footprint est.
+  pump: { p: '{69C0826D0263EB72}Prefabs/Structures/Airport/AirfieldPipeline_01/AirfieldPipeline_01_pump.et', hw: 1.5, hd: 1.5 },
+  antenna: { p: '{53251E86B44EF4F2}Prefabs/Structures/Airport/AntennaAirport_01/AntennaAirport_01.et', hw: 1, hd: 1 },
+  light: { p: '{8746DE528BA26F02}Prefabs/Structures/Airport/LightRunway_01/LightRunway_01_white.et', hw: 0.3, hd: 0.3 },
+  lightEnd: { p: '{C1873CADC253F79B}Prefabs/Structures/Airport/LightRunway_01/LightRunway_01_green_red.et', hw: 0.3, hd: 0.3 },
 }
-const GEN = { runway: 'Prefabs/WEGenerators/Roads/Concrete/RG_Road_Concrete_USSR_02.et', taxi: 'Prefabs/WEGenerators/Roads/Concrete/RG_Road_ConcretePanel_01.et' }
+const GEN = { runway: '{82B82C5E2B744C86}Prefabs/WEGenerators/Roads/Concrete/RG_Road_Concrete_USSR_02.et', taxi: '{EEB3D2A6FCAADFD6}Prefabs/WEGenerators/Roads/Concrete/RG_Road_ConcretePanel_01.et' }
 
 export const MAX_RUNWAY_GRADE = 0.01
 

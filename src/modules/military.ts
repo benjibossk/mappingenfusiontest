@@ -17,28 +17,28 @@ import {
 
 export type MilitaryKind = 'checkpoint' | 'outpost' | 'main'
 
-//! Prefab paths found in the base game index (enfusion-mcp asset_search, 2026-11-16). Bare paths: the
-//! plugin resolves the GUID. Footprints (hw/hd = half sizes, metres) are ESTIMATES: none of these is in
+//! Prefab refs verified against base-game resourceDatabase.rdb (2026-11-16), all with {GUID}. Footprints (hw/hd = half sizes,
+//! metres) are ESTIMATES: none of these is in
 //! profile/MapGen/prefabs.txt yet — measure them with the capture plugin and update.
 export const MIL_PREFABS = {
-  tower: { p: 'Prefabs/Structures/Military/Houses/GuardTower_01/GuardTower_01.et', hw: 2.5, hd: 2.5 },
-  barracks: { p: 'Prefabs/Structures/Military/Houses/Barracks_01/Barracks_01.et', hw: 5, hd: 12 }, // path inferred from PrefabLibrary/…/Military/Barracks_01
-  hq: { p: 'Prefabs/Structures/Military/Houses/Barracks_01/Barracks_01_camo.et', hw: 5, hd: 12 }, // idem
-  tent: { p: 'Prefabs/Structures/Military/Camps/TentFIA_01/TentFIA_01.et', hw: 3, hd: 4.5 },
-  tentSmall: { p: 'Prefabs/Structures/Military/Camps/TentSmallUS_01/TentSmallUS_01.et', hw: 1.5, hd: 2 },
-  vehicleCover: { p: 'Prefabs/Structures/Military/Camps/Canvas_Covers/US/CanvasCover_Large_US.et', hw: 5, hd: 7 },
-  helipad: { p: 'Prefabs/Structures/Military/Camps/HelipadImprovised_01/HelipadImprovised_USSR_01.et', hw: 10, hd: 10 },
-  fuel: { p: 'Prefabs/Structures/Industrial/FuelTank_01/FuelTank_01.et', hw: 2, hd: 5 }, // path inferred from PrefabLibrary
+  tower: { p: '{FBCE1861B987EA68}Prefabs/Structures/Military/Houses/GuardTower_01/GuardTower_01.et', hw: 2.5, hd: 2.5 },
+  barracks: { p: '{56073EA03FCF2043}Prefabs/Structures/Military/Houses/Barracks_01/Barracks_01_military_white.et', hw: 5, hd: 12 }, // verified in resourceDatabase.rdb, footprint est.
+  hq: { p: '{4D62E2F38A755750}Prefabs/Structures/Military/Houses/Barracks_01/Barracks_01_military_camo.et', hw: 5, hd: 12 }, // verified, footprint est.
+  tent: { p: '{4A1E3B17DB672E35}Prefabs/Structures/Military/Camps/TentFIA_01/TentFIA_01.et', hw: 3, hd: 4.5 },
+  tentSmall: { p: '{01AE5FD77A9A4C21}Prefabs/Structures/Military/Camps/TentSmallUS_01/TentSmallUS_01.et', hw: 1.5, hd: 2 },
+  vehicleCover: { p: '{FA9066DE33E8E67D}Prefabs/Structures/Military/Camps/Canvas_Covers/US/CanvasCover_Large_US.et', hw: 5, hd: 7 },
+  helipad: { p: '{8CDB9C117669AF4A}Prefabs/Structures/Military/Camps/HelipadImprovised_01/HelipadImprovised_USSR_01.et', hw: 10, hd: 10 },
+  fuel: { p: '{D44E66C875C41446}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_01/FuelTank_01_green.et', hw: 2, hd: 5 }, // verified in resourceDatabase.rdb, footprint est.
   flag: { p: '{1A8791C2BC2B8B75}Prefabs/Structures/Military/Flags/FlagPole_01/FlagPole_01_empty.et', hw: 0.3, hd: 0.3 }, // measured (entities.txt)
 } as const
 
 //! wall generators (docs/GENERATORS.md, Walls/): no Hesco / sandbag generator exists in vanilla
 export const MIL_WALLS = {
-  concrete: 'Prefabs/WEGenerators/Walls/Concrete/WG_ConcreteWall_USSR_03.et',
-  net: 'Prefabs/WEGenerators/Walls/Net/WG_NetFence_USSR_01.et',
-  netLight: 'Prefabs/WEGenerators/Walls/Net/WG_NetFence_01_Green.et',
+  concrete: '{CB2D3046A8023287}Prefabs/WEGenerators/Walls/Concrete/WG_ConcreteWall_USSR_03.et',
+  net: '{CA5FA41E2FC5DDA1}Prefabs/WEGenerators/Walls/Net/WG_NetFence_USSR_01.et',
+  netLight: '{8A673D57F92669B2}Prefabs/WEGenerators/Walls/Net/WG_NetFence_01_Green.et',
 }
-const ROAD_GEN = { concrete: 'Prefabs/WEGenerators/Roads/Concrete/RG_Road_ConcretePanel_01.et', dirt: '{8E83BBD5CEC42A11}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_01.et' }
+const ROAD_GEN = { concrete: '{EEB3D2A6FCAADFD6}Prefabs/WEGenerators/Roads/Concrete/RG_Road_ConcretePanel_01.et', dirt: '{8E83BBD5CEC42A11}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_01.et' }
 
 const SPEC: Record<MilitaryKind, { hw: number; hd: number; wall: keyof typeof MIL_WALLS | null; gate: number; road: number }> = {
   checkpoint: { hw: 14, hd: 9, wall: null, gate: 0, road: 0 },
