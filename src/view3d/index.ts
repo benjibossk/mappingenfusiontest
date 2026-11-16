@@ -3,12 +3,11 @@
 // Axes: three x = world X (east), y = height, z = -world Z (north is -z, so north is up on screen).
 import {
   ACESFilmicToneMapping, AmbientLight, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry,
-  DirectionalLight, DoubleSide, FogExp2, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial,
+  DirectionalLight, DoubleSide, Group, IcosahedronGeometry, OctahedronGeometry, Points, PointsMaterial, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial,
   MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, Quaternion, Scene, Shape, ShapeGeometry, SRGBColorSpace,
-  Vector2, Vector3, WebGLRenderer, type Material, type Texture,
+  Vector2, Vector3, WebGLRenderer, InstancedBufferAttribute, type Material, type Texture,
 } from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
-import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { realDrape, type RealLayers } from './drape'
 export type { RealLayers } from './drape'
 
@@ -45,9 +44,10 @@ export interface View3DOptions {
 export interface View3D { refreshDrape(): void; close(): void; stats(): { frames: number; vertices: number; buildings: number; trees: number; drape: string; texture: number } }
 
 const MAX_VERTS = 1_000_000
-const TREE_CHUNK = 1024 // m: trees grouped per square; full crowns up to TREE_NEAR, 4-sided cones up to TREE_FAR, beyond: canopy texture only
-let TREE_NEAR = 1600
-let TREE_FAR = 5000
+// trees as OpsTrack (measured in its GameMap3D chunk): low-poly instanced meshes per 512 m cell up to TREE_NEAR,
+// and one point per tree everywhere, faded in from 0.4·TREE_NEAR to 0.87·TREE_NEAR (a speckled far canopy, not a flat carpet)
+const TREE_CHUNK = 512
+let TREE_NEAR = 3000
 const tick = () => new Promise<void>((r) => setTimeout(r, 0))
 
 export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptions): Promise<View3D> {
@@ -80,13 +80,13 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   root.prepend(renderer.domElement)
   const scene = new Scene()
   renderer.toneMappingExposure = 1.0
-  scene.background = new Color(0x0c0f1c) // OpsTrack: deep navy void around the terrain block
+  scene.background = new Color(0x0d1117) // OpsTrack: dark void, no fog, no sky
   const sideW = (hm.cols - 1) * hm.step, sideH = (hm.rows - 1) * hm.step, side = Math.max(sideW, sideH)
-  scene.fog = new FogExp2(0x6c7c8c, 0.14 / side) // aerial haze: far ground fades to blue-grey, the background stays dark
-  const camera = new PerspectiveCamera(45, 1, 5, side * 8)
-  scene.add(new HemisphereLight(0xdfe8f5, 0x5a5040, 1.15), new AmbientLight(0xffffff, 0.15))
-  const sun = new DirectionalLight(0xfff4e2, 1.9) // soft high sun: the drape carries the hillshade
-  sun.position.set(-0.55, 0.75, 0.58) // south-west, ~40° high (as the baked hillshade of the drape)
+  const camera = new PerspectiveCamera(55, 1, 5, side * 10)
+  // OpsTrack lighting: white ambient 0.75 + one white sun 1.6 from the south-west at ~39°, no shadows, ACES
+  scene.add(new AmbientLight(0xffffff, 0.75))
+  const sun = new DirectionalLight(0xffffff, 1.6)
+  sun.position.set(-8000, 9000, 8000)
   scene.add(sun)
 
   // --- terrain mesh (decimated to ≤ 1 M vertices) ---
@@ -235,19 +235,19 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   o.progress?.(T.stage('objects'), 2, 3); await tick()
   const tmp = new Object3D()
   const boxGeo = new BoxGeometry(1, 1, 1).translate(0, 0.5, 0)
-  const bldMat = new MeshLambertMaterial({ color: 0xc9c2b2 })
+  const bldMat = new MeshStandardMaterial({ color: 0x8d8578, roughness: 0.9, metalness: 0 }) // OpsTrack building grey-beige
   const blds = data.buildings.length ? new InstancedMesh(boxGeo, bldMat, data.buildings.length) : null
   const bridgeMat = new MeshLambertMaterial({ color: 0x8c8c86 })
   const brg = data.bridges?.length ? new InstancedMesh(boxGeo, bridgeMat, data.bridges.length) : null
-  // trees: per 1 km square, two kinds (broadleaf crown / conifer cone), two levels of detail sharing the
-  // same instance matrices and colours; beyond TREE_FAR the canopy of the drape stands for the forest
-  const geos = {
-    // rounded crown: subdivided + welded so normals are smooth (no faceted "diamond" look)
-    broad: [(() => { const g = mergeVertices(new IcosahedronGeometry(0.5, 1).deleteAttribute('normal').deleteAttribute('uv')); g.computeVertexNormals(); return g.scale(1, 0.8, 1).translate(0, 0.6, 0) })(), new ConeGeometry(0.5, 1, 3, 1, true).translate(0, 0.5, 0)],
-    needle: [new ConeGeometry(0.36, 1, 6, 1, true).translate(0, 0.5, 0), new ConeGeometry(0.36, 1, 3, 1, true).translate(0, 0.5, 0)],
+  const geos = { // OpsTrack: open 6-sided cone (conifer), faceted icosahedron (broadleaf), octahedron (bush); Lambert, flat shading
+    needle: new ConeGeometry(0.5, 1, 6, 1, true).translate(0, 0.5, 0),
+    broad: new IcosahedronGeometry(0.5, 0).translate(0, 0.65, 0),
+    bush: new OctahedronGeometry(0.5, 0).translate(0, 0.5, 0),
   }
+  type Kind = keyof typeof geos
+  const KCOL: Record<Kind, number[]> = { needle: [0.13, 0.25, 0.13], broad: [0.2, 0.34, 0.14], bush: [0.28, 0.33, 0.16] } // OpsTrack linear tints; × 0.5–0.75 here (their sun reaches the forest at a grazing angle, ours is higher)
   const treeMat = new MeshLambertMaterial({ color: 0xffffff })
-  const treeChunks: { lods: InstancedMesh[][]; c: Vector3; list: number[]; kind: 'broad' | 'needle' }[] = []
+  const treeChunks: { mesh: InstancedMesh; c: Vector3; list: number[]; kind: Kind }[] = []
   // densify: each project tree becomes a small clump (≈1 M instances max) so forests read as a closed canopy
   {
     const n0 = data.trees.length / 3, kc = Math.max(1, Math.min(6, Math.floor(1_000_000 / Math.max(1, n0))))
@@ -263,31 +263,51 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
       data = { ...data, trees: tr, treeNeedle: nd }
     }
   }
+  const nTree = data.trees.length / 3
+  const kindOf = (t: number): Kind => {
+    if (data.treeNeedle?.[t]) return 'needle'
+    return ((t * 374761393) >>> 0) % 100 < 12 ? 'bush' : 'broad' // some undergrowth among broadleaves
+  }
+  const tcol = new Float32Array(nTree * 3)
+  for (let t = 0; t < nTree; t++) {
+    const kc = KCOL[kindOf(t)], m = (0.8 + (((t * 2654435761) >>> 0) / 4294967296) * 0.4) * 0.62
+    tcol[t * 3] = kc[0] * m; tcol[t * 3 + 1] = kc[1] * m; tcol[t * 3 + 2] = kc[2] * m
+  }
+  // far canopy: one lit-less point per tree, size in metres, faded in where the meshes stop
+  const ptsGeo = new BufferGeometry()
+  ptsGeo.setAttribute('position', new BufferAttribute(new Float32Array(nTree * 3), 3))
+  ptsGeo.setAttribute('color', new BufferAttribute(tcol, 3))
+  const ptsMat = new PointsMaterial({ size: 9, sizeAttenuation: true, vertexColors: true })
+  ptsMat.color.setScalar(0.35 / 0.62) // OpsTrack: points at 0.35 of the tint (undo our mesh darkening)
+  const fadeU = { value: new Vector2(0.4 * TREE_NEAR, 0.87 * TREE_NEAR) }
+  ptsMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uFade = fadeU
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform vec2 uFade;')
+      .replace('#include <logdepthbuf_vertex>', `float otFade = smoothstep(uFade.x, uFade.y, -mvPosition.z);
+        gl_PointSize *= otFade;
+        if (otFade < 1.0 && gl_PointSize < 1.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        #include <logdepthbuf_vertex>`)
+  }
+  const pts = new Points(ptsGeo, ptsMat)
+  pts.frustumCulled = false
+  scene.add(pts)
   {
     const by = new Map<number, number[]>()
     const tr = data.trees
-    for (let i = 0; i + 2 < tr.length; i += 3) {
-      const nd = data.treeNeedle?.[i / 3] ? 1 : 0
-      const key = (Math.floor((tr[i] - hm.minX) / TREE_CHUNK) * 1000 + Math.floor((tr[i + 1] - hm.minZ) / TREE_CHUNK)) * 2 + nd
-      let a = by.get(key); if (!a) by.set(key, (a = [])); a.push(i)
+    const KI: Kind[] = ['broad', 'needle', 'bush']
+    for (let t = 0; t < nTree; t++) {
+      const key = (Math.floor((tr[t * 3] - hm.minX) / TREE_CHUNK) * 1000 + Math.floor((tr[t * 3 + 1] - hm.minZ) / TREE_CHUNK)) * 3 + KI.indexOf(kindOf(t))
+      let a = by.get(key); if (!a) by.set(key, (a = [])); a.push(t * 3)
     }
-    const col = new Color()
-    for (const [key2, list] of by) {
-      const kind = key2 % 2 ? 'needle' : 'broad', key = Math.floor(key2 / 2)
-      const near = new InstancedMesh(geos[kind][0], treeMat, list.length)
-      const far = new InstancedMesh(geos[kind][1], treeMat, list.length)
-      list.forEach((i, j) => {
-        const t = ((i * 2654435761) >>> 0) / 4294967296
-        const u = ((i * 40503 + 977) % 1009) / 1009 // second hash: hue shift independent of brightness
-        if (kind === 'needle') col.setRGB(0.12 + t * 0.07, 0.21 + t * 0.1, 0.13 + t * 0.05, SRGBColorSpace)
-        else col.setRGB(0.17 + t * 0.12 + u * 0.08, 0.27 + t * 0.14, 0.09 + t * 0.05 + u * 0.03, SRGBColorSpace)
-        near.setColorAt(j, col)
-      })
-      far.instanceMatrix = near.instanceMatrix
-      far.instanceColor = near.instanceColor
+    for (const [key3, list] of by) {
+      const kind = KI[key3 % 3], key = Math.floor(key3 / 3)
+      const mesh = new InstancedMesh(geos[kind], treeMat, list.length)
+      const ic = new Float32Array(list.length * 3)
+      list.forEach((i, j) => { ic[j * 3] = tcol[i]; ic[j * 3 + 1] = tcol[i + 1]; ic[j * 3 + 2] = tcol[i + 2] })
+      mesh.instanceColor = new InstancedBufferAttribute(ic, 3)
       const cx = hm.minX + (Math.floor(key / 1000) + 0.5) * TREE_CHUNK, cz = hm.minZ + ((key % 1000) + 0.5) * TREE_CHUNK
-      treeChunks.push({ lods: [[near], [far]], c: new Vector3(cx, groundAt(cx, cz), -cz), list, kind })
-      scene.add(near, far)
+      treeChunks.push({ mesh, c: new Vector3(cx, groundAt(cx, cz), -cz), list, kind })
+      scene.add(mesh)
     }
   }
   let ex = 1
@@ -310,19 +330,24 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
       brg.instanceMatrix.needsUpdate = true; brg.computeBoundingSphere()
     }
     const m4 = new Matrix4(), qn = new Quaternion(), v = new Vector3(), sc = new Vector3(), UP = new Vector3(0, 1, 0)
+    const pp = ptsGeo.attributes.position.array as Float32Array
     for (const ch of treeChunks) {
-      const near = ch.lods[0][0], far = ch.lods[1][0]
       ch.list.forEach((i, j) => {
-        const x = data.trees[i], z = data.trees[i + 1], f = data.trees[i + 2]
-        v.set(x, groundAt(x, z) * ex - 0.8, -z)
-        // random yaw + slight size/aspect jitter so neighbouring crowns never line up
+        const x = data.trees[i], z = data.trees[i + 1], f = data.trees[i + 2], gy = groundAt(x, z) * ex
+        // per-tree height / crown radius jitter (OpsTrack carries real ones), random yaw so facets never line up
         const h = ((i * 2246822519) >>> 0) / 4294967296, k = ((i * 3266489917) >>> 0) / 4294967296
+        let ht: number, rd: number
+        if (ch.kind === 'needle') { ht = (16 + k * 8) * f; rd = (2.6 + h * 1.2) * f } else if (ch.kind === 'bush') { ht = (3 + k * 3) * f; rd = (2 + h * 1.5) * f } else { ht = (13 + k * 6) * f * 0.87; rd = (3.6 + h * 1.8) * f }
+        v.set(x, gy - 0.5, -z)
         qn.setFromAxisAngle(UP, h * Math.PI * 2)
-        if (ch.kind === 'needle') sc.set(7 * f, (15 + k * 5) * f, 7 * f); else sc.set((9 + k * 3) * f, (11 + h * 4) * f, (9 + h * 3) * f)
-        m4.compose(v, qn, sc); near.setMatrixAt(j, m4)
+        sc.set(rd * 2, ht, rd * 2)
+        m4.compose(v, qn, sc); ch.mesh.setMatrixAt(j, m4)
+        const t = i / 3
+        pp[t * 3] = x; pp[t * 3 + 1] = gy + ht * 0.6; pp[t * 3 + 2] = -z
       })
-      near.instanceMatrix.needsUpdate = true; near.computeBoundingSphere(); far.boundingSphere = near.boundingSphere
+      ch.mesh.instanceMatrix.needsUpdate = true; ch.mesh.computeBoundingSphere()
     }
+    ptsGeo.attributes.position.needsUpdate = true
   }
   place()
   if (blds) scene.add(blds)
@@ -353,7 +378,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     dirty = true
   }
   let dirty = true, frames = 0, raf = 0, closed = false, qN = 0, qSum = 0, qLast = 0
-  TREE_NEAR = 1600; TREE_FAR = 5000
+  TREE_NEAR = 3000; fadeU.value.set(0.4 * TREE_NEAR, 0.87 * TREE_NEAR)
   const ro = new ResizeObserver(resize)
   ro.observe(root)
   controls.addEventListener('change', () => { dirty = true })
@@ -365,19 +390,18 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     controls.update()
     if (!dirty) return
     dirty = false
-    for (const ch of treeChunks) {
-      const d = ch.c.distanceTo(camera.position)
-      ch.lods[0][0].visible = treesOn && d < TREE_NEAR
-      ch.lods[1][0].visible = treesOn && d >= TREE_NEAR && d < TREE_FAR
-    }
+    const rr = TREE_NEAR + TREE_CHUNK * 0.71 + 120
+    for (const ch of treeChunks) ch.mesh.visible = treesOn && ch.c.distanceToSquared(camera.position) < rr * rr
+    pts.visible = treesOn
     // auto quality: the first ~40 frames are timed; a slow GPU gets shorter tree ranges and a lower pixel ratio
     const now = performance.now()
     if (qN < 40) { if (qN++ > 4) qSum += now - qLast; qLast = now; dirty = true }
     else if (qN === 40) {
       qN++
       const ms = qSum / 35
-      if (ms > 30) { TREE_NEAR = 700; TREE_FAR = 2200; renderer.setPixelRatio(1); dirty = true }
-      else if (ms > 17) { TREE_NEAR = 1100; TREE_FAR = 3500; renderer.setPixelRatio(Math.min(1.25, window.devicePixelRatio)); dirty = true }
+      if (ms > 30) { TREE_NEAR = 1200; renderer.setPixelRatio(1); dirty = true }
+      else if (ms > 17) { TREE_NEAR = 2000; renderer.setPixelRatio(Math.min(1.25, window.devicePixelRatio)); dirty = true }
+      fadeU.value.set(0.4 * TREE_NEAR, 0.87 * TREE_NEAR)
     }
     // ground target follows the relief so the orbit stays on the ground
     controls.target.y = groundAt(controls.target.x, -controls.target.z) * ex
