@@ -99,3 +99,11 @@ Total ≈ **5–7 jours** de travail assisté ; une vue 3D utile (étapes 1–3)
 - Le « wow » d'OpsTrack vient surtout de la **texture photo** et des **1,5 M d'arbres instanciés**, pas d'un LOD sophistiqué : un seul maillage 2048² suffit à 16 km.
 - Le format terrain-RGB (0,1 m de précision) est un bon format d'échange si on veut un jour exporter/partager nos cartes en 3D.
 - Ne rien charger de 3D tant que l'utilisateur n'a pas cliqué sur « 3D ».
+
+## 6. Rapprochement visuel (2026-11-16) et « à câbler »
+Fait dans `src/view3d/` : palette satellite désaturée (olive / beige / gris-brun) + étalonnage vers la luminance, bruit à 4 échelles (1600 / 420 / 70 / 18 m + grain 1,7 m) ; champs procéduraux autour des hameaux sur terrain plat quand le projet n'en a pas ; canopée plus verte ; arbres densifiés en bouquets (jusqu'à ~1 M d'instances, LOD icosaèdre / cône 3 faces) ; qualité auto (40 premières images chronométrées → portées d'arbres et pixel ratio réduits sur GPU lent) ; ciel marine `#0c0f1c`, brume plus légère, soleil haut ; mer bleu marine mate ; cadrage ~41° depuis le sud.
+Vue 3D de l'Atelier (monde Workbench existant) : relief décodé + carte « réaliste » (supertexture satellite) en drapé + arbres / bâtiments des `.layer`.
+
+À câbler (barre d'outils, hors `view3d/`) :
+- sélecteur **Qualité** (auto / haute / basse) qui forcerait `TREE_NEAR` / `TREE_FAR` / pixel ratio ;
+- affichage du compteur d'arbres visibles et des fps dans la barre.

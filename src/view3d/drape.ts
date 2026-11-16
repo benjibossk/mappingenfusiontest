@@ -22,10 +22,11 @@ export interface RealLayers {
 
 // natural palette (sRGB), a bit more saturated and varied than the surface averages of island.ts
 const PAL: Record<string, RGB> = {
-  grass: [94, 114, 56], grassDry: [134, 130, 78], alpine: [118, 116, 88], rock: [122, 117, 108], rockDark: [86, 82, 76],
-  sand: [198, 184, 146], wetSand: [150, 140, 110], dirt: [128, 106, 78], pebbles: [142, 134, 118], heather: [108, 92, 84],
-  concrete: [142, 140, 134], forestFloor: [58, 70, 38], crop: [150, 134, 88], coastal: [116, 118, 78],
-  bedShallow: [64, 118, 118], bedDeep: [10, 26, 46],
+  // OpsTrack-like satellite grading: desaturated olive meadows, tan dry grass, grey-brown rock
+  grass: [104, 110, 68], grassDry: [156, 144, 106], alpine: [146, 134, 108], rock: [132, 124, 112], rockDark: [92, 86, 78],
+  sand: [200, 188, 154], wetSand: [150, 142, 116], dirt: [142, 122, 94], pebbles: [146, 138, 122], heather: [116, 100, 88],
+  concrete: [142, 140, 134], forestFloor: [64, 74, 44], crop: [156, 140, 96], coastal: [134, 130, 96],
+  bedShallow: [70, 120, 132], bedDeep: [22, 48, 86],
 }
 const SURF: [RegExp, RGB][] = [
   [/^SeaBed/i, PAL.wetSand], [/^BeachGrass/i, [150, 146, 104]], [/coastal/i, PAL.coastal], [/^MountainGrass/i, PAL.alpine],
@@ -34,7 +35,7 @@ const SURF: [RegExp, RGB][] = [
   [/Sand|Beach/i, PAL.sand],
 ]
 const surfColour = (name: string): RGB => SURF.find(([re]) => re.test(name))?.[1] ?? PAL.grass
-const CROPS: RGB[] = [[176, 156, 92], [196, 176, 110], [112, 128, 62], [134, 146, 74], [128, 104, 74], [150, 120, 84], [92, 112, 56], [168, 150, 104], [146, 140, 82]]
+const CROPS: RGB[] = [[178, 160, 112], [200, 184, 132], [104, 118, 66], [128, 138, 80], [96, 82, 66], [120, 98, 76], [84, 104, 58], [168, 152, 112], [146, 140, 90], [70, 64, 56], [136, 150, 92]]
 
 // --- noise ---
 const hash = (x: number, y: number) => {
@@ -117,7 +118,7 @@ export function realDrape(size: number, hm: HeightGrid, sea: number, L: RealLaye
       const o = (y * B + x) * 4
       if (wx > x0 + sideW || z < z0) { bi.data[o + 3] = 255; si.data[o] = si.data[o + 1] = si.data[o + 2] = si.data[o + 3] = 255; continue }
       const h = S(H, wx, z), sl = S(slope, wx, z)
-      const n1 = vnoise(wx / 420, z / 420), n2 = vnoise(wx / 70 + 31, z / 70 + 17), n3 = vnoise(wx / 18 + 7, z / 18 + 3)
+      const n0 = vnoise(wx / 1600 + 5, z / 1600 + 9), n1 = vnoise(wx / 420, z / 420) * 0.7 + n0 * 0.3, n2 = vnoise(wx / 70 + 31, z / 70 + 17), n3 = vnoise(wx / 18 + 7, z / 18 + 3)
       if (h < sea) { // sea bed: sand in the shallows to navy in the deep
         const d = sstep(0, 1, (sea - h) / 40)
         lerp3(col, PAL.bedShallow, PAL.bedDeep, Math.sqrt(d))
@@ -134,7 +135,12 @@ export function realDrape(size: number, hm: HeightGrid, sea: number, L: RealLaye
         const beach = (1 - sstep(1.2, 3.5, h - sea)) * (1 - sstep(0.12, 0.3, sl)) // beaches
         mix3(col, h - sea < 0.6 ? PAL.wetSand : PAL.sand, beach * (0.75 + n3 * 0.25))
       }
-      const v = 0.92 + (n3 - 0.5) * 0.12 + (n2 - 0.5) * 0.08
+      if (h >= sea) { // grading: pull towards the luma (satellite haze), micro-shading at 3 scales
+        const lu = col[0] * 0.3 + col[1] * 0.59 + col[2] * 0.11
+        mix3(col, [lu * 1.04, lu, lu * 0.9], 0.22)
+      }
+      const n4 = hash(Math.floor(wx / 1.7), Math.floor(z / 1.7))
+      const v = 0.93 + (n3 - 0.5) * 0.14 + (n2 - 0.5) * 0.1 + (n4 - 0.5) * 0.06
       bi.data[o] = col[0] * v; bi.data[o + 1] = col[1] * v; bi.data[o + 2] = col[2] * v; bi.data[o + 3] = 255
       // shading: soft hillshade (the scene light shades again: kept mild) + cavity occlusion
       const a = S(ao, wx, z), sh = S(shade, wx, z)
@@ -166,7 +172,8 @@ export function realDrape(size: number, hm: HeightGrid, sea: number, L: RealLaye
   const ring = (p: number[], close: boolean) => { g.beginPath(); for (let i = 0; i + 1 < p.length; i += 2) { if (i) g.lineTo(p[i], p[i + 1]); else g.moveTo(p[i], p[i + 1]) } if (close) g.closePath() }
   const rgb = (c: RGB, f = 1, a = 1) => `rgba(${c[0] * f | 0},${c[1] * f | 0},${c[2] * f | 0},${a})`
   // fields: patchwork of crops, a few furrow stripes
-  L.fields.forEach((f, i) => {
+  const fields = L.fields.length >= 5 ? L.fields : genFields(hm, sea, boxes, (x, z) => S(H, x, z), (x, z) => S(slope, x, z), sideW, sideH)
+  fields.forEach((f, i) => {
     if (f.length < 6) return
     const c = CROPS[Math.floor(hash(i, 7) * CROPS.length)], v = 0.9 + hash(i, 3) * 0.2
     ring(f, true); g.fillStyle = rgb(c, v, 0.92); g.fill()
@@ -189,16 +196,16 @@ export function realDrape(size: number, hm: HeightGrid, sea: number, L: RealLaye
   for (const f of L.forests) {
     if (f.pts.length < 6) continue
     ring(f.pts, true)
-    g.fillStyle = rgb([44, 62, 32], 1 - f.needle * 0.15); g.fill()
+    g.fillStyle = rgb([50, 74, 30], 1 - f.needle * 0.18); g.fill()
     g.save(); g.globalAlpha = 0.95; g.fillStyle = pat; g.fill(); g.restore()
-    if (f.needle > 0.3) { g.save(); g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(150,170,165,${f.needle * 0.6})`; g.fill(); g.restore() }
-    g.strokeStyle = 'rgba(20,30,14,0.55)'; g.lineWidth = Math.max(minW, 3); g.stroke()
+    if (f.needle > 0.3) { g.save(); g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(160,176,170,${f.needle * 0.5})`; g.fill(); g.restore() }
+    g.strokeStyle = 'rgba(24,36,16,0.5)'; g.lineWidth = Math.max(minW, 2.5); g.stroke()
   }
   // hedges
   g.strokeStyle = 'rgb(46,64,32)'; g.lineWidth = Math.max(minW, 3)
   for (const h of L.hedges) { if (h.length >= 4) { ring(h, false); g.stroke() } }
   // water
-  const water = 'rgb(30,58,78)'
+  const water = 'rgb(28,58,96)'
   g.fillStyle = water
   for (const p of L.lakes) { if (p.length >= 6) { ring(p, true); g.fill() } }
   for (const r of L.rivers) {
@@ -265,7 +272,7 @@ function canopyTile() {
   if (canopy) return canopy
   const c = document.createElement('canvas'); c.width = c.height = 256
   const g = c.getContext('2d')!
-  g.fillStyle = 'rgb(30,44,24)'; g.fillRect(0, 0, 256, 256)
+  g.fillStyle = 'rgb(28,44,20)'; g.fillRect(0, 0, 256, 256)
   for (let i = 0; i < 900; i++) {
     const x = hash(i, 1) * 256, y = hash(i, 2) * 256, r = 6 + hash(i, 3) * 11, t = hash(i, 4)
     for (const [dx, dy] of [[0, 0], [256, 0], [-256, 0], [0, 256], [0, -256]]) {
@@ -273,10 +280,47 @@ function canopyTile() {
       if (cx < -r || cx > 256 + r || cy < -r || cy > 256 + r) continue
       g.fillStyle = 'rgba(14,22,10,0.55)'; g.beginPath(); g.arc(cx + r * 0.35, cy + r * 0.35, r, 0, 7); g.fill()
       const gr = g.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r)
-      gr.addColorStop(0, `rgb(${92 + t * 30 | 0},${112 + t * 26 | 0},${52 + t * 10 | 0})`)
-      gr.addColorStop(1, `rgb(${40 + t * 14 | 0},${58 + t * 16 | 0},${28 + t * 6 | 0})`)
+      gr.addColorStop(0, `rgb(${96 + t * 34 | 0},${128 + t * 30 | 0},${50 + t * 12 | 0})`)
+      gr.addColorStop(1, `rgb(${42 + t * 16 | 0},${68 + t * 18 | 0},${26 + t * 6 | 0})`)
       g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill()
     }
   }
   return (canopy = c)
+}
+
+/** procedural field patchwork when the project has none: rectangular parcels around building clusters on flat, dry land */
+function genFields(hm: HeightGrid, sea: number, boxes: Box3D[], hAt: (x: number, z: number) => number, slAt: (x: number, z: number) => number, sideW: number, sideH: number): number[][] {
+  const out: number[][] = []
+  if (!boxes.length) return out
+  const C = 300, cl = new Map<string, { x: number; z: number; n: number }>()
+  for (const b of boxes) { const k = `${Math.floor(b.cx / C)},${Math.floor(b.cz / C)}`; const c = cl.get(k); if (c) { c.x += b.cx; c.z += b.cz; c.n++ } else cl.set(k, { x: b.cx, z: b.cz, n: 1 }) }
+  const G = 24, occ = new Set<number>(), key = (x: number, z: number) => Math.floor((x - hm.minX) / G) * 100000 + Math.floor((z - hm.minZ) / G)
+  for (const b of boxes) for (let dx = -40; dx <= 40; dx += G) for (let dz = -40; dz <= 40; dz += G) occ.add(key(b.cx + dx, b.cz + dz))
+  let seed = 0
+  for (const c of cl.values()) {
+    if (c.n < 2) continue
+    const cx = c.x / c.n, cz = c.z / c.n, ang = hash(Math.round(cx), Math.round(cz)) * Math.PI, ca = Math.cos(ang), sa = Math.sin(ang)
+    const R = 350 + Math.min(700, c.n * 12)
+    for (let t = 0; t < 260; t++) {
+      seed++
+      const u = (hash(seed, 11) * 2 - 1) * R, v = (hash(seed, 13) * 2 - 1) * R
+      const w = 70 + hash(seed, 17) * 170, d = 50 + hash(seed, 19) * 120
+      const pts: number[] = []
+      for (const [a, b2] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const lu = u + a * w / 2, lv = v + b2 * d / 2; pts.push(cx + lu * ca - lv * sa, cz + lu * sa + lv * ca) }
+      let ok = true
+      const ks: number[] = []
+      for (let i = 0; i <= 8 && ok; i++) { // corners, edge midpoints, centre
+        const j = i % 4, j2 = (j + 1) % 4
+        const fx = i === 8 ? cx + u * ca - v * sa : i < 4 ? pts[j * 2] : (pts[j * 2] + pts[j2 * 2]) / 2
+        const fz = i === 8 ? cz + u * sa + v * ca : i < 4 ? pts[j * 2 + 1] : (pts[j * 2 + 1] + pts[j2 * 2 + 1]) / 2
+        if (fx < hm.minX || fz < hm.minZ || fx > hm.minX + sideW || fz > hm.minZ + sideH || hAt(fx, fz) < sea + 2 || slAt(fx, fz) > 0.22) ok = false
+      }
+      if (!ok) continue
+      for (let a = -w / 2; a <= w / 2 && ok; a += G) for (let b2 = -d / 2; b2 <= d / 2; b2 += G) { const k = key(cx + (u + a) * ca - (v + b2) * sa, cz + (u + a) * sa + (v + b2) * ca); if (occ.has(k)) { ok = false; break } ks.push(k) }
+      if (!ok) continue
+      ks.forEach((k) => occ.add(k))
+      out.push(pts)
+    }
+  }
+  return out
 }

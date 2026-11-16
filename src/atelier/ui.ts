@@ -505,7 +505,15 @@ async function open3dAtelier() {
       try {
         const m = renderTo(size), out = document.createElement('canvas'); out.width = out.height = size
         const k = size / side
-        out.getContext('2d')!.drawImage(m, 0, (side - tr.sizeZ) * k, tr.sizeX * k, tr.sizeZ * k) // row 0 = north edge of the square
+        const g = out.getContext('2d')!
+        g.drawImage(m, 0, (side - tr.sizeZ) * k, tr.sizeX * k, tr.sizeZ * k) // row 0 = north edge of the square
+        // canopy: renderMap skips crowns above 400 k trees, so every tree is stamped here (dark crown, then lit core)
+        const r = Math.max(1, 5 * k), DARK = ['#2a3d1c', '#33481f', '#3c5224', '#2e4422'], LIT = ['#4d6a2c', '#58752f', '#476328', '#5f7a36']
+        for (let pass = 0; pass < 2; pass++) for (let j = 0; j < 4; j++) {
+          g.fillStyle = pass ? LIT[j] : DARK[j]
+          const s2 = pass ? r * 0.9 : r * 1.8, o2 = s2 / 2 + (pass ? r * 0.2 : 0)
+          for (let i = j; i < ob.trees.length; i += 4) { const t2 = ob.trees[i]; g.fillRect(t2.x * k - o2, (side - t2.z) * k - o2, s2, s2) }
+        }
         return { canvas: out, x0: 0, z0: 0, side }
       } finally { S.style = sv.style; S.mapLayers.legend = sv.legend; S.mapLayers.slopes = sv.slopes }
     }
