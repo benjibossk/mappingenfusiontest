@@ -133,3 +133,15 @@ Workbench (à faire par Benji, rien de neuf côté plugin : les sites partent co
 | 4 | Zone industrielle | Rue reliée à la route principale, clôture `WG_NetFence_01` (chemin sans GUID), bâtiments sur la plateforme | ⬜ |
 | 5 | Village v2 en bord de mer | Ponton `PierWooden_01_25m` au-dessus de l'eau (ycm), abris à bateaux sur la plage | ⬜ |
 | 6 | « Envoyer comme masques du sol » (satellite) | Les 5 surfaces apparaissent dans le Workbench, aucun bloc > 5 surfaces | ⬜ |
+
+## R10 — Parcours d'entrée guidés + chargements (ajouté le 2026-11-16)
+Navigateur (vérifié par Playwright, contexte neuf, captures `onb-*.png` du scratchpad ; 0 erreur de page) :
+- [ ] Nouvelle île (carte d'accueil) : carte « Étape suivante » « Voilà ton île. » + liste Déjà fait / Reste à faire + bouton « Étape suivante : Routes » ; « Montre-moi » lance une mini-visite propre au parcours (relief, étapes, eau, calques, envoi). ~1,2 s.
+- [ ] Monde aléatoire : barre de la fenêtre avec « Étape i/n » + secondes écoulées ; à la fin toast « terminé (x s) » et carte « Voilà ton monde aléatoire » : étapes 1 à 6 en vert, bouton « Étape suivante : Envoyer ». ~6 s en 4 km.
+- [ ] Lieu réel (2 km autour d'Angers, Copernicus + OSM, passerelle lancée) : fenêtre en style MILSPEC (titre Oswald, barre ambre), barre « Étape i/5 … (s, total) » ; à la fin la fenêtre se ferme, toast, carte « Voilà ton lieu réel » : Relief, Eau, Routes, Champs et forêts en vert ; bouton « Étape suivante : Envoyer ». 20 s à 2 min selon Overpass.
+- [ ] Rejoindre un salon : carte d'aide « Rejoindre un salon » au-dessus du formulaire ; « Montre-moi » pointe le formulaire.
+- [ ] Ouvrir un fichier : panneau « Ouverture du projet », puis carte « Projet ouvert » vers la première étape non verte.
+- [ ] Toute action longue (Générer, Autre tirage, rivières, réseau de routes, placer les lieux, villages, lignes, forêts, industrie/base, analyse satellite, tous les envois au Workbench, chargement du terrain) : panneau « En cours » (nom de l'action, barre indéterminée ou étape i/n, secondes écoulées), boutons grisés pendant le calcul (pas de double clic), toast vert « terminé (x s) » ou rouge « échec ».
+- [ ] Carte : noms de rivières et lacs masqués à l'échelle de l'île, visibles en zoomant (comme les routes) ; aucun nom n'en chevauche un autre ; Calques > « Noms » les masque tous.
+- [ ] Aide > FAQ : « La page est-elle bloquée ? » et « Trop de noms sur la carte ? ».
+Limite connue : les générateurs synchrones (worldgen, réseau, villages) ne publient pas encore leurs sous-étapes : barre indéterminée + temps écoulé, Annuler seulement pour le monde aléatoire (dans sa fenêtre).

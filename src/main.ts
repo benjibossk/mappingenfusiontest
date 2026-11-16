@@ -16,7 +16,7 @@ import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues'] as const
+const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'names'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
 let collab: Collab | null = null // shared room, see src/collab.ts
@@ -130,6 +130,16 @@ function hint(k: Key) {
   return `<p class="hint">${head} ${info(k)}</p>`
 }
 /** friendly, localised map label for a Workbench id (the id stays in the data and the tooltips) */
+// map labels drawn this frame (screen boxes x0,y0,x1,y1): a label that would overlap one is skipped
+const labelBoxes: number[] = []
+function placeLabel(text: string, x: number, y: number, centre = false): boolean {
+  const w = ctx.measureText(text).width, x0 = centre ? x - w / 2 : x
+  const b = [x0 - 2, y - 12, x0 + w + 2, y + 3]
+  for (let i = 0; i < labelBoxes.length; i += 4)
+    if (b[0] < labelBoxes[i + 2] && b[2] > labelBoxes[i] && b[1] < labelBoxes[i + 3] && b[3] > labelBoxes[i + 1]) return false
+  labelBoxes.push(...b)
+  return true
+}
 function nice(id: string, roadType?: string): string {
   const n = id.match(/(\d+)$/)?.[1] ?? ''
   let m = id.match(/^WATER_(RIVER|LAKE)_\d+$/)
@@ -255,13 +265,16 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         ${connectSteps()}
         <div class="row"><button type="button" class="secondary wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button></div>
         <h3>${t('help.faq')}</h3>
-        ${(['1', '2', '3', '4', '5', '6', '7'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
+        ${(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
         <h3>${t('help.glossary')}</h3>
         <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
         <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
       </div>
     </div>
     <div id="tour" class="tour" hidden><div class="tourring"></div><div class="tourbox" role="dialog" aria-live="polite"><span id="tourN" class="kicker"></span><p id="tourText"></p><div class="row"><button id="tourSkip" type="button" class="secondary">${t('tour.skip')}</button><button id="tourNext" type="button">${t('tour.next')}</button></div></div></div>
+    <div id="busy" class="busy" hidden role="status" aria-live="polite"><div class="busybox"><span class="kicker">${t('busy.kicker')}</span><b id="busyLabel"></b><span id="busyStage" class="hint"></span><progress id="busyBar"></progress><div class="row"><span id="busyTime" class="busytime"></span><button id="busyCancel" type="button" class="secondary" hidden>${t('busy.cancel')}</button></div></div></div>
+    <div id="coach" class="coach" hidden role="dialog" aria-live="polite"><span id="coachKicker" class="kicker"></span><b id="coachTitle"></b><p id="coachText"></p><ul id="coachSteps"></ul><div class="row"><button id="coachClose" type="button" class="secondary">${t('coach.close')}</button><button id="coachTour" type="button" class="secondary">${t('coach.tour')}</button><button id="coachNext" type="button"></button></div></div>
+    <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
     <div class="overlay">
       <span id="brushInfo"></span>
       <span class="hint">${t('hint.map')}</span>
@@ -637,6 +650,7 @@ function path(ring: number[][], close: boolean) {
 }
 
 function draw() {
+  labelBoxes.length = 0
   ctx.fillStyle = '#0f1012'
   ctx.fillRect(0, 0, map.width, map.height)
   if (terrain && terrainImg) {
@@ -690,9 +704,10 @@ function draw() {
       ctx.fillRect(sx - 2, sy - 2, 4, 4)
     })
     const mid = ring[ring.length >> 1]
-    if (mid && view.mpp < 2.5) { // road names only when zoomed in: at island scale they pile up
+    if (mid && view.mpp < 2.5 && layer('names')) { // road names only when zoomed in: at island scale they pile up
       const [sx, sy] = toScreen(mid[0], mid[1])
       ctx.font = '11px sans-serif'
+      if (!placeLabel(nice(r.id, r.type), sx + 6, sy - 6)) continue
       ctx.lineWidth = 3
       ctx.strokeStyle = '#000a'
       ctx.strokeText(nice(r.id, r.type), sx + 6, sy - 6)
@@ -938,7 +953,7 @@ map.addEventListener('mousemove', (e) => {
   }
 })
 
-$<HTMLButtonElement>('loadTerrain').addEventListener('click', async () => {
+$<HTMLButtonElement>('loadTerrain').addEventListener('click', () => void track((async () => {
   logEl.textContent = t('terrain.loading')
   try {
     terrain = await loadHeightmap(BRIDGE_URL, 8)
@@ -952,7 +967,7 @@ $<HTMLButtonElement>('loadTerrain').addEventListener('click', async () => {
     logEl.textContent = t('err.terrain', { msg: (e as Error).message })
   }
   draw()
-})
+})()))
 $<HTMLButtonElement>('generate').addEventListener('click', generate)
 $<HTMLButtonElement>('clearZone').addEventListener('click', () => {
   setZone([])
@@ -1597,18 +1612,21 @@ for (const id of ['rRain', 'rWind', 'rThreshold', 'rDepth'])
   $<HTMLInputElement>(id).addEventListener('input', () => recompose(true))
 const txt = (id: string) => $<HTMLInputElement>(id).value.trim()
 
-async function run(label: string, f: () => Promise<string>, onOk?: () => void) {
+function run(label: string, f: () => Promise<string>, onOk?: () => void) { return track(runJob(label, f, onOk)) }
+async function runJob(label: string, f: () => Promise<string>, onOk?: () => void) {
   logEl.textContent = t('run.progress', { label })
+  if (busyDepth) busyStage(label)
   try {
     logEl.textContent = external(await f())
     onOk?.()
   } catch (e) {
     const msg = (e as Error).message
     if (/Failed to fetch|NetworkError|Load failed|Workbench unreachable/.test(msg)) {
+      busyFailed = true
       logEl.textContent = t('err.notConnected')
       $('wbGuide').hidden = false
       void refreshStatus()
-    } else logEl.textContent = t('run.error', { label, msg })
+    } else { busyFailed = true; logEl.textContent = t('run.error', { label, msg }) }
   }
 }
 
@@ -1633,6 +1651,7 @@ $<HTMLButtonElement>('tGen').addEventListener('click', () => {
   view.mpp = size / map.width
   logEl.textContent = t('log.island', { cols: island.grid.cols, rows: island.grid.rows, step: island.grid.step })
   recompose(true)
+  coachAfter('new')
 })
 // load the world open in the Workbench (relief + ground materials) to carry on a map in progress
 /** world imported from the Workbench (null = generated island); kept so the project survives a reload */
@@ -1713,7 +1732,7 @@ async function refreshStatus() {
   return s.workbench
 }
 
-sendEl.addEventListener('click', async () => {
+sendEl.addEventListener('click', () => void track((async () => {
   sendEl.disabled = true
   try {
     logEl.textContent = external(await toWb(JSON.parse(projectEl.value) as Project))
@@ -1723,7 +1742,7 @@ sendEl.addEventListener('click', async () => {
     sendEl.disabled = false
     refreshStatus()
   }
-})
+})()))
 
 // no polling: a NET API call landing while a Workbench modal dialog is open crashes the Workbench
 const chipClick = async () => { if (!(await refreshStatus())) openHelp('helpConnect') }
@@ -1823,6 +1842,7 @@ $('stepRegen').addEventListener('click', () => {
   if (REGEN[tab]) $<HTMLButtonElement>(REGEN[tab]).click()
 })
 // help bubble + guided tour (5 stops, shown once on the first visit)
+let runTour: (stops: [string, Key][]) => void = () => {}
 {
   const panel = $<HTMLDivElement>('helpPanel')
   const show = (on: boolean) => { panel.hidden = !on; $('helpFab').classList.toggle('active', on); if (on) $<HTMLButtonElement>('helpClose').focus() }
@@ -1834,10 +1854,10 @@ $('stepRegen').addEventListener('click', () => {
     document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${b.dataset.helpGo}"]`)?.click(); show(false)
   }))
   const TOUR_KEY = 'reforger-mapper.tour'
-  const stops: [string, Key][] = [['.app > .top', 'tour.1'], ['#tabs', 'tour.2'], ['.stage', 'tour.3'], ['.app > .side', 'tour.4'], ['#tabs [data-tab="wb"]', 'tour.5']]
+  let stops: [string, Key][] = [['.app > .top', 'tour.1'], ['#tabs', 'tour.2'], ['.stage', 'tour.3'], ['.app > .side', 'tour.4'], ['#tabs [data-tab="wb"]', 'tour.5']]
   const tour = $<HTMLDivElement>('tour'), ring = tour.querySelector<HTMLDivElement>('.tourring')!, box = tour.querySelector<HTMLDivElement>('.tourbox')!
   let at = 0
-  const end = () => { tour.hidden = true; try { localStorage.setItem(TOUR_KEY, '1') } catch { /* private window */ } }
+  const end = () => { tour.hidden = true; if (stops !== main) return; try { localStorage.setItem(TOUR_KEY, '1') } catch { /* private window */ } }
   const place = () => {
     const el = document.querySelector<HTMLElement>(stops[at][0]); if (!el) return end()
     const r = el.getBoundingClientRect()
@@ -1856,13 +1876,138 @@ $('stepRegen').addEventListener('click', () => {
   $<HTMLButtonElement>('tourSkip').addEventListener('click', end)
   tour.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); end() } })
   addEventListener('resize', () => { if (!tour.hidden) place() })
-  $<HTMLButtonElement>('helpTour').addEventListener('click', start)
+  const main = stops
+  $<HTMLButtonElement>('helpTour').addEventListener('click', () => { stops = main; start() })
+  runTour = (s) => { stops = s; start() }
   let seen = '1'
   try { seen = localStorage.getItem(TOUR_KEY) ?? '' } catch { /* private window: never auto-start */ }
   if (!seen) setTimeout(start, 600)
 }
-$<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
-document.querySelectorAll<HTMLButtonElement>('#welcome [data-go]').forEach((b) => b.addEventListener('click', () => $<HTMLButtonElement>(b.dataset.go!).click()))
+
+// --- busy panel: every long action shows its name, a bar, the time spent; buttons are greyed meanwhile ---
+let busyDepth = 0, busyFailed = false, busyStop = false
+const busyEl = $('busy')
+document.body.append(busyEl, $('coach'), $('toast')) // above the map and side panels (own stacking context)
+let busyT0 = 0, busyTick = 0, busyName = ''
+const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)))
+function toast(msg: string, kind: 'ok' | 'err' = 'ok') {
+  const el = $('toast')
+  el.textContent = msg; el.dataset.kind = kind; el.hidden = false
+  clearTimeout(Number(el.dataset.timer))
+  el.dataset.timer = String(setTimeout(() => (el.hidden = true), 4000))
+}
+/** stage of the current busy job: i/n gives a real bar, nothing gives an indeterminate one */
+function busyStage(name: string, i?: number, n?: number) {
+  $('busyStage').textContent = i !== undefined && n ? t('busy.stage', { i: i + 1, n, s: name }) : name
+  const bar = $<HTMLProgressElement>('busyBar')
+  if (i !== undefined && n) { bar.max = n; bar.value = i } else bar.removeAttribute('value')
+}
+async function busy<T>(label: string, f: () => Promise<T> | T, cancel?: () => void): Promise<T | undefined> {
+  if (busyDepth++ > 0) { try { return await f() } finally { busyDepth-- } } // nested: the outer panel shows
+  busyFailed = false; busyStop = false; busyName = label; busyT0 = performance.now()
+  $('busyLabel').textContent = label
+  busyStage(t('busy.wait'))
+  const cb = $<HTMLButtonElement>('busyCancel')
+  cb.hidden = !cancel; cb.onclick = () => { busyStop = true; cancel?.() }
+  const showTime = () => { $('busyTime').textContent = t('busy.elapsed', { s: Math.round((performance.now() - busyT0) / 1000) }) }
+  showTime(); busyTick = window.setInterval(showTime, 500)
+  busyEl.hidden = false
+  document.body.classList.add('is-busy')
+  const off = [...document.querySelectorAll<HTMLButtonElement>('.app button:not(:disabled), #welcome button:not(:disabled)')].filter((b) => !busyEl.contains(b))
+  off.forEach((b) => (b.disabled = true))
+  await nextFrame() // let the panel paint before the heavy work starts
+  try {
+    const r = await f()
+    const s = Math.round((performance.now() - busyT0) / 100) / 10
+    if (busyStop) toast(t('busy.cancelled', { label }), 'err')
+    else if (busyFailed) toast(t('busy.fail', { label }), 'err')
+    else toast(t('busy.done', { label, s }))
+    return r
+  } catch (e) {
+    toast(t('busy.fail', { label }), 'err')
+    logEl.textContent = t('run.error', { label, msg: (e as Error).message })
+    return undefined
+  } finally {
+    busyDepth = 0
+    clearInterval(busyTick)
+    busyEl.hidden = true
+    document.body.classList.remove('is-busy')
+    off.forEach((b) => (b.disabled = false))
+    refreshSteps()
+  }
+}
+void busyName
+// heavy buttons: their click is held back one frame so the busy panel paints, then replayed inside busy()
+const HEAVY = ['tGen', 'tReroll', 'rRun', 'wGen', 'netGen', 'sitesPlace', 'setGen', 'powerGen', 'forestGen', 'indSuggest', 'milSuggest', 'satAnalyse',
+  'tSurf', 'tHeight', 'tMasks', 'tImport', 'loadTerrain', 'roadSend', 'setSend', 'forestSend', 'sendAll', 'wSend', 'zoneSend', 'satSend', 'send', 'checkRun']
+let replaying = false, forceBusy = false // forceBusy: a scripted click (welcome card) that still gets the panel
+let pendingJobs: Promise<unknown>[] = []
+/** async handlers of heavy buttons hand their promise here so the panel stays up until they end */
+function track<T>(p: Promise<T>): Promise<T> { if (busyDepth) pendingJobs.push(p); return p }
+document.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest?.('button')
+  if (!b || replaying || !HEAVY.includes(b.id) || b.disabled || !(e.isTrusted || forceBusy)) return
+  forceBusy = false
+  e.stopImmediatePropagation(); e.preventDefault()
+  const label = (b.textContent || b.title || b.id).trim().replace(/\s+/g, ' ').slice(0, 60)
+  void busy(label, async () => {
+    pendingJobs = []
+    replaying = true
+    b.disabled = false // busy() greyed it; the replayed click must reach its handler
+    try { b.click() } finally { replaying = false }
+    b.disabled = true
+    while (pendingJobs.length) { const p = pendingJobs; pendingJobs = []; await Promise.allSettled(p) }
+  })
+}, true)
+
+// --- entry paths: after each way of starting, a short "next step" card + a mini tour for that path ---
+type Entry = 'new' | 'real' | 'random' | 'open' | 'join'
+let entry: Entry | null = null
+const MINI: Record<Entry, [string, Key][]> = {
+  new: [['.stage', 'mt.relief'], ['#tabs', 'mt.steps'], ['#tabs [data-tab="water"]', 'mt.water'], ['#layers', 'mt.layers'], ['#tabs [data-tab="wb"]', 'mt.send']],
+  real: [['.stage', 'mt.relief'], ['#tabs', 'mt.steps'], ['#layers', 'mt.layers'], ['#tabs [data-tab="wb"]', 'mt.send']],
+  random: [['.stage', 'mt.relief'], ['#tabs', 'mt.steps'], ['#layers', 'mt.layers'], ['#tabs [data-tab="wb"]', 'mt.send']],
+  open: [['#tabs', 'mt.steps'], ['#tabs [data-tab="wb"]', 'mt.send']],
+  join: [['#collabBox', 'mt.collab'], ['#tabs', 'mt.steps']],
+}
+function coachAfter(kind: Entry) {
+  if (entry !== kind) return
+  entry = null
+  const render = () => {
+    if (busyDepth) return void setTimeout(render, 150)
+    // a fresh world built in one go (random / real place): every step that has content counts as done
+    if (kind === 'random' || kind === 'real') { doneSnap.fill(null); ownSnap.fill(''); refreshSteps() }
+    const el = $('coach')
+    const btns = [...document.querySelectorAll<HTMLButtonElement>('#tabs [data-tab]')]
+    $('coachKicker').textContent = t('coach.kicker')
+    $('coachTitle').textContent = t(('coach.' + kind + '.t') as K)
+    $('coachText').textContent = t(('coach.' + kind + '.p') as K)
+    const done = STEPS.filter((_, i) => btns[i]?.dataset.state === 'done').map((x) => t(x.label))
+    const todo = STEPS.filter((_, i) => btns[i]?.dataset.state !== 'done').map((x) => t(x.label))
+    $('coachSteps').innerHTML = kind === 'join' ? '' : (done.length ? `<li class="ok">${t('coach.done')} : ${done.join(', ')}</li>` : '') + (todo.length ? `<li>${t('coach.todo')} : ${todo.join(', ')}</li>` : '')
+    // random world / real place: everything is there, review it then send; otherwise the first step still empty
+    let at = btns.findIndex((b, i) => i > 0 && b.dataset.state !== 'done')
+    if (kind === 'random' || kind === 'real' || at < 0) at = 6
+    const next = $<HTMLButtonElement>('coachNext')
+    next.hidden = kind === 'join'
+    next.textContent = t('coach.next', { s: t(STEPS[at].label) })
+    next.onclick = () => { el.hidden = true; btns[at]?.click() }
+    $<HTMLButtonElement>('coachTour').onclick = () => { el.hidden = true; runTour(MINI[kind]) }
+    el.hidden = false
+    if (kind !== 'join') next.focus()
+  }
+  setTimeout(render, 0)
+}
+$<HTMLButtonElement>('coachClose').addEventListener('click', () => { $('coach').hidden = true })
+$('coach').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('coach').hidden = true })
+$<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { entry = 'join'; coachAfter('join'); if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
+const ENTRY: Record<string, Entry> = { tGen: 'new', tRandom: 'random', tReal: 'real', pOpen: 'open' }
+document.querySelectorAll<HTMLButtonElement>('#welcome [data-go]').forEach((b) => b.addEventListener('click', () => {
+  entry = ENTRY[b.dataset.go!] ?? null
+  forceBusy = true
+  $<HTMLButtonElement>(b.dataset.go!).click()
+  forceBusy = false
+}))
 $('stepPrev').addEventListener('click', () => goStep(-1))
 $('stepNext').addEventListener('click', () => goStep(1))
 {
@@ -1993,12 +2138,16 @@ $<HTMLButtonElement>('pOpen').addEventListener('click', () => $<HTMLInputElement
 $<HTMLInputElement>('pFile').addEventListener('change', async (e) => {
   const f = (e.target as HTMLInputElement).files?.[0]
   if (!f) return
-  try {
-    loadProject(JSON.parse(await f.text()))
-    logEl.textContent = t('log.opened', { name: f.name })
-  } catch (err) {
-    logEl.textContent = t('err.open', { msg: (err as Error).message })
-  }
+  await busy(t('busy.open'), async () => {
+    try {
+      loadProject(JSON.parse(await f.text()))
+      logEl.textContent = t('log.opened', { name: f.name })
+      coachAfter('open')
+    } catch (err) {
+      busyFailed = true
+      logEl.textContent = t('err.open', { msg: (err as Error).message })
+    }
+  })
   ;(e.target as HTMLInputElement).value = ''
 })
 
@@ -2513,6 +2662,7 @@ function drawSites() {
     ctx.lineWidth = 2
     ctx.stroke()
     const lx = sx + R * 0.7 + 4, ly = sy - R * 0.7
+    if (!layer('names') || !placeLabel(nice(s.id), lx, ly)) continue
     ctx.lineWidth = 3
     ctx.strokeStyle = '#000b'
     ctx.strokeText(nice(s.id), lx, ly)
@@ -2606,7 +2756,7 @@ const groundAt = (x: number, z: number) => {
   const c = Math.min(cols - 1, Math.max(0, Math.round((x - minX) / step))), r = Math.min(rows - 1, Math.max(0, Math.round((z - minZ) / step)))
   return island.heights[r * cols + c]
 }
-$<HTMLButtonElement>('setGen').addEventListener('click', async () => {
+$<HTMLButtonElement>('setGen').addEventListener('click', () => void track((async () => {
   if (!island) return void (logEl.textContent = t('err.setNoIsland'))
   if (!sites.length) return void (logEl.textContent = t('err.setNoSites'))
   const chk = (id: string) => $<HTMLInputElement>(id).checked
@@ -2631,7 +2781,7 @@ $<HTMLButtonElement>('setGen').addEventListener('click', async () => {
   setInfo()
   logEl.textContent = $<HTMLSpanElement>('setInfo').textContent
   draw()
-})
+})()))
 $<HTMLButtonElement>('setClear').addEventListener('click', () => { settled = []; setLanes = []; setPaths = []; setSquares = []; setGardens = []; setInfo(); draw(); refreshSteps() })
 // buildings plus their lanes and footpaths (SET_* family, replaced on resend); roads and water stay
 $<HTMLButtonElement>('setSend').addEventListener('click', () =>
@@ -2683,6 +2833,8 @@ function applyRealPlace(r: RealPlace) {
     roads: o?.roads.length ?? 0, waters: (o?.rivers.length ?? 0) + (o?.lakes.length ?? 0), forests: o?.forests.length ?? 0,
     fields: o?.fields.length ?? 0, sites: o?.sites.length ?? 0,
   }) + (r.adapted ? '\n' + t('log.adapted', { f0: r.adapted.before.forests, f1: r.adapted.after.forests, r0: r.adapted.before.roads, r1: r.adapted.after.roads, b0: r.adapted.before.buildings, b1: r.adapted.after.buildings }) : '') + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (r.warn ? '\n' + r.warn : '') + String.fromCharCode(10) + t('log.realNext') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
+  toast(t('busy.done', { label: t('welcome.real'), s: '' }).replace(/ \(\s*s\)/, ''))
+  coachAfter('real')
 }
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
 // tracing image (satellite / ortho photo / scanned map) stretched over the whole terrain, north up;
@@ -2968,12 +3120,14 @@ function drawWater() {
       ctx.fillRect(px - 2, py - 2, 4, 4)
     })
     // debug label: same id as the Workbench label over the object
-    if (w !== waterDraft) {
+    // river / lake names only at close zoom (like road names), never on top of another label
+    if (w !== waterDraft && layer('names') && view.mpp < 2.5) {
       let lx = 0, lz = 0
       if (wt.closed) { for (const [x, zz] of ring) { lx += x / ring.length; lz += zz / ring.length } }
       else [lx, lz] = ring[Math.floor(ring.length / 2)]
       const [px, py] = toScreen(lx, lz)
       ctx.font = 'bold 11px sans-serif'
+      if (!placeLabel(nice(w.id), px, py - 6, true)) continue
       ctx.textAlign = 'center'
       ctx.lineWidth = 3
       ctx.strokeStyle = '#000'
@@ -3578,12 +3732,14 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
       towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
       airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked,
     }, {
-      progress: (s, i, n) => { prog.value = i; stage.textContent = t('wg.stage', { i: i + 1, n, s: t(('wg.st.' + s) as K) }) },
+      progress: (s, i, n) => { prog.value = i; stage.textContent = t('wg.stage', { i: i + 1, n, s: t(('wg.st.' + s) as K) }) + ' · ' + t('busy.elapsed', { s: Math.round((performance.now() - t0) / 1000) }) },
       cancelled: () => rwStop,
     })
     prog.value = WORLD_STAGES.length
     applyWorld(w)
     rwDlg.hidden = true
+    toast(t('busy.done', { label: t('welcome.random'), s: Math.round((performance.now() - t0) / 100) / 10 }))
+    coachAfter('random')
     const c = (k: string) => w.sites.filter((q) => q.kind === k).length
     logEl.textContent = t('log.world', {
       seed: w.params.seed, town: c('town'), village: c('village'), hamlet: c('hamlet'), roads: w.roads.length, zones: w.zones.length,
