@@ -199,7 +199,7 @@ export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colo
   });
   const names = surfaces.map((s) => s.name);
   stampRoads(bytes, names, side, mPerPx, roads);
-  limitPixelBlocks(bytes, side, 63, 5, 3, colours ? names.map((n) => colours[n] ?? null) : null);
+  limitPixelBlocks(bytes, side, 63, 4, 3, colours ? names.map((n) => colours[n] ?? null) : null);
   const written = [];
   names.forEach((name, k) => {
     const s = { name };
@@ -209,7 +209,8 @@ export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colo
   return { dir: outDir, side, written };
 }
 
-//! The engine allows `max` surfaces per block (tile 252 px / 4 = 63 px) and reads a few pixels past
+//! The engine allows 5 surfaces per block INCLUDING the default one (docs/ARCHITECTURE.md), so 4 painted
+//! surfaces (`max`) per block (tile 252 px / 4 = 63 px) and reads a few pixels past
 //! the block edge. Enforced on the final pixels: for each block region (+ margin) with too many
 //! surfaces, one is removed and its weight goes to a surface left on that pixel (or nearby).
 //! With `cols` (rgb per surface) the removed surface is the one that changes the look least
@@ -219,7 +220,7 @@ export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colo
 export function limitPixelBlocks(bytes, side, blockPx = 63, max = 5, margin = 3, cols = null) {
   const gap = (a, b) => (cols && cols[a] && cols[b] ? Math.hypot(cols[a][0] - cols[b][0], cols[a][1] - cols[b][1], cols[a][2] - cols[b][2]) : null);
   const nb = Math.ceil((side - 1) / blockPx);
-  for (let pass = 0; pass < 8; pass++) {
+  for (let pass = 0; pass < 32; pass++) {
     let changed = false;
     for (let by = 0; by < nb; by++) {
       for (let bx = 0; bx < nb; bx++) {

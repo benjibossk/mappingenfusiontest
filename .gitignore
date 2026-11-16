@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 scratch/
+
+# collab rooms (history, comments, last map)
+collab/data/

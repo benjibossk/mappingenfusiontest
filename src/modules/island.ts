@@ -196,19 +196,24 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   return out
 }
 
-//! Blocks (blockSize metres) using more than `max` surfaces (weight > 5 %): the terrain refuses them.
+//! Blocks (blockSize metres) using more than `max` surfaces: the terrain refuses them. The mask is
+//! upscaled bilinearly, so a vertex also paints the blocks it touches: a block counts the surfaces of
+//! its own cells and of the vertex ring just outside it (same footprint as limitPerBlock).
 export function overfullBlocks(surfaces: SurfaceGrid[], blockSize = 64, max = 5): number {
   if (!surfaces.length) return 0
   const { cols, rows, step } = surfaces[0]
   const per = Math.max(1, Math.round(blockSize / step))
+  const nb = Math.ceil((cols - 1) / per), nbr = Math.ceil((rows - 1) / per)
   let bad = 0
-  for (let br = 0; br < rows; br += per) {
-    for (let bc = 0; bc < cols; bc += per) {
+  for (let by = 0; by < nbr; by++) {
+    for (let bx = 0; bx < nb; bx++) {
+      const r0 = Math.max(0, by * per - 1), r1 = Math.min(rows - 1, (by + 1) * per)
+      const c0 = Math.max(0, bx * per - 1), c1 = Math.min(cols - 1, (bx + 1) * per)
       let used = 0
       for (const s of surfaces) {
         let hit = false
-        for (let r = br; r < Math.min(rows, br + per) && !hit; r++)
-          for (let c = bc; c < Math.min(cols, bc + per); c++)
+        for (let r = r0; r <= r1 && !hit; r++)
+          for (let c = c0; c <= c1; c++)
             if (s.weights[r * cols + c] > 0) { hit = true; break }
         if (hit) used++
       }
@@ -218,16 +223,24 @@ export function overfullBlocks(surfaces: SurfaceGrid[], blockSize = 64, max = 5)
   return bad
 }
 
-//! Keeps at most `max` surfaces per block (the strongest by total weight); the weight of the others
-//! goes to the strongest kept surface of each cell. Note: the mask PNG is sampled bilinearly, so a
-//! surface may still bleed a few metres into the next block.
+//! Keeps at most `max` surfaces per block (blockSize metres). Each block keeps its strongest surfaces
+//! (by total weight); a cell only keeps the surfaces allowed by every block its vertex paints (its own
+//! and, at the borders, the neighbours: the mask PNG is upscaled bilinearly), and the weight removed
+//! goes to the strongest allowed surface of that cell, so the blend stays per cell (no hard seam).
+//! Where neighbouring blocks share no surface at all, a common "glue" surface (the one that weighs
+//! the most in those cells) takes one of the slots of every block involved, grown until no such
+//! cell is left: the result is guaranteed, deterministic and needs no retry pass.
 export function limitPerBlock(surfaces: SurfaceGrid[], blockSize = 64, max = 4) {
-  if (!surfaces.length) return
+  const n = surfaces.length
+  if (!n || max < 1) return
   const { cols, rows, step } = surfaces[0]
   const per = Math.max(1, Math.round(blockSize / step))
   const nb = Math.ceil((cols - 1) / per)
   const nbr = Math.ceil((rows - 1) / per)
-  const keep: Set<number>[] = []
+  const blockOf = (i: number, nBlocks: number) => Math.max(0, Math.min(Math.floor(i / per), nBlocks - 1))
+  // blocks painted by vertex i along one axis: its own and the neighbours of i - 1 / i + 1
+  const span = (i: number, nBlocks: number): [number, number] => [blockOf(i - 1, nBlocks), blockOf(i + 1, nBlocks)]
+  const ranked: number[][] = []
   for (let by = 0; by < nbr; by++) {
     for (let bx = 0; bx < nb; bx++) {
       const r0 = by * per, c0 = bx * per
@@ -237,31 +250,63 @@ export function limitPerBlock(surfaces: SurfaceGrid[], blockSize = 64, max = 4) 
         for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) t += s.weights[r * cols + c]
         return t
       })
-      keep.push(new Set(totals.map((t, k) => [t, k]).filter(([t]) => t > 0).sort((a, b) => b[0] - a[0]).slice(0, max).map(([, k]) => k)))
+      ranked.push(totals.map((t, k) => [t, k]).filter(([t]) => t > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, k]) => k))
     }
   }
-  // the mask PNG is upscaled bilinearly onto the terrain texels, so a vertex also paints the blocks of its
-  // neighbours: on coarse grids (64 m cells on a 32 km map) it must obey them too, or a block ends up
-  // with 6+ surfaces ("Surface import: Too many layers")
-  const blocksOf = (i: number, n: number) => [...new Set([i - 1, i, i + 1].map((j) => Math.max(0, Math.min(Math.floor(j / per), n - 1))))]
-  for (let r = 0; r < rows; r++) {
-    const brs = blocksOf(r, nbr)
-    for (let c = 0; c < cols; c++) {
-      const bcs = blocksOf(c, nb)
-      const i = r * cols + c
-      const allowed = (k: number) => brs.every((by) => bcs.every((bx) => keep[by * nb + bx].has(k)))
-      let freed = 0, best = -1
-      surfaces.forEach((s, k) => {
-        if (!s.weights[i]) return
-        if (allowed(k)) { if (best < 0 || s.weights[i] > surfaces[best].weights[i]) best = k }
-        else { freed += s.weights[i]; s.weights[i] = 0 }
-      })
-      if (!freed) continue
-      if (best < 0) {
-        // nothing allowed everywhere here: take the strongest surface kept by all the blocks, else the first block's top
-        const common = [...keep[brs[0] * nb + bcs[0]]].filter(allowed)
-        best = common[0] ?? [...keep[brs[0] * nb + bcs[0]]][0]
+  const keep = ranked.map((list) => new Set(list.slice(0, max)))
+  const glued = new Uint8Array(nb * nbr)
+  let glue = -1
+  const allowedAt = (r: number, c: number) => {
+    const [ra, rb] = span(r, nbr), [ca, cb] = span(c, nb)
+    const ok: number[] = []
+    for (let k = 0; k < n; k++) {
+      let all = true
+      for (let by = ra; by <= rb && all; by++) for (let bx = ca; bx <= cb; bx++) if (!keep[by * nb + bx].has(k)) { all = false; break }
+      if (all) ok.push(k)
+    }
+    return ok
+  }
+  for (let round = 0; round <= nb * nbr; round++) {
+    // cells with weight whose blocks share no kept surface
+    const conflicts: number[] = []
+    for (let r = 0; r < rows; r++) {
+      const [ra, rb] = span(r, nbr)
+      for (let c = 0; c < cols; c++) {
+        const [ca, cb] = span(c, nb)
+        if (ra === rb && ca === cb) continue
+        if (!allowedAt(r, c).length) conflicts.push(r * cols + c)
       }
+    }
+    if (!conflicts.length) break
+    if (glue < 0) {
+      const w = new Array(n).fill(0)
+      for (const i of conflicts) for (let k = 0; k < n; k++) w[k] += surfaces[k].weights[i]
+      glue = w.indexOf(Math.max(...w))
+    }
+    for (const i of conflicts) {
+      const c = i % cols, r = (i - c) / cols
+      const [ra, rb] = span(r, nbr), [ca, cb] = span(c, nb)
+      for (let by = ra; by <= rb; by++) for (let bx = ca; bx <= cb; bx++) {
+        const b = by * nb + bx
+        if (glued[b]) continue
+        glued[b] = 1
+        keep[b] = new Set([glue, ...ranked[b].filter((k) => k !== glue).slice(0, max - 1)])
+      }
+    }
+  }
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c
+      const ok = allowedAt(r, c)
+      let freed = 0, best = -1
+      for (let k = 0; k < n; k++) {
+        const v = surfaces[k].weights[i]
+        if (!v) continue
+        if (ok.includes(k)) { if (best < 0 || v > surfaces[best].weights[i]) best = k }
+        else { freed += v; surfaces[k].weights[i] = 0 }
+      }
+      if (!freed) continue
+      if (best < 0) best = ok.length ? ok[0] : (glue >= 0 ? glue : 0)
       surfaces[best].weights[i] += freed
     }
   }

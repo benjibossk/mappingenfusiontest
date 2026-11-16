@@ -34,7 +34,7 @@ export function heightAt(h: Heightmap, x: number, z: number): number {
 export const isLand = (h: Heightmap, x: number, z: number, margin = 0.5) => heightAt(h, x, z) > h.ocean + margin
 
 /** hillshade + sea tint, one pixel per grid cell, north (max Z) at the top */
-export function renderTerrain(h: Heightmap): HTMLCanvasElement {
+export function renderTerrain(h: Heightmap, strength = 0.6, exaggeration = 2): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = h.cols
   canvas.height = h.rows
@@ -45,21 +45,24 @@ export function renderTerrain(h: Heightmap): HTMLCanvasElement {
   for (let r = 0; r < h.rows; r++) {
     for (let c = 0; c < h.cols; c++) {
       const y = at(c, r)
-      // light from the north-west
-      const dx = (at(c + 1, r) - at(c - 1, r)) / (2 * h.step)
-      const dz = (at(c, r + 1) - at(c, r - 1)) / (2 * h.step)
-      const shade = Math.max(0, Math.min(1, 0.6 - 1.2 * dx + 1.2 * dz))
+      // Lambert hillshade: normal from central differences, sun from the NW at 45 deg (L = (-0.5, +0.5, 0.707) in x/z/up)
+      const dx = exaggeration * (at(c + 1, r) - at(c - 1, r)) / (2 * h.step)
+      const dz = exaggeration * (at(c, r + 1) - at(c, r - 1)) / (2 * h.step)
+      const lambert = Math.max(0, (0.5 * dx - 0.5 * dz + 0.7071) / Math.sqrt(dx * dx + dz * dz + 1))
+      // normalised so flat ground = 1, then blended by strength (multiplicative on the colour)
+      const lit = 1 - strength + strength * Math.min(1.5, lambert / 0.7071)
       const i = ((h.rows - 1 - r) * h.cols + c) * 4
       if (y <= h.ocean) {
         const depth = Math.min(1, (h.ocean - y) / 60)
-        img.data[i] = 40 - 25 * depth
-        img.data[i + 1] = 90 - 45 * depth
-        img.data[i + 2] = 140 - 40 * depth
+        const sea = 1 + (lit - 1) * 0.25 // water barely shaded
+        img.data[i] = (40 - 25 * depth) * sea
+        img.data[i + 1] = (90 - 45 * depth) * sea
+        img.data[i + 2] = (140 - 40 * depth) * sea
       } else {
         const t = Math.min(1, (y - h.ocean) / 150)
-        img.data[i] = (95 + 90 * t) * (0.45 + shade * 0.75)
-        img.data[i + 1] = (120 + 50 * t) * (0.45 + shade * 0.75)
-        img.data[i + 2] = (70 + 60 * t) * (0.45 + shade * 0.75)
+        img.data[i] = (95 + 90 * t) * lit
+        img.data[i + 1] = (120 + 50 * t) * lit
+        img.data[i + 2] = (70 + 60 * t) * lit
       }
       img.data[i + 3] = 255
     }

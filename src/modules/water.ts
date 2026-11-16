@@ -163,13 +163,18 @@ export function waterMasks(waters: Water[]) {
     .map((w) => ({ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01', side: 'Dirt_01' }))
 }
 
-export function carveWater(heights: number[], grid: Grid, waters: Water[]) {
+//! per grid cell: water level of the nearest lake / river where known (NaN elsewhere), wet = under water
+export interface WaterLevels { level: Float32Array; wet: Uint8Array }
+
+//! returns the water levels it used (roads keep their beds above them, see carveRoads)
+export function carveWater(heights: number[], grid: Grid, waters: Water[]): WaterLevels {
   const { cols, rows, step } = grid
   const at = sampler(heights.slice(), grid)
   const target = new Float32Array(heights.length).fill(Infinity)
   const lower = (k: number, v: number) => { if (v < target[k]) target[k] = v }
   const shaped = new Float32Array(heights.length)
   const shapedScore = new Float32Array(heights.length).fill(Infinity)
+  const levels: WaterLevels = { level: new Float32Array(heights.length).fill(NaN), wet: new Uint8Array(heights.length) }
 
   for (const w of waters) {
     if (w.pts.length < 4) continue
@@ -208,6 +213,8 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]) {
             if (at(x, z) < 0) v = Math.min(v, at(x, z)) // never build banks up in the sea
             shapedScore[k] = score
             shaped[k] = v
+            levels.level[k] = wl
+            levels.wet[k] = d <= half ? 1 : 0
           }
         along += segLen
       }
@@ -221,8 +228,8 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]) {
         minX = Math.min(minX, ring[i]); maxX = Math.max(maxX, ring[i])
         minZ = Math.min(minZ, ring[i + 1]); maxZ = Math.max(maxZ, ring[i + 1])
       }
-      const c0 = Math.max(0, Math.floor((minX - bank) / step)), c1 = Math.min(cols - 1, Math.ceil((maxX + bank) / step))
-      const r0 = Math.max(0, Math.floor((minZ - bank) / step)), r1 = Math.min(rows - 1, Math.ceil((maxZ + bank) / step))
+      const c0 = Math.max(0, Math.floor((minX - 3 * bank) / step)), c1 = Math.min(cols - 1, Math.ceil((maxX + 3 * bank) / step))
+      const r0 = Math.max(0, Math.floor((minZ - 3 * bank) / step)), r1 = Math.min(rows - 1, Math.ceil((maxZ + 3 * bank) / step))
       for (let r = r0; r <= r1; r++)
         for (let c = c0; c <= c1; c++) {
           const x = c * step, z = r * step
@@ -231,7 +238,11 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]) {
           if (inside(w.pts, x, z)) {
             const u = Math.min(1, d / ramp)
             lower(r * cols + c, L - 0.2 - w.depth * u * u * (3 - 2 * u))
-          } else if (d < bank) lower(r * cols + c, L + 0.3 + 1.5 * (d / bank))
+            levels.level[r * cols + c] = L; levels.wet[r * cols + c] = 1
+          } else if (d < 3 * bank) {
+            if (d < bank) lower(r * cols + c, L + 0.3 + 1.5 * (d / bank))
+            if (Number.isNaN(levels.level[r * cols + c])) levels.level[r * cols + c] = L
+          }
         }
     }
   }
@@ -239,6 +250,7 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]) {
     if (shapedScore[k] < Infinity) heights[k] = shaped[k]
     if (target[k] < heights[k]) heights[k] = target[k]
   }
+  return levels
 }
 
 //! shapes for the Workbench; `before` = relief before carving (gives the water level)

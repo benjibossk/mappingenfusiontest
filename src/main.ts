@@ -1,6 +1,8 @@
 import './style.css'
-import { external, fr, getLang, t } from './i18n'
-import { Collab } from './collab'
+import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
+import { Collab, type Op } from './collab'
+import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
+import { POWER_DEFAULTS, powerLineShape, routePowerLine, type PowerKind, type PowerLine } from './modules/power'
 import { GENERATORS, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
@@ -14,11 +16,12 @@ import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
+const LAYERS = ['existing', 'areas', 'fields', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
 let collab: Collab | null = null // shared room, see src/collab.ts
 let quietUntil = 0 // a project just received from the room is not sent back
+let remoteApply = false // a room project being loaded: its checkpoints are not logged as our changes
 let saveTimer = 0 // declared early: handlers registered above autosave() may fire first
 let issues: Issue[] = [] // read by draw(), which runs during start-up
 /** what already stands in the imported world: shown locked, kept clear by the generators */
@@ -71,23 +74,83 @@ const toWb = async (p: Project) => {
 }
 import { SITE_RADIUS, buildNetwork, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
+import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 
+// the side panel is a guided path: one step per tab, in the order a map is built
+const STEPS = [
+  { tab: 'island', label: 'step.relief', lead: 'step.relief.lead' },
+  { tab: 'brush', label: 'step.sculpt', lead: 'step.sculpt.lead' },
+  { tab: 'water', label: 'step.water', lead: 'step.water.lead' },
+  { tab: 'roads', label: 'step.roads', lead: 'step.roads.lead' },
+  { tab: 'villages', label: 'step.villages', lead: 'step.villages.lead' },
+  { tab: 'camp', label: 'step.fields', lead: 'step.fields.lead' },
+  { tab: 'wb', label: 'step.send', lead: 'step.send.lead' },
+] as const
+
+// stroke icons for the UI chrome (MILSPEC style: 1.6px stroke, currentColor)
+const ICON: Record<string, string> = {
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  island: '<path d="M3 17c2-1 4-1 6 0s4 1 6 0 4-1 6 0"/><path d="M6 13c1-4 4-6 7-6s5 2 6 6"/><path d="M12 7V3"/>',
+  map: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14"/><path d="M15 6v14"/>',
+  folder: '<path d="M3 6h6l2 2h10v11H3z"/>',
+  pin: '<path d="M12 21s-6-6-6-11a6 6 0 0 1 12 0c0 5-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  caret: '<path d="m6 9 6 6 6-6"/>',
+  check: '<path d="m5 12 5 5 9-10"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7"/><path d="M12 17h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7h.01"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+}
+const ic = (n: string, size = 18) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICON[n]}</svg>`
+const info = (k: Key) => `<i class="info" title="${t(k)}" aria-label="${t(k)}" role="img">${ic('info', 13)}</i>`
+type K = Parameters<typeof t>[0]
+/** friendly, localised map label for a Workbench id (the id stays in the data and the tooltips) */
+function nice(id: string, roadType?: string): string {
+  const n = id.match(/(\d+)$/)?.[1] ?? ''
+  let m = id.match(/^WATER_(RIVER|LAKE)_\d+$/)
+  if (m) return t(m[1] === 'RIVER' ? 'name.river' : 'name.lake', { n })
+  m = id.match(/^(TOWN|VILLAGE|HAMLET)_\d+$/)
+  if (m) return t(('name.' + m[1].toLowerCase()) as K, { n })
+  if (roadType && /^ROAD_/.test(id) && n) return `${t(('road.type.' + roadType) as K)} ${n}`
+  return id
+}
+const connectSteps = () => `<ol class="wbsteps"><li>${t('wb.how.1')}</li><li>${t('wb.how.2')}</li><li>${t('wb.how.3')}</li></ol>`
+let openHelp: (section?: string) => void = () => {}
+const LANG_NAME = LANGS.find((l) => l.code === getLang())?.name ?? getLang()
+
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <div class="app">
   <header class="top">
-    <strong>reforger-mapper</strong>
-    <button id="undo" class="hist" title="${t('app.undo')}">↶</button>
-    <button id="redo" class="hist" title="${t('app.redo')}">↷</button>
-    <button id="lang" class="hist" title="${getLang() === 'fr' ? 'Interface en français — clic : passer en anglais' : 'Interface in English — click: switch to French'}">🌐 ${getLang() === 'fr' ? 'FR' : 'EN'}</button>
-    <button id="collab" class="hist" title="${t('collab.tip')}">👥</button>
+    <strong class="brand">reforger-mapper</strong>
+    <button id="undo" class="hist" title="${t('app.undo')}" aria-label="${t('app.undo')}">${ic('undo')}</button>
+    <button id="redo" class="hist" title="${t('app.redo')}" aria-label="${t('app.redo')}">${ic('redo')}</button>
+    <span id="status" class="status" role="button" tabindex="0" title="${t('wb.chip.tip')}">${t('wb.chip.off')}</span>
     <span id="collabInfo" class="hint"></span>
-    <span id="status" class="status" title="${t('app.refresh')}">…</span>
-    <span id="cursor" class="hint"></span>
+    <span class="grow"></span>
+    <button id="collab" class="hist withlbl" title="${t('collab.tip')}" aria-label="${t('collab.tip')}">${ic('users')}<span>${t('collab.short')}</span></button>
+    <div class="langsel">
+      <button id="lang" class="langbtn" type="button" title="${t('lang.title')}" aria-haspopup="listbox" aria-expanded="false">${ic('globe', 16)}<span class="lcode">${getLang().toUpperCase()}</span><span class="lname"> · ${LANG_NAME}</span>${completion(getLang()) < 100 ? `<span class="lpct">${completion(getLang())}%</span>` : ''}${ic('caret', 14)}</button>
+      <div id="langMenu" class="langmenu" hidden>
+        <div class="lmhead">${t('lang.title')}</div>
+        <div id="langList" role="listbox" tabindex="-1" aria-label="${t('lang.title')}">
+          ${LANGS.map((l) => { const c = completion(l.code); return `<div role="option" id="lang-${l.code}" data-lang="${l.code}" aria-selected="${l.code === getLang()}"><span class="lcode">${l.code.toUpperCase()}</span><span class="lname">${l.name}${l.code === 'en' ? ` <small>· ${t('lang.base')}</small>` : ''}</span><span class="lbar"><i style="width:${c}%"></i></span><span class="lpct${c < 100 ? ' part' : ''}">${c}%</span><span class="lok">${l.code === getLang() ? ic('check', 14) : ''}</span></div>` }).join('')}
+        </div>
+        <div class="lmfoot">
+          <label class="check"><input id="langFollow" type="checkbox"${followsBrowser() ? ' checked' : ''}> ${t('lang.follow')}</label>
+          <div class="row"><button id="langExport" type="button" class="secondary">${t('lang.export')}</button><button id="langImport" type="button" class="secondary">${t('lang.import')}</button></div>
+          <input id="langFile" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+    </div>
   </header>
   <div id="collabBox" class="ctxmenu collabbox" hidden>
     <div class="title">${t('collab.title')}</div>
@@ -117,9 +180,22 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
   <section class="stage">
     <canvas id="map" class="map" width="800" height="800"></canvas>
+    <div id="welcome" class="welcome" hidden>
+      <span class="kicker">${t('welcome.kicker')}</span>
+      <h2>reforger-mapper</h2>
+      <p>${t('welcome.lead')}</p>
+      <div class="choices">
+        <button type="button" data-go="tGen" class="rec">${ic('island', 32)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
+        <button type="button" data-go="tReal">${ic('map', 32)}<strong>${t('welcome.real')}</strong><span>${t('welcome.real.tip')}</span><em>${t('welcome.real.foot')}</em></button>
+        <button type="button" id="welcomeJoin">${ic('users', 32)}<strong>${t('welcome.join')}</strong><span>${t('welcome.join.tip')}</span><em>${t('welcome.join.foot')}</em></button>
+      </div>
+      <div class="wfoot"><button type="button" data-go="pOpen" class="wfile" title="${t('welcome.open.tip')}">${ic('folder', 16)} ${t('welcome.file')}</button></div>
+    </div>
     <div id="ctxMenu" class="ctxmenu" hidden></div>
+    <div class="mapdock">
+    <button id="helpFab" type="button" class="helpfab" title="${t('help.tip')}" aria-label="${t('help.tip')}" aria-haspopup="dialog">${ic('help', 22)}</button>
     <details id="layers" class="layers">
-      <summary>${t('layers.title')}</summary>
+      <summary>${t('layers.title')} ${info('info.layers')}</summary>
       ${LAYERS.map((l) => `<label class="check"><input type="checkbox" data-layer="${l}" checked> ${t(('layers.' + l) as Parameters<typeof t>[0])}</label>`).join('')}
       <div class="trace" title="${t('hint.trace')}">
         <label class="check">${t('layers.trace')} <input id="traceFile" type="file" accept="image/*"></label>
@@ -127,6 +203,27 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="traceClear" type="button">${t('btn.traceClear')}</button>
       </div>
     </details>
+    </div>
+    <div id="helpPanel" class="helppanel" role="dialog" aria-modal="false" aria-labelledby="helpTitle" hidden>
+      <div class="hphead"><h2 id="helpTitle">${t('help.title')}</h2><button id="helpClose" type="button" class="secondary icon" title="${t('help.close')}" aria-label="${t('help.close')}">${ic('x', 16)}</button></div>
+      <div class="hpbody">
+        ${t('help.what').split('\n').map((l) => `<p>${l}</p>`).join('')}
+        <h3>${t('help.steps')}</h3>
+        <ol class="hpsteps">${STEPS.map((st, i) => `<li><b>${String(i + 1).padStart(2, '0')}</b><span><strong>${t(st.label)}</strong> — ${t(st.lead)}</span><button type="button" class="secondary" data-help-go="${st.tab}">${t('help.go')}</button></li>`).join('')}</ol>
+        <h3>${t('help.controls')}</h3>
+        <ul class="hpkeys">${(['help.c1', 'help.c2', 'help.c3', 'help.c4', 'help.c5'] as const).map((k) => `<li>${t(k)}</li>`).join('')}</ul>
+        <h3 id="helpConnect">${t('help.connect')}</h3>
+        <p>${t('wb.how.lead')}</p>
+        ${connectSteps()}
+        <div class="row"><button type="button" class="secondary wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button></div>
+        <h3>${t('help.faq')}</h3>
+        ${(['1', '2', '3', '4', '5'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
+        <h3>${t('help.glossary')}</h3>
+        <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
+        <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
+      </div>
+    </div>
+    <div id="tour" class="tour" hidden><div class="tourring"></div><div class="tourbox" role="dialog" aria-live="polite"><span id="tourN" class="kicker"></span><p id="tourText"></p><div class="row"><button id="tourSkip" type="button" class="secondary">${t('tour.skip')}</button><button id="tourNext" type="button">${t('tour.next')}</button></div></div></div>
     <div class="overlay">
       <span id="brushInfo"></span>
       <span class="hint">${t('hint.map')}</span>
@@ -134,17 +231,21 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   </section>
 
   <aside class="side">
-    <div class="tabs" id="tabs">
-      <button type="button" data-tab="island" class="active">${t('tab.island')}</button>
-      <button type="button" data-tab="brush">${t('tab.brush')}</button>
-      <button type="button" data-tab="water">${t('tab.water')}</button>
-      <button type="button" data-tab="roads">${t('tab.roads')}</button>
-      <button type="button" data-tab="villages">${t('tab.villages')}</button>
-      <button type="button" data-tab="wb">${t('tab.wb')}</button>
-      <button type="button" data-tab="camp">${t('tab.fields')}</button>
-    </div>
+    <ol class="tabs stepper" id="tabs">
+      ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.label)}</span><i class="badge"></i></button></li>`).join('')}
+    </ol>
+    <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p></div>
 
     <div class="tab" data-tab="island">
+      <div class="row">
+        <button id="tGen" type="button">${t('btn.tGen')}</button>
+        <button id="tReroll" type="button" class="secondary">${t('btn.tReroll')}</button>
+      </div>
+      <div class="row">
+        <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
+        <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
+      </div>
+      <details class="adv"><summary>${t('ui.advanced')} ${info('info.adv')}</summary>
       <div class="form">
         <label>${t('lbl.tSize')} <input id="tSize" type="number" value="4096"></label>
         <label>${t('lbl.tIslands')} <input id="tIslands" type="number" min="1" value="1"></label>
@@ -155,12 +256,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.tSeed')} <input id="tSeed" type="number" value="1"></label>
         <label>${t('lbl.tSeaLevel')} <input id="tSeaLevel" type="number" step="1" value="0"></label>
       </div>
-      <div class="row">
-        <button id="tGen" type="button">${t('btn.tGen')}</button>
-        <button id="tReroll" type="button" class="secondary">${t('btn.tReroll')}</button>
-        <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
-        <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
-      </div>
+      </details>
       <div class="row">
         <button id="pSave" type="button" class="secondary">${t('btn.pSave')}</button>
         <button id="pOpen" type="button" class="secondary">${t('btn.pOpen')}</button>
@@ -191,12 +287,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <button id="wSend" type="button">${t('btn.waterSend')}</button>
       <div class="row">
         <button id="wGen" type="button" class="secondary">${t('btn.waterGen')}</button>
-        <button id="wTest" type="button">${t('btn.waterTest')}</button>
       </div>
+      <details class="adv"><summary>${t('ui.tests')}</summary>
+        <button id="wTest" type="button" class="secondary">${t('btn.waterTest')}</button>
+      </details>
       <p class="hint">${t('hint.water')}</p>
       <ul id="wList" class="roadlist"></ul>
-      <fieldset>
-        <legend>${t('legend.waterSim')}</legend>
+      <details class="adv"><summary>${t('legend.waterSim')}</summary>
       <label class="check"><input id="rLive" type="checkbox" checked> ${t('lbl.rLive')}</label>
       <div class="form">
         <label>${t('lbl.rRain')} <input id="rRain" type="number" step="0.1" value="1"></label>
@@ -211,19 +308,20 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="rClear" type="button" class="secondary">${t('btn.rClear')}</button>
       </div>
       <p class="hint">${t('hint.rivers')}</p>
-      </fieldset>
+      </details>
     </div>
 
     <div class="tab" data-tab="roads" hidden>
       <div class="form">
         <label>${t('lbl.roadType')} <select id="roadType">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}">${rt.label}</option>`).join('')}</select></label>
-        <label>${t('lbl.roadSnap')} <input id="roadSnap" type="number" value="30"></label>
-        <label>${t('lbl.roadWidth')} <input id="roadWidth" type="number" step="0.5" min="0" placeholder="${t('ph.auto')}"></label>
       </div>
-      <label class="check"><input id="roadLeft" type="checkbox"> ${t('lbl.roadLeft')}</label>
-      <label class="check"><input id="roadFlatten" type="checkbox"> ${t('lbl.roadFlatten')}</label>
-      <fieldset class="test">
-        <legend>${t('legend.net')}</legend>
+      <div class="row">
+        <button id="roadNew" type="button">${t('btn.roadNew')}</button>
+        <button id="roadUndo" type="button" class="secondary">${t('btn.roadUndo')}</button>
+        <button id="roadClear" type="button" class="secondary">${t('btn.roadClear')}</button>
+      </div>
+      <p class="hint">${t('hint.roads')}</p>
+      <details class="adv"><summary>${t('legend.net')}</summary>
         <div class="form">
           <label>${t('lbl.netSites')} <input id="netSites" type="number" min="2" max="40" value="8"></label>
           <label>${t('lbl.netSpacing')} <input id="netSpacing" type="number" step="50" min="100" value="600"></label>
@@ -236,38 +334,54 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="row">
           <button id="sitesPlace" type="button">${t('btn.sitesPlace')}</button>
           <button id="netGen" type="button">${t('btn.netGen')}</button>
-          <button id="sitesClear" type="button">${t('btn.sitesClear')}</button>
+          <button id="sitesClear" type="button" class="secondary">${t('btn.sitesClear')}</button>
           <button id="netClear" type="button" class="secondary">${t('btn.netClear')}</button>
         </div>
-      </fieldset>
-      <p class="hint">${t('hint.roads')}</p>
-      <div class="row">
-      </div>
-      <fieldset class="test">
-        <legend>${t('legend.furn')}</legend>
-        <label class="check"><input id="furnShow" type="checkbox" checked> ${t('lbl.furnShow')}</label>
-        <div class="row">
-          <label>${t('lbl.furnDrop')} <input id="furnDrop" type="number" step="0.1" min="0.3" value="1.8"></label>
-          <label>${t('lbl.furnPost')} <input id="furnPost" type="number" step="0.1" min="0.1" value="0.9"></label>
+        <p class="hint">${t('hint.roadGen')}</p>
+      </details>
+      <details class="adv" id="powerBox"><summary>${t('legend.power')}</summary>
+        <label class="check"><input id="powHV" type="checkbox" checked> ${t('lbl.powHV')}</label>
+        <div class="form">
+          <label>${t('lbl.powHVFrom')} <select id="powHVFrom"><option value="town">${t('opt.powTowns')}</option><option value="village" selected>${t('opt.powVillages')}</option><option value="all">${t('opt.powAll')}</option></select></label>
+          <label>${t('lbl.powHVKind')} <select id="powHVKind"><option value="hv" title="HV_02">${t('opt.powHVMetal')}</option><option value="mv" title="HV_01">${t('opt.powHVConcrete')}</option></select></label>
         </div>
-        <span id="furnInfo" class="hint"></span>
-      </fieldset>
-      <div class="row">
-        <button id="roadNew" type="button">${t('btn.roadNew')}</button>
-        <button id="roadUndo" type="button" class="secondary">${t('btn.roadUndo')}</button>
-        <button id="roadClear" type="button" class="secondary">${t('btn.roadClear')}</button>
-      </div>
-      <label class="check"><input id="roadFurn" type="checkbox" checked> ${t('lbl.roadFurn')}</label>
-      <button id="roadSend" type="button">${t('btn.roadSend')}</button>
-      <fieldset class="test">
-        <legend>${t('legend.test')}</legend>
+        <label class="check"><input id="powLV" type="checkbox" checked> ${t('lbl.powLV')}</label>
+        <div class="form">
+          <label>${t('lbl.powLVMax')} <input id="powLVMax" type="number" step="100" min="200" value="2500"></label>
+        </div>
+        <p class="hint">${t('hint.power')}</p>
+        <div class="row">
+          <button id="powerGen" type="button">${t('btn.powerGen')}</button>
+          <button id="powerClear" type="button" class="secondary">${t('btn.powerClear')}</button>
+        </div>
+        <span id="powerInfo" class="hint"></span>
+      </details>
+      <details class="adv"><summary>${t('ui.advanced')} ${info('info.adv')}</summary>
+        <div class="form">
+          <label>${t('lbl.roadSnap')} <input id="roadSnap" type="number" value="30"></label>
+          <label>${t('lbl.roadWidth')} <input id="roadWidth" type="number" step="0.5" min="0" placeholder="${t('ph.auto')}"></label>
+        </div>
+        <label class="check"><input id="roadLeft" type="checkbox"> ${t('lbl.roadLeft')}</label>
+        <label class="check"><input id="roadFlatten" type="checkbox"> ${t('lbl.roadFlatten')}</label>
+        <label class="check"><input id="roadFurn" type="checkbox" checked> ${t('lbl.roadFurn')}</label>
+        <fieldset class="test">
+          <legend>${t('legend.furn')}</legend>
+          <label class="check"><input id="furnShow" type="checkbox" checked> ${t('lbl.furnShow')}</label>
+          <div class="row">
+            <label>${t('lbl.furnDrop')} <input id="furnDrop" type="number" step="0.1" min="0.3" value="1.8"></label>
+            <label>${t('lbl.furnPost')} <input id="furnPost" type="number" step="0.1" min="0.1" value="0.9"></label>
+          </div>
+          <span id="furnInfo" class="hint"></span>
+        </fieldset>
+      </details>
+      <details class="adv"><summary>${t('ui.tests')}</summary>
         <p class="hint">${t('hint.roadTest')}</p>
         <div class="row">
           <button id="roadTestDraw" type="button" class="secondary">${t('btn.roadTestDraw')}</button>
-          <button id="roadTestAll" type="button">${t('btn.roadTestAll')}</button>
+          <button id="roadTestAll" type="button" class="secondary">${t('btn.roadTestAll')}</button>
         </div>
-      </fieldset>
-      <p class="hint">${t('hint.roadGen')}</p>
+      </details>
+      <button id="roadSend" type="button">${t('btn.roadSend')}</button>
       <span id="roadInfo" class="hint"></span>
       <p class="hint">${t('hint.roadEdit')}</p>
       <ul id="roadList" class="roadlist"></ul>
@@ -294,29 +408,17 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <span id="setInfo" class="hint"></span>
       </fieldset>
     </div>
-    <div class="tab" data-tab="wb" hidden>
-      <div class="form">
-        <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
-        <label>${t('lbl.tWorld')} <input id="tWorld" value="Worlds/MG_Test"></label>
-      </div>
-      <ol class="steps">
-        <li><button id="tSurf" type="button" class="secondary">${t('btn.tSurf')}</button><span class="hint">${t('wb.closed')}</span></li>
-        <li><button id="tHeight" type="button" class="secondary">${t('btn.tHeight')}</button><span class="hint">${t('wb.open')}</span></li>
-        <li><button id="tMasks" type="button" class="secondary">${t('btn.tMasks')}</button><span class="hint">${t('wb.thenImport')}</span></li>
-      </ol>
-      <p class="hint">${t('hint.wbImport')}</p>
-      <button id="loadTerrain" type="button" class="secondary">${t('btn.loadTerrain')}</button>
-      <fieldset class="test">
-        <legend>${t('legend.check')}</legend>
-        <p class="hint">${t('hint.check')}</p>
-        <button id="checkRun" type="button">${t('btn.check')}</button>
-        <ul id="checkList" class="issues"></ul>
-      </fieldset>
-    </div>
-
     <div class="tab" data-tab="camp" hidden>
       <div class="form">
         <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
+      </div>
+      <p class="hint">${t('hint.zone')}</p>
+      <div class="row">
+        <button id="generate" type="button">${t('btn.generate')}</button>
+        <button id="clearZone" type="button" class="secondary">${t('btn.clearZone')}</button>
+      </div>
+      <details class="adv"><summary>${t('ui.advanced')} ${info('info.adv')}</summary>
+      <div class="form">
         <label>${t('lbl.fieldSize')} <input id="fieldSize" type="number" value="90"></label>
         <label>${t('lbl.jitter')} <input id="jitter" type="number" step="0.1" value="0.6"></label>
         <label>${t('lbl.angle')} <input id="angle" type="number" value="15"></label>
@@ -325,26 +427,78 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.seed')} <input id="seed" type="number" value="1"></label>
         <label>${t('lbl.prefix')} <input id="prefix" value="CAMP"></label>
       </div>
-      <p class="hint">${t('hint.zone')}</p>
+      </details>
       <div class="row">
-        <button id="generate" type="button">${t('btn.generate')}</button>
-        <button id="clearZone" type="button" class="secondary">${t('btn.clearZone')}</button>
-      </div>
-      <div class="row">
-        <button id="forestSend" type="button">${t('btn.forestSend')}</button>
+        <button id="forestGen" type="button">${t('btn.forestGen')}</button>
+        <button id="forestSend" type="button" class="secondary">${t('btn.forestSend')}</button>
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
       <p class="hint">${t('hint.areas')}</p>
-      <details>
-        <summary>${t('sum.project')} <code>mapgen.json</code></summary>
-        <textarea id="project" spellcheck="false"></textarea>
+    </div>
+
+    <div class="tab" data-tab="wb" hidden>
+      <div class="form">
+        <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
+        <label>${t('lbl.tWorld')} <input id="tWorld" value="Worlds/MG_Test"></label>
+      </div>
+      <fieldset class="test">
+        <legend>${t('legend.check')}</legend>
+        <p class="hint">${t('hint.check')}</p>
+        <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
+        <ul id="checkList" class="issues"></ul>
+      </fieldset>
+      <div id="wbGuide" class="wbguide" hidden>
+        <strong>${t('wb.guide.title')}</strong>
+        ${connectSteps()}
+        <div class="row"><button type="button" class="wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button><button id="wbDownload" type="button" class="secondary" title="${t('wb.download.tip')}">${ic('folder', 14)} ${t('wb.download')}</button></div>
+      </div>
+      <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
+      <details class="adv"><summary>${t('ui.manual')}</summary>
+        <ol class="steps">
+          <li><button id="tSurf" type="button" class="secondary">${t('btn.tSurf')}</button><span class="hint">${t('wb.closed')}</span></li>
+          <li><button id="tHeight" type="button" class="secondary">${t('btn.tHeight')}</button><span class="hint">${t('wb.open')}</span></li>
+          <li><button id="tMasks" type="button" class="secondary">${t('btn.tMasks')}</button><span class="hint">${t('wb.thenImport')}</span></li>
+        </ol>
+        <p class="hint">${t('hint.wbImport')}</p>
+        <button id="loadTerrain" type="button" class="secondary">${t('btn.loadTerrain')}</button>
+        <button id="send" type="button" class="secondary">${t('btn.send')}</button>
+        <details>
+          <summary>${t('sum.project')} <code>mapgen.json</code></summary>
+          <textarea id="project" spellcheck="false"></textarea>
+        </details>
       </details>
-      <button id="sendAll" type="button">${t('btn.sendAll')}</button>
-      <button id="send" type="button" class="secondary">${t('btn.send')}</button>
+    </div>
+    <div id="collabView" class="collabview" hidden>
+      <div class="cvhead"><h2>${ic('users')} ${t('cv.title')}</h2><button id="cvClose" type="button" class="secondary icon" title="${t('cv.close.tip')}" aria-label="${t('cv.close.tip')}">${ic('x', 16)}</button></div>
+      <p class="cvconn"><span id="cvConn" class="hint"></span> <button id="cvJoin" type="button" class="secondary">${t('cv.connect')}</button></p>
+      <details class="cvsec" open><summary>${t('cv.comments')} <i id="cvNCom" class="badge"></i></summary>
+        <button id="cvAdd" type="button">${ic('pin', 16)} ${t('cv.add')}</button>
+        <div id="cvDraft" class="cvdraft" hidden>
+          <p class="hint">${t('cv.draft.hint')}</p>
+          <textarea id="cvText" rows="3" placeholder="${t('cv.text')}"></textarea>
+          <button id="cvPost" type="button">${t('cv.post')}</button> <button id="cvCancel" type="button" class="secondary">${t('cv.cancel')}</button>
+        </div>
+        <label class="check"><input id="cvShowRes" type="checkbox"> ${t('cv.showResolved')}</label>
+        <ul id="cvComments" class="cvlist"></ul>
+      </details>
+      <details class="cvsec" open><summary>${t('cv.history')}</summary>
+        <ul id="cvHist" class="cvlist"></ul>
+      </details>
+      <details class="cvsec" open><summary>${t('cv.sat')}</summary>
+        <canvas id="cvMini" class="cvmini" width="260" height="260" title="${t('cv.mini.tip')}"></canvas>
+        <p id="cvSatInfo" class="hint"></p>
+        <label class="check"><input id="satShow" type="checkbox" checked> ${t('cv.sat.show')}</label>
+        <label>${t('cv.sat.alpha')} <input id="cvAlpha" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+      </details>
+    </div>
+    <div class="stepnav">
+      <button id="stepPrev" type="button" class="secondary">← ${t('ui.prev')}</button>
+      <button id="stepNext" type="button">${t('ui.next')} →</button>
     </div>
 
     <pre id="log" class="log"></pre>
   </aside>
+  <footer class="statusbar"><span id="cursor"></span><span class="grow"></span><span>${t('foot.keys')}</span></footer>
 </div>`
 
 const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!
@@ -402,6 +556,7 @@ function draw() {
     ctx.drawImage(terrainImg, x0, y0, x1 - x0, y1 - y0)
   }
   drawTrace()
+  refreshSteps()
 
   if (result && layer('fields')) {
     result.fields.forEach((f, i) => {
@@ -445,17 +600,18 @@ function draw() {
       ctx.fillRect(sx - 2, sy - 2, 4, 4)
     })
     const mid = ring[ring.length >> 1]
-    if (mid) {
+    if (mid && view.mpp < 2.5) { // road names only when zoomed in: at island scale they pile up
       const [sx, sy] = toScreen(mid[0], mid[1])
       ctx.font = '11px sans-serif'
       ctx.lineWidth = 3
       ctx.strokeStyle = '#000a'
-      ctx.strokeText(r.id, sx + 6, sy - 6)
-      ctx.fillText(r.id, sx + 6, sy - 6)
+      ctx.strokeText(nice(r.id, r.type), sx + 6, sy - 6)
+      ctx.fillText(nice(r.id, r.type), sx + 6, sy - 6)
     }
   }
 
   if (furn && layer('furniture') && $<HTMLInputElement>('furnShow').checked && tool() === 'road') drawFurniture(furn)
+  if (layer('power')) drawPower()
   if (layer('buildings')) drawSettlements()
   if (layer('sites')) drawSites()
 
@@ -477,12 +633,14 @@ function draw() {
   }
   if (layer('bridges')) drawBridges()
   if (layer('issues')) drawIssues()
+  drawComments()
   if (collab) drawPeers()
   drawBrush()
+  renderMini()
 }
 
 function drawBrush() {
-  if (!cursorWorld || tool() === 'zone' || tool() === 'road') return
+  if (!cursorWorld || tool() === 'zone' || tool() === 'road' || tool() === 'comment') return
   const [sx, sy] = toScreen(...cursorWorld)
   ctx.beginPath()
   ctx.arc(sx, sy, num('bRadius') / view.mpp, 0, Math.PI * 2)
@@ -538,6 +696,7 @@ function heightLabel(x: number, z: number): string {
 
 map.addEventListener('click', (e) => {
   if (skipClick) return void (skipClick = false)
+  if (tool() === 'comment') return void commentClick(...eventPos(e))
   if (tool() === 'water' && !waterDraft && toggleBridge(...eventPos(e))) return
   if (tool() === 'water') return void waterClick(...toWorld(...eventPos(e)))
   if (tool() === 'road') {
@@ -697,6 +856,8 @@ let skipClick = false
 let dragSite: { s: Site; moved: boolean } | null = null
 let roadDrawing = false
 let furn: { shapes: ProjectShape[]; signs: ProjectEntity[] } | null = null
+type PowerItem = PowerLine & { id: string }
+let powerLines: PowerItem[] = [] // tab Routes, Power lines
 let sites: Site[] = []
 let settled: Placed[] = [] // settlement buildings (tab Routes, Villages)
 let setLanes: Road[] = [] // settlement lanes and footpaths, squares (tab Villages)
@@ -763,8 +924,8 @@ function recompose(final: boolean) {
   sculpt.seaDepth = num('tSea')
   island.heights = sculpt.compose().map((h) => h - seaLevel)
   preWater = island.heights.slice()
-  if (waters.length) carveWater(island.heights, g, waters)
-  if (roads.length) carveRoads(island.heights, g, roads)
+  const wl = waters.length ? carveWater(island.heights, g, waters) : undefined
+  if (roads.length) carveRoads(island.heights, g, roads, { water: wl })
   rivers = undefined
   riverSim = undefined
   if ($<HTMLInputElement>('rLive').checked) {
@@ -790,16 +951,17 @@ function recompose(final: boolean) {
 }
 
 // --- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Maj+Z): one snapshot per finished action ---
-interface Snap { macro: Float32Array; sink?: Uint8Array; roads: string; zone: string; sites: string; waters: string; settled: string }
+interface Snap { macro: Float32Array; sink?: Uint8Array; roads: string; power?: string; zone: string; sites: string; waters: string; settled: string }
 const history: Snap[] = []
 let histAt = -1, restoring = false
 function checkpoint() {
   if (restoring || !sculpt) return
-  const snap: Snap = { macro: sculpt.macro.slice(), sink: sink?.slice(), roads: JSON.stringify(roads), zone: zoneEl.value, sites: JSON.stringify(sites), waters: JSON.stringify(waters), settled: setState() }
+  const snap: Snap = { macro: sculpt.macro.slice(), sink: sink?.slice(), roads: JSON.stringify(roads), power: JSON.stringify(powerLines), zone: zoneEl.value, sites: JSON.stringify(sites), waters: JSON.stringify(waters), settled: setState() }
   const cur = history[histAt]
-  if (cur && cur.roads === snap.roads && cur.sites === snap.sites && cur.waters === snap.waters && cur.settled === snap.settled && cur.zone === snap.zone && cur.sink?.length === snap.sink?.length
+  if (cur && cur.roads === snap.roads && cur.power === snap.power && cur.sites === snap.sites && cur.waters === snap.waters && cur.settled === snap.settled && cur.zone === snap.zone && cur.sink?.length === snap.sink?.length
     && cur.macro.length === snap.macro.length && cur.macro.every((v, i) => v === snap.macro[i])
     && (!cur.sink || cur.sink.every((v, i) => v === snap.sink![i]))) return
+  if (cur && !remoteApply) logChange(cur, snap)
   history.length = histAt + 1
   history.push(snap)
   if (history.length > 40) history.shift()
@@ -813,6 +975,7 @@ function restore(to: number) {
   sculpt.macro.set(s.macro)
   sink = s.sink?.slice()
   roads = JSON.parse(s.roads)
+  powerLines = JSON.parse(s.power ?? '[]')
   sites = JSON.parse(s.sites ?? '[]')
   waters = JSON.parse(s.waters ?? '[]')
   loadSetState(s.settled)
@@ -838,12 +1001,14 @@ const collabUrl = collabField('collabUrl', 'reforger-mapper.collab.url', `ws://$
 const collabRoom = collabField('collabRoom', 'reforger-mapper.collab.room', 'map1')
 const collabName = collabField('collabName', 'reforger-mapper.collab.name', 'mapper')
 const collabKey = $<HTMLInputElement>('collabKey') // the password is never stored
-$<HTMLButtonElement>('collab').addEventListener('click', () => { collabBox.hidden = !collabBox.hidden })
+$<HTMLButtonElement>('collab').addEventListener('click', () => showCollabView(!collabView.classList.contains('on')))
+$<HTMLButtonElement>('cvJoin').addEventListener('click', () => { collabBox.hidden = !collabBox.hidden })
 function leaveRoom() {
   collab?.close()
   collab = null
   $<HTMLSpanElement>('collabInfo').textContent = ''
   $<HTMLButtonElement>('collabGo').textContent = t('collab.join')
+  connInfo()
   draw()
 }
 $<HTMLButtonElement>('collabGo').addEventListener('click', () => {
@@ -853,10 +1018,13 @@ $<HTMLButtonElement>('collabGo').addEventListener('click', () => {
     project: (p, from) => {
       received = true
       quietUntil = performance.now() + 1500
-      try { loadProject(p) } catch (e) { logEl.textContent = t('err.generic', { msg: (e as Error).message }); return }
+      remoteApply = true
+      try { loadProject(p) } catch (e) { remoteApply = false; logEl.textContent = t('err.generic', { msg: (e as Error).message }); return }
+      remoteApply = false
       logEl.textContent = t('collab.got', { name: from })
     },
-    peers: (ps) => { $<HTMLSpanElement>('collabInfo').textContent = t('collab.peers', { room: collabRoom.value, n: ps.length + 1, names: ps.map((p) => p.name).join(', ') }) },
+    ops: (list, replace) => receiveOps(list, replace),
+    peers: (ps) => { $<HTMLSpanElement>('collabInfo').textContent = t('collab.peers', { room: collabRoom.value, n: ps.length + 1, names: ps.map((p) => p.name).join(', ') }); connInfo() },
     cursors: () => draw(),
     status: (s, detail) => {
       if (s === 'connected') {
@@ -886,10 +1054,335 @@ function drawPeers() {
     ctx.fillText(c.name, x + 14, y + 12)
   }
 }
-$<HTMLButtonElement>('lang').addEventListener('click', () => {
-  try { localStorage.setItem('reforger-mapper.lang', getLang() === 'fr' ? 'en' : 'fr') } catch { /* storage blocked */ }
-  location.reload()
+// --- Collaboration view (👥): history of changes, satellite / relief mini-map, comments pinned on the map.
+// History and comments are small targeted ops (src/collab.ts Op) kept in the room log on the server
+// (collab/data/<room>.jsonl) and in this browser; made offline, they are uploaded on the next join.
+const collabView = $<HTMLDivElement>('collabView')
+const OPS_KEY = 'reforger-mapper.collab.ops'
+let ops: Op[] = []
+try { ops = JSON.parse(localStorage.getItem(OPS_KEY) ?? '[]') } catch { ops = [] }
+let selCom: string | null = null
+let draftPos: [number, number] | null = null
+let toolBeforeComment = 'zone'
+function saveOps() { try { localStorage.setItem(OPS_KEY, JSON.stringify(ops.slice(-500))) } catch { /* storage full or blocked */ } }
+function addOp(p: Partial<Op>) {
+  const op = { ...p, id: 'l' + Math.random().toString(36).slice(2, 10), author: collabName.value.trim() || 'mapper', at: Date.now() } as Op
+  if (collab?.open) return collab.sendOp(op) // comes back stamped by the server
+  ops.push({ ...op, local: true })
+  saveOps()
+  renderCollab()
+  draw()
+}
+function receiveOps(list: Op[], replace: boolean) {
+  if (replace) {
+    const mine = ops.filter((o) => o.local)
+    ops = [...list]
+    for (const o of mine) collab?.sendOp(o) // offline work goes to the room, same ids
+  } else {
+    const ids = new Set(ops.map((o) => o.id))
+    ops.push(...list.filter((o) => !ids.has(o.id)))
+  }
+  saveOps()
+  renderCollab()
+  draw()
+}
+interface Thread { c: Op; n: number; replies: Op[]; resolved: boolean }
+function threads(): Thread[] {
+  const m = new Map<string, Thread>()
+  for (const o of ops) {
+    if (o.kind === 'comment') m.set(o.id, { c: o, n: m.size + 1, replies: [], resolved: false })
+    else if (o.kind === 'reply') m.get(o.ref ?? '')?.replies.push(o)
+    else if (o.kind === 'resolve') { const th = m.get(o.ref ?? ''); if (th) th.resolved = !!o.resolved }
+  }
+  return [...m.values()]
+}
+const visibleThreads = () => threads().filter((th) => !th.resolved || $<HTMLInputElement>('cvShowRes').checked)
+const when = (at: number) => new Date(at).toLocaleString(getLang() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' })
+function panTo(x: number, z: number) { view.x = x; view.z = z; draw() }
+
+// history: one entry per undo checkpoint, named from what changed since the previous one
+let pendingAct = ''
+for (const id of ['tGen', 'wGen', 'netGen', 'powerGen', 'setGen', 'generate']) document.getElementById(id)?.addEventListener('click', () => { pendingAct = id }, true)
+let lastLogged = { key: '', at: 0 }
+let genAt = 0 // a generator often makes several checkpoints: they count as its one entry
+function diffList(a: string, b: string): [string, any] | null {
+  if (a === b) return null
+  const A = JSON.parse(a || '[]') as any[], B = JSON.parse(b || '[]') as any[]
+  const had = new Set(A.map((o) => o.id)), has = new Set(B.map((o) => o.id))
+  const added = B.find((o) => !had.has(o.id))
+  if (added) return ['add', added]
+  const gone = A.find((o) => !has.has(o.id))
+  if (gone) return ['del', gone]
+  return ['edit', B.find((o) => JSON.stringify(o) !== JSON.stringify(A.find((x) => x.id === o.id))) ?? B[0]]
+}
+/** the step a history entry belongs to comes from WHAT changed, not from the tab open at that moment
+ *  (checkpoints are often taken later, or from another tab: a road made while the Relief tab is shown) */
+function stepOfAction(action: string, fallback?: string): string {
+  const active = fallback ?? tabButtons.find((x) => x.classList.contains('active'))?.dataset.tab ?? ''
+  const k = action.split('.')
+  if (k[0] === 'gen') return ({ tGen: 'island', wGen: 'water', netGen: 'roads', powerGen: 'roads', setGen: 'villages', generate: 'camp' } as Record<string, string>)[k[1]] ?? active
+  const by: Record<string, string> = { road: 'roads', power: 'roads', water: 'water', site: 'villages', villages: 'villages', zone: 'camp', send: 'wb' }
+  if (by[k[0]]) return by[k[0]]
+  if (k[0] === 'relief') return active === 'brush' ? 'brush' : 'island'
+  return active
+}
+function logChange(cur: Snap, snap: Snap) {
+  let action = '', detail = ''
+  let pos: [number, number] = [view.x, view.z]
+  if (pendingAct) { action = `gen.${pendingAct}`; pendingAct = ''; genAt = Date.now() }
+  else if (Date.now() - genAt < 3000) return
+  else {
+    for (const [k, a, b] of [['road', cur.roads, snap.roads], ['water', cur.waters, snap.waters], ['site', cur.sites, snap.sites], ['power', cur.power ?? '[]', snap.power ?? '[]']] as const) {
+      const d = diffList(a, b)
+      if (!d) continue
+      action = `${k}.${d[0]}`
+      const o = d[1]
+      detail = String(o?.id ?? '')
+      if (o?.pts?.length >= 2) pos = [o.pts[0], o.pts[1]]
+      else if (Number.isFinite(o?.x)) pos = [o.x, o.z]
+      break
+    }
+    if (!action) {
+      if (cur.settled !== snap.settled) action = 'villages'
+      else if (cur.zone !== snap.zone) action = 'zone'
+      else { action = 'relief'; if (cursorWorld) pos = [...cursorWorld] }
+    }
+  }
+  // a brush session or a zone being drawn makes one entry, not fifty
+  const key = action + detail, now = Date.now()
+  if (key === lastLogged.key && now - lastLogged.at < 20000) { lastLogged.at = now; return }
+  lastLogged = { key, at: now }
+  addOp({ kind: 'history', action, detail, step: stepOfAction(action), x: pos[0], z: pos[1] })
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag)
+  if (cls) e.className = cls
+  if (text) e.textContent = text
+  return e
+}
+function opLabel(o: Op): string {
+  if (o.kind === 'history') return t(`hist.${o.action}` as Key) + (o.detail ? ` ${o.detail}` : '')
+  return t(`hist.${o.kind}${o.kind === 'resolve' && !o.resolved ? '.re' : ''}` as Key) + (o.text ? ` « ${o.text.slice(0, 40)} »` : '')
+}
+function renderCollab() {
+  if (collabView.hidden) return
+  const all = threads()
+  const byId = new Map(all.map((th) => [th.c.id, th]))
+  $('cvNCom').textContent = String(all.filter((th) => !th.resolved).length || '')
+  // comments, newest first
+  const ul = $<HTMLUListElement>('cvComments')
+  ul.replaceChildren()
+  const vis = visibleThreads().reverse()
+  if (!vis.length) ul.append(el('li', 'hint', t('cv.noComments')))
+  for (const th of vis) {
+    const li = el('li', `cvcom${th.resolved ? ' resolved' : ''}${th.c.id === selCom ? ' sel' : ''}`)
+    const head = el('div', 'cvmeta')
+    head.append(el('b', 'pin', String(th.n)), el('strong', '', th.c.author), el('span', '', ` · ${when(th.c.at)}${th.c.local ? ' · ' + t('cv.offline') : ''}`))
+    head.title = t('cv.goto')
+    head.addEventListener('click', () => { selCom = th.c.id; panTo(th.c.x ?? view.x, th.c.z ?? view.z); renderCollab() })
+    li.append(head, el('p', 'cvtext', th.c.text ?? ''))
+    for (const r of th.replies) {
+      const rp = el('div', 'cvreply')
+      rp.append(el('strong', '', r.author), el('span', '', ` · ${when(r.at)}`), el('p', 'cvtext', r.text ?? ''))
+      li.append(rp)
+    }
+    const row = el('div', 'cvrow')
+    const inp = el('input')
+    inp.placeholder = t('cv.reply')
+    const send = el('button', 'secondary', t('cv.replyBtn'))
+    send.type = 'button'
+    const go = () => { const v = inp.value.trim(); if (v) addOp({ kind: 'reply', ref: th.c.id, text: v }) }
+    send.addEventListener('click', go)
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') go() })
+    const res = el('button', 'secondary', th.resolved ? t('cv.reopen') : '✓ ' + t('cv.resolve'))
+    res.type = 'button'
+    res.addEventListener('click', () => addOp({ kind: 'resolve', ref: th.c.id, resolved: !th.resolved }))
+    row.append(inp, send, res)
+    li.append(row)
+    ul.append(li)
+  }
+  // history, newest first
+  const hl = $<HTMLUListElement>('cvHist')
+  hl.replaceChildren()
+  const hist = ops.slice(-200).reverse()
+  if (!hist.length) hl.append(el('li', 'hint', t('cv.noHistory')))
+  for (const o of hist) {
+    const li = el('li', 'cvhist')
+    const at = o.kind === 'history' || o.kind === 'comment' ? o : byId.get(o.ref ?? '')?.c
+    const step = STEPS.find((s) => s.tab === (o.kind === 'history' && o.action ? stepOfAction(o.action, o.step) : o.step)) // re-derived: older entries were tagged with the open tab
+    li.append(el('strong', '', o.author), el('span', '', ' ' + opLabel(o)))
+    li.append(el('small', '', `${step ? t(step.label) + ' · ' : ''}${when(o.at)}${o.local ? ' · ' + t('cv.offline') : ''}`))
+    if (at && Number.isFinite(at.x)) {
+      li.classList.add('go')
+      li.title = t('cv.goto')
+      li.addEventListener('click', () => { if (at.kind === 'comment') selCom = at.id; panTo(at.x!, at.z!); renderCollab() })
+    }
+    hl.append(li)
+  }
+  renderMini()
+}
+function connInfo() {
+  $('cvConn').textContent = collab?.open
+    ? t('cv.conn.on', { room: collabRoom.value, info: $<HTMLSpanElement>('collabInfo').textContent ?? '' })
+    : t('cv.conn.off')
+  $('cvJoin').textContent = collab?.open ? t('collab.leave') + '…' : t('cv.connect')
+}
+function showCollabView(on: boolean) {
+  collabView.hidden = !on
+  collabView.classList.toggle('on', on)
+  document.querySelector('.side')!.classList.toggle('collabmode', on)
+  $('collab').classList.toggle('active', on)
+  if (on) { connInfo(); renderCollab() }
+  else {
+    collabBox.hidden = true
+    draftPos = null
+    $('cvDraft').hidden = true
+    tabButtons.find((x) => x.classList.contains('active'))?.click() // back to the step and its tool
+  }
+  draw()
+}
+$('cvClose').addEventListener('click', () => showCollabView(false))
+$('cvShowRes').addEventListener('change', () => { renderCollab(); draw() })
+
+// comments: the 📌 tool, then a click on the map
+$('cvAdd').addEventListener('click', () => {
+  if (tool() !== 'comment') toolBeforeComment = tool()
+  setTool('comment')
+  $<HTMLSpanElement>('brushInfo').textContent = t('cv.pick')
+  logEl.textContent = t('cv.pick')
 })
+function commentClick(sx: number, sy: number) {
+  for (const th of visibleThreads()) {
+    const [px, py] = toScreen(th.c.x ?? 0, th.c.z ?? 0)
+    if (Math.hypot(px - sx, py - sy) < 12) { selCom = th.c.id; renderCollab(); draw(); return }
+  }
+  draftPos = toWorld(sx, sy)
+  $('cvDraft').hidden = false
+  $<HTMLTextAreaElement>('cvText').focus()
+  draw()
+}
+function endDraft() {
+  draftPos = null
+  $('cvDraft').hidden = true
+  $<HTMLTextAreaElement>('cvText').value = ''
+  setTool(toolBeforeComment)
+  draw()
+}
+$('cvPost').addEventListener('click', () => {
+  const text = $<HTMLTextAreaElement>('cvText').value.trim()
+  if (!draftPos || !text) return void (logEl.textContent = t('cv.pick'))
+  addOp({ kind: 'comment', text, x: draftPos[0], z: draftPos[1] })
+  endDraft()
+})
+$('cvCancel').addEventListener('click', endDraft)
+function drawComments() {
+  if (!ops.length && !draftPos) return
+  ctx.save()
+  ctx.font = 'bold 11px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  for (const th of visibleThreads()) {
+    const [x, y] = toScreen(th.c.x ?? 0, th.c.z ?? 0)
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.arc(x, y - 14, 9, Math.PI * 0.75, Math.PI * 2.25)
+    ctx.closePath()
+    ctx.fillStyle = th.resolved ? '#6b7280' : '#f5a524'
+    ctx.fill()
+    ctx.lineWidth = th.c.id === selCom ? 3 : 1.5
+    ctx.strokeStyle = th.c.id === selCom ? '#fff' : '#0008'
+    ctx.stroke()
+    ctx.fillStyle = '#111'
+    ctx.fillText(String(th.n), x, y - 14)
+  }
+  if (draftPos) {
+    const [x, y] = toScreen(...draftPos)
+    ctx.setLineDash([4, 3])
+    ctx.strokeStyle = '#f5a524'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x, y, 10, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+// satellite: the Esri photo of a real place (the tracing image), or the hillshaded relief of a fictive island
+function renderMini() {
+  if (collabView.hidden) return
+  const c = $<HTMLCanvasElement>('cvMini'), g = c.getContext('2d')!
+  g.fillStyle = '#0f1012'
+  g.fillRect(0, 0, c.width, c.height)
+  const src = traceImg ?? terrainImg
+  $('cvSatInfo').textContent = t(traceImg ? 'cv.sat.real' : terrainImg ? 'cv.sat.relief' : 'cv.sat.empty')
+  if (!terrain || !src) return
+  const W = (terrain.cols - 1) * terrain.step, H = (terrain.rows - 1) * terrain.step
+  const k = Math.min(c.width / W, c.height / H), ox = (c.width - W * k) / 2, oy = (c.height - H * k) / 2
+  g.imageSmoothingEnabled = true
+  g.drawImage(src, ox, oy, W * k, H * k)
+  const mx = (x: number) => ox + (x - terrain!.minX) * k, my = (z: number) => oy + (H - (z - terrain!.minZ)) * k
+  const [ax, az] = toWorld(0, 0), [bx, bz] = toWorld(map.width, map.height)
+  g.strokeStyle = '#ffd34d'
+  g.lineWidth = 1.5
+  g.strokeRect(mx(ax), my(az), mx(bx) - mx(ax), my(bz) - my(az))
+  for (const th of visibleThreads()) {
+    g.fillStyle = th.resolved ? '#6b7280' : '#f5a524'
+    g.beginPath()
+    g.arc(mx(th.c.x ?? 0), my(th.c.z ?? 0), 3.5, 0, Math.PI * 2)
+    g.fill()
+  }
+  c.onclick = (e) => {
+    const r = c.getBoundingClientRect()
+    const px = (e.clientX - r.left) * (c.width / r.width), py = (e.clientY - r.top) * (c.height / r.height)
+    panTo(terrain!.minX + (px - ox) / k, terrain!.minZ + H - (py - oy) / k)
+  }
+}
+$('satShow').addEventListener('change', () => draw())
+{
+  const a = $<HTMLInputElement>('cvAlpha'), b = $<HTMLInputElement>('traceAlpha')
+  a.value = b.value
+  a.addEventListener('input', () => { b.value = a.value; draw() })
+  b.addEventListener('input', () => { a.value = b.value })
+}
+// language selector: listbox (arrows / Enter / Esc), browser-language follow, export / import a translation
+{
+  const btn = $<HTMLButtonElement>('lang'), menu = $<HTMLDivElement>('langMenu'), list = $<HTMLDivElement>('langList')
+  const opts = () => [...list.querySelectorAll<HTMLDivElement>('[role=option]')]
+  let at = 0
+  const focusOpt = (i: number) => {
+    const o = opts(); at = (i + o.length) % o.length
+    o.forEach((x, j) => x.classList.toggle('cur', j === at))
+    list.setAttribute('aria-activedescendant', o[at].id)
+  }
+  const open = (on: boolean) => {
+    menu.hidden = !on; btn.setAttribute('aria-expanded', String(on))
+    if (on) { focusOpt(Math.max(0, opts().findIndex((o) => o.dataset.lang === getLang()))); list.focus() } else btn.focus()
+  }
+  const pick = (code: string) => { chooseLang(code, false); location.reload() }
+  btn.addEventListener('click', () => open(menu.hidden === true))
+  list.addEventListener('click', (e) => { const o = (e.target as HTMLElement).closest<HTMLDivElement>('[role=option]'); if (o) pick(o.dataset.lang!) })
+  menu.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); open(false) } else if (e.target !== list) return
+    else if (e.key === 'ArrowDown') { e.preventDefault(); focusOpt(at + 1) } else if (e.key === 'ArrowUp') { e.preventDefault(); focusOpt(at - 1) }
+    else if (e.key === 'Home') { e.preventDefault(); focusOpt(0) } else if (e.key === 'End') { e.preventDefault(); focusOpt(-1) }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(opts()[at].dataset.lang!) }
+    e.stopPropagation()
+  })
+  document.addEventListener('mousedown', (e) => { if (!menu.hidden && !(e.target as HTMLElement).closest('.langsel')) { menu.hidden = true; btn.setAttribute('aria-expanded', 'false') } })
+  $<HTMLInputElement>('langFollow').addEventListener('change', (e) => { chooseLang(getLang(), (e.target as HTMLInputElement).checked); location.reload() })
+  $<HTMLButtonElement>('langExport').addEventListener('click', () => {
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([exportLang()], { type: 'application/json' }))
+    a.download = `reforger-mapper-lang-${getLang()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  })
+  const file = $<HTMLInputElement>('langFile')
+  $<HTMLButtonElement>('langImport').addEventListener('click', () => file.click())
+  file.addEventListener('change', async () => {
+    const f = file.files?.[0]; if (!f) return
+    if (importLang(await f.text())) location.reload(); else alert(t('lang.importErr'))
+  })
+}
 $<HTMLButtonElement>('undo').addEventListener('click', () => restore(histAt - 1))
 $<HTMLButtonElement>('redo').addEventListener('click', () => restore(histAt + 1))
 window.addEventListener('keydown', (e) => {
@@ -956,12 +1449,18 @@ for (const id of ['rRain', 'rWind', 'rThreshold', 'rDepth'])
   $<HTMLInputElement>(id).addEventListener('input', () => recompose(true))
 const txt = (id: string) => $<HTMLInputElement>(id).value.trim()
 
-async function run(label: string, f: () => Promise<string>) {
+async function run(label: string, f: () => Promise<string>, onOk?: () => void) {
   logEl.textContent = t('run.progress', { label })
   try {
     logEl.textContent = external(await f())
+    onOk?.()
   } catch (e) {
-    logEl.textContent = t('run.error', { label, msg: (e as Error).message })
+    const msg = (e as Error).message
+    if (/Failed to fetch|NetworkError|Load failed|Workbench unreachable/.test(msg)) {
+      logEl.textContent = t('err.notConnected')
+      $('wbGuide').hidden = false
+      void refreshStatus()
+    } else logEl.textContent = t('run.error', { label, msg })
   }
 }
 
@@ -1059,8 +1558,11 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
 
 async function refreshStatus() {
   const s = await getStatus()
-  statusEl.textContent = t('status.line', { bridge: s.bridge ? t('status.ok') : t('status.no'), wb: s.workbench ? t('status.ok') : t('status.no'), detail: s.detail })
+  statusEl.textContent = s.workbench ? t('wb.chip.on') : t('wb.chip.off')
+  statusEl.title = (s.workbench ? '' : t('wb.chip.tip') + '\n') + t('status.line', { bridge: s.bridge ? t('status.ok') : t('status.no'), wb: s.workbench ? t('status.ok') : t('status.no'), detail: s.detail })
   statusEl.dataset.ok = String(s.workbench)
+  $('wbGuide').hidden = s.workbench
+  return s.workbench
 }
 
 sendEl.addEventListener('click', async () => {
@@ -1076,8 +1578,15 @@ sendEl.addEventListener('click', async () => {
 })
 
 // no polling: a NET API call landing while a Workbench modal dialog is open crashes the Workbench
-statusEl.title = t('app.refresh')
-statusEl.addEventListener("click", refreshStatus)
+const chipClick = async () => { if (!(await refreshStatus())) openHelp('helpConnect') }
+statusEl.addEventListener('click', chipClick)
+statusEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void chipClick() } })
+document.querySelectorAll<HTMLButtonElement>('.wbRetry').forEach((b) => b.addEventListener('click', async () => {
+  b.disabled = true
+  const ok = await refreshStatus().finally(() => (b.disabled = false))
+  logEl.textContent = ok ? t('wb.retry.ok') : t('wb.retry.no')
+}))
+$<HTMLButtonElement>('wbDownload').addEventListener('click', () => $<HTMLButtonElement>('pSave').click())
 
 // --- layout: tabs, canvas fills the stage ---
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>('#tabs [data-tab]')]
@@ -1091,7 +1600,130 @@ tabButtons.forEach((b) => b.addEventListener('click', () => {
   const tools = owns[b.dataset.tab!]
   if (tools && !tools.includes(currentTool)) setTool(tools[0])
   showRail(b.dataset.tab!)
+  showStep(b.dataset.tab!)
 }))
+// step status badges: done is read from the real state; a done step turns stale when a step above it changed since
+const REGEN: Record<string, string> = { island: 'tGen', water: 'wGen', roads: 'netGen', villages: 'setGen', camp: 'generate' }
+let sentSig: string | null = null
+const objIds = new WeakMap<object, number>()
+let objNext = 1
+const oid = (o: object | null | undefined) => {
+  if (!o) return 0
+  if (!objIds.has(o)) objIds.set(o, objNext++)
+  return objIds.get(o)!
+}
+const ptsSum = (rs: { pts: number[] }[]) => rs.reduce((n, r) => n + r.pts.length + (r.pts[0] ?? 0), 0)
+/** one cheap fingerprint per step, in STEPS order ('' = nothing there yet) */
+function stepSigs(): string[] {
+  const relief = terrain || island ? `${oid(terrainImg)}` : ''
+  return [
+    relief,
+    relief,
+    waters.length || rivers ? `${waters.length}:${ptsSum(waters)}:${oid(rivers)}` : '',
+    roads.length || powerLines.length ? `${roads.length}:${ptsSum(roads)}:${powerLines.length}:${ptsSum(powerLines.map((l) => ({ pts: l.path })))}` : '',
+    settled.length ? `${settled.length}:${oid(settled)}` : '',
+    result || areas.length ? `${oid(result)}:${areas.length}` : '',
+    '',
+  ]
+}
+// which steps each step is built on
+const UP: number[][] = [[], [], [0], [0, 2], [0, 3], [0, 3, 4], []]
+const doneSnap: (string | null)[] = STEPS.map(() => null)
+const ownSnap: string[] = STEPS.map(() => '')
+function refreshSteps() {
+  let sig: string[]
+  try { sig = stepSigs() } catch { return } // start-up: state not declared yet
+  const btns = document.querySelectorAll<HTMLButtonElement>('#tabs [data-tab]')
+  if (btns.length !== STEPS.length) return
+  const welcome = document.getElementById('welcome')
+  if (welcome) welcome.hidden = !!sig[0]
+  STEPS.forEach((s, i) => {
+    const up = UP[i].map((j) => sig[j]).join('|')
+    let state: 'todo' | 'done' | 'stale' = 'todo'
+    if (i === 6) {
+      if (sentSig !== null) state = sentSig === sig.slice(0, 6).join('|') ? 'done' : 'stale'
+    } else if (sig[i]) {
+      if (ownSnap[i] !== sig[i] || doneSnap[i] === null) { ownSnap[i] = sig[i]; doneSnap[i] = up }
+      state = doneSnap[i] === up ? 'done' : 'stale'
+    } else { ownSnap[i] = ''; doneSnap[i] = null }
+    const b = btns[i]
+    b.dataset.state = state
+    b.title = `${t(s.lead)}
+${t(`step.state.${state}`)}`
+  })
+}
+// step header (title + one-line explanation) and Previous / Next
+function showStep(tab: string) {
+  const i = STEPS.findIndex((s) => s.tab === tab)
+  if (i < 0) return
+  $('stepKicker').textContent = t('step.kicker', { n: String(i + 1).padStart(2, '0'), total: String(STEPS.length).padStart(2, '0') })
+  $('stepTitle').textContent = t(STEPS[i].label)
+  $('stepLead').textContent = t(STEPS[i].lead)
+  $<HTMLButtonElement>('stepPrev').disabled = i === 0
+  $<HTMLButtonElement>('stepNext').hidden = i === STEPS.length - 1
+  $<HTMLButtonElement>('stepRegen').hidden = !REGEN[tab]
+  try { localStorage.setItem('reforger-mapper.step', tab) } catch { /* private window */ }
+}
+const goStep = (d: number) => {
+  const cur = tabButtons.findIndex((x) => x.classList.contains('active'))
+  tabButtons[Math.min(STEPS.length - 1, Math.max(0, cur + d))]?.click()
+  $('tabs').scrollIntoView({ block: 'nearest' })
+}
+$('stepRegen').addEventListener('click', () => {
+  const tab = tabButtons.find((x) => x.classList.contains('active'))?.dataset.tab ?? ''
+  if (REGEN[tab]) $<HTMLButtonElement>(REGEN[tab]).click()
+})
+// help bubble + guided tour (5 stops, shown once on the first visit)
+{
+  const panel = $<HTMLDivElement>('helpPanel')
+  const show = (on: boolean) => { panel.hidden = !on; $('helpFab').classList.toggle('active', on); if (on) $<HTMLButtonElement>('helpClose').focus() }
+  $<HTMLButtonElement>('helpFab').addEventListener('click', () => show(panel.hidden === true))
+  openHelp = (section) => { show(true); if (section) document.getElementById(section)?.scrollIntoView({ block: 'start' }) }
+  $<HTMLButtonElement>('helpClose').addEventListener('click', () => { show(false); $<HTMLButtonElement>('helpFab').focus() })
+  panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); show(false); $<HTMLButtonElement>('helpFab').focus() } })
+  panel.querySelectorAll<HTMLButtonElement>('[data-help-go]').forEach((b) => b.addEventListener('click', () => {
+    document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${b.dataset.helpGo}"]`)?.click(); show(false)
+  }))
+  const TOUR_KEY = 'reforger-mapper.tour'
+  const stops: [string, Key][] = [['.app > .top', 'tour.1'], ['#tabs', 'tour.2'], ['.stage', 'tour.3'], ['.app > .side', 'tour.4'], ['#tabs [data-tab="wb"]', 'tour.5']]
+  const tour = $<HTMLDivElement>('tour'), ring = tour.querySelector<HTMLDivElement>('.tourring')!, box = tour.querySelector<HTMLDivElement>('.tourbox')!
+  let at = 0
+  const end = () => { tour.hidden = true; try { localStorage.setItem(TOUR_KEY, '1') } catch { /* private window */ } }
+  const place = () => {
+    const el = document.querySelector<HTMLElement>(stops[at][0]); if (!el) return end()
+    const r = el.getBoundingClientRect()
+    Object.assign(ring.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` })
+    $('tourN').textContent = `${at + 1} / ${stops.length}`
+    $('tourText').textContent = t(stops[at][1])
+    $('tourNext').textContent = t(at === stops.length - 1 ? 'tour.done' : 'tour.next')
+    const bw = 300, bh = box.offsetHeight || 140
+    let x = Math.min(Math.max(8, r.left), innerWidth - bw - 8), y = r.bottom + 12
+    if (y + bh > innerHeight - 8) y = Math.max(8, r.top - bh - 12)
+    if (r.height > innerHeight * 0.6) { y = Math.min(innerHeight - bh - 40, r.top + 80); x = r.left > innerWidth / 2 ? r.left - bw - 16 : Math.min(r.left + 40, innerWidth - bw - 8) }
+    Object.assign(box.style, { left: `${Math.max(8, x)}px`, top: `${y}px` })
+  }
+  const start = () => { show(false); at = 0; tour.hidden = false; place(); $<HTMLButtonElement>('tourNext').focus() }
+  $<HTMLButtonElement>('tourNext').addEventListener('click', () => { if (++at >= stops.length) end(); else place() })
+  $<HTMLButtonElement>('tourSkip').addEventListener('click', end)
+  tour.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); end() } })
+  addEventListener('resize', () => { if (!tour.hidden) place() })
+  $<HTMLButtonElement>('helpTour').addEventListener('click', start)
+  let seen = '1'
+  try { seen = localStorage.getItem(TOUR_KEY) ?? '' } catch { /* private window: never auto-start */ }
+  if (!seen) setTimeout(start, 600)
+}
+$<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
+document.querySelectorAll<HTMLButtonElement>('#welcome [data-go]').forEach((b) => b.addEventListener('click', () => $<HTMLButtonElement>(b.dataset.go!).click()))
+$('stepPrev').addEventListener('click', () => goStep(-1))
+$('stepNext').addEventListener('click', () => goStep(1))
+{
+  let saved: string | null = null
+  try { saved = localStorage.getItem('reforger-mapper.step') } catch { /* private window */ }
+  const b = tabButtons.find((x) => x.dataset.tab === saved)
+  showStep('island')
+  // after the whole module has run (the click picks a tool and redraws)
+  if (b) setTimeout(() => b.click(), 0)
+}
 // the tool rail exists only for brush tabs (several tools); elsewhere the map takes the room
 function showRail(tab: string) {
   const own: Record<string, string[]> = { brush: ['raise', 'lower', 'flatten', 'smooth', 'sea'], water: ['dry', 'wet'] }
@@ -1149,6 +1781,7 @@ function islandProject() {
     areas,
     landCover: landCover && { cols: landCover.cols, n: landCover.data.length, rle: rle(landCover.data) },
     credits,
+    power: powerLines,
   }
 }
 function autosave() {
@@ -1187,15 +1820,22 @@ function loadProject(p: any) {
   landCover = null
   if (p.landCover && typeof p.landCover.rle === 'string') { const d = unrle(p.landCover.rle, p.landCover.n); if (d) landCover = { cols: p.landCover.cols, data: d } }
   credits = Array.isArray(p.credits) ? p.credits : []
+  powerLines = Array.isArray(p.power) ? p.power.filter((x: PowerItem) => x && POWER_DEFAULTS[x.kind] && Array.isArray(x.path)) : []
+  if (typeof p.trace === 'string' && p.trace.startsWith('data:image/')) {
+    const img = new Image()
+    img.onload = () => { traceImg = img; void saveTrace(img); draw() }
+    img.src = p.trace
+  }
   removed = Array.isArray(p.removed) ? p.removed : []
   waterInfo()
   recompose(true)
 }
-$<HTMLButtonElement>('pSave').addEventListener('click', () => {
+$<HTMLButtonElement>('pSave').addEventListener('click', async () => {
   const p = islandProject()
   if (!p) return void (logEl.textContent = t('log.genFirst'))
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(p)], { type: 'application/json' }))
+  const trace = traceImg ? await traceDataUrl(traceImg) : null
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(trace ? { ...p, trace } : p)], { type: 'application/json' }))
   a.download = `ile-${num('tSeed')}.json`
   a.click()
   URL.revokeObjectURL(a.href)
@@ -1511,7 +2151,7 @@ $<HTMLButtonElement>('roadClear').addEventListener('click', () => { roads = []; 
 $<HTMLButtonElement>('roadSend').addEventListener('click', () =>
   run(t('run.l.routes'), async () => {
     if (!roads.length) throw new Error(t('err.noRoad'))
-    return toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] })
+    return toWb({ version: 0, shapes: [...allRoadShapes(), ...powerShapes()], entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] })
   }),
 )
 roadInfo()
@@ -1669,9 +2309,20 @@ $<HTMLButtonElement>('netGen').addEventListener('click', () => {
   }
   let km = 0
   for (const r of made) for (let i = 2; i + 1 < r.pts.length; i += 2) km += Math.hypot(r.pts[i] - r.pts[i - 2], r.pts[i + 1] - r.pts[i - 1])
-  logEl.textContent = t('log.netDone', { sites: sites.length, roads: made.length, km: (km / 1000).toFixed(1) })
   roadInfo()
   recompose(true)
+  // the generator and the pre-send check share one grade limit; a road still flagged (smoothing, carving) is dropped
+  const steep = new Set(runChecks().filter((it) => it.kind === 'steepRoad').map((it) => it.id))
+  const drop = made.filter((r) => steep.has(r.id))
+  if (drop.length) {
+    roads = roads.filter((r) => !drop.includes(r))
+    for (const r of drop) for (let i = 2; i + 1 < r.pts.length; i += 2) km -= Math.hypot(r.pts[i] - r.pts[i - 2], r.pts[i + 1] - r.pts[i - 1])
+    roadInfo()
+    recompose(true)
+    runChecks()
+  }
+  logEl.textContent = t('log.netDone', { sites: sites.length, roads: made.length - drop.length, km: (km / 1000).toFixed(1) })
+    + (drop.length ? ' ' + t('log.netSteep', { n: drop.length }) : '')
 })
 $<HTMLButtonElement>('netClear').addEventListener('click', () => {
   roads = roads.filter((r) => !r.auto)
@@ -1715,9 +2366,9 @@ function drawSites() {
     const lx = sx + R * 0.7 + 4, ly = sy - R * 0.7
     ctx.lineWidth = 3
     ctx.strokeStyle = '#000b'
-    ctx.strokeText(s.id, lx, ly)
+    ctx.strokeText(nice(s.id), lx, ly)
     ctx.fillStyle = SITE_COLOUR[s.kind]
-    ctx.fillText(s.id, lx, ly)
+    ctx.fillText(nice(s.id), lx, ly)
   }
 }
 
@@ -1845,7 +2496,7 @@ function applyRealPlace(r: RealPlace) {
   $<HTMLInputElement>('tSeaLevel').value = '0'
   const o = r.osm
   if (o) {
-    for (const x of o.roads) roads.push({ id: nextRoadId(x.type), type: x.type, pts: x.pts, ...(x.width ? { width: x.width } : {}) })
+    for (const x of o.roads) roads.push({ id: nextRoadId(x.type), type: x.type, pts: x.pts, ...(x.width ? { width: x.width } : {}), ...(x.bridge ? { bridge: true } : {}) })
     for (const x of o.rivers) waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, depth: 1.5 })
     for (const x of o.lakes) waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x, width: 0, depth: 2 })
     for (const s of o.sites) sites.push({ id: nextSiteId(s.kind), x: s.x, z: s.z, kind: s.kind })
@@ -1855,7 +2506,7 @@ function applyRealPlace(r: RealPlace) {
   }
   credits = r.credits
   if (r.cover) landCover = { cols: r.world.cols, data: r.cover }
-  if (r.trace) { traceImg = r.trace; $<HTMLDetailsElement>('layers').open = true }
+  if (r.trace) { traceImg = r.trace; $<HTMLDetailsElement>('layers').open = true; void saveTrace(r.trace) }
   waterInfo()
   roadInfo()
   recompose(true)
@@ -1870,9 +2521,10 @@ function applyRealPlace(r: RealPlace) {
 }
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
 // tracing image (satellite / ortho photo / scanned map) stretched over the whole terrain, north up;
-// only shown here, never sent to the game, not saved with the project (the file can be large)
+// only shown here, never sent to the game; kept in IndexedDB across reloads (src/traceStore.ts) and
+// embedded in a saved project file when it is small enough (< 8 MB), never in the autosave
 function drawTrace() {
-  if (!traceImg || !terrain) return
+  if (!traceImg || !terrain || !$<HTMLInputElement>('satShow').checked) return
   const [x0, y0] = toScreen(terrain.minX, terrain.minZ + (terrain.rows - 1) * terrain.step)
   const [x1, y1] = toScreen(terrain.minX + (terrain.cols - 1) * terrain.step, terrain.minZ)
   ctx.save()
@@ -1886,12 +2538,12 @@ $<HTMLInputElement>('traceFile').addEventListener('change', (e) => {
   if (!f) return
   if (!terrain) { logEl.textContent = t('err.traceNoTerrain'); return }
   const img = new Image()
-  img.onload = () => { traceImg = img; draw(); logEl.textContent = t('log.trace', { name: f.name, w: img.width, h: img.height }) }
+  img.onload = () => { traceImg = img; draw(); void saveTrace(f).then((ok) => { if (!ok) logEl.textContent += ' · ' + t('log.traceNotKept') }); logEl.textContent = t('log.trace', { name: f.name, w: img.width, h: img.height }) }
   img.onerror = () => { logEl.textContent = t('err.traceImg', { name: f.name }) }
   img.src = URL.createObjectURL(f)
 })
 $<HTMLInputElement>('traceAlpha').addEventListener('input', () => draw())
-$<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg instanceof HTMLImageElement) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; draw() })
+$<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg instanceof HTMLImageElement) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; void saveTrace(null); draw() })
 function drawAreas() {
   for (const a of areas) {
     ctx.beginPath()
@@ -1957,13 +2609,27 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid'] }))
     const setShapes = settled.length ? settlementShapes({ lanes: setLanes, paths: setPaths }) : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined) : []
-    const shapes = [...wr.shapes, ...forests, ...setShapes], entities = [...(wr.entities ?? []), ...setEnts]
+    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes], entities = [...(wr.entities ?? []), ...setEnts]
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
-    return what + '\n' + (await toWb({ version: 0, shapes, entities }))
+      + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
+    const msg = await toWb({ version: 0, shapes, entities })
+    sentSig = stepSigs().slice(0, 6).join('|')
+    addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
+    refreshSteps()
+    return what + '\n' + msg
   }),
 )
 $<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; recompose(true); draw(); autosave() })
+// forests for a fictive island (a real place brings its own): replaces the previously generated ones only
+$<HTMLButtonElement>('forestGen').addEventListener('click', () => {
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  const made = generateForests(island.heights, island.grid, { seed: num('tSeed'), cover: 0.35, sites })
+  areas = areas.filter((a) => !a.id.startsWith('FOREST_GEN_'))
+  made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
+  logEl.textContent = made.length ? t('log.forestGen', { n: made.length }) : t('err.forestGenNone')
+  recompose(true); draw(); autosave()
+})
 
 // --- water: rivers and lakes drawn by hand (tab Eau) ---
 function nextWaterId(type: WaterType) {
@@ -2146,9 +2812,9 @@ function drawWater() {
       ctx.textAlign = 'center'
       ctx.lineWidth = 3
       ctx.strokeStyle = '#000'
-      ctx.strokeText(w.id, px, py - 6)
+      ctx.strokeText(nice(w.id), px, py - 6)
       ctx.fillStyle = '#ff0'
-      ctx.fillText(w.id, px, py - 6)
+      ctx.fillText(nice(w.id), px, py - 6)
       ctx.textAlign = 'start'
     }
   }
@@ -2234,6 +2900,94 @@ $<HTMLButtonElement>('wSend').addEventListener('click', () =>
 )
 
 // roads (and their barriers) cut where they cross water: the gap is left for a bridge
+// --- power lines (step Routes): HV between the main sites, LV from the grid into each village along roads ---
+const POWER_COLOUR: Record<PowerKind, string> = { hv: '#ffd24a', mv: '#ffa63a', lv: '#e8e2c8' }
+function powerShapes() { return powerLines.map((l) => powerLineShape(l, l.id)) }
+function powerInfo() {
+  const km = powerLines.reduce((n, l) => n + l.length, 0) / 1000
+  const poles = powerLines.reduce((n, l) => n + l.poles.length / 2, 0)
+  $('powerInfo').textContent = powerLines.length ? t('power.info', { n: powerLines.length, km: km.toFixed(1), poles }) : ''
+}
+function drawPower() {
+  for (const l of powerLines) {
+    ctx.beginPath()
+    for (let i = 0; i + 1 < l.path.length; i += 2) { const [x, y] = toScreen(l.path[i], l.path[i + 1]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y) }
+    ctx.strokeStyle = '#000a'; ctx.lineWidth = l.kind === 'lv' ? 3 : 4; ctx.setLineDash([]); ctx.stroke()
+    ctx.strokeStyle = POWER_COLOUR[l.kind]; ctx.lineWidth = l.kind === 'lv' ? 1.2 : 2; ctx.setLineDash(l.kind === 'lv' ? [5, 3] : []); ctx.stroke()
+    ctx.setLineDash([])
+    const r = l.kind === 'lv' ? 2 : 3
+    if (l.spacing && l.spacing / view.mpp < 4) continue // too far out: poles would make a solid line
+    ctx.fillStyle = POWER_COLOUR[l.kind]
+    for (let i = 0; i + 1 < l.poles.length; i += 2) {
+      const [x, y] = toScreen(l.poles[i], l.poles[i + 1])
+      ctx.fillRect(x - r, y - r, 2 * r, 2 * r)
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(x - r, y - r, 2 * r, 2 * r)
+    }
+  }
+}
+function nextPowerId(kind: PowerKind) {
+  for (let n = 1; ; n++) if (!powerLines.some((l) => l.id === `POWER_${kind.toUpperCase()}_${n}`)) return `POWER_${kind.toUpperCase()}_${n}`
+}
+function generatePower() {
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  const g = island.grid, h = island.heights
+  const from = $<HTMLSelectElement>('powHVFrom').value
+  const hvKind = $<HTMLSelectElement>('powHVKind').value as PowerKind
+  const rank: Record<string, number> = { town: 0, village: 1, hamlet: 2 }
+  const lim = from === 'town' ? 0 : from === 'village' ? 1 : 2
+  const hubs = sites.filter((q) => rank[q.kind] <= lim)
+  if (hubs.length < 2 && !sites.length) return void (logEl.textContent = t('err.powerNoSites'))
+  const isWater = (x: number, z: number) => {
+    const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
+    return (h[r * g.cols + c] ?? 0) <= 0.3
+  }
+  const roadPts = [...roads, ...existingRoads()].map((r) => r.pts)
+  const keepOut = (except: Site[]) => sites.filter((q) => !except.includes(q)).map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] * 0.6 }))
+  const made: PowerItem[] = []
+  let failed = 0
+  const t0 = performance.now()
+  // HV: minimum spanning tree over the hubs (Prim), each edge routed cross-country
+  const chk = (id: string) => $<HTMLInputElement>(id).checked
+  if (chk('powHV') && hubs.length >= 2) {
+    const inT = [hubs[0]], out = hubs.slice(1)
+    while (out.length) {
+      let bi = 0, bj = 0, bd = Infinity
+      inT.forEach((a, i) => out.forEach((b, j) => { const d = Math.hypot(a.x - b.x, a.z - b.z); if (d < bd) { bd = d; bi = i; bj = j } }))
+      const a = inT[bi], b = out.splice(bj, 1)[0]
+      inT.push(b)
+      const l = routePowerLine(h, g, a.x, a.z, b.x, b.z, { kind: hvKind, isWater, keepOut: keepOut([a, b]) })
+      if (l) { const it = { ...l, id: nextPowerId(hvKind) }; made.push(it); powerLines.push(it) } else failed++
+    }
+  }
+  // LV: every other settlement is fed from the nearest HV pole (or nearest hub), following the roads
+  if (chk('powLV')) {
+    const maxLen = num('powLVMax')
+    const fed = new Set(chk('powHV') && hubs.length >= 2 ? hubs : [])
+    for (const v of sites) {
+      if (fed.has(v)) continue
+      let bx = NaN, bz = NaN, bd = Infinity
+      for (const l of powerLines) for (let i = 0; i + 1 < l.poles.length; i += 2) {
+        const d = Math.hypot(l.poles[i] - v.x, l.poles[i + 1] - v.z)
+        if (d < bd) { bd = d; bx = l.poles[i]; bz = l.poles[i + 1] }
+      }
+      if (!Number.isFinite(bx)) for (const q of sites) {
+        const d = Math.hypot(q.x - v.x, q.z - v.z)
+        if (q !== v && d < bd) { bd = d; bx = q.x; bz = q.z }
+      }
+      if (!Number.isFinite(bx) || bd > maxLen || bd < SITE_RADIUS[v.kind] * 0.5) continue
+      const l = routePowerLine(h, g, bx, bz, v.x, v.z, { kind: 'lv', isWater, roads: roadPts, keepOut: keepOut([v]) })
+      if (l) { const it = { ...l, id: nextPowerId('lv') }; made.push(it); powerLines.push(it) } else failed++
+    }
+  }
+  if (!made.length) return void (logEl.textContent = t('err.powerNone'))
+  powerInfo(); draw(); checkpoint(); autosave(); refreshSteps()
+  logEl.textContent = t('log.power', { n: made.length, failed, ms: Math.round(performance.now() - t0) })
+}
+$<HTMLButtonElement>('powerGen').addEventListener('click', () => {
+  powerLines = [] // regenerate from scratch: the old lines would otherwise stay under the new ones
+  generatePower()
+})
+$<HTMLButtonElement>('powerClear').addEventListener('click', () => { powerLines = []; powerInfo(); draw(); checkpoint(); autosave(); refreshSteps() })
 function allRoadShapes() {
   return splitAtWater(roadShapesWithFurniture(), waters).shapes
 }
@@ -2341,6 +3095,34 @@ try {
   if (saved) { loadProject(JSON.parse(saved)); logEl.textContent = t('log.restored') }
 } catch (err) { console.warn('autosave not restored', err) }
 
+// the satellite / tracing image comes back from IndexedDB (async: drawn when ready)
+void loadTrace().then((img) => { if (img && !traceImg) { traceImg = img; draw(); renderCollab() } })
+
 // first paint once everything is declared
 draw()
 refreshStatus()
+
+// floating panels: only one open at a time (help, collab connect form, language list, layers); Esc closes them
+{
+  const help = $<HTMLDivElement>('helpPanel'), box = $<HTMLDivElement>('collabBox'), lang = $<HTMLDivElement>('langMenu')
+  const layers = $<HTMLDetailsElement>('layers')
+  const isOpen = (el: HTMLElement) => (el === layers ? layers.open : !el.hidden)
+  const close = (el: HTMLElement) => {
+    if (el === layers) layers.open = false
+    else el.hidden = true
+    if (el === help) $('helpFab').classList.remove('active')
+    if (el === lang) $('lang').setAttribute('aria-expanded', 'false')
+  }
+  const all: HTMLElement[] = [help, box, lang, layers]
+  const mo = new MutationObserver((recs) => {
+    for (const r of recs) {
+      const el = r.target as HTMLElement
+      if (isOpen(el)) for (const o of all) if (o !== el && isOpen(o)) close(o)
+    }
+  })
+  for (const el of all) mo.observe(el, { attributes: true, attributeFilter: [el === layers ? 'open' : 'hidden'] })
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return
+    for (const o of all) if (isOpen(o)) close(o)
+  })
+}
