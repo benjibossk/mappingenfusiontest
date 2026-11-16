@@ -599,5 +599,7 @@ body.is-busy .stage canvas { cursor: progress; }
 .v3d-bar label { display: flex; align-items: center; gap: .35rem; }
 .v3d-bar input[type=range] { width: 90px; accent-color: var(--amber); }
 .v3d-help { margin-left: auto; color: var(--tx-4); text-transform: none; }
+.v3d-bar select { font: inherit; background: var(--ink-3); color: var(--tx-1); border: 1px solid var(--line-2); border-radius: 2px; padding: .2rem .3rem; }
+.v3d-ms { color: var(--tx-4); text-transform: none; }
 .v3d-north { position: absolute; right: 14px; bottom: 14px; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 50%; background: var(--ink-2); color: var(--amber); font: 700 12px ui-monospace, monospace; }
 .v3d-toggle.on { display: none; }

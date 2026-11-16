@@ -3,11 +3,13 @@
 // Axes: three x = world X (east), y = height, z = -world Z (north is -z, so north is up on screen).
 import {
   ACESFilmicToneMapping, AmbientLight, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry,
-  DirectionalLight, DoubleSide, FogExp2, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial,
+  DirectionalLight, DoubleSide, FogExp2, Group, HemisphereLight, IcosahedronGeometry, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial,
   MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, Quaternion, Scene, Shape, ShapeGeometry, SRGBColorSpace,
   Vector2, Vector3, WebGLRenderer, type Material, type Texture,
 } from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
+import { realDrape, type RealLayers } from './drape'
+export type { RealLayers } from './drape'
 
 export interface HeightGrid { minX: number; minZ: number; step: number; cols: number; rows: number; heights: ArrayLike<number> } // row 0 = minZ (south)
 export interface Box3D { cx: number; cz: number; w: number; d: number; h: number; yaw: number } // yaw: radians, world X/Z
@@ -16,25 +18,33 @@ export interface View3DData {
   sea: number
   buildings: Box3D[]
   trees: Float32Array // x, z, scale (1 = 12 m) triplets
+  treeNeedle?: Uint8Array // 1 = conifer, per tree
   lakes: number[][] // flat X/Z rings
   bridges?: Box3D[] // decks (cz/cx centre, h = thickness), y from the deck height
   bridgeY?: number[]
   target: [number, number] // world X/Z the 2D view looks at
   span: number // metres across the 2D view
 }
-export interface View3DText { back: string; exag: string; reset: string; top: string; trees: string; help: string; stage: (k: 'mesh' | 'drape' | 'objects') => string }
+export interface View3DText {
+  back: string; exag: string; reset: string; top: string; trees: string; help: string; grid: string
+  drape: string; real: string; map: string; sat: string; genMs: (s: string) => string
+  stage: (k: 'mesh' | 'drape' | 'real' | 'objects') => string
+}
 export interface View3DOptions {
   text: View3DText
   /** draws the 2D map into a square canvas of `size` px covering the drape bounds (x0, z0, side) */
   drape: (size: number) => { canvas: HTMLCanvasElement; x0: number; z0: number; side: number } | null
+  /** project data for the realistic drape (default); without it, the map drape only */
+  real?: RealLayers
   progress?: (stage: string, i: number, n: number) => void
   onClose: (target: [number, number], span: number) => void
 }
-export interface View3D { refreshDrape(): void; close(): void; stats(): { frames: number; vertices: number; buildings: number; trees: number } }
+export interface View3D { refreshDrape(): void; close(): void; stats(): { frames: number; vertices: number; buildings: number; trees: number; drape: string; texture: number } }
 
 const MAX_VERTS = 1_000_000
-const TREE_CHUNK = 1024 // m: trees grouped per square, hidden beyond TREE_FAR from the camera
-const TREE_FAR = 3500
+const TREE_CHUNK = 1024 // m: trees grouped per square; full crowns up to TREE_NEAR, 4-sided cones up to TREE_FAR, beyond: canopy texture only
+const TREE_NEAR = 1600
+const TREE_FAR = 5000
 const tick = () => new Promise<void>((r) => setTimeout(r, 0))
 
 export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptions): Promise<View3D> {
@@ -48,6 +58,9 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     <button type="button" data-k="reset">${T.reset}</button>
     <button type="button" data-k="top">${T.top}</button>
     <label class="check"><input type="checkbox" checked data-k="trees"> ${T.trees}</label>
+    <label class="check"><input type="checkbox" checked data-k="grid"> ${T.grid}</label>
+    <label>${T.drape} <select data-k="drape">${o.real ? `<option value="real">${T.real}</option>` : ''}<option value="map">${T.map}</option>${o.real?.sat ? `<option value="sat">${T.sat}</option>` : ''}</select></label>
+    <span class="v3d-ms" data-k="ms"></span>
     <span class="v3d-help">${T.help}</span></div><div class="v3d-north" title="N">N</div>`
   host.appendChild(root)
   const q = <E extends HTMLElement>(k: string) => root.querySelector<E>(`[data-k="${k}"]`)!
@@ -58,13 +71,14 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   renderer.toneMapping = ACESFilmicToneMapping
   root.prepend(renderer.domElement)
   const scene = new Scene()
-  scene.background = new Color(0x0d1014)
+  renderer.toneMappingExposure = 1.1
+  scene.background = new Color(0x0a0d12)
   const sideW = (hm.cols - 1) * hm.step, sideH = (hm.rows - 1) * hm.step, side = Math.max(sideW, sideH)
-  scene.fog = new FogExp2(0x0d1014, 0.9 / side)
-  const camera = new PerspectiveCamera(50, 1, 5, side * 8)
-  scene.add(new HemisphereLight(0xdfe8ff, 0x3a3226, 0.9), new AmbientLight(0xffffff, 0.25))
-  const sun = new DirectionalLight(0xfff1dc, 2.2)
-  sun.position.set(-0.6, 0.8, -0.35)
+  scene.fog = new FogExp2(0x4a5a6c, 0.22 / side) // aerial haze: far ground fades to blue-grey, the background stays dark
+  const camera = new PerspectiveCamera(45, 1, 5, side * 8)
+  scene.add(new HemisphereLight(0xd6e4ff, 0x4a3f2e, 1.05), new AmbientLight(0xffffff, 0.12))
+  const sun = new DirectionalLight(0xfff0d6, 2.3)
+  sun.position.set(-0.55, 0.6, 0.58) // south-west, ~40° high (as the baked hillshade of the drape)
   scene.add(sun)
 
   // --- terrain mesh (decimated to ≤ 1 M vertices) ---
@@ -109,15 +123,26 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   geo.setAttribute('uv', new BufferAttribute(uv, 2))
   geo.setIndex(new BufferAttribute(idx, 1))
   geo.computeBoundingSphere()
-  const terrainMat = new MeshStandardMaterial({ color: 0x8a8f78, roughness: 0.95, metalness: 0 })
+  const terrainMat = new MeshStandardMaterial({ color: 0x8a8f78, roughness: 1, metalness: 0 })
+  // draped km grid (as OpsTrack): lines of constant pixel width from the world position, toggled by a uniform
+  const gridU = { value: 1 }
+  terrainMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uGrid = gridU
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWxz;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvWxz = (modelMatrix * vec4(transformed, 1.0)).xz;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vWxz;\nuniform float uGrid;')
+      .replace('#include <opaque_fragment>', `{ vec2 gq = vWxz / 1000.0; vec2 gd = abs(fract(gq - 0.5) - 0.5) / fwidth(gq);
+        float gl = (1.0 - min(min(gd.x, gd.y) * 1.4, 1.0)) * uGrid; outgoingLight = mix(outgoingLight, vec3(0.85), gl * 0.45); }
+      #include <opaque_fragment>`)
+  }
   const terrainMesh = new Mesh(geo, terrainMat)
   const relief = new Group() // scaled in y by the exaggeration: terrain + water
   relief.add(terrainMesh)
   scene.add(relief)
 
   // --- sea + lakes ---
-  const waterMat = new MeshStandardMaterial({ color: 0x1d4a66, roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.82, side: DoubleSide })
-  const sea = new Mesh(new PlaneGeometry(side * 4, side * 4), waterMat)
+  const waterMat = new MeshStandardMaterial({ color: 0x14334f, roughness: 0.3, metalness: 0.1, transparent: true, opacity: 0.62, side: DoubleSide })
+  const sea = new Mesh(new PlaneGeometry(sideW, sideH), waterMat) // clipped to the terrain block
   sea.rotation.x = -Math.PI / 2
   sea.position.set(hm.minX + sideW / 2, data.sea - 0.3, -(hm.minZ + sideH / 2))
   relief.add(sea)
@@ -140,12 +165,50 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     relief.add(lake)
   }
 
-  // --- drape: the 2D render ---
+  // --- skirts: the terrain block's sides, soil below the ground, water above it where the edge is under the sea ---
+  {
+    let hMin = Infinity
+    for (let i = 0; i < hm.heights.length; i++) hMin = Math.min(hMin, hm.heights[i])
+    const bottom = Math.min(hMin, data.sea) - Math.max(40, side * 0.012)
+    const edge: number[] = [] // vertex indices around the border, closed
+    for (let c = 0; c < nc; c++) edge.push(c)
+    for (let r = 1; r < nr; r++) edge.push(r * nc + nc - 1)
+    for (let c = nc - 2; c >= 0; c--) edge.push((nr - 1) * nc + c)
+    for (let r = nr - 2; r >= 0; r--) edge.push(r * nc)
+    const sp: number[] = [], sc: number[] = []
+    const soil = [0.17, 0.14, 0.11], deep = [0.06, 0.05, 0.045], wat = [0.06, 0.16, 0.26]
+    for (let i = 0; i + 1 < edge.length; i++) {
+      const a = edge[i], b = edge[i + 1]
+      const ax = pos[a * 3], az = pos[a * 3 + 2], ay = pos[a * 3 + 1], bx = pos[b * 3], bz = pos[b * 3 + 2], by = pos[b * 3 + 1]
+      // soil: ground to bottom; water: sea level to ground where the ground is under the sea
+      sp.push(ax, ay, az, bx, by, bz, ax, bottom, az, bx, by, bz, bx, bottom, bz, ax, bottom, az)
+      sc.push(...soil, ...soil, ...deep, ...soil, ...deep, ...deep)
+      if (ay < data.sea || by < data.sea) {
+        const s0 = data.sea - 0.3
+        sp.push(ax, s0, az, bx, s0, bz, ax, Math.min(ay, s0), az, bx, s0, bz, bx, Math.min(by, s0), bz, ax, Math.min(ay, s0), az)
+        sc.push(...wat, ...wat, ...wat, ...wat, ...wat, ...wat)
+      }
+    }
+    const sg = new BufferGeometry()
+    sg.setAttribute('position', new BufferAttribute(new Float32Array(sp), 3))
+    sg.setAttribute('color', new BufferAttribute(new Float32Array(sc), 3))
+    sg.computeVertexNormals()
+    relief.add(new Mesh(sg, new MeshLambertMaterial({ vertexColors: true, side: DoubleSide })))
+  }
+
+  // --- drape: realistic (from the data), map (the 2D render without UI) or satellite ---
   let drapeTex: Texture | null = null
+  // 8192² for the realistic drape when the GPU takes it and the machine has the memory (256 MB canvas), else 4096²
+  const big = renderer.capabilities.maxTextureSize >= 16384 && ((navigator as { deviceMemory?: number }).deviceMemory ?? 4) >= 8
   const maxTex = Math.min(4096, renderer.capabilities.maxTextureSize)
+  const realTex = big ? 8192 : maxTex
+  const msEl = q('ms')
+  let mode: 'real' | 'map' | 'sat' = o.real ? 'real' : 'map'
   const drape = () => {
-    const d = o.drape(maxTex)
+    const t0 = performance.now()
+    const d = mode !== 'map' && o.real ? realDrape(realTex, hm, data.sea, o.real, data.buildings, mode) : o.drape(maxTex)
     if (!d) return
+    msEl.textContent = T.genMs(((performance.now() - t0) / 1000).toFixed(1))
     dx0 = d.x0; dz0 = d.z0; dside = d.side
     setUV(); geo.attributes.uv.needsUpdate = true
     const tex = new CanvasTexture(d.canvas)
@@ -157,7 +220,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     terrainMat.color.set(0xffffff)
     terrainMat.needsUpdate = true
   }
-  o.progress?.(T.stage('drape'), 1, 3); await tick()
+  o.progress?.(T.stage(o.real ? 'real' : 'drape'), 1, 3); await tick()
   drape()
 
   // --- buildings, bridges, trees (instanced) ---
@@ -168,22 +231,38 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const blds = data.buildings.length ? new InstancedMesh(boxGeo, bldMat, data.buildings.length) : null
   const bridgeMat = new MeshLambertMaterial({ color: 0x8c8c86 })
   const brg = data.bridges?.length ? new InstancedMesh(boxGeo, bridgeMat, data.bridges.length) : null
-  const coneGeo = new ConeGeometry(0.35, 1, 6).translate(0, 0.5, 0)
-  const treeMat = new MeshLambertMaterial({ color: 0x2f4a26 })
-  const treeChunks: { mesh: InstancedMesh; c: Vector3 }[] = []
+  // trees: per 1 km square, two kinds (broadleaf crown / conifer cone), two levels of detail sharing the
+  // same instance matrices and colours; beyond TREE_FAR the canopy of the drape stands for the forest
+  const geos = {
+    broad: [new IcosahedronGeometry(0.5, 1).scale(1, 0.85, 1).translate(0, 0.62, 0), new ConeGeometry(0.5, 1, 4).translate(0, 0.5, 0)],
+    needle: [new ConeGeometry(0.36, 1, 7).translate(0, 0.5, 0), new ConeGeometry(0.36, 1, 4).translate(0, 0.5, 0)],
+  }
+  const treeMat = new MeshLambertMaterial({ color: 0xffffff })
+  const treeChunks: { lods: InstancedMesh[][]; c: Vector3; list: number[]; kind: 'broad' | 'needle' }[] = []
   {
     const by = new Map<number, number[]>()
     const tr = data.trees
     for (let i = 0; i + 2 < tr.length; i += 3) {
-      const key = Math.floor((tr[i] - hm.minX) / TREE_CHUNK) * 1000 + Math.floor((tr[i + 1] - hm.minZ) / TREE_CHUNK)
+      const nd = data.treeNeedle?.[i / 3] ? 1 : 0
+      const key = (Math.floor((tr[i] - hm.minX) / TREE_CHUNK) * 1000 + Math.floor((tr[i + 1] - hm.minZ) / TREE_CHUNK)) * 2 + nd
       let a = by.get(key); if (!a) by.set(key, (a = [])); a.push(i)
     }
-    for (const [key, list] of by) {
-      const m = new InstancedMesh(coneGeo, treeMat, list.length)
+    const col = new Color()
+    for (const [key2, list] of by) {
+      const kind = key2 % 2 ? 'needle' : 'broad', key = Math.floor(key2 / 2)
+      const near = new InstancedMesh(geos[kind][0], treeMat, list.length)
+      const far = new InstancedMesh(geos[kind][1], treeMat, list.length)
+      list.forEach((i, j) => {
+        const t = ((i * 2654435761) >>> 0) / 4294967296
+        if (kind === 'needle') col.setRGB(0.12 + t * 0.04, 0.19 + t * 0.06, 0.14 + t * 0.04, SRGBColorSpace)
+        else col.setRGB(0.17 + t * 0.09, 0.25 + t * 0.09, 0.11 + t * 0.04, SRGBColorSpace)
+        near.setColorAt(j, col)
+      })
+      far.instanceMatrix = near.instanceMatrix
+      far.instanceColor = near.instanceColor
       const cx = hm.minX + (Math.floor(key / 1000) + 0.5) * TREE_CHUNK, cz = hm.minZ + ((key % 1000) + 0.5) * TREE_CHUNK
-      m.userData.list = list
-      treeChunks.push({ mesh: m, c: new Vector3(cx, 0, -cz) })
-      scene.add(m)
+      treeChunks.push({ lods: [[near], [far]], c: new Vector3(cx, groundAt(cx, cz), -cz), list, kind })
+      scene.add(near, far)
     }
   }
   let ex = 1
@@ -207,14 +286,14 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     }
     const m4 = new Matrix4(), qn = new Quaternion(), v = new Vector3(), sc = new Vector3()
     for (const ch of treeChunks) {
-      const list = ch.mesh.userData.list as number[]
-      list.forEach((i, j) => {
+      const near = ch.lods[0][0], far = ch.lods[1][0]
+      ch.list.forEach((i, j) => {
         const x = data.trees[i], z = data.trees[i + 1], f = data.trees[i + 2]
-        v.set(x, groundAt(x, z) * ex - 0.5, -z)
-        sc.set(9 * f, 14 * f, 9 * f)
-        m4.compose(v, qn, sc); ch.mesh.setMatrixAt(j, m4)
+        v.set(x, groundAt(x, z) * ex - 0.8, -z)
+        if (ch.kind === 'needle') sc.set(7 * f, 17 * f, 7 * f); else sc.set(10 * f, 13 * f, 10 * f)
+        m4.compose(v, qn, sc); near.setMatrixAt(j, m4)
       })
-      ch.mesh.instanceMatrix.needsUpdate = true; ch.mesh.computeBoundingSphere()
+      near.instanceMatrix.needsUpdate = true; near.computeBoundingSphere(); far.boundingSphere = near.boundingSphere
     }
   }
   place()
@@ -257,7 +336,11 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     controls.update()
     if (!dirty) return
     dirty = false
-    for (const ch of treeChunks) ch.mesh.visible = treesOn && ch.c.distanceTo(v.set(camera.position.x, 0, camera.position.z)) < TREE_FAR
+    for (const ch of treeChunks) {
+      const d = ch.c.distanceTo(camera.position)
+      ch.lods[0][0].visible = treesOn && d < TREE_NEAR
+      ch.lods[1][0].visible = treesOn && d >= TREE_NEAR && d < TREE_FAR
+    }
     // ground target follows the relief so the orbit stays on the ground
     controls.target.y = groundAt(controls.target.x, -controls.target.z) * ex
     renderer.render(scene, camera)
@@ -265,7 +348,6 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     v2.set(controls.target.x - camera.position.x, controls.target.z - camera.position.z)
     north.style.transform = `rotate(${Math.atan2(v2.x, -v2.y) * -1}rad)`
   }
-  const v = new Vector3()
   let treesOn = true
   resize()
   loop()
@@ -281,6 +363,8 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   q('reset').addEventListener('click', () => look(hm.minX + sideW / 2, hm.minZ + sideH / 2, side, true))
   q('top').addEventListener('click', () => look(controls.target.x, -controls.target.z, camera.position.distanceTo(controls.target), false))
   q<HTMLInputElement>('trees').addEventListener('change', (e) => { treesOn = (e.target as HTMLInputElement).checked; dirty = true })
+  q<HTMLInputElement>('grid').addEventListener('change', (e) => { gridU.value = (e.target as HTMLInputElement).checked ? 1 : 0; dirty = true })
+  q<HTMLSelectElement>('drape').addEventListener('change', (e) => { mode = (e.target as HTMLSelectElement).value as typeof mode; drape(); dirty = true })
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) { e.stopPropagation(); close() } }
   window.addEventListener('keydown', onKey, true)
   q('back').addEventListener('click', () => close())
@@ -307,8 +391,8 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     o.onClose([controls.target.x, -controls.target.z], camera.position.distanceTo(controls.target) / 0.9)
   }
   return {
-    refreshDrape() { if (!closed) { drape(); dirty = true } },
+    refreshDrape() { if (!closed && mode === 'map') { drape(); dirty = true } }, // the realistic drape keeps the data it was opened with
     close,
-    stats: () => ({ frames, vertices: nc * nr, buildings: data.buildings.length, trees: data.trees.length / 3 }),
+    stats: () => ({ frames, vertices: nc * nr, buildings: data.buildings.length, trees: data.trees.length / 3, drape: mode, texture: mode === 'map' ? maxTex : realTex }),
   }
 }

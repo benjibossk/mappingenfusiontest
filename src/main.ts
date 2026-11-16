@@ -15,7 +15,7 @@ import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type 
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { generateCampaign, type CampaignResult } from './modules/campaign'
-import { ROAD_COLOURS, ROAD_TYPES, carveRoads, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
+import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
 const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'names'] as const
@@ -747,7 +747,7 @@ function draw() {
     ctx.stroke()
     ctx.setLineDash([])
     ctx.fillStyle = '#fff'
-    ring.forEach(([x, zz]) => {
+    if (!draping) ring.forEach(([x, zz]) => {
       const [sx, sy] = toScreen(x, zz)
       ctx.fillRect(sx - 2, sy - 2, 4, 4)
     })
@@ -788,8 +788,8 @@ function draw() {
   }
   if (layer('bridges')) drawBridges()
   if (layer('issues')) drawIssues()
-  drawComments()
-  if (collab) drawPeers()
+  if (!draping) drawComments()
+  if (collab && !draping) drawPeers()
   drawBrush()
   renderMini()
   drapeLater()
@@ -4023,8 +4023,8 @@ function box3d(c: number[], h: number) {
   const w = Math.hypot(c[2] - c[0], c[3] - c[1]), d = Math.hypot(c[4] - c[2], c[5] - c[3])
   return { cx, cz, w: Math.max(1, w), d: Math.max(1, d), h, yaw: Math.atan2(c[3] - c[1], c[2] - c[0]) }
 }
-/** trees scattered in the forest areas: jittered grid, capped at ~150 k */
-function forestTrees(): Float32Array {
+/** trees scattered in the forest areas: jittered grid, capped at ~300 k; needle: 1 = conifer (leaf type of the area, mixed = 40 %) */
+function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
   const forests = areas.filter((a) => a.kind === 'forest' && a.pts.length >= 6)
   let tot = 0
   const bb = forests.map((a) => {
@@ -4035,8 +4035,8 @@ function forestTrees(): Float32Array {
     tot += Math.abs(ar) / 2
     return [x0, z0, x1, z1]
   })
-  const sp = Math.max(14, Math.sqrt(tot / 150_000))
-  const out: number[] = []
+  const sp = Math.max(9, Math.sqrt(tot / 300_000))
+  const out: number[] = [], kind: number[] = []
   let seed = 1
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
   forests.forEach((a, n) => {
@@ -4047,29 +4047,51 @@ function forestTrees(): Float32Array {
       for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
         if ((p[i + 1] > pz) !== (p[j + 1] > pz) && px < ((p[j] - p[i]) * (pz - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) inside = !inside
       }
-      if (inside) out.push(px, pz, 0.7 + rnd() * 0.6)
+      if (inside) { out.push(px, pz, 0.7 + rnd() * 0.6); kind.push(a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < 0.4) ? 1 : 0) }
     }
   })
-  return new Float32Array(out)
+  return { pts: new Float32Array(out), needle: Uint8Array.from(kind) }
 }
-/** the 2D render (relief, surfaces, areas, water, roads, buildings) into a square canvas over the whole terrain */
+const flat = (ring: number[][]) => ring.flat()
+const roadKind = (t: string) => (/^asphalt/.test(t) ? 'asphalt' : /cobble|concrete/.test(t) ? 'paved' : /^trail/.test(t) ? 'trail' : 'dirt') as 'asphalt' | 'paved' | 'dirt' | 'trail'
+/** project data for the realistic 3D drape (src/view3d/drape.ts) */
+function realLayers(hm: Heightmap): import('./view3d').RealLayers {
+  const allRoads = [...roads, ...setLanes, ...setPaths, ...zones.flatMap((z) => z.roads)]
+  return {
+    surfaces: island?.surfaces,
+    forests: areas.filter((a) => a.kind === 'forest').map((a) => ({ pts: a.pts, needle: a.leaf === 'needle' ? 1 : a.leaf === 'broad' ? 0 : 0.4 })),
+    fields: [...areas.filter((a) => a.kind === 'field').map((a) => a.pts), ...(result?.fields ?? []).map(flat)],
+    hedges: (result?.hedges ?? []).map(flat),
+    roads: allRoads.filter((r) => r.pts.length >= 4).map((r) => ({ line: centreLine(r.pts, 4), half: roadHalf(r), kind: roadKind(r.type) })),
+    rivers: waters.filter((w) => w.type === 'river' && w.pts.length >= 4).map((w) => ({ line: riverCourse(w.pts, w.width), width: w.width })),
+    lakes: waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts),
+    paved: [
+      ...setSquares.map((q) => Array.from({ length: 20 }, (_, i) => [q.x + Math.cos(i * Math.PI / 10) * q.r, q.z + Math.sin(i * Math.PI / 10) * q.r]).flat()),
+      ...zones.flatMap((z) => z.boxes.filter((b) => /pave|lot/.test(b.role) && b.corners.length >= 8).map((b) => b.corners)),
+    ],
+    sat: traceImg ? { image: traceImg, x0: hm.minX, z0: hm.minZ, x1: hm.minX + (hm.cols - 1) * hm.step, z1: hm.minZ + (hm.rows - 1) * hm.step } : undefined,
+  }
+}
+/** the 2D render (relief, surfaces, areas, water, roads, buildings) into a square canvas over the whole terrain, without the
+ *  editor overlays (site circles, labels, handles, issues, comments) */
 function drapeCanvas(size: number) {
   if (!terrain) return null
   const side = Math.max((terrain.cols - 1) * terrain.step, (terrain.rows - 1) * terrain.step)
-  const W = map.width, Hh = map.height, sv = { ...view }, cw = cursorWorld, hadNames = !hiddenLayers.has('names')
+  const W = map.width, Hh = map.height, sv = { ...view }, cw = cursorWorld
+  const hide = (['names', 'sites', 'issues', 'bridges'] as const).filter((l) => !hiddenLayers.has(l))
   draping = true
   try {
     map.width = size; map.height = size
     view.x = terrain.minX + side / 2; view.z = terrain.minZ + side / 2; view.mpp = side / size
     cursorWorld = null
-    if (hadNames) hiddenLayers.add('names')
+    hide.forEach((l) => hiddenLayers.add(l))
     draw()
     const out = document.createElement('canvas')
     out.width = out.height = size
     out.getContext('2d')!.drawImage(map, 0, 0)
     return { canvas: out, x0: terrain.minX, z0: terrain.minZ, side }
   } finally {
-    if (hadNames) hiddenLayers.delete('names')
+    hide.forEach((l) => hiddenLayers.delete(l))
     map.width = W; map.height = Hh; Object.assign(view, sv); cursorWorld = cw
     draw()
     draping = false
@@ -4094,17 +4116,20 @@ btn3d.addEventListener('click', () => void (async () => {
       ...zones.flatMap((z) => z.boxes.filter((b) => b.corners.length >= 8).map((b) => box3d(b.corners, /hangar|tower/i.test(b.role) ? 12 : 7))),
     ]
     const lakes = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts)
+    const trees = forestTrees()
     const bridgesBoxes = worldBridges.map((b) => ({ cx: b.x, cz: b.z, w: 8, d: 16, h: 1.2, yaw: (-b.yaw * Math.PI) / 180 }))
     v3d = await mod.open3d(map.parentElement!, {
-      hm, sea: 0, buildings, trees: forestTrees(), lakes,
+      hm, sea: 0, buildings, trees: trees.pts, treeNeedle: trees.needle, lakes,
       bridges: bridgesBoxes, bridgeY: worldBridges.map((b) => (b.ycm !== undefined ? b.ycm / 100 : heightAt(hm, b.x, b.z))),
       target: [view.x, view.z], span: map.width * view.mpp,
     }, {
       text: {
         back: t('v3d.back'), exag: t('v3d.exag'), reset: t('v3d.reset'), top: t('v3d.top'), trees: t('v3d.trees'), help: t('v3d.help'),
+        grid: t('v3d.grid'), drape: t('v3d.drape'), real: t('v3d.real'), map: t('v3d.map'), sat: t('v3d.sat'), genMs: (s) => t('v3d.genMs', { s }),
         stage: (k) => t(('v3d.st.' + k) as K),
       },
       drape: drapeCanvas,
+      real: realLayers(hm),
       progress: (s, i, n) => busyStage(s, i, n),
       onClose: (tg, span) => {
         v3d = null
