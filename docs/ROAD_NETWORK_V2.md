@@ -213,3 +213,53 @@ les villes ou l'ergonomie d'éditeur.
 - **What's the Sandbox Spirit?** : manifeste de l'auteur, hors sujet.
 
 Tout reste dans ce fichier : pas besoin de `SANDBOXSPIRIT_BLOG.md`.
+
+---
+
+## 6. État d'implémentation (2026-11-16, branche `feature/roads-v2`)
+
+Fichiers : `src/modules/roadgraph.ts` (graphe, soudure, îlots), `roadgraph-classes.ts` (classes → prefabs),
+`roadgeom.ts` (congés, profil vertical), `bridges.ts` (ponts), `network.ts` (finition V2 dans `buildNetwork`).
+Tests : `scratchpad/roadsv2.test.mts` (35 assertions, toutes OK) + SVG `roadsv2-junctions.svg`,
+`roadsv2-fillets.svg`, `roadsv2-profile.svg`, `roadsv2-bridge.svg`. Rien n'est vérifié dans le Workbench.
+
+| # | Étape | État | Branché dans la génération ? |
+|---|---|---|---|
+| 1 | `RoadGraph`, `roadsToGraph` / `graphToRoads` | **fait**, aller-retour sans perte (attributs, routes < 2 pts) | outil (rapport) |
+| 2 | Soudure T / X / fusion d'extrémités / fusion de carrefours proches + même Y au nœud (`levelGraph`) | **fait** | **oui** : `buildNetwork` ajoute le point partagé aux croisements X (les T l'étaient déjà) |
+| 3 | Îlots (`roadIslands`) + raccord auto (`connectIslands`) | **fait** | non (à câbler dans la validation / UI) |
+| 4 | Classes → `RG_*` (GUID de `ROAD_TYPES`, vérifiés par `check_prefabs.sh`), largeur, pente de projet, Rmin | **fait** ; la limite du vérificateur reste `maxGrade(type)` (inchangée) | Rmin utilisé par les congés |
+| 5 | Congés droite + arc (Rmin, fusion des coins rapprochés en un seul « PI », points de carrefour fixes, rééchantillonnage régulier 12 m) | **fait** | **oui** : `buildNetwork` (option `v2`, défaut `true`) ; un congé est annulé si la route taillée dépasse sa pente |
+| 6 | Profil vertical (moyenne, écrêtage 2 passes, courbes verticales, extrémités épinglées) | **fait** (`profileLine`, `profileRoad`) | non : `carveRoads` garde son profil (le vérificateur mesure dessus) |
+| 7 | Ponts : détection eau/vallée, découpe aux culées (terrain non taillé sous le tablier), tabliers bout à bout (multiples de 13 m), piles aux joints (empilées, `tooHigh` au-delà de 2) | **fait** (`findCrossings`, `splitAtBridges`, `planBridge`) | non : l'export garde `splitAtWater` + `water.ts bridges()` |
+| 8-11 | angle mini, giratoire, test Workbench | à faire | — |
+
+Mesures (worldgen 4096 m, seeds 1-3) : points de la spline (centreLine 10 m) sous le Rmin de leur classe
+**1,6 % → 0 %** ; points de contrôle ~250 → ~1050 (espacement régulier 12 m) ; génération +2 à +4 s par carte.
+Vérificateur : 0 problème sur `net-seeds` 1-10 et worldgen 1-5 ; déterminisme OK (hash changé volontairement).
+À surveiller : seed 2 place moins de bâtiments (409 → 278), sans doute les villages qui s'alignent sur des
+routes légèrement déplacées.
+
+### API pour le câblage UI (main.ts, plus tard)
+```ts
+import { roadsToGraph, graphToRoads, weldRoads, roadIslands, connectIslands, mergeCloseNodes } from './modules/roadgraph'
+import { ROAD_CLASSES, classOf, generatorOf, rMinOf } from './modules/roadgraph-classes'
+import { filletPolyline, resampleKeep, profileRoad, profileLine, levelGraph, minRadius } from './modules/roadgeom'
+import { findCrossings, splitAtBridges, planBridge, BRIDGE_PREFABS } from './modules/bridges'
+
+weldRoads(roads, { snap: 8, crossings: true, report })   // copie soudée ; report = { tees, merged, crosses }
+roadIslands(roads, snap?) -> { roads: id[]; km; x; z }[]  // plus gros d'abord ; > 1 = réseau coupé
+connectIslands(roads, { maxDist: 800, type: 'dirt', route? }) -> Road[]  // nouvelles routes à ajouter
+filletPolyline(pts, rMinOf(type), { fixed, merge: 12, minKeep: 0.5, chord: 5 }) -> { pts, minR, reduced, corners }
+resampleKeep(pts, 12, fixed)                              // à appliquer après filletPolyline
+profileRoad(pts, type, heightAt) -> { line, s, ground, y } // pour un graphique de profil en long
+findCrossings(line, y, ground, { wet, clear: 4, minLen: 10 }) -> { from, to, kind: 'water'|'valley' }[]
+splitAtBridges(road, spans) -> { roads, gaps }            // gaps au format de water.ts bridges()
+planBridge(id, from, to, deckTop, roadHalf(road), heightAt, { dirt }) -> { entities, piers, tooHigh, ... }
+buildNetwork(..., { ...params, v2: false })               // ancien comportement
+```
+Contrôles UI proposés : (a) case « Lisser les virages (V2) » → `NetworkParams.v2` ; (b) bouton « Souder les
+routes » sur les routes dessinées → `weldRoads(roads, { snap: 8, crossings: true })` puis remplacer `roads` ;
+(c) dans la validation, ligne « N îlots routiers » (`roadIslands(roads).length > 1`) avec bouton « Relier » →
+`connectIslands` ; (d) plus tard : profil en long de la route sélectionnée (`profileRoad`) et ponts de vallée
+(`findCrossings` + `splitAtBridges` + `planBridge` à brancher à côté de `splitAtWater` dans l'export).

@@ -6,6 +6,9 @@
 //    rarely, cells already on a road are cheaper so roads share corridors instead of running side by side
 import type { Grid } from './island'
 import { carveRoads, centreLine, type Road, type RoadType } from './roads'
+import { weldRoads } from './roadgraph'
+import { rMinOf } from './roadgraph-classes'
+import { filletPolyline, resampleKeep } from './roadgeom'
 
 export type SiteKind = 'town' | 'village' | 'hamlet'
 export interface Site { id: string; x: number; z: number; kind: SiteKind }
@@ -76,6 +79,10 @@ export interface NetworkParams {
   loopDetour?: number // default 1.8
   loopMaxM?: number // longest straight distance tried (default 2 000 m)
   loopType?: RoadType // default p.minor
+  /** Road network V2 finish (default true): roads that cross get a shared point (X junction) and corners are
+   *  rounded into line + arc fillets (radius >= class Rmin when there is room), junction points kept exactly.
+   *  A fillet is kept only when the carved road stays under its grade limit. false = the old output. */
+  v2?: boolean
 }
 
 const DIRS = [
@@ -305,6 +312,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
   const xyOf = (i: number): [number, number] => [g.minX + (i % g.cols) * g.step, g.minZ + Math.floor(i / g.cols) * g.step]
   const onRoad = new Uint8Array(g.cols * g.rows)
   const roads: Road[] = []
+  const keep = new Set<string>() // control points that must survive the fillets (a place checks it is served)
   // cell -> [road, index of the control point that sits on it] for T junctions
   const owner = new Map<number, Road>()
   const mark = (road: Road, cells: number[]) => cells.forEach((i) => { onRoad[i] = 1; if (!owner.has(i)) owner.set(i, road) })
@@ -342,6 +350,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
       // the road passing by gets a control point in front of the place (the check looks for one nearby)
       const [px, pz] = nearestOn(served.pts, s.x, s.z)
       insertPoint(served, px, pz)
+      keep.add(`${px},${pz}`)
       continue
     }
     // towns are joined to the nearest town; villages and hamlets to the nearest site or any road
@@ -420,7 +429,41 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     mark(road, cells)
   }
   if (p.loops) addLoops()
+  if (p.v2 !== false) finishV2()
   return roads
+
+  // --- V2 finish: X junctions + fillets (docs/ROAD_NETWORK_V2.md stages 2 and 5) ---
+  function finishV2() {
+    const SPACING = 12
+    const welded = weldRoads(roads, { snap: 0, crossings: true })
+    roads.forEach((r, i) => { r.pts = welded[i].pts })
+    // junction points: road ends and points used by two roads (existing ones included), plus served points
+    const uses = new Map<string, number>()
+    for (const r of [...existing, ...roads]) {
+      const seen = new Set<string>()
+      for (let k = 0; k + 1 < r.pts.length; k += 2) { const kk = `${r.pts[k]},${r.pts[k + 1]}`; if (!seen.has(kk)) { seen.add(kk); uses.set(kk, (uses.get(kk) ?? 0) + 1) } }
+      if (r.pts.length >= 4) for (const e of [0, r.pts.length - 2]) keep.add(`${r.pts[e]},${r.pts[e + 1]}`)
+    }
+    const fixed = (x: number, z: number) => keep.has(`${x},${z}`) || (uses.get(`${x},${z}`) ?? 0) > 1
+    const old = new Map<Road, number[]>()
+    for (const r of roads) {
+      const f = filletPolyline(r.pts, rMinOf(r.type), { fixed, chord: 5, merge: 12, minKeep: 0.5 })
+      if (!f.corners) continue
+      // evenly spaced control points (the spline through them follows the arcs instead of overshooting)
+      const pts = resampleKeep(f.pts, SPACING, fixed)
+      if (bedGrade(pts, h, g) > maxGrade(r.type) * 0.9) continue
+      old.set(r, r.pts)
+      r.pts = pts
+    }
+    // the real test, like the checker: carved together, no filleted road may end over its limit
+    for (let pass = 0; pass < 3 && old.size; pass++) {
+      const t = h.slice()
+      carveRoads(t, g, [...existing, ...roads])
+      let back = 0
+      for (const [r, pts] of old) if (worstGrade(r.pts, t, g).grade > maxGrade(r.type)) { r.pts = pts; old.delete(r); back++ }
+      if (!back) break
+    }
+  }
 
   // --- loops: shortcuts between places the tree joins only by a long detour ---
   function roadDist(from: number, to: Set<number>, cap: number): number {
