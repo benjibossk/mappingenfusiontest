@@ -209,3 +209,27 @@ ou fichier à ouvrir si trop gros), auto-calibration, Metric Atlas, masques de b
 - Reste : écriture des masques dans le terrain (volontairement non : jamais d'écriture `.ttile`) ; décodeur BC7 modes 0/2
   (partitions à 3 sous-ensembles) vérifié seulement par la cohérence visuelle ; classes de route `.topo` → revêtement
   par défaut (≤ 2 goudron, sinon terre ; il votait avec les `.layer`).
+
+## 5. Notes de l'appel avec giorbev → lot 3 Atelier (2026-11-16)
+Pour les projets Workbench EXISTANTS, au service de la collaboration et des décisions de game design :
+- **Réseaux (rail / routes / électricité)** — `src/atelier/networks/` : lecture seule des `.layer`, graphe (extrémités
+  accrochées), carte + liste, statistiques, export CSV/JSON/PNG + résumé texte à coller. Chaque incohérence (joint ouvert,
+  chevauchement, doublon, cul-de-sac / raccord manqué, îlot déconnecté, pente forte, poteau isolé, ligne très courte) est
+  cliquable → **« Commenter »** = un Op `comment` (x/z) du même système que la collaboration du générateur ; les
+  commentaires du salon sont dessinés sur la carte Atelier.
+  - Rail : le jeu de base n'a **pas de générateur de voie** (`SCR_TrackGeneratorEntity` ne fait que réserver un couloir,
+    il ne place rien). Les voies sont des pièces posées (`Prefabs/Structures/Rails/*` sur Zimnitrita, `RailwayTrackRuin_01`,
+    `HarborRail_01`, `SawmillRail_01`). Longueur et axe appris des données (RailDRoit19m01 = 18,9 m sur Z, HarborRail_01_8m
+    = 8 m sur X). La « transformation en spline » est sortie du périmètre (projet séparé).
+  - Routes : `RoadGeneratorEntity` ; les générateurs de décor (massifs, lignes de piste, rangées de dalles…) sont exclus ;
+    raccord en T sur un segment = connecté ; `kindOf` de `roadgraph.ts` réutilisé.
+  - Électricité : `SCR_PowerlineGeneratorEntity`, poteaux générés (enfants) / posés à la main, transformateurs.
+- **Simplificateur de textures de tuile** — `src/atelier/tilefix/` : slots < seuil (1 % par défaut) → texture présente la
+  plus proche (famille de nom puis couleur moyenne `texcolors.json`), cible modifiable, avant/après vs budget 5/7, aperçu
+  (carte des blocs corrigés + liste), export zip des `_layer.edds` corrigés + plan CSV, « Appliquer (expérimental) » via
+  safeWrite + Restaurer. **Manque** : le chunk `TMAT`/`BMAT` des `.ttile` (masques de matériaux par bloc) n'est pas décodé
+  en écriture → la texture reste listée dans son bloc tant qu'on ne la repeint pas dans le Workbench ; le gain affiché est
+  celui une fois le plan appliqué.
+- Hook collaboration (main.ts, non modifié) : `registerAtelierCollab({ add: (x, z, text) => addOp({ kind: 'comment', text, x, z }), list: () => ops })`
+  + `notifyAtelierCollab()` en fin de `receiveOps`/`addOp`. Sans lui, les commentaires vont dans le magasin local
+  d'ops (`reforger-mapper.collab.ops`, `local: true`) que main.ts renvoie au salon à la connexion suivante.

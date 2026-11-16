@@ -180,6 +180,14 @@ Lot 2 (2026-11-16, captures `atelier2-*.png`, copie Normandy_Copy + `_layer`/`_s
 - [ ] A6 « Continuer dans le générateur » : la page recharge en mode générateur avec le relief, les lacs/rivières et les routes du monde ; « Annuler » du générateur et autosave inchangés.
 
 
+Lot 3 — réseaux + textures (2026-11-16, captures `pw/atelier-net-*.png`, copie scratchpad de Zimnitrita ; 0 erreur de page) :
+- [ ] Barre gauche → « Réseaux : rail, routes, électricité » : carte avec relief, 3 calques, onglets Rail / Routes / Électricité, stats, par classe, lignes.
+- [ ] Clic sur un point (joint ouvert, cul-de-sac, pente, poteau isolé…) → détail (layer, ligne, longueur) + « Épingler le commentaire ici » → épingle jaune ; elle apparaît aussi dans 👥 du générateur (salon ou hors ligne).
+- [ ] Export CSV / JSON / PNG / Résumé (copié + .md).
+- [ ] « Simplifier les textures de tuile » : seuil, budget 5/7, tuiles avant→après, cible modifiable, Aperçu (blocs orange), zip des masques + plan CSV.
+- [ ] « Appliquer (expérimental) » Workbench fermé → `_layer.edds` écrits (sauvegarde `_originaux`) ; « Restaurer… » → identique octet pour octet.
+Dans Workbench (manuel) : vérifier sur 2-3 voies signalées « joint ouvert » qu'il y a bien un trou visible ; rouvrir un terrain après « Appliquer » textures : le terrain s'ouvre, la peinture est cohérente (sinon Restaurer) ; repeindre un slot du plan et vérifier que le diagnostic A1 baisse.
+
 ## R13 — Collaboration directe sans serveur (ajouté le 2026-11-16)
 
 Deux navigateurs (ou deux PC sur des réseaux différents, ex. box + partage 4G) :

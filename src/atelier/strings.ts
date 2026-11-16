@@ -282,6 +282,10 @@ const P = {
   'at.g.mapentity': ['SCR_MapEntity', 'SCR_MapEntity'],
   'at.g.mapentity.d': ['The world entity that shows the in-game map; its background image and map config come from here.', 'L\'entité du monde qui affiche la carte en jeu ; son image de fond et sa config de carte viennent d\'ici.'],
   'at.h.credit': ['Tools ported from Map Generator Pro by giorbev (MIT). Thank you!', 'Outils portés de Map Generator Pro de giorbev (MIT). Merci !'],
+  // networks viewer + tile texture simplifier (src/atelier/networks, src/atelier/tilefix)
+  'at.net.open': ['Networks: rail, roads, power', 'Réseaux : rail, routes, électricité'],
+  'at.tex.open': ['Simplify tile textures', 'Simplifier les textures de tuile'],
+  'at.net.needWorld': ['Open a world first (A0).', 'Ouvrez d’abord un monde (A0).'],
 } as const satisfies Record<string, readonly [string, string]>
 
 type AK = keyof typeof P
