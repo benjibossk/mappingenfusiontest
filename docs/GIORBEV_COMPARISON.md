@@ -43,20 +43,20 @@ pour les `.layer` : **refus si Workbench est ouvert**, **SHA du fichier** vérif
 |---|---|---|---|
 | V1-V6 | Analyse heightmap (pente, aspect, TPI multi-rayon, courbure ZT, flux, distance côte) | 🟡 | On calcule pente/flux (`hydro.ts`, `network.ts`) pour l'eau et les routes, pas TPI/courbure pour les surfaces |
 | V1-V6 | 13 masques par soustraction ordonnée | 🟡 | `computeSurfaces` + `cover.ts` : surfaces depuis relief, OSM/WorldCover et zones dessinées ; règles moins riches que ses rampes/cloches |
-| V1-V6 | Presets biomes JSON (7) | 🟡 | Atelier A2 : 4 presets portés (MIT), présence des textures vérifiée ; pas d'application des masques |
-| V1-V6 | Auto-calibration des paramètres | ❌ | Non porté : dépend de son pipeline de masques numpy |
+| V1-V6 | Presets biomes JSON (7) | ✅ | Atelier A2 : 5 presets portés (MIT, dont `temperate_auto` à règles en mètres), présence des textures + **masques par soustraction ordonnée** (`terrain.ts` `biomeRules`/`classify` : priorité, altitude m ou normalisée, pente) avec aperçu, % par texture et PNG. Les « rôles » de `biomes.json` (role_scales) n'ont pas d'algorithme publié dans son dépôt : rôles → seuils calibrés |
+| V1-V6 | Auto-calibration des paramètres | ✅ | Atelier A2 « Auto-calibrer » (`autoCalibrate`) : P10/P30/P66/P80 des altitudes de terre, P65/P85/P95 des pentes, comme son `auto_calibrate` / `auto_calibrate_params` ; seuils modifiables |
 | V1-V6 | Budget QTRE 5/7 par bloc | ✅ | `limitPerBlock` (`island.ts`) ; mais pas de **visualisation par bloc** |
-| V1-V6 | Satmap V2 texturée depuis `.edds` | ❌ | Décodeur `.edds` non écrit ; le style « réaliste » A4 utilise des couleurs plates |
+| V1-V6 | Satmap V2 texturée depuis `.edds` | ✅ | Décodeur EDDS TS (`formats/edds.ts` : en-tête DDS/DX10, table de mips ENF1, LZ4 chaîné, BC1-BC5/BC7, RGBA) ; A4 réaliste = mosaïque des `*_supertexture.edds` cuites par Workbench + ombrage + couronnes d'arbres ombrées |
 | V1-V6 → retiré V8 | K-means satmap → masques | ✅⭐ | `satmask.ts` (Lab, flou, médiane, régions mini) — lui l'a retiré |
 | V1-V6 | Écriture binaire `.ttile` (LRS2) | ❌ | Volontairement non (il l'a lui-même abandonnée en V8) ; nous envoyons les masques via le pont (`POST /masks`) |
 | V7.0 | i18n FR/EN | ✅⭐ | FR/EN + % traduit + export/import d'un fichier langue |
-| V7.0 | Metric Atlas | ❌ | Non porté (outil d'analyse annexe, priorité basse) |
+| V7.0 | Metric Atlas | ✅ | Atelier A2 « Atlas métrique » : altitude (tout / terres), pente, rugosité, TPI 100 m (min/p05/p50/moy/p95/max), rose des expositions, classes de pente |
 | V8.0 | Multi-projets générique (grille, préfixe, m/px, budget lus du projet) | ✅ | Atelier A0 : `.terr` (HEAD), `.ttile`, `.layer`, `.gproj` lus sur disque, Workbench fermé |
 | V8.0 | Base vanilla 60 matériaux | 🟡 | Matériaux lus du monde importé, couleurs devinées par nom |
 | V8.0 | Lecture seule des fichiers terrain | ✅ | On n'écrit jamais de fichier terrain : tout passe par l'API Workbench |
 | V8.1 | Export/import projet `.mgp.zip` | ✅⭐ | Fichier projet + salons collaboratifs (curseurs, historique, commentaires) |
-| V8.1 | Textures par projet + « Synchroniser » (`.emat`, décodage `.edds`) | 🟡 | Atelier : `.emat` comptés, matériaux du `.terr` listés ; pas de décodage `.edds` |
-| V8.1 | Tile Diagnostic (QTRE par bloc, slots négligeables, CSV, inspection `.ttile`) | ✅ | Atelier A1 (`diag.ts`, `ttile.ts`, index LRS2 linéaire, juste aussi hors puissances de 2) ; **slots négligeables manquants** (poids peints = décodeur `.edds`) |
+| V8.1 | Textures par projet + « Synchroniser » (`.emat`, décodage `.edds`) | ✅ | `.emat` comptés, décodage `.edds` (poids peints, supertextures) ; couleurs moyennes des 60 matériaux vanilla reprises de son catalogue (`data/texcolors.json`) |
+| V8.1 | Tile Diagnostic (QTRE par bloc, slots négligeables, CSV, inspection `.ttile`) | ✅ | Atelier A1 (`diag.ts`, `ttile.ts`) + **slots négligeables** depuis les `*_layer.edds` (6 slots × 5 bits + base implicite), seuil réglable, % par texture dans le tableau de tuile et colonne CSV |
 | V8.2 | 2D MAP 4k/8k | ✅ | Atelier A4 : PNG 2k/4k/8k |
 | V8.2 | Fond de carte en jeu `SCR_MapEntity` (satellite / militaire) | ✅ | Atelier A4 + consignes d'import ; branchement sur `SCR_MapEntity` manuel |
 | V8.2 | Eau « comme en jeu » + correction + réécriture `.layer` | ✅ | Atelier A3, Appliquer / Restaurer via safeWrite |
@@ -201,9 +201,11 @@ c'est-à-dire **son savoir-faire repris fidèlement, crédité**, plus la passer
 > web, collaboration and generation. Happy to talk it over — no strings attached, MGP stays yours.
 > Thanks for the docs, especially TOPO_README — we've already learned a lot from it.
 
-## 4. Mode Atelier — reste à faire (2026-11-16)
-- Slots négligeables du diagnostic et satmap texturée : demandent un décodeur `.edds` (DXT/BC) — non écrit.
-- Format ROAD du `.topo` non décodé : les routes de la carte viennent des `.layer` (générateurs de routes).
-- « Continuer dans le générateur » (passer le monde de l'Atelier au mode générateur) : bouton présent, désactivé.
-- Auto-calibration et Metric Atlas : non portés.
-- Application des biomes (écriture des masques) : non ; A2 ne fait que vérifier les textures.
+## 4. Mode Atelier — reste à faire (mis à jour 2026-11-16, lot 2)
+Fait au lot 2 : décodeur `.edds` (slots négligeables, satmap texturée), `.topo` ROAD + BULD (vraies largeurs de route et
+emprises de bâtiments sur la carte A4 ; axe vérifié : y = tailleZ − z), « Continuer dans le générateur » (hauteurs
+réduites à ≤ 768 cellules, lacs, rivières, routes → projet `reforger-mapper-island` restauré par main.ts au rechargement,
+ou fichier à ouvrir si trop gros), auto-calibration, Metric Atlas, masques de biome.
+- Reste : écriture des masques dans le terrain (volontairement non : jamais d'écriture `.ttile`) ; décodeur BC7 modes 0/2
+  (partitions à 3 sous-ensembles) vérifié seulement par la cohérence visuelle ; classes de route `.topo` → revêtement
+  par défaut (≤ 2 goudron, sinon terre ; il votait avec les `.layer`).

@@ -4,11 +4,12 @@
 // Canvas 2D (no OpenCV): north up, x to the right, 1 image pixel = sizeX / S metres.
 import type { HeightGrid } from './heights.ts'
 import type { LayerObjects } from './formats/layer.ts'
+import { topoSurface, type Topo } from './formats/topo.ts'
 
 export type MapStyle = 'military' | 'realistic'
 export interface MapLayers { relief: boolean; forest: boolean; water: boolean; roads: boolean; buildings: boolean; walls: boolean; port: boolean; slopes: boolean; legend: boolean }
 export interface WaterMask { x0: number; z1: number; W: number; H: number; m: Uint8Array }
-export interface RenderInput { H: HeightGrid; sizeX: number; sizeZ: number; objects: LayerObjects; water: WaterMask[]; sea: number }
+export interface RenderInput { H: HeightGrid; sizeX: number; sizeZ: number; objects: LayerObjects; water: WaterMask[]; sea: number; sat?: { W: number; H: number; data: Uint8ClampedArray } | null; topo?: Topo | null }
 type RGB = [number, number, number]
 
 export const PAL = {
@@ -70,8 +71,10 @@ export function renderMap(ctx: CanvasRenderingContext2D, S: number, inp: RenderI
       const low = Math.min(1, Math.max(0, (h - H.min) / Math.max(1, H.max - H.min)))
       c = [96 + 40 * low, 112 + 20 * low, 70 + 30 * low]
       if (slope > 35) c = [120, 112, 100]
-      if (fc) { const k = fc.c[Math.floor(j * mpp / fc.cell) * fc.W + Math.floor(i * mpp / fc.cell)]; if (k) c = k === 3 ? [38, 62, 34] : k === 2 ? [50, 78, 42] : [70, 96, 56] }
-      const s = L.relief ? Math.max(0.3, Math.pow(shade / ly, 0.9)) : 1
+      const sat = inp.sat, so = sat ? (Math.min(sat.H - 1, Math.floor(j / SH * sat.H)) * sat.W + Math.min(sat.W - 1, Math.floor(i / S * sat.W))) * 4 : -1
+      if (sat && sat.data[so + 3]) c = [sat.data[so], sat.data[so + 1], sat.data[so + 2]] // baked terrain textures (supertexture)
+      else if (fc) { const k = fc.c[Math.floor(j * mpp / fc.cell) * fc.W + Math.floor(i * mpp / fc.cell)]; if (k) c = k === 3 ? [38, 62, 34] : k === 2 ? [50, 78, 42] : [70, 96, 56] }
+      const s = L.relief ? (sat ? 0.75 + 0.35 * Math.min(1.2, shade / ly) : Math.max(0.3, Math.pow(shade / ly, 0.9))) : 1
       c = c.map((v) => v * s) as RGB
     }
     if (L.water && h < inp.sea + 1) { const t = Math.min(1, Math.max(0, inp.sea + 1 - h)); const sc = style === 'military' ? PAL.water : PAL.sea; c = c.map((v, q) => v + (sc[q] - v) * t) as RGB }
@@ -92,9 +95,27 @@ export function renderMap(ctx: CanvasRenderingContext2D, S: number, inp: RenderI
     }
   }
   if (style === 'realistic' && L.forest && objects.trees.length < 400000) {
-    for (const t of objects.trees) { const [x, y] = P(t.x, t.z), r = Math.max(0.6, (t.type === 'bush' ? 1.5 : 3) / mpp); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(x + r * 0.5, y + r * 0.5, r, r); ctx.fillStyle = t.type === 'conifer' ? 'rgba(10,70,20,.85)' : 'rgba(40,95,25,.85)'; ctx.fillRect(x - r / 2, y - r / 2, r, r) }
+    // crowns + shadow cast to the south-east (sun from the north-west, as the hillshade), giorbev's fond_realiste.py
+    const round = mpp < 1.5, sh = new Path2D(), dark = new Path2D(), light = new Path2D()
+    for (const t of objects.trees) {
+      const [x, y] = P(t.x, t.z), r = Math.max(0.6, (t.type === 'bush' ? 1.5 : 3) / mpp), o = r * 0.6, cp = t.type === 'conifer' ? dark : light
+      if (round) { sh.moveTo(x + o + r / 2, y + o); sh.ellipse(x + o, y + o, r * 0.6, r * 0.45, 0.6, 0, 7); cp.moveTo(x + r / 2, y); cp.arc(x, y, r / 2, 0, 7) }
+      else { sh.rect(x + o - r / 2, y + o - r / 2, r, r); cp.rect(x - r / 2, y - r / 2, r, r) }
+    }
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill(sh); ctx.fillStyle = 'rgba(10,70,20,.9)'; ctx.fill(dark); ctx.fillStyle = 'rgba(40,95,25,.9)'; ctx.fill(light)
   }
-  if (L.roads) {
+  const topo = inp.topo, k1 = 1 / mpp // .topo file (x, y) = world (x, sizeZ - z) → canvas (x, y) / mpp
+  if (L.roads && topo?.roads.length) {
+    // real road surfaces from the .topo ROAD block (quads at the true width), giorbev's fond_realiste.py
+    for (const pass of style === 'military' ? [0, 1] : [1]) for (const r of topo.roads) {
+      const kind = topoSurface(r.cls), q = r.quads
+      ctx.fillStyle = pass === 0 ? 'rgba(30,30,30,.9)' : style === 'military' ? (kind === 'asphalt' ? 'rgb(232,120,60)' : 'rgb(255,255,255)') : css(PAL[kind])
+      ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = pass === 0 ? 1.5 : 0.5
+      ctx.beginPath()
+      for (let i = 0; i + 7 < q.length; i += 8) { ctx.moveTo(q[i] * k1, q[i + 1] * k1); for (let j = 2; j < 8; j += 2) ctx.lineTo(q[i + j] * k1, q[i + j + 1] * k1); ctx.closePath() }
+      if (pass === 0) ctx.stroke(); else { ctx.fill(); ctx.stroke() }
+    }
+  } else if (L.roads) {
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'
     for (const kind of ['dirt', 'concrete', 'asphalt'] as const) for (const r of objects.roads) {
       if (r.type !== kind) continue
@@ -115,7 +136,13 @@ export function renderMap(ctx: CanvasRenderingContext2D, S: number, inp: RenderI
     ctx.save(); ctx.translate(x, y); ctx.rotate(-p.yaw * Math.PI / 180); ctx.fillStyle = css(c); ctx.fillRect(-s / 2, -s / 4, s, s / 2)
     ctx.strokeStyle = css(PAL.quayLine); ctx.lineWidth = 0.6; ctx.strokeRect(-s / 2, -s / 4, s, s / 2); ctx.restore()
   }
-  if (L.buildings) for (const b of objects.buildings) {
+  if (L.buildings && topo?.buildings.length) for (const p of topo.buildings) {
+    // real footprints from the .topo BULD block
+    const path = () => { ctx.beginPath(); for (let i = 0; i + 1 < p.length; i += 2) (i ? ctx.lineTo : ctx.moveTo).call(ctx, p[i] * k1, p[i + 1] * k1); ctx.closePath() }
+    if (style === 'realistic') { ctx.save(); ctx.translate(2 * k1, 2 * k1); ctx.fillStyle = 'rgba(0,0,0,.3)'; path(); ctx.fill(); ctx.restore(); ctx.fillStyle = css(PAL.house) }
+    else ctx.fillStyle = 'rgb(40,40,40)'
+    path(); ctx.fill()
+  } else if (L.buildings) for (const b of objects.buildings) {
     const [x, y] = P(b.x, b.z), s = Math.max(1.5, (b.type === 'house' ? 10 : 18) / mpp)
     ctx.fillStyle = style === 'military' ? (b.type === 'house' ? 'rgb(40,40,40)' : 'rgb(90,90,90)') : css(b.type === 'house' ? PAL.house : PAL.industrial)
     if (style === 'realistic') { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(x - s / 2 + s * 0.2, y - s / 2 + s * 0.2, s, s); ctx.fillStyle = css(b.type === 'house' ? PAL.house : PAL.industrial) }

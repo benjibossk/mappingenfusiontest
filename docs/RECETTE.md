@@ -158,7 +158,7 @@ Bench 8 km (seeds 1-5) : remplissage des lots 30-34 % → 69-73 % ; bâtiments 5
 Limite connue : les rivières « en direct » (recompose) et les lignes électriques / villages manuels restent sur la page ; sans worker (navigateur ancien) tout tourne dans la page et Annuler n'agit qu'entre deux étapes.
 
 ## R12 — Mode Atelier (ajouté le 2026-11-16)
-Automatique : `node --test "tests/atelier/*.test.*"` (14 tests : `.terr`/`.ttile` 16×16 et 19×19, eau + réécriture `.layer`, classement des prefabs, `.conf`, raster, zip, safeWrite).
+Automatique : `node --test "tests/atelier/*.test.*"` (23 tests : `.terr`/`.ttile` 16×16 et 19×19, eau + réécriture `.layer`, classement des prefabs, `.conf`, raster, zip, safeWrite ; lot 2 : LZ4, BC1/BC7, poids `_layer.edds`, `.topo` réel, Atlas/auto-calibration/biomes, passage au générateur).
 Navigateur (Playwright sur `vite preview`, relais lancé, copie de Normandy_Edit dans le scratchpad ; captures `atelier-*.png` ; 0 erreur de page) :
 - [ ] Accueil : carte « Ouvrir un projet Workbench existant (Atelier) » ; le mode générateur est inchangé.
 - [ ] A0 : coller le chemin du dossier addon → « Ouvrir » ; le monde unique se charge seul (panneau « En cours » avec barre) ; résumé : grille, hauteurs, matériaux, objets, eau.
@@ -172,6 +172,13 @@ Navigateur (Playwright sur `vite preview`, relais lancé, copie de Normandy_Edit
 - [ ] A6 : sauvegarde listée → « Restaurer » ; fichier identique octet pour octet à l'original ; export `.rmatelier.zip`.
 - [ ] Bouton FR/EN : la page se recharge et rouvre l'Atelier dans l'autre langue.
 Dans Workbench (manuel) : ouvrir le monde corrigé, vérifier lacs/rivières régénérés ; importer le PNG (ToSRGB, Tiled off, Mips off) et le brancher sur `SCR_MapEntity` ; brancher le `.conf` via `SCR_MapConfigComponent` du GameMode.
+Lot 2 (2026-11-16, captures `atelier2-*.png`, copie Normandy_Copy + `_layer`/`_supertexture.edds` + `Data/TESTIsland.topo` ; 0 erreur de page) :
+- [ ] A0 : journal « … blocks with painted weights, satmap W×H, .topo: N roads / M buildings ».
+- [ ] A1 : « N slot(s) négligeable(s) » + seuil (%) réglable ; tableau de tuile avec % par texture (rouge sous le seuil) ; CSV avec colonne `negligible_slots`.
+- [ ] A2 : « Auto-calibrer » remplit 7 seuils ; « Calculer les masques » → aperçu coloré, % par texture, textures absentes en orange, PNG ; Atlas métrique (tableau + expositions + classes de pente).
+- [ ] A4 réaliste : textures du terrain (supertextures) + ombrage + arbres ombrés ; routes `.topo` à leur vraie largeur, emprises des bâtiments.
+- [ ] A6 « Continuer dans le générateur » : la page recharge en mode générateur avec le relief, les lacs/rivières et les routes du monde ; « Annuler » du générateur et autosave inchangés.
+
 
 ## R13 — Collaboration directe sans serveur (ajouté le 2026-11-16)
 

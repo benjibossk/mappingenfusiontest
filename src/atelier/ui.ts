@@ -12,11 +12,18 @@ import { analyseBody, rewriteLayer, type WaterProposal } from './water.ts'
 import { PAL, renderMap, type MapLayers, type MapStyle } from './render.ts'
 import { CONTOUR_DEFAULTS, CONTOUR_FILE, contourConf, mapSize, type ContourSettings } from './contours.ts'
 import { unzip, zip } from './zip.ts'
+import { continueInGenerator, islandProject } from './handoff.ts'
+import { coverageFrom, satFrom, type SatImage } from './terrtex.ts'
+import type { Coverage } from './diag.ts'
+import { parseTopo, type Topo } from './formats/topo.ts'
 import { bridgeAlive, bridgeBackups, bridgeRestore, bridgeWrite, fsaSupported, openBridge, openFsa, workbenchRunning, type Backup, type Source, type WorldRef } from './source.ts'
 import biomeTemperate from './data/biomes/temperate.json'
 import biomeArid from './data/biomes/arid.json'
 import biomeTropical from './data/biomes/tropical.json'
 import biomeSimple from './data/biomes/temperate_simple.json'
+import biomeAuto from './data/biomes/temperate_auto.json'
+import texColors from './data/texcolors.json'
+import { atlas, autoCalibrate, biomeRules, classify, coarse, metrics, type Calib, type Grid, type Metrics } from './terrain.ts'
 
 type K = Key
 const STEPS = ['s0', 's1', 's2', 's3', 's4', 's5', 's6'] as const
@@ -33,13 +40,14 @@ interface State {
   water: WaterProposal[] | null; use: Set<number>; selWater: number | null
   style: MapStyle; size: number; mapLayers: MapLayers; mapUrl: string | null
   contour: ContourSettings; journal: string[]; backups: Backup[]; wb: boolean | null
+  cov: Coverage | null; sat: SatImage | null; negThr: number; topo: Topo | null
   step: Step; done: Set<Step>; show: { relief: boolean; tiles: boolean; water: boolean; objects: boolean; mapbg: boolean }
 }
 const S: State = {
   src: null, world: null, terr: null, tiles: [], H: null, objects: null, layerTexts: new Map(), bodies: [],
   budget: 5, diag: null, selTile: null, search: null, water: null, use: new Set(), selWater: null,
   style: 'military', size: 4096, mapLayers: { relief: true, forest: true, water: true, roads: true, buildings: true, walls: true, port: true, slopes: true, legend: true }, mapUrl: null,
-  contour: structuredClone(CONTOUR_DEFAULTS), journal: [], backups: [], wb: null,
+  cov: null, sat: null, negThr: 0.01, topo: null, contour: structuredClone(CONTOUR_DEFAULTS), journal: [], backups: [], wb: null,
   step: 's0', done: new Set(), show: { relief: true, tiles: true, water: true, objects: false, mapbg: true },
 }
 
@@ -190,7 +198,7 @@ function afterOpen() {
   const w = S.src!.info.worlds.find((x) => x.terrain && x.layers) ?? S.src!.info.worlds.find((x) => x.terrain)
   if (w && S.src!.info.worlds.length === 1) void loadWorld(w)
 }
-function resetWorld() { Object.assign(S, { world: null, terr: null, tiles: [], H: null, objects: null, bodies: [], diag: null, water: null, selTile: null, selWater: null, mapUrl: null }); S.layerTexts.clear(); S.use.clear(); S.done.clear(); base = null }
+function resetWorld() { Object.assign(S, { world: null, terr: null, tiles: [], H: null, objects: null, bodies: [], diag: null, cov: null, sat: null, topo: null, water: null, selTile: null, selWater: null, mapUrl: null }); S.layerTexts.clear(); S.use.clear(); S.done.clear(); base = null }
 
 function worldsList() {
   const info = S.src!.info, el = $('atWorlds')
@@ -215,6 +223,13 @@ async function loadWorld(w: WorldRef) {
         if (i % 40 === 0) { stage(tk('at.open.tiles'), i, files.length); await yieldUI() }
       }
       S.H = assembleHeights(S.terr, S.tiles)
+      // baked textures (.edds): painted weights → negligible slots, supertextures → textured satmap
+      try {
+        stage(tk('at.open.edds'))
+        S.cov = coverageFrom(S.terr, S.tiles, await src.pack(tref.dataDir, '_layer.edds', tref.tilePrefix, (i, n) => stage(tk('at.open.edds'), i, n)), tref.tilePrefix)
+        await yieldUI()
+        S.sat = satFrom(S.terr, await src.pack(tref.dataDir, '_supertexture.edds', tref.tilePrefix, (i, n) => stage(tk('at.open.edds'), i, n)), tref.tilePrefix)
+      } catch (e) { log(tk('at.err', { m: (e as Error).message }), true) }
     }
     if (w.layersDir) {
       const list = await src.list(w.layersDir, ['.layer'])
@@ -229,10 +244,13 @@ async function loadWorld(w: WorldRef) {
       }
       S.objects = merged
     }
+    // .topo of this world (map export): real road widths and building footprints for the A4 map
+    const tp = src.info.topo.find((x) => x.split('/').pop()!.toLowerCase() === w.name.toLowerCase() + '.topo') ?? (src.info.topo.length === 1 ? src.info.topo[0] : undefined)
+    if (tp) try { S.topo = parseTopo((await src.read(tp)).bytes) } catch (e) { log(tk('at.err', { m: 'topo: ' + (e as Error).message }), true) }
     S.objects ??= { roads: [], buildings: [], trees: [], port: [], walls: [], entities: 0 }
     if (S.H) { makeBase(); fit() }
     S.done.add('s0')
-    log(`${w.name}: ${S.tiles.length} tiles, ${S.bodies.length} water bodies, ${S.objects.entities} entities`)
+    log(`${w.name}: ${S.tiles.length} tiles, ${S.bodies.length} water bodies, ${S.objects.entities} entities` + (S.cov ? `, ${S.cov.blocks.size} blocks with painted weights` : '') + (S.sat ? `, satmap ${S.sat.W}×${S.sat.H}` : '') + (S.topo ? `, .topo: ${S.topo.roads.length} roads / ${S.topo.buildings.length} buildings` : ''))
   })
   if (S.step === 's0') go('s0'); else header()
 }
@@ -255,7 +273,7 @@ function summary() {
 // ---------------------------------------------------------------- A1 diagnostic
 function panelDiag(p: HTMLElement) {
   if (needWorld(p)) return
-  if (!S.diag) { S.diag = diagnose(S.terr!, S.tiles, S.budget); S.done.add('s1') }
+  if (!S.diag) { S.diag = diagnose(S.terr!, S.tiles, S.budget, S.cov, S.negThr); S.done.add('s1') }
   const d = S.diag, tr = S.terr!, mats = tr.materials
   const hist = d.hist.map((n, k) => n ? `<span class="${k > S.budget ? 'err' : k === S.budget ? 'warn' : ''}">${k}: ${n}</span>` : '').filter(Boolean).join(' · ')
   const shown = d.problems.filter((x) => x.kind !== 'atBudget').slice(0, 200), atN = d.problems.filter((x) => x.kind === 'atBudget').length
@@ -265,7 +283,7 @@ function panelDiag(p: HTMLElement) {
     <label class="at-field">${tk('at.diag.search')}<input id="atSearch" list="atMats" placeholder="Grass_01"><datalist id="atMats">${mats.map((m) => `<option value="${esc(m.name)}">`).join('')}</datalist></label><p id="atHits" class="hint"></p>
     <div class="row"><button id="atCsv" type="button" class="secondary">${tk('at.diag.csv')}</button></div>
     <div id="atTile"><p class="hint">${tk('at.diag.clickHint')}</p></div>
-    <p class="hint">${tk('at.status.partial')} — ${tk('at.diag.negligible')}</p>`
+    ${S.cov ? `<p><b>${tk('at.diag.neg', { n: d.negligible })}</b></p><label class="at-field">${tk('at.diag.negThr')}<input id="atNegThr" type="number" min="0" max="50" step="0.5" value="${S.negThr * 100}"></label>` : `<p class="hint">${tk('at.diag.negNone')}</p>`}`
   p.querySelectorAll<HTMLButtonElement>('[data-p]').forEach((b) => b.addEventListener('click', () => { const x = shown[Number(b.dataset.p)]; S.selTile = [x.tx, x.ty]; zoomTile(x.tx, x.ty); tileInfo() }))
   $<HTMLInputElement>('atSearch').addEventListener('input', (e) => {
     const v = (e.target as HTMLInputElement).value.trim().toLowerCase(), m = mats.find((x) => x.name.toLowerCase() === v)
@@ -273,14 +291,15 @@ function panelDiag(p: HTMLElement) {
     $('atHits').textContent = m ? tk('at.diag.search.hits', { n: d.usage.get(m.id) ?? 0 }) : ''
     draw()
   })
-  $('atCsv').addEventListener('click', () => download(`${S.world!.name}_tile_diagnostic.csv`, diagCsv(tr, d, S.budget), 'text/csv'))
+  $('atCsv').addEventListener('click', () => download(`${S.world!.name}_tile_diagnostic.csv`, diagCsv(tr, d, S.budget, S.negThr), 'text/csv'))
+  root.querySelector<HTMLInputElement>('#atNegThr')?.addEventListener('change', (e) => { S.negThr = Math.max(0, Number((e.target as HTMLInputElement).value) || 0) / 100; S.diag = null; panelDiag(p) })
   if (S.selTile) tileInfo()
 }
 function tileInfo() {
   const el = root.querySelector('#atTile'); if (!el || !S.selTile || !S.diag) return
   const [tx, ty] = S.selTile, mats = S.terr!.materials
   const bl = S.diag.blocks.filter((b) => b.tx === tx && b.ty === ty).sort((a, b) => b.by - a.by || a.bx - b.bx)
-  el.innerHTML = `<h4>${tk('at.diag.tile', { tx, ty })}</h4><table class="at-table"><tr><th>bloc</th><th>n</th><th>textures</th></tr>${bl.map((b) => `<tr class="${b.mats.length > S.budget ? 'err' : b.mats.length === S.budget ? 'warn' : ''}"><td>${b.bx},${b.by}</td><td>${b.mats.length}</td><td>${b.mats.map((m) => esc(mats[m]?.name ?? '#' + m)).join(', ')}</td></tr>`).join('')}</table>
+  el.innerHTML = `<h4>${tk('at.diag.tile', { tx, ty })}</h4><table class="at-table"><tr><th>bloc</th><th>n</th><th>textures</th></tr>${bl.map((b) => `<tr class="${b.mats.length > S.budget ? 'err' : b.mats.length === S.budget ? 'warn' : ''}"><td>${b.bx},${b.by}</td><td>${b.mats.length}</td><td>${b.mats.map((m, i) => { const c = b.cover && S.diag!.blockPx ? b.cover[i] / S.diag!.blockPx : null; return `<span class="${c !== null && c < S.negThr ? 'err' : ''}">${esc(mats[m]?.name ?? '#' + m)}${c !== null ? ` <small>${(c * 100).toFixed(1)}%</small>` : ''}</span>` }).join(', ')}</td></tr>`).join('')}</table>
     <button type="button" class="secondary" id="atZoomTile">${tk('at.diag.zoom')}</button>`
   $('atZoomTile').addEventListener('click', () => zoomTile(tx, ty))
 }
@@ -299,8 +318,53 @@ function panelSurfaces(p: HTMLElement) {
     ${tr.materials.map((m) => ({ m, n: u.get(m.id) ?? 0 })).sort((a, b) => b.n - a.n).map(({ m, n }) => `<tr><td>${m.id}</td><td title="${esc(m.path)}">${esc(m.name)}</td><td>${n}</td><td>${(100 * n / total).toFixed(1)}</td></tr>`).join('')}</table>
     <p>${tk('at.surf.project', { n: S.src!.info.emat })}</p>
     <h4>${tk('at.surf.biomes')}</h4><ul class="at-list">${biomes.map((b) => `<li><b>${esc(b.name)}</b> — ${tk('at.surf.present', { a: b.ok.length, b: b.tex.length })}<br><small>${b.tex.map((x) => `<span class="${b.ok.includes(x) ? 'ok' : 'err'}">${esc(x)}</span>`).join(' ')}</small></li>`).join('')}</ul>
-    <p class="at-note">${tk('at.status.partial')} — ${tk('at.surf.partial')}</p>`
+    <div id="atBiome"></div><div id="atAtlas"></div>`
+  biomePanel(); atlasPanel()
   S.done.add('s2')
+}
+
+// biome masks (ordered priority rules) + auto-calibration + Metric Atlas — terrain.ts (port of giorbev's tools)
+let TG: { g: Grid; m: Metrics; H: HeightGrid } | null = null, calib: Calib | null = null, biomeIx = 0
+const BIOMES = [biomeAuto, biomeSimple, biomeTemperate, biomeArid, biomeTropical] as unknown as Record<string, unknown>[]
+const TC = texColors as Record<string, number[]>
+function terrainGrid() { if (!TG || TG.H !== S.H) { const g = coarse(S.H!, 1024); TG = { g, m: metrics(g), H: S.H! }; calib = null } return TG }
+function biomePanel() {
+  const el = root.querySelector<HTMLElement>('#atBiome'); if (!el || !S.H) return
+  const { g, m } = terrainGrid(); calib ??= autoCalibrate(g, m)
+  const keys = Object.keys(calib) as (keyof Calib)[]
+  el.innerHTML = `<h4>${tk('at.bio.title')}</h4><label class="at-field">${tk('at.bio.preset')}<select id="atBioSel">${BIOMES.map((b, i) => `<option value="${i}" ${i === biomeIx ? 'selected' : ''}>${esc(String(b.name ?? b.biome ?? b.id))}</option>`).join('')}</select></label>
+    <p class="hint">${tk('at.bio.calib')}</p><div class="at-calib">${keys.map((k) => `<label>${k} <input type="number" step="0.5" data-cal="${k}" value="${calib![k]}"></label>`).join('')}</div>
+    <div class="row"><button id="atCalAuto" type="button" class="secondary">${tk('at.bio.auto')}</button><button id="atBioRun" type="button">${tk('at.bio.run')}</button></div><div id="atBioOut"></div>`
+  $<HTMLSelectElement>('atBioSel').addEventListener('change', (e) => { biomeIx = Number((e.target as HTMLSelectElement).value) })
+  el.querySelectorAll<HTMLInputElement>('[data-cal]').forEach((i) => i.addEventListener('change', () => { calib![i.dataset.cal as keyof Calib] = Number(i.value) }))
+  $('atCalAuto').addEventListener('click', () => { calib = autoCalibrate(g, m); biomePanel(); log(tk('at.bio.autoDone')) })
+  $('atBioRun').addEventListener('click', () => {
+    const rules = biomeRules(BIOMES[biomeIx], calib!, { min: S.H!.min, max: S.H!.max }), cls = classify(g, m, rules)
+    const n = new Array(rules.length + 1).fill(0)
+    for (const k of cls) n[k + 1]++
+    const col = (k: number) => (k < 0 ? [120, 140, 90] : TC[rules[k].tex] ?? [128, 128, 128]).map((v) => Math.min(255, v * 1.6))
+    const cv = document.createElement('canvas'); cv.width = g.cols; cv.height = g.rows
+    const cx = cv.getContext('2d')!, id = cx.createImageData(g.cols, g.rows)
+    for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) { const k = cls[r * g.cols + c], o = ((g.rows - 1 - r) * g.cols + c) * 4, v = col(k); id.data[o] = v[0]; id.data[o + 1] = v[1]; id.data[o + 2] = v[2]; id.data[o + 3] = 255 }
+    cx.putImageData(id, 0, 0)
+    const present = new Set(S.terr!.materials.map((x) => x.name.toLowerCase()))
+    const rows = [[-1, tk('at.bio.base')] as [number, string], ...rules.map((r, k) => [k, r.tex] as [number, string])]
+    $('atBioOut').innerHTML = `<table class="at-table"><tr><th></th><th>texture</th><th>%</th><th>règle</th></tr>${rows.map(([k, name]) => { const v = col(k), r = rules[k]; return `<tr><td><span class="at-sw" style="background:rgb(${v.join(',')})"></span></td><td class="${k >= 0 && !present.has(name.toLowerCase()) ? 'warn' : ''}">${esc(name)}</td><td>${(100 * n[k + 1] / cls.length).toFixed(1)}</td><td><small>${r ? [r.altMin !== undefined ? `h≥${r.altMin.toFixed(0)}` : '', r.altMax !== undefined ? `h<${r.altMax.toFixed(0)}` : '', r.slopeMin !== undefined ? `p≥${r.slopeMin.toFixed(0)}°` : '', r.slopeMax !== undefined ? `p<${r.slopeMax.toFixed(0)}°` : ''].filter(Boolean).join(' ') : ''}</small></td></tr>` }).join('')}</table>
+      <p class="hint">${tk('at.bio.missingHint')}</p><div class="row"><button id="atBioPng" type="button" class="secondary">${tk('at.bio.png')}</button></div>`
+    cv.className = 'at-preview'; $('atBioOut').prepend(cv)
+    $('atBioPng').addEventListener('click', () => cv.toBlob((b) => b && download(`${S.world!.name}_biome_masks.png`, b, 'image/png')))
+  })
+}
+function atlasPanel() {
+  const el = root.querySelector<HTMLElement>('#atAtlas'); if (!el || !S.H) return
+  const { g, m } = terrainGrid(), a = atlas(g, m), f = (v: number) => v.toFixed(1)
+  const row = (label: string, s: { min: number; p05: number; p50: number; p95: number; max: number; mean: number } | null, u: string) => s ? `<tr><td>${label}</td><td>${f(s.min)}</td><td>${f(s.p05)}</td><td>${f(s.p50)}</td><td>${f(s.mean)}</td><td>${f(s.p95)}</td><td>${f(s.max)}</td><td>${u}</td></tr>` : ''
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'], tot = a.aspect.reduce((x, y) => x + y, 0) || 1, sh = a.slopeHist.reduce((x, y) => x + y, 0) || 1
+  el.innerHTML = `<h4>${tk('at.atlas.title')}</h4><p class="hint">${tk('at.atlas.tip', { cell: g.cell, land: a.landPct.toFixed(1) })}</p>
+    <table class="at-table"><tr><th></th><th>min</th><th>p05</th><th>p50</th><th>moy.</th><th>p95</th><th>max</th><th></th></tr>
+    ${row(tk('at.atlas.alt'), a.alt, 'm')}${row(tk('at.atlas.land'), a.land, 'm')}${row(tk('at.atlas.slope'), a.slope, '°')}${row(tk('at.atlas.rough'), a.rough, 'm')}${row('TPI 100 m', a.tpi, 'm')}</table>
+    <p><b>${tk('at.atlas.aspect')}</b> ${dirs.map((d, i) => `${d} ${(100 * a.aspect[i] / tot).toFixed(0)}%`).join(' · ')}</p>
+    <p><b>${tk('at.atlas.slopes')}</b> ${['0-5°', '5-10°', '10-20°', '20-30°', '30-45°', '45°+'].map((l, i) => `${l} ${(100 * a.slopeHist[i] / sh).toFixed(1)}%`).join(' · ')}</p>`
 }
 
 // ---------------------------------------------------------------- A3 water
@@ -375,7 +439,7 @@ function waterMasks() { return (S.water ?? []).filter((x) => x.water).map((x) =>
 function renderTo(size: number): HTMLCanvasElement {
   const tr = S.terr!, Sx = mapSize(size), c = document.createElement('canvas')
   c.width = Sx; c.height = mapSize(Math.round(Sx * tr.sizeZ / tr.sizeX))
-  renderMap(c.getContext('2d')!, Sx, { H: S.H!, sizeX: tr.sizeX, sizeZ: tr.sizeZ, objects: S.objects!, water: waterMasks(), sea: 0 }, S.style, S.mapLayers, { title: tk('at.lg.title'), items: legendItems() })
+  renderMap(c.getContext('2d')!, Sx, { H: S.H!, sizeX: tr.sizeX, sizeZ: tr.sizeZ, objects: S.objects!, water: waterMasks(), sea: 0, sat: S.style === 'realistic' ? S.sat : null, topo: S.topo }, S.style, S.mapLayers, { title: tk('at.lg.title'), items: legendItems() })
   return c
 }
 function panelMap(p: HTMLElement) {
@@ -385,7 +449,7 @@ function panelMap(p: HTMLElement) {
     <div class="at-checks">${(Object.keys(S.mapLayers) as (keyof MapLayers)[]).map((k) => `<label><input type="checkbox" data-ml="${k}" ${S.mapLayers[k] ? 'checked' : ''}> ${tk('at.map.l.' + k)}</label>`).join('')}</div>
     <div class="row"><button id="atPreview" type="button">${tk('at.map.preview')}</button><button id="atPng" type="button" class="secondary">${tk('at.map.export')}</button>${S.src!.canWrite ? `<button id="atPngSave" type="button" class="secondary">${tk('at.map.save')}</button>` : ''}</div>
     ${S.mapUrl ? `<img class="at-thumb" src="${S.mapUrl}" alt="">` : ''}
-    <p class="hint">${tk('at.map.water')}</p><p class="at-note">${tk('at.map.import')}</p><p class="hint">${tk('at.status.partial')} — ${tk('at.map.partial')}</p>`
+    <p class="hint">${tk('at.map.water')}</p><p class="at-note">${tk('at.map.import')}</p><p class="hint">${tk('at.map.partial')}</p>`
   $<HTMLSelectElement>('atStyle').addEventListener('change', (e) => { S.style = (e.target as HTMLSelectElement).value as MapStyle; legend() })
   $<HTMLSelectElement>('atSize').addEventListener('change', (e) => { S.size = Number((e.target as HTMLSelectElement).value) })
   p.querySelectorAll<HTMLInputElement>('[data-ml]').forEach((c) => c.addEventListener('change', () => { S.mapLayers[c.dataset.ml as keyof MapLayers] = c.checked }))
@@ -446,8 +510,13 @@ function panelExport(p: HTMLElement) {
   p.innerHTML = `<h4>${tk('at.ex.backups')}</h4><div id="atBk"></div>
     <h4>${tk('at.ex.archive')}</h4><p class="hint">${tk('at.ex.archive.tip')}</p><button id="atArch" type="button" ${S.src ? '' : 'disabled'}>${tk('at.ex.archive.go')}</button>
     <h4>${tk('at.journal')}</h4><pre class="at-pre">${esc(S.journal.join('\n') || tk('at.journal.empty'))}</pre>
-    <button type="button" class="secondary" disabled title="${esc(tk('at.ex.generator.tip'))}">${tk('at.ex.generator')}</button><p class="hint">${tk('at.status.missing')} — ${tk('at.ex.generator.tip')}</p>`
+    <h4>${tk('at.ex.generator')}</h4><p class="hint">${tk('at.ex.generator.tip')}</p><button id="atGen" type="button" class="secondary" ${S.H ? '' : 'disabled'}>${tk('at.ex.generator')}</button>`
   $('atArch').addEventListener('click', () => void exportArchive())
+  $('atGen').addEventListener('click', () => {
+    if (!S.H) return
+    const how = continueInGenerator(islandProject(S.H, { bodies: S.bodies, roads: S.objects?.roads }))
+    if (how === 'download') log(tk('at.ex.generator.file'))
+  })
   void backups()
 }
 async function backups() {

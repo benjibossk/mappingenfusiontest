@@ -76,3 +76,8 @@
 .at-hpsteps button { padding: .1rem .4rem; }
 @media (max-width: 1100px) { .at-main { grid-template-columns: 0 1fr 340px; } .at-left { display: none; } }
 @media (max-width: 760px) { .at-main { grid-template-columns: 1fr; grid-template-rows: 45vh auto; } .at-side { border-left: 0; } .at-steps { grid-template-columns: repeat(4, 1fr); } }
+.at-calib { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; font-size: 12px; }
+.at-calib label { min-width: 0; }
+.at-calib input { width: 100%; min-width: 0; box-sizing: border-box; }
+.at-sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.3); vertical-align: middle; }
+.at-preview { width: 100%; max-width: 360px; image-rendering: pixelated; border: 1px solid rgba(0,0,0,.25); border-radius: 4px; margin: 6px 0; }
