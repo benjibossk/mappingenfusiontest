@@ -10,8 +10,11 @@ import { fr } from '../i18n'
 import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, type Water } from './water'
-import { carveRoads, layBeds, type Road, type RoadType } from './roads'
-import { SITE_RADIUS, buildNetwork, maxGrade, worstGrade, type Site, type SiteKind } from './network'
+import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
+import { connectIslands, roadIslands } from './roadgraph'
+import { findCrossings, planBridge } from './bridges'
+import type { ProjectEntity } from '../project'
+import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages } from './village'
 import type { Placed, Square } from './settlements'
@@ -34,6 +37,7 @@ export interface WorldParams {
   airfield: boolean
   power: boolean
   forests: number
+  roadsV2?: boolean // road network V2 finish (docs/ROAD_NETWORK_V2.md), default true
 }
 export const WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { size: 4096, towns: 1, villages: 1, hamlets: 1, industry: 1, military: 1, airfield: true, power: true, forests: 1 }
 
@@ -56,6 +60,8 @@ export interface WorldResult {
   surfaces: SurfaceGrid[]
   issues: Issue[]
   overfull: number
+  /** V2 valley bridges (decks + piers) for the roads' `spans`; the river crossings stay with splitAtWater at export */
+  bridges?: ProjectEntity[]
 }
 
 /** 32-bit hash of the seed and a stage name (+ index): the sub-seed of one stage / zone */
@@ -92,6 +98,8 @@ export function composeHeights(base: number[], g: Grid, waters: Water[], zones: 
 
 /** river threshold in grid cells for the generated world: a catchment area, whatever the grid step */
 export const riverThreshold = (step: number) => Math.round((WORLD.water.catchmentKm2 * 1e6) / (step * step))
+
+const WORLD_BRIDGE = { clear: 6, minLen: 20 } // valley bridge: bed > 6 m over the ground on >= 20 m
 
 function roadIdMaker() {
   const used = new Set<string>()
@@ -306,7 +314,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 6. road network (places + zone gates)
   await step('roads')
   const net = { sites: sites.length, spacing: 300, maxSlope: WORLD.roads.maxSlope, seed: subSeed(seed, 'roads'), main: WORLD.roads.main as RoadType, minor: WORLD.roads.minor as RoadType, lane: WORLD.roads.lane as RoadType,
-    loops: Math.round(WORLD.roads.loopsPerKm2 * landKm2), loopDetour: WORLD.roads.loopDetour, loopMaxM: WORLD.roads.loopMaxM, loopType: WORLD.roads.loopType as RoadType }
+    loops: Math.round(WORLD.roads.loopsPerKm2 * landKm2), loopDetour: WORLD.roads.loopDetour, loopMaxM: WORLD.roads.loopMaxM, loopType: WORLD.roads.loopType as RoadType, v2: p.roadsV2 !== false }
   const rid = roadIdMaker()
   const linked = [...sites, ...access.filter((a) => a.x > g.minX && a.z > g.minZ && a.x < g.minX + (g.cols - 1) * g.step && a.z < g.minZ + (g.rows - 1) * g.step)]
   const ri = WORLD_STAGES.indexOf('roads')
@@ -338,6 +346,40 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     cur = composeHeights(base, g, waters, zones, roads)
     const still = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
     if (still.size) { roads = roads.filter((r) => !still.has(r.id)); cur = composeHeights(base, g, waters, zones, roads) }
+  }
+  // V2: (a) every piece of road joined to the network; (b) valley bridges where the bed would sit on a high fill
+  const bridgesOut: ProjectEntity[] = []
+  if (p.roadsV2 !== false && roads.length) {
+    if (roadIslands(roads).length > 1) {
+      const links = connectIslands(roads, { maxDist: 1500, type: 'trailDirt', idPrefix: 'ROAD_LINK', route: (a, b) => routeLink(cur.heights, g, cur.sim.river, a, b, 'trailDirt', WORLD.roads.maxSlope) })
+      for (const l of links) { l.id = rid(l.type) }
+      if (links.length) {
+        const test = composeHeights(base, g, waters, zones, [...roads, ...links]).heights
+        const okLinks = links.filter((l) => worstGrade(l.pts, test, g).grade <= maxGrade(l.type)&& l.pts.length > 4) // a straight fallback (no route found) is refused; rivers are bridged at export
+        if (okLinks.length) { roads.push(...okLinks); cur = composeHeights(base, g, waters, zones, roads) }
+      }
+    }
+    const bare = composeHeights(base, g, waters, zones, []).heights
+    const atB = (x: number, z: number) => bare[Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))]
+    let any = false
+    for (const r of roads) {
+      if (r.pts.length < 4 || r.bridge) continue
+      const line = centreLine(r.pts, 5), m = line.length / 2
+      const ground = Array.from({ length: m }, (_, i) => atB(line[i * 2], line[i * 2 + 1]))
+      const y = roadProfile(r, line, atB, 5)
+      const spans = findCrossings(line, y, ground, { clear: WORLD_BRIDGE.clear, minLen: WORLD_BRIDGE.minLen, wet: (x, z) => atB(x, z) <= 0.5 })
+        .filter((c) => c.kind === 'valley' && c.i0 > 0 && c.i1 < m - 1)
+      const kept: { from: number; to: number }[] = []
+      spans.forEach((c, k) => {
+        const a: [number, number] = [line[c.i0 * 2], line[c.i0 * 2 + 1]], b: [number, number] = [line[c.i1 * 2], line[c.i1 * 2 + 1]]
+        const plan = planBridge(`${r.id}_V${k}`, a, b, Math.max(y[c.i0], y[c.i1]), roadHalf(r), atB, { dirt: !isPaved(r.type) })
+        if (plan.tooHigh || Math.abs(y[c.i0] - y[c.i1]) > 1) return // too high for two piers, or a sloping deck: keep the fill
+        kept.push({ from: c.from, to: c.to })
+        bridgesOut.push(...plan.entities)
+      })
+      if (kept.length) { r.spans = kept; any = true }
+    }
+    if (any) cur = composeHeights(base, g, waters, zones, roads)
   }
   // a place no road reaches is dropped (the checker would flag it)
   const isolated = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'isolated').map((i) => i.id))
@@ -431,5 +473,5 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, refusedGaps: [], heights: cur.heights, grid: g })
-  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces) }
+  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(bridgesOut.length && { bridges: bridgesOut }) }
 }

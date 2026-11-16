@@ -263,3 +263,24 @@ routes » sur les routes dessinées → `weldRoads(roads, { snap: 8, crossings: 
 (c) dans la validation, ligne « N îlots routiers » (`roadIslands(roads).length > 1`) avec bouton « Relier » →
 `connectIslands` ; (d) plus tard : profil en long de la route sélectionnée (`profileRoad`) et ponts de vallée
 (`findCrossings` + `splitAtBridges` + `planBridge` à brancher à côté de `splitAtWater` dans l'export).
+
+### Mise à jour 2 (2026-11-16) : câblage dans la génération (V2 par défaut)
+- `WorldParams.roadsV2?: boolean` (défaut `true`) → `NetworkParams.v2`. `false` = ancien réseau (sauf profil).
+- **Profil vertical** branché dans `carveRoads` (via `roadProfile`) : moyenne 80 m puis pente ≤ pente de projet
+  de la classe + courbes verticales. `carveRoads(..., { legacyProfile: true })` = ancien profil.
+- **Ponts de vallée** : `Road.spans` (abscisses curvilignes, m) ; `carveRoads` ne taille pas sous le tablier,
+  `worstGrade(pts, h, g, spans)` (et `validate`) l'ignore (± 20 m). `generateWorld` remplit `spans` quand le lit
+  passerait > 6 m au-dessus du sol sur ≥ 20 m hors de l'eau, et renvoie les tabliers/piles dans
+  **`WorldResult.bridges`** (ProjectEntity[]). **À câbler à l'export (main.ts)** avec les autres entités.
+  Refusé (on garde le remblai) si deux piles empilées ne suffisent pas ou si les culées diffèrent de > 1 m.
+  Seeds 1-10 en 4 km : 0 pont de vallée (le routage évite déjà les ravins) ; 8 km seed 1 : 1.
+- **Îlots** : `generateWorld` relie chaque îlot au réseau (`connectIslands` + `routeLink`, A* pente-sensible, type
+  `trailDirt`, ≤ 1 500 m), seulement si la pente reste valide. Les îlots viennent des routes trop raides que la
+  génération supprime. 4 km : déjà 1 îlot. 8 km : 11 → 5 (seed 1), 4 → 4 (seed 2) ; ceux qui restent n'ont aucune
+  liaison praticable.
+- **Bâtiments** : les congés ne touchent plus les routes dans un lieu (ville 420 m, village 250, hameau 160 :
+  rues et lots poussent depuis la route telle quelle, `smoothRoad(..., frozen)`). Seeds 1-5 : 1 939 → ~1 836
+  (−5 %). Par carte l'écart reste de −15 % à +7 % : la croissance des rues est chaotique (0,7 m de différence de
+  relief suffit à changer la ville de seed 1, vérifié).
+- **Temps** (node, machine chargée par d'autres agents) : 8 km seed 1 = 19-24 s avec V2 contre 17-21 s sans ;
+  seed 2 = 14-20 s. 4 km : 6-10 s.

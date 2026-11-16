@@ -96,6 +96,31 @@ export function resampleKeep(pts: number[], step: number, keep?: (x: number, z: 
   return out
 }
 
+//! Fillet + even resampling on the stretches where frozen(x, z) is false; frozen stretches (places: their streets
+//! and lots grow from the road as it is) keep their control points verbatim. The boundary points are kept.
+export function smoothRoad(pts: number[], rMin: number, o: { spacing: number; fixed?: (x: number, z: number) => boolean; frozen?: (x: number, z: number) => boolean; merge?: number; minKeep?: number; chord?: number }): { pts: number[]; corners: number } {
+  const n = pts.length / 2
+  const fr = Array.from({ length: n }, (_, i) => !!o.frozen?.(pts[i * 2], pts[i * 2 + 1]))
+  const out: number[] = []
+  let corners = 0, i = 0
+  while (i < n) {
+    let j = i
+    while (j + 1 < n && fr[j + 1] === fr[i]) j++
+    // run i..j (+ the next point as its end, so runs share their boundary point)
+    const e = Math.min(n - 1, j + 1)
+    const run = pts.slice(i * 2, e * 2 + 2)
+    let piece = run
+    if (!fr[i] && run.length >= 6) {
+      const f = filletPolyline(run, rMin, { fixed: o.fixed, chord: o.chord ?? 5, merge: o.merge, minKeep: o.minKeep })
+      if (f.corners) { piece = resampleKeep(f.pts, o.spacing, o.fixed); corners += f.corners }
+    }
+    out.push(...(out.length ? piece.slice(2) : piece))
+    if (e === n - 1) break
+    i = j + 1
+  }
+  return { pts: out, corners }
+}
+
 //! Two corners turning the same way too close for an arc of rMin each become one corner at the crossing of
 //! their outer legs (the "point of intersection" of road design), when that point stays within maxDev metres
 //! of the segment it replaces. Repeated, so a staircase of grid steps becomes one long bend.
@@ -172,13 +197,20 @@ function clip(y: number[], s: number[], g: number, pinned: (i: number) => boolea
 
 //! box filter of the per-segment grades over a window of `w` metres (length weighted)
 function smoothGrades(gr: number[], s: number[], w: number): number[] {
-  const mid = gr.map((_, j) => (s[j] + s[j + 1]) / 2)
-  return gr.map((_, j) => {
-    let sum = 0, len = 0
-    for (let k = j; k >= 0 && mid[j] - mid[k] <= w / 2; k--) { const l = s[k + 1] - s[k]; sum += gr[k] * l; len += l }
-    for (let k = j + 1; k < gr.length && mid[k] - mid[j] <= w / 2; k++) { const l = s[k + 1] - s[k]; sum += gr[k] * l; len += l }
-    return len ? sum / len : gr[j]
-  })
+  // two pointers over the segment midpoints, length-weighted prefix sums
+  const n = gr.length, pre = new Float64Array(n + 1), len = new Float64Array(n + 1)
+  for (let k = 0; k < n; k++) { const l = s[k + 1] - s[k]; pre[k + 1] = pre[k] + gr[k] * l; len[k + 1] = len[k] + l }
+  const mid = (k: number) => (s[k] + s[k + 1]) / 2
+  const out = new Array<number>(n)
+  let a = 0, b = 0
+  for (let j = 0; j < n; j++) {
+    while (mid(j) - mid(a) > w / 2) a++
+    if (b < j) b = j
+    while (b + 1 < n && mid(b + 1) - mid(j) <= w / 2) b++
+    const L = len[b + 1] - len[a]
+    out[j] = L > 0 ? (pre[b + 1] - pre[a]) / L : gr[j]
+  }
+  return out
 }
 
 //! Road height along the centre line. s: arc length (m), ground: terrain under each point.
@@ -187,12 +219,15 @@ export function profileLine(s: number[], ground: number[], o: ProfileOpts): numb
   if (m < 2) return ground.slice()
   const W = o.smooth ?? 40, C = o.curve ?? 40
   // 1. terrain moving average (distance window)
-  let y = ground.map((_, i) => {
-    let sum = 0, k = 0
-    for (let j = i; j >= 0 && s[i] - s[j] <= W; j--) { sum += ground[j]; k++ }
-    for (let j = i + 1; j < m && s[j] - s[i] <= W; j++) { sum += ground[j]; k++ }
-    return sum / k
-  })
+  const pre = new Float64Array(m + 1)
+  for (let i = 0; i < m; i++) pre[i + 1] = pre[i] + ground[i]
+  let y: number[] = new Array(m)
+  for (let i = 0, a = 0, b = 0; i < m; i++) {
+    while (s[i] - s[a] > W) a++
+    if (b < i) b = i
+    while (b + 1 < m && s[b + 1] - s[i] <= W) b++
+    y[i] = (pre[b + 1] - pre[a]) / (b - a + 1)
+  }
   if (o.floor !== undefined) y = y.map((v) => Math.max(v, o.floor!))
   const pinned = (i: number) => (i === 0 && o.pinStart !== undefined) || (i === m - 1 && o.pinEnd !== undefined)
   if (o.pinStart !== undefined) y[0] = o.pinStart

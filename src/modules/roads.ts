@@ -6,6 +6,8 @@ import type { WaterLevels } from './water'
 import type { Grid } from './island'
 import { t } from '../i18n'
 import type { ProjectEntity, ProjectShape } from '../project'
+import { arcLength, profileLine } from './roadgeom'
+import { ROAD_CLASSES, classOf } from './roadgraph-classes'
 
 export type RoadType = 'asphalt' | 'asphaltLine' | 'asphaltNarrow' | 'asphalt2' | 'asphalt3' | 'cobble' | 'cobbleRough' | 'concrete' | 'concretePanel' | 'dirt' | 'dirt2' | 'forest' | 'trailDirt' | 'trailGravel' | 'trailForest'
 
@@ -57,6 +59,9 @@ export interface Road {
   flatten?: boolean // true: relief flattened under the road (off by default)
   bridge?: boolean // real-world bridge / tunnel (OSM): kept as a road, terrain never flattened
   auto?: boolean // made by the network generator (replaced on regeneration)
+  /** bridge decks (V2): arc length spans (m, along centreLine(pts, 5)) where the road flies over a valley:
+   *  the terrain under them is never carved, the grade check skips them (bridges.ts planBridge builds the deck) */
+  spans?: { from: number; to: number }[]
 }
 
 //! half width of the road surface, from the road's own width or its style
@@ -120,7 +125,7 @@ export function snap(roads: Road[], x: number, z: number, dist: number): [number
 //! never fill open water (the bridges span it). `widthMul` over-widens the flat band (ARTE: 1.15).
 //! Anti-submersion, cosine edge and width multiplier ported from ARTE (01_engineer.py:518-551),
 //! MIT licence, Copyright (c) 2026 Icebird. See CREDITS.md.
-export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: { water?: WaterLevels; widthMul?: number } = {}) {
+export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: { water?: WaterLevels; widthMul?: number; legacyProfile?: boolean } = {}) {
   const water = opts.water, widthMul = opts.widthMul ?? 1.15
   const { cols, rows, step } = grid
   const at = (x: number, z: number) => {
@@ -139,14 +144,7 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
     const line = centreLine(road.pts, step / 2)
     const m = line.length / 2
     if (m < 2) continue
-    // profile: terrain heights smoothed over ~80 m, kept above the sea
-    const raw = Array.from({ length: m }, (_, i) => at(line[i * 2], line[i * 2 + 1]))
-    const win = Math.max(1, Math.round(40 / (step / 2)))
-    const prof = raw.map((_, i) => {
-      let s = 0, k = 0
-      for (let j = Math.max(0, i - win); j <= Math.min(m - 1, i + win); j++) { s += raw[j]; k++ }
-      return Math.max(0.8, s / k)
-    })
+    const prof = roadProfile(road, line, at, step / 2, opts.legacyProfile)
     // T junction: an end that lands on a bed already carved eases onto its height over ~60 m (no step)
     const ramp = Math.max(2, Math.round(60 / (step / 2)))
     for (const [e, dir] of [[0, 1], [m - 1, -1]]) {
@@ -157,7 +155,9 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
     }
     const flat = roadHalf(road) * widthMul + T.edge + step
     const reach = flat + 3 * step
+    const sl = road.spans?.length ? arcLength(line) : null
     for (let i = 0; i < m - 1; i++) {
+      if (sl && road.spans!.some((sp) => sl[i + 1] > sp.from && sl[i] < sp.to)) continue // under a bridge deck
       const ax = line[i * 2], az = line[i * 2 + 1], bx = line[i * 2 + 2], bz = line[i * 2 + 3]
       const dx = bx - ax, dz = bz - az, len2 = dx * dx + dz * dz || 1
       const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - reach) / step)), c1 = Math.min(cols - 1, Math.ceil((Math.max(ax, bx) + reach) / step))
@@ -184,6 +184,24 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
   layBeds(heights, { target, weight })
   return { target, weight }
 }
+//! Height profile of a road bed along `line` (= centreLine(road.pts, step / 2)), the one carveRoads lays:
+//! terrain averaged over ~80 m and kept above the sea; V2 (default) then holds the grade under the class design
+//! grade and rounds the grade changes into vertical curves (roadgeom.ts profileLine). legacy: average only.
+export function roadProfile(road: Road, line: number[], at: (x: number, z: number) => number, spacing: number, legacy = false): number[] {
+  const m = line.length / 2
+  const raw = Array.from({ length: m }, (_, i) => at(line[i * 2], line[i * 2 + 1]))
+  if (legacy || m < 3) {
+    const win = Math.max(1, Math.round(40 / spacing))
+    return raw.map((_, i) => {
+      let s = 0, k = 0
+      for (let j = Math.max(0, i - win); j <= Math.min(m - 1, i + win); j++) { s += raw[j]; k++ }
+      return Math.max(0.8, s / k)
+    })
+  }
+  const spec = ROAD_CLASSES[classOf(road.type)]
+  return profileLine(arcLength(line), raw, { maxGrade: spec.design, smooth: 40, curve: spec.kCrest * 4, floor: 0.8 })
+}
+
 /** road beds computed by carveRoads, as (target height, blend weight) per cell */
 export interface RoadBeds { target: Float32Array; weight: Float32Array }
 //! lays road beds (from carveRoads) on the relief again, e.g. after the runoff dug its channels across them

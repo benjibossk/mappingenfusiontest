@@ -8,7 +8,7 @@ import type { Grid } from './island'
 import { carveRoads, centreLine, type Road, type RoadType } from './roads'
 import { weldRoads } from './roadgraph'
 import { rMinOf } from './roadgraph-classes'
-import { filletPolyline, resampleKeep } from './roadgeom'
+import { smoothRoad } from './roadgeom'
 
 export type SiteKind = 'town' | 'village' | 'hamlet'
 export interface Site { id: string; x: number; z: number; kind: SiteKind }
@@ -19,15 +19,18 @@ const MAX_GRADE: Partial<Record<RoadType, number>> = { dirt: 0.2, dirt2: 0.2, fo
 export const maxGrade = (t: RoadType) => MAX_GRADE[t] ?? 0.12
 /** steepest grade along a road, over 20 m steps (the grid is coarse: shorter steps only measure noise).
  *  The pre-send check (validate.ts) uses this same measure. */
-export function worstGrade(pts: number[], h: ArrayLike<number>, g: Grid): { grade: number; x: number; z: number } {
+export function worstGrade(pts: number[], h: ArrayLike<number>, g: Grid, spans?: { from: number; to: number }[]): { grade: number; x: number; z: number } {
   const at = (x: number, z: number) => {
     const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
     return h[r * g.cols + c]
   }
   const line = centreLine(pts, 20)
-  let grade = 0, x = 0, z = 0
+  let grade = 0, x = 0, z = 0, acc = 0
   for (let i = 2; i + 1 < line.length; i += 2) {
     const d = Math.hypot(line[i] - line[i - 2], line[i + 1] - line[i - 1])
+    acc += d
+    // bridge decks (Road.spans, with 20 m of margin: the abutment step) are not on the ground
+    if (spans?.some((sp) => acc > sp.from - 20 && acc - d < sp.to + 20)) continue
     if (d < 1) continue
     const gr = Math.abs(at(line[i], line[i + 1]) - at(line[i - 2], line[i - 1])) / d
     if (gr > grade) { grade = gr; x = (line[i] + line[i - 2]) / 2; z = (line[i + 1] + line[i - 1]) / 2 }
@@ -444,13 +447,16 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
       for (let k = 0; k + 1 < r.pts.length; k += 2) { const kk = `${r.pts[k]},${r.pts[k + 1]}`; if (!seen.has(kk)) { seen.add(kk); uses.set(kk, (uses.get(kk) ?? 0) + 1) } }
       if (r.pts.length >= 4) for (const e of [0, r.pts.length - 2]) keep.add(`${r.pts[e]},${r.pts[e + 1]}`)
     }
+    // inside a place the road keeps its shape: the streets and lots of the village grow from it
+    // (village.ts lays streets and lots up to 380 / 220 / 140 m from the centre)
+    const FROZEN: Record<SiteKind, number> = { town: 420, village: 250, hamlet: 160 }
+    const inPlace = (x: number, z: number) => sites.some((q) => Math.hypot(q.x - x, q.z - z) < FROZEN[q.kind])
     const fixed = (x: number, z: number) => keep.has(`${x},${z}`) || (uses.get(`${x},${z}`) ?? 0) > 1
     const old = new Map<Road, number[]>()
     for (const r of roads) {
-      const f = filletPolyline(r.pts, rMinOf(r.type), { fixed, chord: 5, merge: 12, minKeep: 0.5 })
+      const f = smoothRoad(r.pts, rMinOf(r.type), { spacing: SPACING, fixed, frozen: inPlace, merge: 12, minKeep: 0.5 })
       if (!f.corners) continue
-      // evenly spaced control points (the spline through them follows the arcs instead of overshooting)
-      const pts = resampleKeep(f.pts, SPACING, fixed)
+      const pts = f.pts
       if (bedGrade(pts, h, g) > maxGrade(r.type) * 0.9) continue
       old.set(r, r.pts)
       r.pts = pts
@@ -588,4 +594,19 @@ function insertPoint(road: Road, x: number, z: number) {
     if (d < bd) { bd = d; best = k }
   }
   p.splice(best, 0, x, z)
+}
+
+//! Slope-aware link between two points (V2 island auto-connect): the A* of the network, then the same
+//! simplification. Returns a polyline from a to b exactly, or null when no route keeps under the type's grade.
+export function routeLink(h: number[], g: Grid, river: Float32Array | undefined, a: [number, number], b: [number, number], type: RoadType, maxSlope: number): number[] | null {
+  const cellOf = (x: number, z: number) =>
+    Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))
+  const path = route(h, g, river, new Uint8Array(g.cols * g.rows), cellOf(a[0], a[1]), new Set([cellOf(b[0], b[1])]), b, Math.min(maxSlope, maxGrade(type) * 80), maxGrade(type))
+  if (!path || path.length < 2) return null
+  const flat: number[] = []
+  for (const i of path) flat.push(g.minX + (i % g.cols) * g.step, g.minZ + Math.floor(i / g.cols) * g.step)
+  const pts = easeCorners(simplify(flat, g.step * 0.9), 60)
+  if (pts.length < 4) return null
+  pts[0] = a[0]; pts[1] = a[1]; pts[pts.length - 2] = b[0]; pts[pts.length - 1] = b[1]
+  return pts
 }

@@ -28,7 +28,7 @@ export function validate(o: {
   // grade over 20 m steps, the same measure the auto network routes with (network.ts)
   for (const r of o.roads) {
     if (r.pts.length < 4) continue
-    const w = worstGrade(r.pts, o.heights, o.grid)
+    const w = worstGrade(r.pts, o.heights, o.grid, r.spans)
     if (w.grade > maxGrade(r.type)) out.push({ kind: 'steepRoad', id: r.id, x: w.x, z: w.z, value: Math.round(w.grade * 100) })
   }
 
