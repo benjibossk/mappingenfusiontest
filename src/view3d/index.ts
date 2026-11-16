@@ -386,9 +386,40 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   controls.addEventListener('change', () => { dirty = true })
   const north = root.querySelector<HTMLDivElement>('.v3d-north')!
   const v2 = new Vector2()
+  // keyboard flight: physical key positions (e.code), so ZQSD on AZERTY and WASD on QWERTY both work.
+  // Arrows too; A/E (AZERTY) = Q/E (QWERTY) rotate; R/F up/down; Shift = faster.
+  const held = new Set<string>()
+  let lastT = performance.now()
+  const fwd = new Vector3(), rgt = new Vector3()
+  const fly = (dt: number) => {
+    if (!held.size) return
+    const k = (c: string) => held.has(c)
+    const dist = camera.position.distanceTo(controls.target)
+    const sp = Math.max(40, dist * 0.9) * (k('ShiftLeft') || k('ShiftRight') ? 3 : 1) * dt
+    camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize(); rgt.set(-fwd.z, 0, fwd.x)
+    const mv = new Vector3()
+    if (k('KeyW') || k('ArrowUp')) mv.add(fwd)
+    if (k('KeyS') || k('ArrowDown')) mv.sub(fwd)
+    if (k('KeyD') || k('ArrowRight')) mv.add(rgt)
+    if (k('KeyA') || k('ArrowLeft')) mv.sub(rgt)
+    if (mv.lengthSq()) { mv.normalize().multiplyScalar(sp); camera.position.add(mv); controls.target.add(mv) }
+    const rot = (k('KeyQ') ? 1 : 0) - (k('KeyE') ? 1 : 0)
+    if (rot) { const a = rot * 1.2 * dt, o = camera.position.clone().sub(controls.target); o.applyAxisAngle(new Vector3(0, 1, 0), a); camera.position.copy(controls.target).add(o) }
+    const up = (k('KeyR') ? 1 : 0) - (k('KeyF') ? 1 : 0)
+    if (up) camera.position.y += up * sp * 0.6
+    dirty = true
+  }
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.metaKey || e.altKey) return
+    if (/^(Key[WASDQERF]|Arroww+|Shiftw+)$/.test(e.code)) { held.add(e.code); if (!e.code.startsWith('Shift')) e.preventDefault() }
+  }
+  const onKeyUp = (e: KeyboardEvent) => { held.delete(e.code) }
+  const onBlur = () => held.clear()
+  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', onBlur)
   const loop = () => {
     if (closed) return
     raf = requestAnimationFrame(loop)
+    const tNow = performance.now(); fly(Math.min(0.1, (tNow - lastT) / 1000)); lastT = tNow
     controls.update()
     if (!dirty) return
     dirty = false
@@ -444,6 +475,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     closed = true
     cancelAnimationFrame(raf)
     window.removeEventListener('keydown', onKey, true)
+    window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onBlur)
     ro.disconnect()
     controls.dispose()
     const mats = new Set<Material>()
