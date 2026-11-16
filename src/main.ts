@@ -1,6 +1,7 @@
 import './style.css'
 import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
 import { Collab, type Op } from './collab'
+import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
 import { POWER_DEFAULTS, powerLineShape, routePowerLine, type PowerKind, type PowerLine } from './modules/power'
 import { GENERATORS, type Project, type ProjectEntity, type ProjectShape } from './project'
@@ -269,7 +270,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         ${(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
         <h3>${t('help.glossary')}</h3>
         <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
-        <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
+        <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><button id="helpNews" type="button" class="secondary">${t('news.open')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
+      </div>
+    </div>
+    <div id="newsPanel" class="helppanel newspanel" role="dialog" aria-modal="false" aria-labelledby="newsTitle" hidden>
+      <div class="hphead"><h2 id="newsTitle">${t('news.title')}</h2><button id="newsClose" type="button" class="secondary icon" title="${t('news.close')}" aria-label="${t('news.close')}">${ic('x', 16)}</button></div>
+      <div class="hpbody">
+        ${CHANGELOG.map((c) => `<section class="newsver"><h3>v${c.version} <span class="newsdate">${c.date}</span></h3><ul>${c.items.map((i) => `<li>${getLang() === 'fr' ? i.fr : i.en}</li>`).join('')}</ul></section>`).join('')}
+        <div class="row"><a href="https://github.com/benjibossk/mappingenfusiontest/blob/main/${getLang() === 'fr' ? 'CHANGELOG.fr.md' : 'CHANGELOG.md'}" target="_blank" rel="noopener">${t('news.full')}</a></div>
       </div>
     </div>
     <div id="tour" class="tour" hidden><div class="tourring"></div><div class="tourbox" role="dialog" aria-live="polite"><span id="tourN" class="kicker"></span><p id="tourText"></p><div class="row"><button id="tourSkip" type="button" class="secondary">${t('tour.skip')}</button><button id="tourNext" type="button">${t('tour.next')}</button></div></div></div>
@@ -602,7 +610,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <pre id="log" class="log"></pre>
   </aside>
-  <footer class="statusbar"><span id="cursor"></span><span class="grow"></span><span>${t('foot.keys')}</span></footer>
+  <footer class="statusbar"><span id="cursor"></span><span class="grow"></span><span>${t('foot.keys')}</span><button id="verLink" type="button" class="verlink" title="${t('news.ver', { v: APP_VERSION })}">v${APP_VERSION}</button></footer>
 </div>`
 
 const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!
@@ -3446,6 +3454,7 @@ refreshStatus()
 
 // floating panels: only one open at a time (help, collab connect form, language list, layers); Esc closes them
 {
+  const news = $<HTMLDivElement>('newsPanel')
   const help = $<HTMLDivElement>('helpPanel'), box = $<HTMLDivElement>('collabBox'), lang = $<HTMLDivElement>('langMenu')
   const layers = $<HTMLDetailsElement>('layers')
   const isOpen = (el: HTMLElement) => (el === layers ? layers.open : !el.hidden)
@@ -3455,7 +3464,7 @@ refreshStatus()
     if (el === help) $('helpFab').classList.remove('active')
     if (el === lang) $('lang').setAttribute('aria-expanded', 'false')
   }
-  const all: HTMLElement[] = [help, box, lang, layers]
+  const all: HTMLElement[] = [help, news, box, lang, layers]
   const mo = new MutationObserver((recs) => {
     for (const r of recs) {
       const el = r.target as HTMLElement
@@ -3467,6 +3476,30 @@ refreshStatus()
     if (e.key !== 'Escape') return
     for (const o of all) if (isOpen(o)) close(o)
   })
+}
+
+// "What's new" panel (data: src/data/changelog.ts): help panel button, status-bar version, toast once per new version
+{
+  const panel = $<HTMLDivElement>('newsPanel')
+  const open = () => { panel.hidden = false; $<HTMLButtonElement>('newsClose').focus() }
+  const shut = () => { panel.hidden = true; $<HTMLButtonElement>('verLink').focus() }
+  $<HTMLButtonElement>('verLink').addEventListener('click', () => (panel.hidden ? open() : shut()))
+  $<HTMLButtonElement>('helpNews').addEventListener('click', open)
+  $<HTMLButtonElement>('newsClose').addEventListener('click', shut)
+  panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); shut() } })
+  const SEEN_KEY = 'reforger-mapper.seenVersion'
+  let seen: string | null = null, fresh = true
+  try { seen = localStorage.getItem(SEEN_KEY); localStorage.setItem(SEEN_KEY, APP_VERSION) } catch { fresh = false /* private window: no toast */ }
+  // only after an update (a first-ever visit gets the welcome screen and the tour instead)
+  if (fresh && seen !== null && seen !== APP_VERSION) setTimeout(() => {
+    const el = $('toast')
+    el.textContent = t('news.toast', { v: APP_VERSION }) + ' — '
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'linkbtn'; b.textContent = t('news.see')
+    b.addEventListener('click', () => { el.hidden = true; open() })
+    el.append(b); el.dataset.kind = 'ok'; el.hidden = false
+    clearTimeout(Number(el.dataset.timer))
+    el.dataset.timer = String(setTimeout(() => (el.hidden = true), 9000))
+  }, 1500)
 }
 
 // --- big sites (tab Villages): industrial zones, military bases, airfields (zones.ts) ---

@@ -8,39 +8,39 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
-### Changed
-- **Heavy generators run in a Web Worker** (`src/workers/gen.worker.ts`, `genClient.ts`): random world, island, road network, forests, satellite colours. The busy panel shows a real percentage (stage weights + sub-progress of the road network), the page stays responsive, Cancel terminates the worker and nothing is applied. Height grids travel as Float64Array (transferred, bit-identical: `scripts/check-worker-determinism.ts`). Main-thread fallback when no worker can be made.
-- **Denser villages in the random world**: house models chosen among those that fit the lot, later tries slide the house across / deeper in the lot, small lots take a small house, ground drop tolerance 1.5 -> 3 (foundations). Fill of the lots that draw a house: ~30 % -> ~70 % (8 km bench), +45-60 % buildings, checker still 0.
+## [0.5.0] - 2026-11-16
 
-### Fixed
-- Real place, Copernicus: the relay is checked first; when it is off a guide says what to start (`npm run bridge`), with Retry and "Use Terrarium instead" (Terrarium / IGN work without it).
-- Random world summary counts farms separately from hamlets.
+The big "newcomer" release: a guided interface, a one-click random world and many new things to put on the map.
 
 ### Added
-- **Random world**: one number makes a whole map (relief, rivers / lakes, places on a score map, airfield, military bases, road network, industrial zones, villages v2, power lines, forests, surfaces). Dialog with seed + dice, map size, density sliders, airfield / power toggles, per-stage progress, Cancel. Deterministic per seed with sub-seeds per stage and zone (`src/modules/worldgen.ts`), numbers in `src/data/worldParams.ts` from MAP_KNOWLEDGE_BASE.md (enfumap + measured Everon / Arland / Kolguyev). The result lands in the normal steps (undo, autosave, history).
-- **Villages v2 wired**: new village maker on by default (kind of place, side streets, farm yards, church, port, streets per place); back gardens drawn.
-- **Industrial zones, military bases, airfields** (step Villages): "Suggest spots" shows ranked numbered spots, a click builds the site; ground levelled before the road beds; new map layer; sent with "Send all" or their own button (`src/modules/zones.ts`).
-- **Surfaces from the satellite photo** (step Fields & forests): 5 colours read from the photo, a surface per colour, smoothing, preview on the map, send as ground masks or save an RGBA PNG.
-
-### Fixed
-- 13 road generator refs in `roads.ts` now carry their `{GUID}` (check_prefabs: 0 KO outside comments).
-- Pre-send check no longer flags piers built over the water on purpose.
-- **Guided UI**: welcome screen (New island / Real place / Join a room / Open a file), 7 numbered steps (Relief, Sculpt, Water, Roads, Villages, Fields & forests, Send) with Next / Previous, done / out-of-date / to-do state, advanced settings folded.
-- **MILSPEC Tactical theme**: ink background, amber accents, Oswald titles, mono data, cursor X / Z / altitude status bar.
-- **Help**: "?" bubble with the 7 steps, controls, FAQ and glossary; guided tour on first visit.
-- **Collaboration tab**: comments pinned on the map (reply, resolve), history of changes (author, step, time), satellite / hillshade mini-map; rooms kept on disk by the collab server.
-- **Power lines** in the Roads step: high-voltage pylons between main places, low-voltage poles along roads.
-- **Language selector** with % translated, browser-language option, export / import of a language JSON.
-- **Workbench connection chip** with a 3-step guide and Retry; `start-bridge.bat` starts the relay by double-click.
-- **ARTE ports** (MIT, © Icebird): OSM road width table, bridge / tunnel exclusion, road bed above water with cosine edge, NoData fill for DEMs.
-- Hillshade view; satellite image kept with the project.
-
-### Fixed
-- Surface limit: at most 4 surfaces per 64 m block, neighbouring blocks included ("Too many layers").
-- Newcomer UX fixes: single floating panel, forests on fictive islands, road network / check agreement, friendly labels, history step.
+- **Guided 7-step interface**: a welcome screen with entry paths (New island, Random world, Real place, Join a room, Open a file), then 7 numbered steps (Relief, Sculpt, Water, Roads, Villages, Fields & forests, Send) with Next / Previous and a done / out-of-date / to-do state on each step. Advanced settings are folded away.
+- **Help everywhere**: a "?" bubble with the 7 steps, controls, FAQ and glossary, a guided tour on the first visit, and an in-app "What's new" panel (also reachable from the version number in the status bar).
+- **Language selector**: English / French with the % translated, an option to follow the browser language, and export / import of a language file so anyone can add a translation.
+- **Collaboration tab**: comments pinned on the map (reply, resolve), a history of changes (who, which step, when) and a satellite / hillshade mini-map. Rooms are kept on disk by the collab server.
+- **Random world generator**: one number makes a whole map — relief, rivers and lakes, towns and villages, airfield, military bases, roads, industrial zones, power lines, forests and ground surfaces. Its numbers are calibrated on the real maps Everon, Arland and Kolguyev. Same number, same map.
+- **Villages v2**: organic streets, side streets, farm yards, back gardens, one church per village, ports, and different kinds of place (hamlet, village, town).
+- **Industrial zones, military bases and airfields** (step Villages): "Suggest spots" shows ranked numbered spots on the map, a click builds the site and levels the ground.
+- **Slope-aware road network**: the automatic network avoids steep ground and is checked on the carved road bed.
+- **Power lines** (step Roads): high-voltage pylons between the main places, low-voltage poles along the roads.
+- **Surfaces from a satellite photo** (step Fields & forests): 5 colours are read from the photo, each becomes a ground surface, with a preview on the map; send them as ground masks or save a PNG.
+- **Ports from ARTE** (MIT, © Icebird): OpenStreetMap road width table, bridges and tunnels left out, road bed above water with a smooth edge, holes in elevation data filled.
+- **Workbench connection chip** with a 3-step guide and Retry; `start-bridge.bat` starts the relay with a double-click.
+- Hillshade view; the satellite image is now saved with the project.
 
 ### Changed
-- README rewritten for the new UI, French README added, fresh screenshots.
+- **MILSPEC Tactical theme**: dark background, amber accents, clear titles, and a status bar with the cursor X / Z / altitude.
+- **Heavy work runs in the background** (Web Worker): the page stays responsive, the progress panel shows a real percentage, and Cancel stops the job without changing your map.
+- Denser, more believable villages in the random world (about 70 % of lots now get a house instead of 30 %).
+- README rewritten for the new interface, with a French README and fresh screenshots.
+
+### Fixed
+- "Too many layers" in Workbench: at most 4 ground surfaces per 64 m block, neighbouring blocks included.
+- Forests can now be generated on fictive (made-up) islands.
+- Every prefab reference carries its verified `{GUID}` (checked against the base-game resource database).
+- Real place with Copernicus: the relay is checked first, and if it is off a guide says what to start, with Retry or "Use Terrarium instead".
+- The road network and the pre-send check now agree; piers built over water on purpose are no longer flagged.
+- The guided tour no longer opens over the welcome screen; farms are counted apart from hamlets; places avoid lakes.
+- Many small newcomer fixes: one floating panel at a time, friendlier labels, history step.
 
 ## [0.4.8] - 2026-10-17
 
@@ -175,6 +175,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.5.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.5.0
 [0.4.8]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.8
 [0.4.7]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.7
 [0.4.6]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.6

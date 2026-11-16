@@ -100,7 +100,7 @@ Pour l'intégrer à l'outil pour tous, ajoute la table dans `src/i18n.ts` et ouv
 | `npm run bridge` | Relais local vers le Workbench (port 5780) — ou `start-bridge.bat` |
 | `npm run collab` | Serveur de collaboration (port 5790) |
 
-Cahier de recette : [docs/RECETTE.md](docs/RECETTE.md). Historique des versions : [CHANGELOG.md](CHANGELOG.md). Lieu réel, problèmes connus et index complet de `docs/` : voir le [README anglais](README.md#start-from-a-real-place).
+Cahier de recette : [docs/RECETTE.md](docs/RECETTE.md). Historique des versions : [CHANGELOG.fr.md](CHANGELOG.fr.md) (anglais : [CHANGELOG.md](CHANGELOG.md)). Lieu réel, problèmes connus et index complet de `docs/` : voir le [README anglais](README.md#start-from-a-real-place).
 
 ## Crédits et licence
 

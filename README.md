@@ -112,7 +112,7 @@ To ship it with the tool for everyone, add the table to `src/i18n.ts` and open a
 | `npm run bridge` | Local relay to the Workbench (port 5780) — or `start-bridge.bat` |
 | `npm run collab` | Collaboration server (port 5790) |
 
-Layout: `src/` (site: `main.ts`, `i18n.ts`, `collab.ts`, `project.ts`, `terrain.ts`, `realWorld.ts`, `modules/`), `bridge/` (Node relay), `collab/` (room server), `workbench/Mapgenerator/` (Workbench addon). Manual test plan: [docs/RECETTE.md](docs/RECETTE.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+Layout: `src/` (site: `main.ts`, `i18n.ts`, `collab.ts`, `project.ts`, `terrain.ts`, `realWorld.ts`, `modules/`), `bridge/` (Node relay), `collab/` (room server), `workbench/Mapgenerator/` (Workbench addon). Manual test plan: [docs/RECETTE.md](docs/RECETTE.md). Changes: [CHANGELOG.md](CHANGELOG.md) (French: [CHANGELOG.fr.md](CHANGELOG.fr.md)).
 
 ## Start from a real place
 

@@ -819,6 +819,13 @@ export const en = {
   'faq.a6': "Press Random world (welcome screen or step 1), pick a number and how full the map should be. The tool makes the island, rivers, places, airfield, bases, roads, industry, villages, power lines and forests one after the other, using numbers measured on the official maps. Everything lands in the normal steps: change what you want, Ctrl+Z undoes it all.",
   'faq.q7': "How do I add a factory, a base or an airfield?",
   'faq.a7': "Step Villages, sections Industrial zones and Military base / Airfield: press Suggest spots, then click a numbered spot (or anywhere). The ground is levelled under it; send the relief again with the objects.",
+  'news.title': "What's new",
+  'news.open': "What's new",
+  'news.close': "Close what's new",
+  'news.ver': "Version {v} — see what's new",
+  'news.toast': "What's new in v{v}",
+  'news.see': "see",
+  'news.full': "Full history",
 } as const
 
 export type Key = keyof typeof en
@@ -1642,6 +1649,13 @@ export const fr: Record<Key, string> = {
   'faq.a6': "Appuie sur Monde aléatoire (écran d'accueil ou étape 1), choisis un nombre et à quel point la carte doit être remplie. L'outil fabrique l'île, les rivières, les lieux, l'aérodrome, les bases, les routes, l'industrie, les villages, les lignes électriques et les forêts l'un après l'autre, avec des chiffres mesurés sur les cartes officielles. Tout arrive dans les étapes habituelles : change ce que tu veux, Ctrl+Z annule tout.",
   'faq.q7': "Comment ajouter une usine, une base ou un aérodrome ?",
   'faq.a7': "Étape Villages, sections Zones industrielles et Base militaire / Aérodrome : appuie sur Proposer des emplacements, puis clique sur un emplacement numéroté (ou n'importe où). Le sol est aplani dessous ; renvoie le relief avec les objets.",
+  'news.title': "Nouveautés",
+  'news.open': "Nouveautés",
+  'news.close': "Fermer les nouveautés",
+  'news.ver': "Version {v} — voir les nouveautés",
+  'news.toast': "Nouveautés de la v{v}",
+  'news.see': "voir",
+  'news.full': "Historique complet",
 }
 
 // Adding a language = adding a dictionary here (Partial: missing keys fall back to English, never a raw key).
