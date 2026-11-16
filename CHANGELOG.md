@@ -8,6 +8,24 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+### Added
+- **Guided UI**: welcome screen (New island / Real place / Join a room / Open a file), 7 numbered steps (Relief, Sculpt, Water, Roads, Villages, Fields & forests, Send) with Next / Previous, done / out-of-date / to-do state, advanced settings folded.
+- **MILSPEC Tactical theme**: ink background, amber accents, Oswald titles, mono data, cursor X / Z / altitude status bar.
+- **Help**: "?" bubble with the 7 steps, controls, FAQ and glossary; guided tour on first visit.
+- **Collaboration tab**: comments pinned on the map (reply, resolve), history of changes (author, step, time), satellite / hillshade mini-map; rooms kept on disk by the collab server.
+- **Power lines** in the Roads step: high-voltage pylons between main places, low-voltage poles along roads.
+- **Language selector** with % translated, browser-language option, export / import of a language JSON.
+- **Workbench connection chip** with a 3-step guide and Retry; `start-bridge.bat` starts the relay by double-click.
+- **ARTE ports** (MIT, © Icebird): OSM road width table, bridge / tunnel exclusion, road bed above water with cosine edge, NoData fill for DEMs.
+- Hillshade view; satellite image kept with the project.
+
+### Fixed
+- Surface limit: at most 4 surfaces per 64 m block, neighbouring blocks included ("Too many layers").
+- Newcomer UX fixes: single floating panel, forests on fictive islands, road network / check agreement, friendly labels, history step.
+
+### Changed
+- README rewritten for the new UI, French README added, fresh screenshots.
+
 ## [0.4.8] - 2026-10-17
 
 ### Fixed
