@@ -9,7 +9,7 @@ import { WORLD } from '../data/worldParams'
 import { fr } from '../i18n'
 import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
 import { computeRivers } from './hydro'
-import { carveWater, placeLakes, traceRivers, type Water } from './water'
+import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
@@ -23,7 +23,7 @@ import { generateForests } from './forestgen'
 import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
-import { suggestIndustrialSites, INDUSTRIAL_TYPES } from './industrial'
+import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
 
 export interface WorldParams {
@@ -124,6 +124,51 @@ function routePowerWindow(h: ArrayLike<number>, g: Grid, ax: number, az: number,
   const inBox = (p: number[]) => { for (let i = 0; i + 1 < p.length; i += 2) if (p[i] > x0 && p[i] < x1 && p[i + 1] > z0 && p[i + 1] < z1) return true; return false }
   const roads = o.roads?.filter(inBox), keepOut = o.keepOut?.filter((q) => q.x + q.r > x0 && q.x - q.r < x1 && q.z + q.r > z0 && q.z - q.r < z1)
   return routePowerLine(sub, w, ax, az, bx, bz, { ...o, roads, keepOut })
+}
+
+/** lake shore margin (m): nothing is built or routed closer to a lake outline than this */
+export const LAKE_MARGIN_M = 35
+
+/** cells inside a lake outline, or within `margin` m of it (the carved wet cells are only the deep middle) */
+export function lakeMask(g: Grid, waters: Water[], margin = LAKE_MARGIN_M): Uint8Array {
+  const m = new Uint8Array(g.cols * g.rows)
+  for (const w of waters) {
+    if (!WATER_TYPES[w.type].closed || w.pts.length < 6) continue
+    const p = w.pts
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i + 1 < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); z0 = Math.min(z0, p[i + 1]); z1 = Math.max(z1, p[i + 1]) }
+    const c0 = Math.max(0, Math.floor((x0 - margin - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((x1 + margin - g.minX) / g.step))
+    const r0 = Math.max(0, Math.floor((z0 - margin - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((z1 + margin - g.minZ) / g.step))
+    const n = p.length / 2
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const k = r * g.cols + c
+      if (m[k]) continue
+      const x = g.minX + c * g.step, z = g.minZ + r * g.step
+      if (pointInPoly(p, x, z)) { m[k] = 1; continue }
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const ax = p[j * 2], az = p[j * 2 + 1], dx = p[i * 2] - ax, dz = p[i * 2 + 1] - az
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)))
+        if (Math.hypot(x - ax - t * dx, z - az - t * dz) < margin) { m[k] = 1; break }
+      }
+    }
+  }
+  return m
+}
+
+/** heights with the lake mask sunk under the sea: every placement / router that keeps off the sea keeps off the lakes */
+function lakeAsSea(h: number[], mask: Uint8Array): number[] {
+  const o = h.slice()
+  for (let i = 0; i < o.length; i++) if (mask[i]) o[i] = -1
+  return o
+}
+
+/** a footprint disc touches the water mask (sea, lakes + margin, river cells) */
+function discWet(g: Grid, wet: (i: number) => boolean, x: number, z: number, R: number) {
+  for (let a = 0; a < 16; a++) for (const f of [0, 0.35, 0.7, 1]) {
+    const c = Math.round((x + Math.cos((a / 16) * Math.PI * 2) * R * f - g.minX) / g.step), r = Math.round((z + Math.sin((a / 16) * Math.PI * 2) * R * f - g.minZ) / g.step)
+    if (c < 0 || r < 0 || c >= g.cols || r >= g.rows || wet(r * g.cols + c)) return true
+  }
+  return false
 }
 
 /** farmstead spots: flat dry land 200-900 m off the roads, away from places and zones, spaced out (random order) */
@@ -279,18 +324,28 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   let cur = composeHeights(base, g, waters, zones, roads)
   // 3. places
   await step('sites')
-  let sites = placeWorldSites(cur.heights, g, cur.sim.river, p, seed, cur.wet)
+  // one water mask for every placement: sea, carved wet cells (rivers, lake middles), lake outlines + shore margin
+  const lakes0 = lakeMask(g, waters)
+  const wetAt = (i: number) => lakes0[i] === 1 || (cur.wet?.[i] ?? 0) === 1 || cur.heights[i] <= 0.5
+  let sites = placeWorldSites(lakeAsSea(cur.heights, lakes0), g, cur.sim.river, p, seed, cur.wet)
+  // a zone whose objects or footprint corners fall in the lake mask is refused
+  const zoneWet = (z: ZoneItem) => {
+    const lw = (x: number, zz: number) => { const c = Math.round((x - g.minX) / g.step), r = Math.round((zz - g.minZ) / g.step); return c >= 0 && r >= 0 && c < g.cols && r < g.rows && lakes0[r * g.cols + c] === 1 }
+    return lw(z.x, z.z) || z.entities.some((e) => lw(e.x, e.z)) || z.boxes.some((b) => { for (let i = 0; i + 1 < b.corners.length; i += 2) if (lw(b.corners[i], b.corners[i + 1])) return true; return false })
+      || z.roads.some((r) => { for (let i = 0; i + 1 < r.pts.length; i += 2) if (lw(r.pts[i], r.pts[i + 1])) return true; return false })
+  }
   const siteDiscs = (extra: number) => sites.map((s) => ({ x: s.x, z: s.z, r: SITE_RADIUS[s.kind] + extra }))
   // 4. airfield: the flattest long strip, away from the places
   await step('airfield')
   const access: Site[] = [] // gates the road network must reach (not settled)
   if (p.airfield && p.size >= WORLD.airfield.minMapKm * 1000) {
     const size = WORLD.airfield.sizeFor(p.size)
-    const s = suggestAirfield(cur.heights, g, { size, seaLevel: 0, keepOut: siteDiscs(WORLD.airfield.keepOutM), count: 1 })[0]
+    const s = suggestAirfield(lakeAsSea(cur.heights, lakes0), g, { size, seaLevel: 0, keepOut: siteDiscs(WORLD.airfield.keepOutM), count: 1 })[0]
     if (s) {
       const a = makeAirfield(cur.heights, g, { id: 'AIR_1', size, x: s.x, z: s.z, yaw: s.yaw, seed: subSeed(seed, 'airfield') })
-      zones.push(a)
-      if (a.access) access.push({ id: 'ACCESS_AIR_1', x: a.access[0], z: a.access[1], kind: 'hamlet' })
+      const ok = !zoneWet(a) // no dry ground: no airfield
+      if (ok) zones.push(a)
+      if (ok && a.access) access.push({ id: 'ACCESS_AIR_1', x: a.access[0], z: a.access[1], kind: 'hamlet' })
     }
   }
   // 5. military: the main base near the airfield, outposts on high ground
@@ -299,15 +354,18 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   for (let k = 0; k < nMil; k++) {
     const keep = [...siteDiscs(WORLD.military.keepOutM), ...zones.map((z) => { const d = zoneDisc(z); return { ...d, r: d.r + 150 } })]
     // the main base needs a big flat ground: on a small or steep island fall back to an outpost, then a checkpoint
-    let kind: MilitaryKind = k === 0 ? 'main' : 'outpost', list = suggestMilitary(cur.heights, g, { kind, seaLevel: 0, keepOut: keep, count: 8 })
-    if (!list.length && kind === 'main') list = suggestMilitary(cur.heights, g, { kind: (kind = 'outpost'), seaLevel: 0, keepOut: keep, count: 8 })
-    if (!list.length) list = suggestMilitary(cur.heights, g, { kind: (kind = 'checkpoint'), seaLevel: 0, keepOut: keep, count: 8 })
+    const mh = lakeAsSea(cur.heights, lakes0)
+    const mil = (kind: MilitaryKind) => suggestMilitary(mh, g, { kind, seaLevel: 0, keepOut: keep, count: 8 })
+    let kind: MilitaryKind = k === 0 ? 'main' : 'outpost', list = mil(kind)
+    if (!list.length && kind === 'main') list = mil((kind = 'outpost'))
+    if (!list.length) list = mil((kind = 'checkpoint'))
     const air = zones.find((z) => z.kind === 'airfield')
     const r = mulberry(subSeed(seed, 'military', k))
     let pick = list[Math.floor(r() * Math.min(3, list.length))]
     if (kind === 'main' && air) pick = list.find((q) => Math.hypot(q.x - air.x, q.z - air.z) < WORLD.military.nearAirfieldM(p.size)) ?? pick
     if (!pick) break
     const m = makeMilitary(cur.heights, g, { id: `MIL_${k + 1}`, kind, x: pick.x, z: pick.z, yaw: pick.yaw, seed: subSeed(seed, 'military', k) })
+    if (zoneWet(m)) continue // no dry ground for it: skipped
     zones.push(m)
     if (m.access) access.push({ id: `ACCESS_MIL_${k + 1}`, x: m.access[0], z: m.access[1], kind: 'hamlet' })
   }
@@ -319,14 +377,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const rid = roadIdMaker()
   const linked = [...sites, ...access.filter((a) => a.x > g.minX && a.z > g.minZ && a.x < g.minX + (g.cols - 1) * g.step && a.z < g.minZ + (g.rows - 1) * g.step)]
   const ri = WORLD_STAGES.indexOf('roads')
-  roads = linked.length >= 2 ? buildNetwork(cur.heights, g, cur.sim.river, linked, { ...net, progress: (f) => cb.progress?.('roads', ri, WORLD_STAGES.length, 0.85 * f) }, []) : []
+  roads = linked.length >= 2 ? buildNetwork(lakeAsSea(cur.heights, lakes0), g, cur.sim.river, linked, { ...net, progress: (f) => cb.progress?.('roads', ri, WORLD_STAGES.length, 0.85 * f) }, []) : []
   // farmsteads: [M] Everon 197 lone buildings (1-2) and 136 km of dirt + 74 km of paths for 344 km: a dirt track
   // leaves the network for each farm, which adds the T junctions a tree of places lacks
   if (roads.length) {
-    const farms = placeFarms(cur.heights, g, roads, sites, zones, Math.round(WORLD.farms.perKm2 * landKm2 * p.hamlets), subSeed(seed, 'farms'))
+    const farms = placeFarms(lakeAsSea(cur.heights, lakes0), g, roads, sites, zones, Math.round(WORLD.farms.perKm2 * landKm2 * p.hamlets), subSeed(seed, 'farms'))
     const anchor = sites.find((s) => roads.some((r) => r.pts.some((v, i) => i % 2 === 0 && Math.hypot(v - s.x, r.pts[i + 1] - s.z) < SITE_RADIUS[s.kind])))
     if (farms.length && anchor) {
-      const more = buildNetwork(cur.heights, g, cur.sim.river, [anchor, ...farms], { ...net, loops: 0, lane: WORLD.farms.track as RoadType }, roads)
+      const more = buildNetwork(lakeAsSea(cur.heights, lakes0), g, cur.sim.river, [anchor, ...farms], { ...net, loops: 0, lane: WORLD.farms.track as RoadType }, roads)
       roads.push(...more)
       const reached = farms.filter((f) => more.some((r) => Math.hypot(r.pts[0] - f.x, r.pts[1] - f.z) < SITE_RADIUS.hamlet))
       sites = [...sites, ...reached]
@@ -352,7 +410,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const bridgesOut: ProjectEntity[] = []
   if (p.roadsV2 !== false && roads.length) {
     if (roadIslands(roads).length > 1) {
-      const links = connectIslands(roads, { maxDist: 1500, type: 'trailDirt', idPrefix: 'ROAD_LINK', route: (a, b) => routeLink(cur.heights, g, cur.sim.river, a, b, 'trailDirt', WORLD.roads.maxSlope) })
+      const links = connectIslands(roads, { maxDist: 1500, type: 'trailDirt', idPrefix: 'ROAD_LINK', route: (a, b) => routeLink(lakeAsSea(cur.heights, lakes0), g, cur.sim.river, a, b, 'trailDirt', WORLD.roads.maxSlope) })
       for (const l of links) { l.id = rid(l.type) }
       if (links.length) {
         const test = composeHeights(base, g, waters, zones, [...roads, ...links]).heights
@@ -391,7 +449,12 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const nInd = Math.min(WORLD.industry.maxZones, Math.round(p.industry * WORLD.industry.perTown * Math.max(1, sites.filter((s) => s.kind === 'town').length)))
   const isWater = (x: number, z: number) => {
     const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
-    return (cur.heights[r * g.cols + c] ?? 0) <= 0.5
+    return c < 0 || r < 0 || c >= g.cols || r >= g.rows || wetAt(r * g.cols + c)
+  }
+  // power lines may span a river, never a lake (sea / lake mask only)
+  const isLakeOrSea = (x: number, z: number) => {
+    const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
+    return c < 0 || r < 0 || c >= g.cols || r >= g.rows || lakes0[r * g.cols + c] === 1 || cur.heights[r * g.cols + c] <= 0.5
   }
   const hAt = (x: number, z: number) => {
     const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
@@ -410,7 +473,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const s = list.find((q) => !zones.some((z) => { const d = zoneDisc(z); return Math.hypot(d.x - q.x, d.z - q.z) < d.r + 200 }))
     if (!s) continue
     const zn = makeIndustrial(cur.heights, g, roads, { id: `IND_${k + 1}`, type, x: s.x, z: s.z, seed: subSeed(seed, 'industry', k), size: WORLD.industry.size })
-    if (!zn.entities.length) continue
+    if (!zn.entities.length || zoneWet(zn) || discWet(g, wetAt, zn.x, zn.z, zoneDisc(zn).r * 0.5)) continue
     zones.push(zn)
     k++
   }
@@ -445,7 +508,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         inT.forEach((a, i) => out.forEach((b, j) => { const d = Math.hypot(a.x - b.x, a.z - b.z); if (d < bd) { bd = d; bi = i; bj = j } }))
         const a = inT[bi], b = out.splice(bj, 1)[0]
         inT.push(b)
-        const l = routePowerWindow(h, g, a.x, a.z, b.x, b.z, { kind: 'hv', isWater, keepOut: keepOut([a, b]) })
+        const l = routePowerWindow(h, g, a.x, a.z, b.x, b.z, { kind: 'hv', isWater: isLakeOrSea, keepOut: keepOut([a, b]) })
         if (l) power.push({ ...l, id: pid('hv') })
       }
     }
@@ -458,7 +521,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         if (d < bd) { bd = d; bx = l.poles[i]; bz = l.poles[i + 1] }
       }
       if (!Number.isFinite(bx) || bd > WORLD.power.lvMax || bd < SITE_RADIUS[v.kind] * 0.5) continue
-      const l = routePowerWindow(h, g, bx, bz, v.x, v.z, { kind: 'lv', isWater, roads: roadPts, keepOut: keepOut([v]) })
+      const l = routePowerWindow(h, g, bx, bz, v.x, v.z, { kind: 'lv', isWater: isLakeOrSea, roads: roadPts, keepOut: keepOut([v]) })
       if (l) power.push({ ...l, id: pid('lv') })
     }
   }
