@@ -1,4 +1,4 @@
-// Power lines, step 1 (docs/ROADMAP_NEXT.md §2): pure routing, not wired into the UI yet.
+// Power lines (docs/ROADMAP_NEXT.md §2): routing; wired into the Roads step in main.ts.
 // A line between two points (substation -> substation, or substation -> village) is routed with A*
 // over the height grid: slope costs (steep cells are forbidden), water is forbidden, cells inside a
 // "keep-out" circle (village centres, buildings) are forbidden, cells along a road corridor are
@@ -12,19 +12,21 @@ import type { ProjectShape } from '../project'
 
 export type PowerKind = 'hv' | 'mv' | 'lv'
 
-/** Native power line generators (docs/GENERATORS.md, docs/ENFUSION_FORMATS.md). Paths only for the
- *  ones whose GUID is not known yet: the plugin resolves a bare path. */
+/** Native power line generators (SCR_PowerlineGeneratorEntity), GUIDs checked 2026-11 against the base
+ *  game data (Prefabs/WEGenerators/Powerline/*.et) and layers referencing them. A bare path would make
+ *  an empty generator, so always "{GUID}path". */
 export const POWER_GENERATORS: Record<PowerKind, string> = {
-  hv: 'Prefabs/WEGenerators/Powerline/PG_PowerLine_HV_02_Metal.et',
-  mv: 'Prefabs/WEGenerators/Powerline/PG_PowerLine_HV_01_Concrete.et',
+  hv: '{6958471456266DD6}Prefabs/WEGenerators/Powerline/PG_PowerLine_HV_02_Metal.et',
+  mv: '{F9CF7B0E9B97B012}Prefabs/WEGenerators/Powerline/PG_PowerLine_HV_01_Concrete.et',
   lv: '{20E4877A07D28502}Prefabs/WEGenerators/Powerline/PG_PowerLine_01_WoodenSmall.et',
 }
 
-/** Typical span between poles (m) and the steepest slope a pole may stand on. */
+/** Span between poles (m) = the prefab's own m_fDistance (HV_02 80, HV_01 50, WoodenSmall 35), the
+ *  steepest slope a pole may stand on, and the cost factor along roads. */
 export const POWER_DEFAULTS: Record<PowerKind, { spacing: number; maxSlope: number; roadBonus: number }> = {
-  hv: { spacing: 220, maxSlope: 0.45, roadBonus: 1 }, // pylons cross country, ignore roads
-  mv: { spacing: 90, maxSlope: 0.35, roadBonus: 0.6 },
-  lv: { spacing: 40, maxSlope: 0.3, roadBonus: 0.35 }, // wooden poles hug the roads
+  hv: { spacing: 80, maxSlope: 0.45, roadBonus: 1 }, // pylons cross country, ignore roads
+  mv: { spacing: 50, maxSlope: 0.35, roadBonus: 0.6 },
+  lv: { spacing: 35, maxSlope: 0.3, roadBonus: 0.35 }, // wooden poles hug the roads
 }
 
 export interface KeepOut { x: number; z: number; r: number }
@@ -45,6 +47,8 @@ export interface PowerOptions {
 
 export interface PowerLine {
   kind: PowerKind
+  /** pole spacing used (m_fDistance on the generator); absent = POWER_DEFAULTS */
+  spacing?: number
   /** straightened path, flat x/z */
   path: number[]
   /** pole positions, flat x/z (first and last = the end points) */
@@ -220,10 +224,13 @@ export function routePowerLine(heights: ArrayLike<number>, grid: Grid, ax: numbe
   path[0] = ax; path[1] = az; path[path.length - 2] = bx; path[path.length - 1] = bz
   let length = 0
   for (let i = 0; i + 3 < path.length; i += 2) length += Math.hypot(path[i + 2] - path[i], path[i + 3] - path[i + 1])
-  return { kind: opts.kind, path, poles: placePoles(path, spacing), length }
+  return { kind: opts.kind, spacing, path, poles: placePoles(path, spacing), length }
 }
 
-/** Project shape for the native generator: one point per pole ("Generate per point" on). */
+/** Project shape for the native generator. The generator itself spaces poles every m_fDistance along
+ *  the polyline (plus one on start / end / each corner it needs), so the shape carries the corners of
+ *  the route and m_fDistance is set to our spacing: the preview poles match what Workbench builds. */
 export function powerLineShape(line: PowerLine, id: string): ProjectShape {
-  return { id, kind: 'polyline', closed: false, points: line.poles, generator: POWER_GENERATORS[line.kind] }
+  const spacing = line.spacing ?? POWER_DEFAULTS[line.kind].spacing
+  return { id, kind: 'polyline', closed: false, points: line.path, generator: POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance'], paramValues: [String(spacing)] }
 }

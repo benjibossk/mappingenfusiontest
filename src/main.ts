@@ -1,6 +1,8 @@
 import './style.css'
 import { external, fr, getLang, t, type Key } from './i18n'
 import { Collab, type Op } from './collab'
+import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
+import { POWER_DEFAULTS, powerLineShape, routePowerLine, type PowerKind, type PowerLine } from './modules/power'
 import { GENERATORS, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
@@ -14,7 +16,7 @@ import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'fields', 'water', 'roads', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
+const LAYERS = ['existing', 'areas', 'fields', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
 let collab: Collab | null = null // shared room, see src/collab.ts
@@ -262,6 +264,23 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <button id="netClear" type="button" class="secondary">${t('btn.netClear')}</button>
         </div>
         <p class="hint">${t('hint.roadGen')}</p>
+      </details>
+      <details class="adv" id="powerBox"><summary>${t('legend.power')}</summary>
+        <label class="check"><input id="powHV" type="checkbox" checked> ${t('lbl.powHV')}</label>
+        <div class="form">
+          <label>${t('lbl.powHVFrom')} <select id="powHVFrom"><option value="town">${t('opt.powTowns')}</option><option value="village" selected>${t('opt.powVillages')}</option><option value="all">${t('opt.powAll')}</option></select></label>
+          <label>${t('lbl.powHVKind')} <select id="powHVKind"><option value="hv">${t('opt.powHVMetal')}</option><option value="mv">${t('opt.powHVConcrete')}</option></select></label>
+        </div>
+        <label class="check"><input id="powLV" type="checkbox" checked> ${t('lbl.powLV')}</label>
+        <div class="form">
+          <label>${t('lbl.powLVMax')} <input id="powLVMax" type="number" step="100" min="200" value="2500"></label>
+        </div>
+        <p class="hint">${t('hint.power')}</p>
+        <div class="row">
+          <button id="powerGen" type="button">${t('btn.powerGen')}</button>
+          <button id="powerClear" type="button" class="secondary">${t('btn.powerClear')}</button>
+        </div>
+        <span id="powerInfo" class="hint"></span>
       </details>
       <details class="adv"><summary>${t('ui.advanced')}</summary>
         <div class="form">
@@ -511,6 +530,7 @@ function draw() {
   }
 
   if (furn && layer('furniture') && $<HTMLInputElement>('furnShow').checked && tool() === 'road') drawFurniture(furn)
+  if (layer('power')) drawPower()
   if (layer('buildings')) drawSettlements()
   if (layer('sites')) drawSites()
 
@@ -755,6 +775,8 @@ let skipClick = false
 let dragSite: { s: Site; moved: boolean } | null = null
 let roadDrawing = false
 let furn: { shapes: ProjectShape[]; signs: ProjectEntity[] } | null = null
+type PowerItem = PowerLine & { id: string }
+let powerLines: PowerItem[] = [] // tab Routes, Power lines
 let sites: Site[] = []
 let settled: Placed[] = [] // settlement buildings (tab Routes, Villages)
 let setLanes: Road[] = [] // settlement lanes and footpaths, squares (tab Villages)
@@ -848,14 +870,14 @@ function recompose(final: boolean) {
 }
 
 // --- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Maj+Z): one snapshot per finished action ---
-interface Snap { macro: Float32Array; sink?: Uint8Array; roads: string; zone: string; sites: string; waters: string; settled: string }
+interface Snap { macro: Float32Array; sink?: Uint8Array; roads: string; power?: string; zone: string; sites: string; waters: string; settled: string }
 const history: Snap[] = []
 let histAt = -1, restoring = false
 function checkpoint() {
   if (restoring || !sculpt) return
-  const snap: Snap = { macro: sculpt.macro.slice(), sink: sink?.slice(), roads: JSON.stringify(roads), zone: zoneEl.value, sites: JSON.stringify(sites), waters: JSON.stringify(waters), settled: setState() }
+  const snap: Snap = { macro: sculpt.macro.slice(), sink: sink?.slice(), roads: JSON.stringify(roads), power: JSON.stringify(powerLines), zone: zoneEl.value, sites: JSON.stringify(sites), waters: JSON.stringify(waters), settled: setState() }
   const cur = history[histAt]
-  if (cur && cur.roads === snap.roads && cur.sites === snap.sites && cur.waters === snap.waters && cur.settled === snap.settled && cur.zone === snap.zone && cur.sink?.length === snap.sink?.length
+  if (cur && cur.roads === snap.roads && cur.power === snap.power && cur.sites === snap.sites && cur.waters === snap.waters && cur.settled === snap.settled && cur.zone === snap.zone && cur.sink?.length === snap.sink?.length
     && cur.macro.length === snap.macro.length && cur.macro.every((v, i) => v === snap.macro[i])
     && (!cur.sink || cur.sink.every((v, i) => v === snap.sink![i]))) return
   if (cur && !remoteApply) logChange(cur, snap)
@@ -872,6 +894,7 @@ function restore(to: number) {
   sculpt.macro.set(s.macro)
   sink = s.sink?.slice()
   roads = JSON.parse(s.roads)
+  powerLines = JSON.parse(s.power ?? '[]')
   sites = JSON.parse(s.sites ?? '[]')
   waters = JSON.parse(s.waters ?? '[]')
   loadSetState(s.settled)
@@ -998,7 +1021,7 @@ function panTo(x: number, z: number) { view.x = x; view.z = z; draw() }
 
 // history: one entry per undo checkpoint, named from what changed since the previous one
 let pendingAct = ''
-for (const id of ['tGen', 'wGen', 'netGen', 'setGen', 'generate']) document.getElementById(id)?.addEventListener('click', () => { pendingAct = id }, true)
+for (const id of ['tGen', 'wGen', 'netGen', 'powerGen', 'setGen', 'generate']) document.getElementById(id)?.addEventListener('click', () => { pendingAct = id }, true)
 let lastLogged = { key: '', at: 0 }
 let genAt = 0 // a generator often makes several checkpoints: they count as its one entry
 function diffList(a: string, b: string): [string, any] | null {
@@ -1011,13 +1034,24 @@ function diffList(a: string, b: string): [string, any] | null {
   if (gone) return ['del', gone]
   return ['edit', B.find((o) => JSON.stringify(o) !== JSON.stringify(A.find((x) => x.id === o.id))) ?? B[0]]
 }
+/** the step a history entry belongs to comes from WHAT changed, not from the tab open at that moment
+ *  (checkpoints are often taken later, or from another tab: a road made while the Relief tab is shown) */
+function stepOfAction(action: string, fallback?: string): string {
+  const active = fallback ?? tabButtons.find((x) => x.classList.contains('active'))?.dataset.tab ?? ''
+  const k = action.split('.')
+  if (k[0] === 'gen') return ({ tGen: 'island', wGen: 'water', netGen: 'roads', powerGen: 'roads', setGen: 'villages', generate: 'camp' } as Record<string, string>)[k[1]] ?? active
+  const by: Record<string, string> = { road: 'roads', power: 'roads', water: 'water', site: 'villages', villages: 'villages', zone: 'camp', send: 'wb' }
+  if (by[k[0]]) return by[k[0]]
+  if (k[0] === 'relief') return active === 'brush' ? 'brush' : 'island'
+  return active
+}
 function logChange(cur: Snap, snap: Snap) {
   let action = '', detail = ''
   let pos: [number, number] = [view.x, view.z]
   if (pendingAct) { action = `gen.${pendingAct}`; pendingAct = ''; genAt = Date.now() }
   else if (Date.now() - genAt < 3000) return
   else {
-    for (const [k, a, b] of [['road', cur.roads, snap.roads], ['water', cur.waters, snap.waters], ['site', cur.sites, snap.sites]] as const) {
+    for (const [k, a, b] of [['road', cur.roads, snap.roads], ['water', cur.waters, snap.waters], ['site', cur.sites, snap.sites], ['power', cur.power ?? '[]', snap.power ?? '[]']] as const) {
       const d = diffList(a, b)
       if (!d) continue
       action = `${k}.${d[0]}`
@@ -1037,8 +1071,7 @@ function logChange(cur: Snap, snap: Snap) {
   const key = action + detail, now = Date.now()
   if (key === lastLogged.key && now - lastLogged.at < 20000) { lastLogged.at = now; return }
   lastLogged = { key, at: now }
-  const step = tabButtons.find((x) => x.classList.contains('active'))?.dataset.tab ?? ''
-  addOp({ kind: 'history', action, detail, step, x: pos[0], z: pos[1] })
+  addOp({ kind: 'history', action, detail, step: stepOfAction(action), x: pos[0], z: pos[1] })
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
@@ -1096,7 +1129,7 @@ function renderCollab() {
   for (const o of hist) {
     const li = el('li', 'cvhist')
     const at = o.kind === 'history' || o.kind === 'comment' ? o : byId.get(o.ref ?? '')?.c
-    const step = STEPS.find((s) => s.tab === o.step)
+    const step = STEPS.find((s) => s.tab === (o.kind === 'history' && o.action ? stepOfAction(o.action, o.step) : o.step)) // re-derived: older entries were tagged with the open tab
     li.append(el('strong', '', o.author), el('span', '', ' ' + opLabel(o)))
     li.append(el('small', '', `${step ? t(step.label) + ' · ' : ''}${when(o.at)}${o.local ? ' · ' + t('cv.offline') : ''}`))
     if (at && Number.isFinite(at.x)) {
@@ -1456,7 +1489,7 @@ function stepSigs(): string[] {
     relief,
     relief,
     waters.length || rivers ? `${waters.length}:${ptsSum(waters)}:${oid(rivers)}` : '',
-    roads.length ? `${roads.length}:${ptsSum(roads)}` : '',
+    roads.length || powerLines.length ? `${roads.length}:${ptsSum(roads)}:${powerLines.length}:${ptsSum(powerLines.map((l) => ({ pts: l.path })))}` : '',
     settled.length ? `${settled.length}:${oid(settled)}` : '',
     result || areas.length ? `${oid(result)}:${areas.length}` : '',
     '',
@@ -1576,6 +1609,7 @@ function islandProject() {
     areas,
     landCover: landCover && { cols: landCover.cols, n: landCover.data.length, rle: rle(landCover.data) },
     credits,
+    power: powerLines,
   }
 }
 function autosave() {
@@ -1614,15 +1648,22 @@ function loadProject(p: any) {
   landCover = null
   if (p.landCover && typeof p.landCover.rle === 'string') { const d = unrle(p.landCover.rle, p.landCover.n); if (d) landCover = { cols: p.landCover.cols, data: d } }
   credits = Array.isArray(p.credits) ? p.credits : []
+  powerLines = Array.isArray(p.power) ? p.power.filter((x: PowerItem) => x && POWER_DEFAULTS[x.kind] && Array.isArray(x.path)) : []
+  if (typeof p.trace === 'string' && p.trace.startsWith('data:image/')) {
+    const img = new Image()
+    img.onload = () => { traceImg = img; void saveTrace(img); draw() }
+    img.src = p.trace
+  }
   removed = Array.isArray(p.removed) ? p.removed : []
   waterInfo()
   recompose(true)
 }
-$<HTMLButtonElement>('pSave').addEventListener('click', () => {
+$<HTMLButtonElement>('pSave').addEventListener('click', async () => {
   const p = islandProject()
   if (!p) return void (logEl.textContent = t('log.genFirst'))
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(p)], { type: 'application/json' }))
+  const trace = traceImg ? await traceDataUrl(traceImg) : null
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(trace ? { ...p, trace } : p)], { type: 'application/json' }))
   a.download = `ile-${num('tSeed')}.json`
   a.click()
   URL.revokeObjectURL(a.href)
@@ -1938,7 +1979,7 @@ $<HTMLButtonElement>('roadClear').addEventListener('click', () => { roads = []; 
 $<HTMLButtonElement>('roadSend').addEventListener('click', () =>
   run(t('run.l.routes'), async () => {
     if (!roads.length) throw new Error(t('err.noRoad'))
-    return toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] })
+    return toWb({ version: 0, shapes: [...allRoadShapes(), ...powerShapes()], entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] })
   }),
 )
 roadInfo()
@@ -2282,7 +2323,7 @@ function applyRealPlace(r: RealPlace) {
   }
   credits = r.credits
   if (r.cover) landCover = { cols: r.world.cols, data: r.cover }
-  if (r.trace) { traceImg = r.trace; $<HTMLDetailsElement>('layers').open = true }
+  if (r.trace) { traceImg = r.trace; $<HTMLDetailsElement>('layers').open = true; void saveTrace(r.trace) }
   waterInfo()
   roadInfo()
   recompose(true)
@@ -2297,7 +2338,8 @@ function applyRealPlace(r: RealPlace) {
 }
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
 // tracing image (satellite / ortho photo / scanned map) stretched over the whole terrain, north up;
-// only shown here, never sent to the game, not saved with the project (the file can be large)
+// only shown here, never sent to the game; kept in IndexedDB across reloads (src/traceStore.ts) and
+// embedded in a saved project file when it is small enough (< 8 MB), never in the autosave
 function drawTrace() {
   if (!traceImg || !terrain || !$<HTMLInputElement>('satShow').checked) return
   const [x0, y0] = toScreen(terrain.minX, terrain.minZ + (terrain.rows - 1) * terrain.step)
@@ -2313,12 +2355,12 @@ $<HTMLInputElement>('traceFile').addEventListener('change', (e) => {
   if (!f) return
   if (!terrain) { logEl.textContent = t('err.traceNoTerrain'); return }
   const img = new Image()
-  img.onload = () => { traceImg = img; draw(); logEl.textContent = t('log.trace', { name: f.name, w: img.width, h: img.height }) }
+  img.onload = () => { traceImg = img; draw(); void saveTrace(f).then((ok) => { if (!ok) logEl.textContent += ' · ' + t('log.traceNotKept') }); logEl.textContent = t('log.trace', { name: f.name, w: img.width, h: img.height }) }
   img.onerror = () => { logEl.textContent = t('err.traceImg', { name: f.name }) }
   img.src = URL.createObjectURL(f)
 })
 $<HTMLInputElement>('traceAlpha').addEventListener('input', () => draw())
-$<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg instanceof HTMLImageElement) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; draw() })
+$<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg instanceof HTMLImageElement) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; void saveTrace(null); draw() })
 function drawAreas() {
   for (const a of areas) {
     ctx.beginPath()
@@ -2384,10 +2426,15 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid'] }))
     const setShapes = settled.length ? settlementShapes({ lanes: setLanes, paths: setPaths }) : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined) : []
-    const shapes = [...wr.shapes, ...forests, ...setShapes], entities = [...(wr.entities ?? []), ...setEnts]
+    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes], entities = [...(wr.entities ?? []), ...setEnts]
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
-    return what + '\n' + (await toWb({ version: 0, shapes, entities }))
+      + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
+    const msg = await toWb({ version: 0, shapes, entities })
+    sentSig = stepSigs().slice(0, 6).join('|')
+    addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
+    refreshSteps()
+    return what + '\n' + msg
   }),
 )
 $<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; recompose(true); draw(); autosave() })
@@ -2661,6 +2708,94 @@ $<HTMLButtonElement>('wSend').addEventListener('click', () =>
 )
 
 // roads (and their barriers) cut where they cross water: the gap is left for a bridge
+// --- power lines (step Routes): HV between the main sites, LV from the grid into each village along roads ---
+const POWER_COLOUR: Record<PowerKind, string> = { hv: '#ffd24a', mv: '#ffa63a', lv: '#e8e2c8' }
+function powerShapes() { return powerLines.map((l) => powerLineShape(l, l.id)) }
+function powerInfo() {
+  const km = powerLines.reduce((n, l) => n + l.length, 0) / 1000
+  const poles = powerLines.reduce((n, l) => n + l.poles.length / 2, 0)
+  $('powerInfo').textContent = powerLines.length ? t('power.info', { n: powerLines.length, km: km.toFixed(1), poles }) : ''
+}
+function drawPower() {
+  for (const l of powerLines) {
+    ctx.beginPath()
+    for (let i = 0; i + 1 < l.path.length; i += 2) { const [x, y] = toScreen(l.path[i], l.path[i + 1]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y) }
+    ctx.strokeStyle = '#000a'; ctx.lineWidth = l.kind === 'lv' ? 3 : 4; ctx.setLineDash([]); ctx.stroke()
+    ctx.strokeStyle = POWER_COLOUR[l.kind]; ctx.lineWidth = l.kind === 'lv' ? 1.2 : 2; ctx.setLineDash(l.kind === 'lv' ? [5, 3] : []); ctx.stroke()
+    ctx.setLineDash([])
+    const r = l.kind === 'lv' ? 2 : 3
+    if (l.spacing && l.spacing / view.mpp < 4) continue // too far out: poles would make a solid line
+    ctx.fillStyle = POWER_COLOUR[l.kind]
+    for (let i = 0; i + 1 < l.poles.length; i += 2) {
+      const [x, y] = toScreen(l.poles[i], l.poles[i + 1])
+      ctx.fillRect(x - r, y - r, 2 * r, 2 * r)
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(x - r, y - r, 2 * r, 2 * r)
+    }
+  }
+}
+function nextPowerId(kind: PowerKind) {
+  for (let n = 1; ; n++) if (!powerLines.some((l) => l.id === `POWER_${kind.toUpperCase()}_${n}`)) return `POWER_${kind.toUpperCase()}_${n}`
+}
+function generatePower() {
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  const g = island.grid, h = island.heights
+  const from = $<HTMLSelectElement>('powHVFrom').value
+  const hvKind = $<HTMLSelectElement>('powHVKind').value as PowerKind
+  const rank: Record<string, number> = { town: 0, village: 1, hamlet: 2 }
+  const lim = from === 'town' ? 0 : from === 'village' ? 1 : 2
+  const hubs = sites.filter((q) => rank[q.kind] <= lim)
+  if (hubs.length < 2 && !sites.length) return void (logEl.textContent = t('err.powerNoSites'))
+  const isWater = (x: number, z: number) => {
+    const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
+    return (h[r * g.cols + c] ?? 0) <= 0.3
+  }
+  const roadPts = [...roads, ...existingRoads()].map((r) => r.pts)
+  const keepOut = (except: Site[]) => sites.filter((q) => !except.includes(q)).map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] * 0.6 }))
+  const made: PowerItem[] = []
+  let failed = 0
+  const t0 = performance.now()
+  // HV: minimum spanning tree over the hubs (Prim), each edge routed cross-country
+  const chk = (id: string) => $<HTMLInputElement>(id).checked
+  if (chk('powHV') && hubs.length >= 2) {
+    const inT = [hubs[0]], out = hubs.slice(1)
+    while (out.length) {
+      let bi = 0, bj = 0, bd = Infinity
+      inT.forEach((a, i) => out.forEach((b, j) => { const d = Math.hypot(a.x - b.x, a.z - b.z); if (d < bd) { bd = d; bi = i; bj = j } }))
+      const a = inT[bi], b = out.splice(bj, 1)[0]
+      inT.push(b)
+      const l = routePowerLine(h, g, a.x, a.z, b.x, b.z, { kind: hvKind, isWater, keepOut: keepOut([a, b]) })
+      if (l) { const it = { ...l, id: nextPowerId(hvKind) }; made.push(it); powerLines.push(it) } else failed++
+    }
+  }
+  // LV: every other settlement is fed from the nearest HV pole (or nearest hub), following the roads
+  if (chk('powLV')) {
+    const maxLen = num('powLVMax')
+    const fed = new Set(chk('powHV') && hubs.length >= 2 ? hubs : [])
+    for (const v of sites) {
+      if (fed.has(v)) continue
+      let bx = NaN, bz = NaN, bd = Infinity
+      for (const l of powerLines) for (let i = 0; i + 1 < l.poles.length; i += 2) {
+        const d = Math.hypot(l.poles[i] - v.x, l.poles[i + 1] - v.z)
+        if (d < bd) { bd = d; bx = l.poles[i]; bz = l.poles[i + 1] }
+      }
+      if (!Number.isFinite(bx)) for (const q of sites) {
+        const d = Math.hypot(q.x - v.x, q.z - v.z)
+        if (q !== v && d < bd) { bd = d; bx = q.x; bz = q.z }
+      }
+      if (!Number.isFinite(bx) || bd > maxLen || bd < SITE_RADIUS[v.kind] * 0.5) continue
+      const l = routePowerLine(h, g, bx, bz, v.x, v.z, { kind: 'lv', isWater, roads: roadPts, keepOut: keepOut([v]) })
+      if (l) { const it = { ...l, id: nextPowerId('lv') }; made.push(it); powerLines.push(it) } else failed++
+    }
+  }
+  if (!made.length) return void (logEl.textContent = t('err.powerNone'))
+  powerInfo(); draw(); checkpoint(); autosave(); refreshSteps()
+  logEl.textContent = t('log.power', { n: made.length, failed, ms: Math.round(performance.now() - t0) })
+}
+$<HTMLButtonElement>('powerGen').addEventListener('click', () => {
+  powerLines = [] // regenerate from scratch: the old lines would otherwise stay under the new ones
+  generatePower()
+})
+$<HTMLButtonElement>('powerClear').addEventListener('click', () => { powerLines = []; powerInfo(); draw(); checkpoint(); autosave(); refreshSteps() })
 function allRoadShapes() {
   return splitAtWater(roadShapesWithFurniture(), waters).shapes
 }
@@ -2767,6 +2902,9 @@ try {
   const saved = localStorage.getItem(PROJECT_KEY)
   if (saved) { loadProject(JSON.parse(saved)); logEl.textContent = t('log.restored') }
 } catch (err) { console.warn('autosave not restored', err) }
+
+// the satellite / tracing image comes back from IndexedDB (async: drawn when ready)
+void loadTrace().then((img) => { if (img && !traceImg) { traceImg = img; draw(); renderCollab() } })
 
 // first paint once everything is declared
 draw()

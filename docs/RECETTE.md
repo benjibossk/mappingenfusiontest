@@ -66,3 +66,21 @@ Serveur : `npm run collab` (mot de passe affiché). Deux navigateurs (ou une fen
 | 8 | Hors salle : commenter, puis rejoindre | Marqué « hors ligne », puis envoyé à la salle en rejoignant (réponses comprises) | ⬜ |
 | 9 | Lieu réel importé (photo Esri) | Mini-carte = photo satellite + rectangle de vue ; case « Afficher la photo » et curseur d'opacité agissent sur la carte (synchro avec Calques) | ⬜ |
 | 10 | Île fictive | Mini-carte = relief ombré, message « Pas de photo satellite » ; clic sur la mini-carte déplace la vue | ⬜ |
+
+## R6 — Lignes électriques
+
+Générateurs natifs vérifiés dans les données du jeu (11/2026) : HT `{6958471456266DD6}PG_PowerLine_HV_02_Metal.et`,
+HT béton `{F9CF7B0E9B97B012}PG_PowerLine_HV_01_Concrete.et`, BT `{20E4877A07D28502}PG_PowerLine_01_WoodenSmall.et`
+(`Prefabs/WEGenerators/Powerline/`). La forme envoyée = les coins du tracé, `m_fDistance` = espacement des poteaux.
+
+| # | Action | Attendu | OK |
+|---|---|---|---|
+| 1 | Routes → Réseau automatique → Placer les sites, Générer le réseau ; puis « Lignes électriques » → Générer | Lignes HT jaunes (poteaux carrés) entre villes/villages, BT blanches pointillées vers les hameaux ; info « N lignes · km · poteaux » | ⬜ |
+| 2 | Calques → décocher « Lignes électriques » | Les lignes disparaissent de la carte, le reste reste | ⬜ |
+| 3 | Annuler (↶) puis Rétablir | Les lignes disparaissent puis reviennent | ⬜ |
+| 4 | Recharger la page | Les lignes sont toujours là (autosave) | ⬜ |
+| 5 | 👥 Historique | « lignes électriques générées » étiqueté **Routes** ; « route ajoutée » / « réseau routier généré » aussi **Routes** (plus Relief) | ⬜ |
+| 6 | **Workbench** : Envoyer (tout) avec le plugin | Une forme polyline `POWER_HV_n` / `POWER_LV_n` par ligne, avec le générateur en enfant ; poteaux + câbles posés automatiquement, aucun « cannot create generator » dans la console | ⬜ |
+| 7 | **Workbench** : inspecter un générateur | `m_fDistance` = 80 (HV_02) / 50 (HV_01) / 35 (BT) ; poteaux pas dans l'eau ni au milieu des villages | ⬜ |
+| 8 | Effacer les lignes | Carte et info vidées ; étape Routes reste « fait » si des routes existent | ⬜ |
+| 9 | Photo satellite (calque ou lieu réel), puis recharger la page | La photo revient (IndexedDB) ; « Enregistrer » le projet puis l'ouvrir ailleurs → photo incluse si < 8 Mo | ⬜ |
