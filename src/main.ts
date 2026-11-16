@@ -90,6 +90,7 @@ import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
+import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
 // the side panel is a guided path: one step per tab, in the order a map is built
@@ -1468,6 +1469,7 @@ function addOp(p: Partial<Op>) {
   saveOps()
   renderCollab()
   draw()
+  notifyAtelierCollab()
 }
 function receiveOps(list: Op[], replace: boolean) {
   if (replace) {
@@ -1481,7 +1483,10 @@ function receiveOps(list: Op[], replace: boolean) {
   saveOps()
   renderCollab()
   draw()
+  notifyAtelierCollab()
 }
+// Atelier network viewers pin their comments in the same room
+registerAtelierCollab({ add: (x, z, text) => addOp({ kind: 'comment', text, x, z }), list: () => ops })
 interface Thread { c: Op; n: number; replies: Op[]; resolved: boolean }
 function threads(): Thread[] {
   const m = new Map<string, Thread>()
