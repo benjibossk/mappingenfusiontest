@@ -7,6 +7,7 @@ import {
   MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, Quaternion, Scene, Shape, ShapeGeometry, SRGBColorSpace,
   Vector2, Vector3, WebGLRenderer, InstancedBufferAttribute, type Material, type Texture,
 } from 'three'
+import { MOUSE } from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
 import { realDrape, type RealLayers } from './drape'
 export type { RealLayers } from './drape'
@@ -363,6 +364,8 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   controls.minDistance = 30
   controls.maxDistance = side * 2.5
   controls.screenSpacePanning = false
+  // Workbench-style: right button is free-look (handled below), middle drag orbits, left drag pans the map
+  controls.mouseButtons = { LEFT: MOUSE.PAN, MIDDLE: MOUSE.ROTATE, RIGHT: null as unknown as MOUSE }
   const look = (tx: number, tz: number, span: number, tilt: boolean) => {
     const gy = groundAt(tx, tz) * ex
     const dist = Math.max(200, span * 0.9)
@@ -391,36 +394,86 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const held = new Set<string>()
   let lastT = performance.now()
   const fwd = new Vector3(), rgt = new Vector3()
+  // free-look (World Editor style): hold the right button, move the mouse = turn the camera in place;
+  // while held, WASD flies along the view direction, Q/E down/up, the wheel sets the speed.
+  let looking = false, speedMul = 1, lookMoved = false
+  const camDir = new Vector3()
+  const aimTarget = (yaw: number, pitch: number) => {
+    pitch = Math.max(-1.55, Math.min(-0.06, pitch))
+    camDir.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch))
+    const gy = groundAt(camera.position.x, -camera.position.z) * ex
+    const h = Math.max(5, camera.position.y - gy)
+    const d = Math.min(controls.maxDistance * 0.9, Math.max(controls.minDistance + 1, h / -camDir.y))
+    controls.target.copy(camera.position).addScaledVector(camDir, d)
+    camera.lookAt(controls.target)
+  }
+  const yawPitch = () => {
+    camera.getWorldDirection(camDir)
+    return [Math.atan2(camDir.x, -camDir.z), Math.asin(Math.max(-1, Math.min(1, camDir.y)))]
+  }
   const fly = (dt: number) => {
     if (!held.size) return
     const k = (c: string) => held.has(c)
-    const dist = camera.position.distanceTo(controls.target)
-    const sp = Math.max(40, dist * 0.9) * (k('ShiftLeft') || k('ShiftRight') ? 3 : 1) * dt
-    camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize(); rgt.set(-fwd.z, 0, fwd.x)
+    const gy = groundAt(camera.position.x, -camera.position.z) * ex
+    const alt = Math.max(20, camera.position.y - gy)
+    const base = looking ? Math.max(30, alt * 1.2) * speedMul : Math.max(40, camera.position.distanceTo(controls.target) * 0.9)
+    const sp = base * (k('ShiftLeft') || k('ShiftRight') ? 3 : 1) * dt
+    camera.getWorldDirection(fwd)
+    if (!looking) { fwd.y = 0; fwd.normalize() }
+    rgt.set(-fwd.z, 0, fwd.x).normalize()
     const mv = new Vector3()
     if (k('KeyW') || k('ArrowUp')) mv.add(fwd)
     if (k('KeyS') || k('ArrowDown')) mv.sub(fwd)
     if (k('KeyD') || k('ArrowRight')) mv.add(rgt)
     if (k('KeyA') || k('ArrowLeft')) mv.sub(rgt)
+    if (looking) mv.y += (k('KeyE') ? 1 : 0) - (k('KeyQ') ? 1 : 0)
+    mv.y += (k('KeyR') ? 1 : 0) - (k('KeyF') ? 1 : 0)
     if (mv.lengthSq()) { mv.normalize().multiplyScalar(sp); camera.position.add(mv); controls.target.add(mv) }
-    const rot = (k('KeyQ') ? 1 : 0) - (k('KeyE') ? 1 : 0)
-    if (rot) { const a = rot * 1.2 * dt, o = camera.position.clone().sub(controls.target); o.applyAxisAngle(new Vector3(0, 1, 0), a); camera.position.copy(controls.target).add(o) }
-    const up = (k('KeyR') ? 1 : 0) - (k('KeyF') ? 1 : 0)
-    if (up) camera.position.y += up * sp * 0.6
+    if (!looking) {
+      const rot = (k('KeyQ') ? 1 : 0) - (k('KeyE') ? 1 : 0)
+      if (rot) { const a = rot * 1.2 * dt, o = camera.position.clone().sub(controls.target); o.applyAxisAngle(new Vector3(0, 1, 0), a); camera.position.copy(controls.target).add(o) }
+    } else { const [y, p] = yawPitch(); aimTarget(y, p) }
     dirty = true
   }
+  const cvs = renderer.domElement
+  const onPDown = (e: PointerEvent) => {
+    if (e.button !== 2) return
+    looking = true; lookMoved = false; speedMul = 1
+    try { cvs.setPointerCapture(e.pointerId) } catch { /* */ }
+    try { void (cvs.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}) } catch { /* */ }
+  }
+  const onPMove = (e: PointerEvent) => {
+    if (!looking || !(e.buttons & 2)) { if (looking && !(e.buttons & 2)) endLook(); return }
+    if (!e.movementX && !e.movementY) return
+    lookMoved = true
+    const [y, p] = yawPitch()
+    aimTarget(y + e.movementX * 0.0035, p - e.movementY * 0.0035)
+    dirty = true
+  }
+  const endLook = () => { if (!looking) return; looking = false; if (document.pointerLockElement === cvs) document.exitPointerLock() }
+  const onPUp = (e: PointerEvent) => { if (e.button === 2) endLook() }
+  const onWheel = (e: WheelEvent) => {
+    if (!looking) return // plain wheel = MapControls zoom
+    e.preventDefault(); e.stopImmediatePropagation()
+    speedMul = Math.max(0.1, Math.min(10, speedMul * (e.deltaY < 0 ? 1.25 : 0.8)))
+  }
+  const onCtx = (e: Event) => e.preventDefault()
+  cvs.addEventListener('pointerdown', onPDown); window.addEventListener('pointermove', onPMove); window.addEventListener('pointerup', onPUp)
+  cvs.addEventListener('wheel', onWheel, { capture: true, passive: false }); cvs.addEventListener('contextmenu', onCtx)
+  void lookMoved
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.metaKey || e.altKey) return
-    if (/^(Key[WASDQERF]|Arroww+|Shiftw+)$/.test(e.code)) { held.add(e.code); if (!e.code.startsWith('Shift')) e.preventDefault() }
+    if (/^(Key[WASDQERF]|Arrow\w+|Shift\w+)$/.test(e.code)) { held.add(e.code); if (!e.code.startsWith('Shift')) e.preventDefault() }
   }
   const onKeyUp = (e: KeyboardEvent) => { held.delete(e.code) }
-  const onBlur = () => held.clear()
+  const onBlur = () => { held.clear(); endLook() }
   window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', onBlur)
   const loop = () => {
     if (closed) return
     raf = requestAnimationFrame(loop)
     const tNow = performance.now(); fly(Math.min(0.1, (tNow - lastT) / 1000)); lastT = tNow
-    controls.update()
+    if (!looking) controls.update()
+    { const g = groundAt(camera.position.x, -camera.position.z) * ex + 8; if (camera.position.y < g) { camera.position.y = g; dirty = true } }
     if (!dirty) return
     dirty = false
     const rr = TREE_NEAR + TREE_CHUNK * 0.71 + 120
@@ -437,7 +490,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
       fadeU.value.set(0.4 * TREE_NEAR, 0.87 * TREE_NEAR)
     }
     // ground target follows the relief so the orbit stays on the ground
-    controls.target.y = groundAt(controls.target.x, -controls.target.z) * ex
+    if (!looking) controls.target.y = groundAt(controls.target.x, -controls.target.z) * ex
     renderer.render(scene, camera)
     frames++
     v2.set(controls.target.x - camera.position.x, controls.target.z - camera.position.z)
@@ -475,6 +528,8 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     closed = true
     cancelAnimationFrame(raf)
     window.removeEventListener('keydown', onKey, true)
+    cvs.removeEventListener('pointerdown', onPDown); window.removeEventListener('pointermove', onPMove); window.removeEventListener('pointerup', onPUp)
+    cvs.removeEventListener('wheel', onWheel, true); cvs.removeEventListener('contextmenu', onCtx); endLook()
     window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onBlur)
     ro.disconnect()
     controls.dispose()
