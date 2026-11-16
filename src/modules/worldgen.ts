@@ -16,7 +16,7 @@ import { findCrossings, planBridge } from './bridges'
 import type { ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
-import { settleVillages } from './village'
+import { settleVillages, type VillageParcel } from './village'
 import type { Placed, Square } from './settlements'
 import { routePowerLine, type PowerKind, type PowerLine } from './power'
 import { generateForests } from './forestgen'
@@ -38,6 +38,7 @@ export interface WorldParams {
   power: boolean
   forests: number
   roadsV2?: boolean // road network V2 finish (docs/ROAD_NETWORK_V2.md), default true
+  biome?: string // BiomeId (docs/BIOMES_LIBRARY.md): forests and village parcels; default Everon = unchanged
 }
 export const WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { size: 4096, towns: 1, villages: 1, hamlets: 1, industry: 1, military: 1, airfield: true, power: true, forests: 1 }
 
@@ -54,7 +55,7 @@ export interface WorldResult {
   sites: Site[]
   roads: Road[]
   zones: ZoneItem[]
-  settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[]; tried?: number; housed?: number }
+  settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[]; tried?: number; housed?: number; parcels?: VillageParcel[] }
   power: (PowerLine & { id: string })[]
   areas: WorldArea[]
   surfaces: SurfaceGrid[]
@@ -423,10 +424,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const ks = sites.filter((s) => (kind === 'farm' ? s.id.startsWith('FARM_') : s.kind === kind && !s.id.startsWith('FARM_')))
     if (!ks.length) continue
     const V = WORLD.villages[kind]
-    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: subSeed(seed, 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones) }, settlement.placed)
+    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: subSeed(seed, 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome }, settlement.placed)
     settlement.placed = vr.placed
     settlement.tried = (settlement.tried ?? 0) + (vr.tried ?? 0); settlement.housed = (settlement.housed ?? 0) + (vr.housed ?? 0)
     settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)
+    if (vr.parcels) (settlement.parcels ??= []).push(...vr.parcels)
   }
   // 9. power lines: HV tree between towns and villages, LV to the hamlets along the roads
   await step('power')
@@ -464,7 +466,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   await step('forests')
   const discs = zones.map(zoneDisc)
   const areas: WorldArea[] = p.forests > 0
-    ? generateForests(cur.heights, g, { seed: subSeed(seed, 'forests'), cover: Math.min(0.9, WORLD.vegetation.forestCover * p.forests), sites })
+    ? generateForests(cur.heights, g, { seed: subSeed(seed, 'forests'), cover: Math.min(0.9, WORLD.vegetation.forestCover * p.forests), sites, biome: p.biome })
       .filter((f) => { for (let i = 0; i + 1 < f.pts.length; i += 2) if (discs.some((d) => Math.hypot(f.pts[i] - d.x, f.pts[i + 1] - d.z) < d.r + 30)) return false; return true })
       .map((f, k) => ({ id: `FOREST_GEN_${k + 1}`, kind: 'forest' as const, leaf: f.leaf, pts: f.pts }))
     : []

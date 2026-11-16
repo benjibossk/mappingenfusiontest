@@ -18,6 +18,9 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 var(--
 .lb-check { text-transform: none !important; font-size: 13px !important; }
 .lb-desc { font-size: 13px; color: var(--fg); margin: -4px 0 10px; }
 .lb-desc em { color: var(--warn); font-style: normal; }
+.lb-desc em.ok { color: #7FB069; }
+.lb-desc em.note { color: var(--dim); }
+.lb-nogl { display: grid; place-items: center; height: 100%; color: var(--dim); font-size: 13px; padding: 16px; text-align: center; }
 .lb-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
 .tag { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: var(--r); padding: 2px 8px; cursor: pointer; font: inherit; font-size: 12px; }
 .tag.on { border-color: var(--acc); color: var(--acc); background: rgba(224, 162, 51, .1); }

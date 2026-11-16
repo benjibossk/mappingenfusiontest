@@ -2,11 +2,12 @@
 // slope, away from the places, in blobs picked by a seeded value noise. Each blob becomes one closed
 // forest area (convex hull of a compact group of cells), the same shape the real-place import gives.
 
+import { forestTuning, leafOf } from '../biomes/vegetation'
 import type { Grid } from './island'
 import { SITE_RADIUS, type Site } from './network'
 
 export interface GenForest { leaf: 'broad' | 'needle' | 'mixed'; pts: number[] }
-export interface ForestOptions { seed: number; cover: number /* 0..1, share of the suitable land */ ; sites: Site[] }
+export interface ForestOptions { seed: number; cover: number /* 0..1, share of the suitable land */ ; sites: Site[]; biome?: string /* BiomeId, default Everon = unchanged */ }
 
 function hash(x: number, y: number, s: number) {
   let n = (x * 374761393 + y * 668265263 + s * 2147483647) | 0
@@ -39,7 +40,10 @@ export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions)
   let top = 1
   for (let i = 0; i < h.length; i++) if (h[i] > top) top = h[i]
   const ok = new Uint8Array(nc * nr), alt = new Float32Array(nc * nr)
-  const thr = 1 - Math.min(0.95, Math.max(0.05, o.cover))
+  const tune = forestTuning(o.biome)
+  const cover = o.cover * tune.coverMul
+  if (cover < 0.03) return [] // (desert) no forest at all
+  const thr = 1 - Math.min(0.95, Math.max(0.05, cover))
   for (let r = 0; r < nr; r++)
     for (let c = 0; c < nc; c++) {
       const x = g.minX + (c + 0.5) * C, z = g.minZ + (r + 0.5) * C
@@ -81,7 +85,7 @@ export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions)
       mean += alt[k] / group.length
       for (const [dx, dz] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) pts.push([g.minX + (c + dx) * C, g.minZ + (r + dz) * C])
     }
-    const leaf = mean > 0.55 ? 'needle' : mean < 0.25 ? 'broad' : 'mixed'
+    const leaf = leafOf(mean, tune.needleShift)
     out.push({ leaf, pts: hull(pts).flat() })
   }
   return out

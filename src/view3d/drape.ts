@@ -16,6 +16,8 @@ export interface RealLayers {
   rivers: { line: number[]; width: number }[]
   lakes: number[][]
   paved: number[][] // rings: squares, aprons, runways
+  /** biome tint (biomes/vegetation.ts drapeTint): biome / Everon drape colours per group; absent = Everon palette */
+  tint?: { to: Record<TintGroup, RGB>; ref: Record<TintGroup, RGB> }
   /** satellite / real image covering x0..x1, z0..z1 (row 0 = north) */
   sat?: { image: CanvasImageSource; x0: number; z0: number; x1: number; z1: number }
 }
@@ -34,8 +36,31 @@ const SURF: [RegExp, RGB][] = [
   [/^Forest/i, PAL.forestFloor], [/Crop|Field/i, PAL.crop], [/Heather/i, PAL.heather], [/Concrete|Asphalt/i, PAL.concrete],
   [/Sand|Beach/i, PAL.sand],
 ]
+// the Everon palette, kept to re-tint PAL in place per drape (SURF / CROPS hold references to these arrays)
+const BASE = Object.fromEntries(Object.entries(PAL).map(([k, v]) => [k, [...v] as RGB])) as Record<string, RGB>
+type TintGroup = 'ground' | 'forest' | 'field' | 'rock' | 'sand'
+const PAL_GROUP: Record<string, TintGroup> = {
+  grass: 'ground', grassDry: 'ground', alpine: 'ground', heather: 'ground', coastal: 'ground', forestFloor: 'forest',
+  crop: 'field', rock: 'rock', rockDark: 'rock', pebbles: 'rock', dirt: 'sand', sand: 'sand', wetSand: 'sand',
+}
+let forestMul: RGB = [1, 1, 1]
+function setTint(t: RealLayers['tint']) {
+  const lum = (c: RGB) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
+  // towards the biome colour at the palette entry's own brightness (relative to Everon's reference)
+  const m = (c: RGB, g: TintGroup): RGB => {
+    const to = t!.to[g], k = lum(c) / Math.max(1, lum(t!.ref[g]))
+    return c.map((v, i) => Math.max(0, Math.min(255, Math.round(v + (to[i] * k - v) * 0.75)))) as RGB
+  }
+  for (const k of Object.keys(BASE)) {
+    const g = PAL_GROUP[k], v = g && t ? m(BASE[k], g) : BASE[k]
+    PAL[k][0] = v[0]; PAL[k][1] = v[1]; PAL[k][2] = v[2]
+  }
+  BASE_CROPS.forEach((c, i) => { const v = t ? m(c, 'field') : c; CROPS[i][0] = v[0]; CROPS[i][1] = v[1]; CROPS[i][2] = v[2] })
+  forestMul = t ? [0, 1, 2].map((i) => t.to.forest[i] / t.ref.forest[i]) as RGB : [1, 1, 1]
+}
 const surfColour = (name: string): RGB => SURF.find(([re]) => re.test(name))?.[1] ?? PAL.grass
 const CROPS: RGB[] = [[178, 160, 112], [200, 184, 132], [104, 118, 66], [128, 138, 80], [96, 82, 66], [120, 98, 76], [84, 104, 58], [168, 152, 112], [146, 140, 90], [70, 64, 56], [136, 150, 92]]
+const BASE_CROPS: RGB[] = CROPS.map((c) => [...c] as RGB)
 
 // --- noise ---
 const hash = (x: number, y: number) => {
@@ -66,6 +91,7 @@ export interface DrapeOut { canvas: HTMLCanvasElement; x0: number; z0: number; s
 
 export function realDrape(size: number, hm: HeightGrid, sea: number, L: RealLayers, boxes: Box3D[], mode: 'real' | 'sat'): DrapeOut {
   const t0 = performance.now()
+  setTint(mode === 'real' ? L.tint : undefined)
   const sideW = (hm.cols - 1) * hm.step, sideH = (hm.rows - 1) * hm.step, side = Math.max(sideW, sideH)
   const x0 = hm.minX, z0 = hm.minZ
   const { cols, rows, step } = hm, H = hm.heights
@@ -196,8 +222,14 @@ export function realDrape(size: number, hm: HeightGrid, sea: number, L: RealLaye
   for (const f of L.forests) {
     if (f.pts.length < 6) continue
     ring(f.pts, true)
-    g.fillStyle = rgb([50, 74, 30], 1 - f.needle * 0.18); g.fill()
+    g.fillStyle = rgb([50 * forestMul[0], 74 * forestMul[1], 30 * forestMul[2]], 1 - f.needle * 0.18); g.fill()
     g.save(); g.globalAlpha = 0.95; g.fillStyle = pat; g.fill(); g.restore()
+    if (forestMul[0] !== 1 || forestMul[1] !== 1 || forestMul[2] !== 1) { // biome: re-tint the crown pattern (multiply darkens, screen lightens)
+      const lo = forestMul.map((v) => Math.min(1, v) * 255 | 0), hi = forestMul.map((v) => Math.max(0, Math.min(1, v - 1)) * 255 | 0)
+      g.save(); g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${lo[0]},${lo[1]},${lo[2]})`; g.fill()
+      if (hi.some((v) => v > 0)) { g.globalCompositeOperation = 'screen'; g.fillStyle = `rgb(${hi[0]},${hi[1]},${hi[2]})`; g.fill() }
+      g.restore()
+    }
     if (f.needle > 0.3) { g.save(); g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(160,176,170,${f.needle * 0.5})`; g.fill(); g.restore() }
     g.strokeStyle = 'rgba(24,36,16,0.5)'; g.lineWidth = Math.max(minW, 2.5); g.stroke()
   }

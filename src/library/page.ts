@@ -55,10 +55,17 @@ app.innerHTML = `
 </main>`
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-let viewer: Viewer | null = null
-async function getViewer() {
-  if (!viewer) { const { createViewer } = await import('./viewer3d.ts'); viewer = createViewer($('view3d')) }
-  return viewer
+// one shared promise: render() runs several times at start-up (and on every keystroke), and a plain
+// `if (!viewer)` check across the await created several renderers on the same host — the visible
+// first canvas then never received content (empty preview)
+let viewerP: Promise<Viewer | null> | null = null
+function getViewer(): Promise<Viewer | null> {
+  viewerP ??= import('./viewer3d.ts').then(({ createViewer }) => createViewer($('view3d'))).catch((err) => {
+    console.warn('3D preview unavailable:', err)
+    $('view3d').innerHTML = `<div class="lb-nogl">${esc(tr('lib.no3d'))}</div>`
+    return null
+  })
+  return viewerP
 }
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
@@ -73,7 +80,8 @@ function results(): Asset[] {
 
 function render() {
   const b = biome(st.biome)!
-  $('b-desc').innerHTML = `${esc(lab(b.desc))}<br><em>${tr('lib.missing')} : ${esc(lab(b.missing))}</em><br><small>FF : ${b.ff}${b.maps.length ? ' · ' + b.maps.join(', ') : ''}</small>`
+  // "Missing" is a warning only when a biome really lacks assets (vanilla biomes: neutral/green)
+  $('b-desc').innerHTML = `${esc(lab(b.desc))}<br><em class="${b.missing.en.startsWith('Nothing') ? 'ok' : b.availability === 'vanilla' ? 'note' : 'miss'}">${tr('lib.missing')} : ${esc(lab(b.missing))}</em><br><small>FF : ${b.ff}${b.maps.length ? ' · ' + b.maps.join(', ') : ''}</small>`
   const res = results()
   const tags = tagCounts(search(lib, { biome: st.biome, kind: st.kind || undefined, fallback: st.fallback })).slice(0, 24)
   $('f-tags').innerHTML = tags.map(([t, n]) => `<button class="tag${st.tags.includes(t) ? ' on' : ''}" data-tag="${esc(t)}">${esc(t)} <small>${n}</small></button>`).join('')
@@ -87,6 +95,7 @@ function render() {
 async function preview() {
   const b: Biome = biome(st.biome)!
   const v = await getViewer()
+  if (!v) return
   $('m-parcel').classList.toggle('on', st.mode === 'parcel'); $('m-asset').classList.toggle('on', st.mode === 'asset')
   ;($('f-tpl') as HTMLSelectElement).style.display = st.mode === 'parcel' ? '' : 'none'
   if (st.mode === 'asset') {

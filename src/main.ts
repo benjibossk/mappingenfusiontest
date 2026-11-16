@@ -82,7 +82,7 @@ import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
-import { settleVillages, type VillageVariant } from './modules/village'
+import { settleVillages, type VillageParcel, type VillageVariant } from './modules/village'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, type IndustrialType } from './modules/industrial'
 import { suggestMilitary, type MilitaryKind } from './modules/military'
@@ -92,6 +92,7 @@ import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './mod
 import { runGen } from './workers/genClient'
 import { BIOMES, biome, type BiomeId } from './data/biomes'
 import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
+import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
@@ -1104,6 +1105,7 @@ let setLanes: Road[] = [] // settlement lanes and footpaths, squares (tab Villag
 let setPaths: Road[] = []
 let setSquares: Square[] = []
 let setGardens: { site: string; corners: number[] }[] = [] // v2 back gardens (drawn only)
+let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences
 let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random world (3D view only)
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
 let zonePick: { kind: ZoneKind; sub: string } | null = null
@@ -1112,7 +1114,7 @@ const ZONE_FILL: Record<string, string> = { lot: '#c9b27a33', area: '#7d8a5a33',
 let satQ: Quantised | null = null
 let satSurf: string[] = []
 let satCanvas: HTMLCanvasElement | null = null
-const setState = () => JSON.stringify({ settled, setLanes, setPaths, setSquares, setGardens, zones })
+const setState = () => JSON.stringify({ settled, setLanes, setPaths, setSquares, setGardens, setParcels, zones })
 function loadSetState(js: string | undefined) {
   const v = js ? JSON.parse(js) : {}
   settled = Array.isArray(v) ? v : v.settled ?? []
@@ -1120,6 +1122,7 @@ function loadSetState(js: string | undefined) {
   setPaths = v.setPaths ?? []
   setSquares = v.setSquares ?? []
   setGardens = Array.isArray(v.setGardens) ? v.setGardens : []
+  setParcels = Array.isArray(v.setParcels) ? v.setParcels : []
   zones = Array.isArray(v.zones) ? v.zones : []
 }
 let waters: Water[] = []
@@ -3074,6 +3077,11 @@ function drawSettlements() {
     ctx.fillStyle = '#8fd06a40'
     ctx.fill()
   }
+  for (const p of setParcels) { // biome garden dressing: fences (lines), trees (green dots), props (grey)
+    ctx.strokeStyle = '#a07850'; ctx.lineWidth = 1
+    for (const f of p.fences) { ctx.beginPath(); for (let i = 0; i + 1 < f.pts.length; i += 2) { const [sx, sy] = toScreen(f.pts[i], f.pts[i + 1]); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) } ctx.stroke() }
+    for (const it of p.items) { const [sx, sy] = toScreen(it.x, it.z); ctx.fillStyle = it.kind === 'tree' ? '#3f7a2e' : '#9a9a8a'; ctx.beginPath(); ctx.arc(sx, sy, it.kind === 'tree' ? 2.2 : 1.5, 0, 7); ctx.fill() }
+  }
   // greens, then lanes (road width) and footpaths (thin dashed) under the buildings
   for (const s of setSquares) {
     const [sx, sy] = toScreen(s.x, s.z)
@@ -3147,10 +3155,11 @@ $<HTMLButtonElement>('setGen').addEventListener('click', () => void track((async
   const res = chk('setV2')
     ? settleVillages(sites, allRoads, waters, island.heights, island.grid, {
       seed: num('setSeed'), density: num('setDensity'), variant: $<HTMLSelectElement>('setVariant').value as VillageVariant,
-      streets: chk('setStreets'), maxStreets: maxStreets === '' ? undefined : Number(maxStreets), farms: chk('setFarms'), church: chk('setChurch'), port: chk('setPort'), pool, blocked,
+      streets: chk('setStreets'), maxStreets: maxStreets === '' ? undefined : Number(maxStreets), farms: chk('setFarms'), church: chk('setChurch'), port: chk('setPort'), pool, blocked, biome: currentBiome,
     })
     : settle(sites, allRoads, waters, island.heights, island.grid, { seed: num('setSeed'), density: num('setDensity') }, { square: chk('setSquare'), lanes: chk('setLanes'), paths: chk('setPaths'), pool, blocked })
   setGardens = 'gardens' in res ? (res.gardens as typeof setGardens) : []
+  setParcels = 'parcels' in res ? ((res.parcels as VillageParcel[] | undefined) ?? []) : []
   settled = res.placed
   setLanes = res.lanes
   setPaths = res.paths
@@ -3159,13 +3168,13 @@ $<HTMLButtonElement>('setGen').addEventListener('click', () => void track((async
   logEl.textContent = $<HTMLSpanElement>('setInfo').textContent
   draw()
 })()))
-$<HTMLButtonElement>('setClear').addEventListener('click', () => { settled = []; setLanes = []; setPaths = []; setSquares = []; setGardens = []; setInfo(); draw(); refreshSteps() })
+$<HTMLButtonElement>('setClear').addEventListener('click', () => { settled = []; setLanes = []; setPaths = []; setSquares = []; setGardens = []; setParcels = []; setInfo(); draw(); refreshSteps() })
 // buildings plus their lanes and footpaths (SET_* family, replaced on resend); roads and water stay
 $<HTMLButtonElement>('setSend').addEventListener('click', () =>
   run(t('run.l.set'), async () => {
     if (!settled.length) throw new Error(t('err.setNone'))
     runChecks()
-    return toWb({ version: 0, shapes: settlementShapes({ lanes: setLanes, paths: setPaths }), entities: settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined) })
+    return toWb({ version: 0, shapes: [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()], entities: [...settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined), ...parcelEntities()] })
   }),
 )
 
@@ -3177,6 +3186,16 @@ const FOREST_GEN: Record<NonNullable<MapArea['leaf']>, Record<NonNullable<MapAre
   needle: { low: FG + 'FG_Forest_NurseryPine.et', mid: GENERATORS.forestPine, high: FG + 'FG_Forest_Pine3.et' },
   broad: { low: FG + 'FG_Forest_Birch.et', mid: FG + 'FG_Forest_Hornbeam.et', high: FG + 'FG_Forest_HornBeam3.et' },
   mixed: { low: FG + 'FG_Forest_NurseryPicea.et', mid: FG + 'FG_Forest_MixedBirchPine.et', high: FG + 'FG_Forest_PineSpruce1.et' },
+}
+/** forest generator of an area: the biome's own table (biomes/vegetation.ts) or the default one (Everon) */
+const forestGenOf = (a: MapArea) => forestGeneratorFor(currentBiome, a.leaf ?? 'mixed', a.tall ?? 'mid') ?? FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid']
+/** biome garden parcels -> entities (trees, props) and wall-generator shapes (fences) */
+function parcelEntities(): ProjectEntity[] {
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  return setParcels.flatMap((p, i) => p.items.map((it, k) => ({ id: `PARCEL_${i + 1}_${k + 1}`, prefab: it.guid, x: r2(it.x), z: r2(it.z), yaw: Math.round(it.yaw) })))
+}
+function parcelShapes(): ProjectShape[] {
+  return setParcels.flatMap((p, i) => p.fences.filter((f) => f.pts.length >= 4).map((f, k) => ({ id: `PARCEL_FENCE_${i + 1}_${k + 1}`, kind: 'polyline' as const, closed: false, points: f.pts.map((v) => Math.round(v * 100) / 100), generator: f.guid })))
 }
 function applyRealPlace(r: RealPlace) {
   let bSkipped = 0
@@ -3293,16 +3312,16 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   run(t('run.l.forests'), async () => {
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
-    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid'] })) })
+    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a) })) })
   }),
 )
 // everything at once (roads + water, forests, buildings): one project, the log says what went
 $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   run(t('run.l.all'), async () => {
     const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
-    const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid'] }))
-    const setShapes = settled.length ? settlementShapes({ lanes: setLanes, paths: setPaths }) : []
-    const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined) : []
+    const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: forestGenOf(a) }))
+    const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
+    const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
     const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities)]
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
@@ -3319,7 +3338,7 @@ $<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = [];
 $<HTMLButtonElement>('forestGen').addEventListener('click', () => {
   if (!island) return void (logEl.textContent = t('log.genFirst'))
   const isl = island
-  void track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites }]).promise.then((made) => {
+  void track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites, biome: currentBiome }]).promise.then((made) => {
     if (island !== isl) return
     areas = areas.filter((a) => !a.id.startsWith('FOREST_GEN_'))
     made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
@@ -4119,6 +4138,7 @@ function applyWorld(w: WorldResult) {
   result = null
   settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
   setGardens = []
+  setParcels = w.settlement.parcels ?? []
   zones = w.zones
   worldBridges = w.bridges ?? []
   pendingAct = 'rwGo'
@@ -4154,7 +4174,7 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
   const params = {
     seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
     towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
-    airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked,
+    airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome,
   }
   // the whole pipeline runs in the generator worker: the page (busy panel, bar, Cancel) stays live.
   // Nothing is applied until it succeeds, so Cancel leaves the current map as it was.
@@ -4220,6 +4240,7 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
   const out: number[] = [], kind: number[] = []
   let seed = 1
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  const mixShare = mixedNeedle(currentBiome)
   forests.forEach((a, n) => {
     const [x0, z0, x1, z1] = bb[n], p = a.pts
     for (let z = z0 + sp / 2; z < z1; z += sp) for (let x = x0 + sp / 2; x < x1; x += sp) {
@@ -4228,9 +4249,11 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
       for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
         if ((p[i + 1] > pz) !== (p[j + 1] > pz) && px < ((p[j] - p[i]) * (pz - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) inside = !inside
       }
-      if (inside) { out.push(px, pz, 0.7 + rnd() * 0.6); kind.push(a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < 0.4) ? 1 : 0) }
+      if (inside) { out.push(px, pz, 0.7 + rnd() * 0.6); kind.push(a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < mixShare) ? 1 : 0) }
     }
   })
+  // biome garden trees (not Everon)
+  for (const p of setParcels) for (const it of p.items) if (it.kind === 'tree') { out.push(it.x, it.z, 0.6); kind.push(/pinus|picea|abies|larix/i.test(it.guid) ? 1 : 0) }
   return { pts: new Float32Array(out), needle: Uint8Array.from(kind) }
 }
 const flat = (ring: number[][]) => ring.flat()
@@ -4240,7 +4263,8 @@ function realLayers(hm: Heightmap): import('./view3d').RealLayers {
   const allRoads = [...roads, ...setLanes, ...setPaths, ...zones.flatMap((z) => z.roads)]
   return {
     surfaces: island?.surfaces,
-    forests: areas.filter((a) => a.kind === 'forest').map((a) => ({ pts: a.pts, needle: a.leaf === 'needle' ? 1 : a.leaf === 'broad' ? 0 : 0.4 })),
+    forests: areas.filter((a) => a.kind === 'forest').map((a) => ({ pts: a.pts, needle: a.leaf === 'needle' ? 1 : a.leaf === 'broad' ? 0 : mixedNeedle(currentBiome) })),
+    tint: drapeTint(currentBiome),
     fields: [...areas.filter((a) => a.kind === 'field').map((a) => a.pts), ...(result?.fields ?? []).map(flat)],
     hedges: (result?.hedges ?? []).map(flat),
     roads: allRoads.filter((r) => r.pts.length >= 4).map((r) => ({ line: centreLine(r.pts, 4), half: roadHalf(r), kind: roadKind(r.type) })),
@@ -4300,7 +4324,7 @@ btn3d.addEventListener('click', () => void (async () => {
     const trees = forestTrees()
     const bridgesBoxes = worldBridges.map((b) => ({ cx: b.x, cz: b.z, w: 8, d: 16, h: 1.2, yaw: (-b.yaw * Math.PI) / 180 }))
     v3d = await mod.open3d(map.parentElement!, {
-      hm, sea: 0, buildings, trees: trees.pts, treeNeedle: trees.needle, lakes,
+      hm, sea: 0, buildings, trees: trees.pts, treeNeedle: trees.needle, treeTint: treeTint(currentBiome), lakes,
       bridges: bridgesBoxes, bridgeY: worldBridges.map((b) => (b.ycm !== undefined ? b.ycm / 100 : heightAt(hm, b.x, b.z))),
       target: [view.x, view.z], span: map.width * view.mpp,
     }, {

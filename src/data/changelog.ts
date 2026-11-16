@@ -10,6 +10,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.5.0',
     date: '2026-11-16',
     items: [
+      { en: 'The biome now drives generation: forest density and conifer / broadleaf mix, forest generators, village gardens dressed from the biome lot templates (trees, props, fences), and ground / tree tints in the 3D view. Everon is unchanged (same seed, same map).', fr: 'Le biome pilote maintenant la génération : densité des forêts et part conifères / feuillus, générateurs de forêt, jardins des villages habillés selon les gabarits de parcelle du biome (arbres, objets, clôtures), teintes du sol et des arbres en 3D. Everon ne change pas (même graine, même carte).' },
+      { en: 'Asset library: the 3D preview no longer stays empty, and "Missing" is green when nothing is missing.', fr: 'Bibliothèque : l’aperçu 3D ne reste plus vide, et « Manque » est vert quand rien ne manque.' },
       { en: 'Biome choice at step 1 and in the random world: the exported ground surfaces follow it, saved and shared with the project. Library button and a dark asset library page.', fr: 'Choix du biome à l’étape 1 et dans le monde aléatoire : les sols exportés le suivent, sauvegardé et partagé avec le projet. Bouton Bibliothèque et page de bibliothèque d’assets en thème sombre.' },
       { en: 'A guided interface: a welcome screen, then 7 numbered steps from relief to sending to Workbench.', fr: 'Une interface guidée : un écran d\'accueil, puis 7 étapes numérotées, du relief à l\'envoi vers Workbench.' },
       { en: 'Random world: one number makes a whole map, tuned on Everon, Arland and Kolguyev.', fr: 'Monde aléatoire : un seul nombre fait une carte entière, réglée sur Everon, Arland et Kolguyev.' },

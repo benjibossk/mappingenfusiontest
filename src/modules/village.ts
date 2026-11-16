@@ -17,6 +17,9 @@ import { BUILDINGS, FRONT_YAW } from '../data/buildings'
 import { boxed, footprint, hash, inside, lineDist, overlap, rng, sampler, samples, type Line, type Placed, type PlacedRole, type Settlement, type Square } from './settlements'
 import { GROW_TOWN, GROW_VILLAGE, growStreets, nearestOn, polyGrade, type GrowOptions, type StreetSeed } from './villageStreets'
 import { lotCorners, lotPoint, splitLot, streetBlocks, type Lot } from './villageLots'
+import { gardenParcel, type PlacedAsset, type PlacedFence } from '../biomes/parcel'
+import { defaultLibrary } from '../library/index.ts'
+import { EVERON } from '../biomes/vegetation'
 
 export type VillageVariant = 'auto' | 'village' | 'town'
 export interface VillageOptions {
@@ -32,15 +35,20 @@ export interface VillageOptions {
   dropScale?: number // multiplies the per-category ground drop a footprint may straddle (1 = MAX_DROP)
   pool?: Building[] // replaces the vanilla list (captured parcels: parcelPool)
   blocked?: [number, number, number, number][] // world boxes already taken
+  biome?: string // BiomeId: back gardens dressed with the biome's lot template (biomes/parcel.ts); Everon / unset = none (unchanged)
 }
 export interface VillageSite { site: string; variant: 'village' | 'town' | 'hamlet'; coastal: boolean; church?: string; streets: number; lots: number }
 export interface VillageResult extends Settlement {
   lots: { site: string; corners: number[]; used: boolean }[]
   gardens: { site: string; corners: number[] }[] // back gardens (fence / hedge polylines for the wall generator)
   sites: VillageSite[]
+  /** per back garden, biome parcels only (not Everon): garden trees, props, side / back fences */
+  parcels?: VillageParcel[]
   tried?: number // lots that drew a building (fill roll passed)
   housed?: number // ... and got one (the rest: no footprint fits: slope, water, roads)
 }
+
+export interface VillageParcel { site: string; items: PlacedAsset[]; fences: PlacedFence[] }
 
 // measured in profile/MapGen/prefabs.txt (local bounds X/Z); no boat prefab is measured: none placed
 export const NAVAL: Record<'pier' | 'boatshed' | 'piershed', Building> = {
@@ -76,6 +84,9 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
   const res: VillageResult = { placed, lanes: [], paths: [], squares: [], lots: [], gardens: [], sites: [] }
   const reserved: number[][] = [] // gardens: no building in them
   const maxSlope = o.maxSlope ?? 0.15
+  // biome parcels: their own seeded stream (never the village rand()), so the houses stay the same
+  const dress = o.biome && o.biome !== EVERON ? { lib: defaultLibrary(), biome: o.biome as Parameters<typeof gardenParcel>[1] } : null
+  if (dress) res.parcels = []
 
   const near = (l: Line, x: number, z: number, d: number) => x > l.minX - d && x < l.maxX + d && z > l.minZ - d && z < l.maxZ + d
   const roadDist = (x: number, z: number, skip?: Line) => {
@@ -441,7 +452,15 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
             if ((ra.x - fx0) * lot.nx + (ra.z - fz0) * lot.nz + ra.depth / 2 <= lot.d && fits(a, ra.corners)) add(id('A'), site.id, a, ra, 'annex')
           }
         }
-        if (free) { res.gardens.push({ site: site.id, corners: gc }); reserved.push(gc) }
+        if (free) {
+          res.gardens.push({ site: site.id, corners: gc }); reserved.push(gc)
+          if (dress) {
+            const pc = gardenParcel(dress.lib, dress.biome, lot, g, hash(`${site.id}-${res.gardens.length}`, o.seed))
+            // an annex dropped at the back of the garden above keeps its ground
+            const items = pc.items.filter((it) => !placed.some((p2) => Math.abs(p2.x - it.x) < 30 && Math.abs(p2.z - it.z) < 30 && inside(p2.corners, it.x, it.z)))
+            res.parcels!.push({ site: site.id, items, fences: pc.fences })
+          }
+        }
       }
     }
   }

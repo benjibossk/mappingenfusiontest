@@ -186,6 +186,8 @@ Captures : `scratchpad/pw/library-1-parcelle-everon.png`, `-2-ferme-kolguyev.png
 
 ## 5. À câbler (étape suivante, dans `main.ts` / `i18n.ts` / `style.css`)
 
+> État 2026-11-16 : points 1, 2, 3 (`biomes/vegetation.ts` + `forestgen.ts`), 4 (jardins des lots via `gardenParcel`, hors Everon) et 5 (teintes du drapé et des arbres) câblés. Everon reste identique octet pour octet (`tests/biomes/worldgen-biome.test.ts`).
+
 API exacte disponible :
 
 ```ts

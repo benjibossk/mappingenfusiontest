@@ -93,10 +93,10 @@ export function generateParcel(lib: Library, biomeId: BiomeId, tpl: LotTemplate,
 
   // house: the biggest candidate that fits the frontage, front at the setback, centred
   const fits = (a: Asset) => a.footprint.maxX - a.footprint.minX <= lot.w - 2 && a.footprint.maxZ - a.footprint.minZ <= lot.d * 0.6
-  const houses = candidates(lib, b, tpl.house.kinds, tpl.house.tags).filter(fits)
+  const houses = tpl.house.kinds.length ? candidates(lib, b, tpl.house.kinds, tpl.house.tags).filter(fits) : []
   const house = pick(r, houses)
   if (house) put(house, -sx * (house.footprint.minX + house.footprint.maxX) / 2, tpl.setback + house.footprint.maxZ)
-  else out.warnings.push(`no ${tpl.house.kinds.join('/')} fits a ${lot.w.toFixed(0)}×${lot.d.toFixed(0)} m lot`)
+  else if (tpl.house.kinds.length) out.warnings.push(`no ${tpl.house.kinds.join('/')} fits a ${lot.w.toFixed(0)}×${lot.d.toFixed(0)} m lot`)
   const backStart = taken.length ? taken[0].b1 + 2 : lot.d / 3
 
   for (const ob of tpl.outbuildings) {
@@ -127,4 +127,20 @@ export function generateParcel(lib: Library, biomeId: BiomeId, tpl: LotTemplate,
   if (tpl.fences.sides && side) out.fences.push({ guid: side, pts: [...P(1), ...P(2)] }, { guid: side, pts: [...P(3), ...P(0)] })
   if (tpl.fences.back && side) out.fences.push({ guid: side, pts: [...P(2), ...P(3)] })
   return out
+}
+
+/** the template meant for a lot of this size (frontage first, then depth): the one whose ranges are nearest */
+export function templateForLot(w: number, d: number): LotTemplate {
+  const off = (v: number, [a, b]: Range) => (v < a ? a - v : v > b ? v - b : 0)
+  let best = LOT_TEMPLATES[0], bs = Infinity
+  for (const t of LOT_TEMPLATES) { const s = off(w, t.size.w) * 2 + off(d, t.size.d); if (s < bs) { bs = s; best = t } }
+  return best
+}
+
+/** the back garden of a village lot whose house the village generator already placed: the biome
+ * template's props, garden trees and side / back fences (no house, no outbuilding, no front fence) */
+export function gardenParcel(lib: Library, biomeId: BiomeId, fullLot: Lot, garden: Lot, seed: number): Parcel3D {
+  const t = templateForLot(fullLot.w, fullLot.d)
+  const tpl: LotTemplate = { ...t, house: { kinds: [] }, outbuildings: [], fences: { ...t.fences, front: false } }
+  return generateParcel(lib, biomeId, tpl, garden, seed)
 }

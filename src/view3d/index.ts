@@ -19,6 +19,7 @@ export interface View3DData {
   buildings: Box3D[]
   trees: Float32Array // x, z, scale (1 = 12 m) triplets
   treeNeedle?: Uint8Array // 1 = conifer, per tree
+  treeTint?: { needle: number[]; broad: number[]; bush: number[] } // biome multipliers on the crown colours (absent = Everon)
   lakes: number[][] // flat X/Z rings
   bridges?: Box3D[] // decks (cz/cx centre, h = thickness), y from the deck height
   bridgeY?: number[]
@@ -268,6 +269,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     if (data.treeNeedle?.[t]) return 'needle'
     return ((t * 374761393) >>> 0) % 100 < 12 ? 'bush' : 'broad' // some undergrowth among broadleaves
   }
+  if (data.treeTint) { const tt = data.treeTint; for (const k of ['needle', 'broad', 'bush'] as Kind[]) KCOL[k] = KCOL[k].map((v, i) => Math.min(1, v * tt[k][i])) }
   const tcol = new Float32Array(nTree * 3)
   for (let t = 0; t < nTree; t++) {
     const kc = KCOL[kindOf(t)], m = (0.8 + (((t * 2654435761) >>> 0) / 4294967296) * 0.4) * 0.62
