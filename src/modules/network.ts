@@ -69,6 +69,12 @@ export interface NetworkParams {
   minor: RoadType // village -> network
   lane: RoadType // hamlet -> network
   seed: number
+  /** optional second pass: up to this many extra links (dirt by default) close a loop between two places whose
+   *  road distance is more than `loopDetour` x their straight distance (a real network is a mesh, not a tree) */
+  loops?: number
+  loopDetour?: number // default 1.8
+  loopMaxM?: number // longest straight distance tried (default 2 000 m)
+  loopType?: RoadType // default p.minor
 }
 
 const DIRS = [
@@ -341,7 +347,16 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     if (!pool.length) continue
     const target = pool.reduce((best, c) => (dist(c, s) < dist(best, s) ? c : best))
     const goal = new Set<number>([cellOf(target.x, target.z)])
-    if (s.kind !== 'town') owner.forEach((_, i) => goal.add(i))
+    // aim the search at whichever is closer, the target place or the nearest road (cheaper A*, same goals)
+    let aim: [number, number] = [target.x, target.z]
+    if (s.kind !== 'town') {
+      let bd = dist(target, s)
+      owner.forEach((_, i) => {
+        goal.add(i)
+        const [x, z] = xyOf(i), d = Math.hypot(x - s.x, z - s.z)
+        if (d < bd) { bd = d; aim = [x, z] }
+      })
+    }
     const want = s.kind === 'town' ? p.main : s.kind === 'village' ? p.minor : p.lane
     // Slope-aware routing, like a real road engineer: A* pays for grade and may wind up the hill (serpentines,
     // one heading notch per step), each step held under a per-step limit. The accepted test is the grade of
@@ -349,11 +364,22 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     // starts a bit above the type's limit (carving evens the bumps) and tightens on each retry; only when no
     // route keeps the bed under the limit does the link fall back to a dirt track (steeper limit).
     let type = want, pts: number[] = [], cells: number[] = [], joined: number[] | null = null
+    // grade of every road as it stands now: a new link may not push one over its limit, but a road already
+    // over it (a junction carved earlier) must not veto every later link either
+    let before: Map<Road, number> | null = null
+    const gradeBefore = () => {
+      if (!before) {
+        const t = h.slice()
+        carveRoads(t, g, [...existing, ...roads])
+        before = new Map(roads.map((o) => [o, worstGrade(o.pts, t, g).grade]))
+      }
+      return before
+    }
     // fallback ladder: asphalt -> dirt road -> dirt trail (each one steeper)
     const ladder = [want, ...(['dirt', 'trailDirt'] as RoadType[]).filter((x) => maxGrade(x) > maxGrade(want))]
     search: for (const tt of ladder)
       for (const f of [1.25, 1, 0.8, 0.6, 0.45]) {
-        const path = route(h, g, river, onRoad, start, goal, [target.x, target.z], Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt) * f)
+        const path = route(h, g, river, onRoad, start, goal, aim, Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt) * f)
         if (!path || path.length < 2) break // no way under this limit: a tighter one will not find any either
         // stop where the path joins an existing road (it would only run on top of it)
         let end = path.length - 1
@@ -377,7 +403,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
           const swap = (r: Road) => (r === hit ? hitCopy! : r)
           const test = h.slice()
           carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }])
-          if (worstGrade(cand, test, g).grade <= maxGrade(tt) * 0.9 && roads.map(swap).every((o) => worstGrade(o.pts, test, g).grade <= maxGrade(o.type))) {
+          if (worstGrade(cand, test, g).grade <= maxGrade(tt) * 0.9 && roads.every((o) => { const gr = worstGrade(swap(o).pts, test, g).grade; return gr <= maxGrade(o.type) || gr <= (gradeBefore().get(o) ?? 0) + 0.005 })) {
             pts = cand; cells = cl; type = tt; joined = hitCopy && hitCopy.pts
             break search
           }
@@ -391,7 +417,103 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     roads.push(road)
     mark(road, cells)
   }
+  if (p.loops) addLoops()
   return roads
+
+  // --- loops: shortcuts between places the tree joins only by a long detour ---
+  function roadDist(from: number, to: Set<number>, cap: number): number {
+    // Dijkstra over road cells only (8 neighbours), metres; Infinity past cap
+    const d = new Map<number, number>([[from, 0]])
+    const heap = new Heap()
+    heap.push(from, 0)
+    while (heap.size) {
+      const i = heap.pop(), di = d.get(i)!
+      if (to.has(i)) return di
+      if (di > cap) return Infinity
+      const c = i % g.cols, r = (i - c) / g.cols
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue
+        const cc = c + dc, rr = r + dr
+        if (cc < 0 || rr < 0 || cc >= g.cols || rr >= g.rows) continue
+        const j = rr * g.cols + cc
+        if (!onRoad[j]) continue
+        const nd = di + Math.hypot(dc, dr) * g.step
+        if (nd < (d.get(j) ?? Infinity)) { d.set(j, nd); heap.push(j, nd) }
+      }
+    }
+    return Infinity
+  }
+  function roadCellsNear(s: Site): number[] {
+    const out: number[] = [], start = cellOf(s.x, s.z), R = Math.ceil((SITE_RADIUS[s.kind] + 20) / g.step), c0 = start % g.cols, r0 = Math.floor(start / g.cols)
+    for (let r = Math.max(0, r0 - R); r <= Math.min(g.rows - 1, r0 + R); r++)
+      for (let c = Math.max(0, c0 - R); c <= Math.min(g.cols - 1, c0 + R); c++)
+        if (onRoad[r * g.cols + c] && Math.hypot(c - c0, r - r0) <= R) out.push(r * g.cols + c)
+    return out
+  }
+  function addLoops() {
+    const detour = p.loopDetour ?? 1.8, maxM = p.loopMaxM ?? 2000, tt = p.loopType ?? p.minor
+    const pairs: [Site, Site, number][] = []
+    for (let i = 0; i < sites.length; i++) for (let j = i + 1; j < sites.length; j++) {
+      const a = sites[i], b = sites[j], d = dist(a, b)
+      if (d < maxM && d > SITE_RADIUS[a.kind] + SITE_RADIUS[b.kind] + 150) pairs.push([a, b, d])
+    }
+    pairs.sort((x, y) => ORDER[x[0].kind] + ORDER[x[1].kind] - ORDER[y[0].kind] - ORDER[y[1].kind] || x[2] - y[2])
+    let made = 0, tries = 0, t0: number[] | null = null // t0: the roads as they stand, carved once per accepted loop
+    for (const [a, b, d] of pairs) {
+      if (made >= p.loops! || tries >= p.loops! * 2) break
+      const ca = roadCellsNear(a), cb = roadCellsNear(b)
+      if (!ca.length || !cb.length) continue
+      const netD = roadDist(ca[0], new Set(cb), d * detour)
+      if (netD <= d * detour) continue // already joined by a short enough road
+      tries++
+      const path = route(h, g, river, onRoad, cellOf(a.x, a.z), new Set([cellOf(b.x, b.z), ...cb]), [b.x, b.z], Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt))
+      if (!path || path.length < 3) continue
+      // keep the longest run off the existing roads, from the road cell before it to the road cell after it
+      let bs = -1, be = -1, k = 0
+      while (k < path.length) {
+        if (onRoad[path[k]]) { k++; continue }
+        let e = k
+        while (e < path.length && !onRoad[path[e]]) e++
+        if (e - k > be - bs) { bs = k; be = e }
+        k = e
+      }
+      if (bs < 1 || be >= path.length) continue // must start and end on a road (a real junction at both ends)
+      const cl = path.slice(bs - 1, be + 1)
+      if (cl.length * g.step < 250) continue
+      // the shortcut must really save road: its two ends far apart along the network
+      const along = roadDist(cl[0], new Set([cl[cl.length - 1]]), cl.length * g.step * detour * 1.5)
+      if (along <= cl.length * g.step * detour) continue
+      const flat: number[] = []
+      cl.forEach((i) => flat.push(...xyOf(i)))
+      for (const tol of [0.9, 0.4]) {
+        const cand = easeCorners(simplify(flat, g.step * tol), 60)
+        if (cand.length < 4 || bedGrade(cand, h, g) > maxGrade(tt)) continue
+        const h0 = owner.get(cl[0]), h1 = owner.get(cl[cl.length - 1])
+        if (!h0 || !h1) break
+        const copies = new Map<Road, Road>()
+        for (const [hr, ix] of [[h0, 0], [h1, cand.length - 2]] as [Road, number][]) {
+          const cp = copies.get(hr) ?? { ...hr, pts: hr.pts.slice() }
+          copies.set(hr, cp)
+          const [jx, jz] = nearestOn(cp.pts, cand[ix], cand[ix + 1])
+          cand[ix] = jx; cand[ix + 1] = jz
+          insertPoint(cp, jx, jz)
+        }
+        const swap = (r: Road) => copies.get(r) ?? r
+        const base = () => (t0 ??= (() => { const t = h.slice(); carveRoads(t, g, [...existing, ...roads]); return t })())
+        const test = h.slice()
+        carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }])
+        if (worstGrade(cand, test, g).grade > maxGrade(tt) * 0.9) continue
+        if (!roads.every((o) => { const gr = worstGrade(swap(o).pts, test, g).grade; return gr <= maxGrade(o.type) || gr <= worstGrade(o.pts, base(), g).grade + 0.005 })) continue
+        copies.forEach((cp, hr) => { hr.pts = cp.pts })
+        t0 = null
+        const road: Road = { id: `ROAD_AUTO_${++n}`, type: tt, pts: cand, flatten: true }
+        roads.push(road)
+        mark(road, cl.slice(1, -1))
+        made++
+        break
+      }
+    }
+  }
 }
 
 //! closest point to (x, z) on a polyline

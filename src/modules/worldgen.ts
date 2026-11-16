@@ -11,7 +11,7 @@ import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Gr
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, type Water } from './water'
 import { carveRoads, layBeds, type Road, type RoadType } from './roads'
-import { SITE_RADIUS, buildNetwork, type Site, type SiteKind } from './network'
+import { SITE_RADIUS, buildNetwork, maxGrade, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages } from './village'
 import type { Placed, Square } from './settlements'
@@ -85,10 +85,13 @@ export function composeHeights(base: number[], g: Grid, waters: Water[], zones: 
   applyZones(h, g, zones)
   const beds = roads.length ? carveRoads(h, g, roads, { water: wl }) : null
   const auto = waters.some((w) => w.auto)
-  const sim = computeRivers(h, g.cols, g.rows, g.step, { rain: WORLD.water.rain, windAngle: 0, threshold: WORLD.water.threshold, depth: auto ? 0 : 4 })
+  const sim = computeRivers(h, g.cols, g.rows, g.step, { rain: WORLD.water.rain, windAngle: 0, threshold: auto ? riverThreshold(g.step) : WORLD.water.threshold, depth: auto ? 0 : 4 })
   if (beds && !auto) layBeds(h, beds)
   return { heights: h, sim }
 }
+
+/** river threshold in grid cells for the generated world: a catchment area, whatever the grid step */
+export const riverThreshold = (step: number) => Math.round((WORLD.water.catchmentKm2 * 1e6) / (step * step))
 
 function roadIdMaker() {
   const used = new Set<string>()
@@ -96,6 +99,61 @@ function roadIdMaker() {
     const slug = fr[('road.type.' + type) as keyof typeof fr].normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')
     for (let n = 1; ; n++) { const id = `ROAD_${slug}_${n}`; if (!used.has(id)) { used.add(id); return id } }
   }
+}
+
+/** routePowerLine on a window of the grid around both ends (cost fields are per line: the full 512² grid
+ *  made the power step the slowest one at 8 km). Same result as long as the route stays inside the window. */
+function routePowerWindow(h: ArrayLike<number>, g: Grid, ax: number, az: number, bx: number, bz: number, o: Parameters<typeof routePowerLine>[6]) {
+  const m = Math.max(400, Math.hypot(bx - ax, bz - az) * 0.5)
+  const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - m - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((Math.max(ax, bx) + m - g.minX) / g.step))
+  const r0 = Math.max(0, Math.floor((Math.min(az, bz) - m - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((Math.max(az, bz) + m - g.minZ) / g.step))
+  const cols = c1 - c0 + 1, rows = r1 - r0 + 1
+  const sub = new Float32Array(cols * rows)
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sub[r * cols + c] = h[(r + r0) * g.cols + c + c0]
+  const w: Grid = { ...g, minX: g.minX + c0 * g.step, minZ: g.minZ + r0 * g.step, cols, rows }
+  const x0 = w.minX - 200, z0 = w.minZ - 200, x1 = w.minX + cols * g.step + 200, z1 = w.minZ + rows * g.step + 200
+  const inBox = (p: number[]) => { for (let i = 0; i + 1 < p.length; i += 2) if (p[i] > x0 && p[i] < x1 && p[i + 1] > z0 && p[i + 1] < z1) return true; return false }
+  const roads = o.roads?.filter(inBox), keepOut = o.keepOut?.filter((q) => q.x + q.r > x0 && q.x - q.r < x1 && q.z + q.r > z0 && q.z - q.r < z1)
+  return routePowerLine(sub, w, ax, az, bx, bz, { ...o, roads, keepOut })
+}
+
+/** farmstead spots: flat dry land 200-900 m off the roads, away from places and zones, spaced out (random order) */
+function placeFarms(h: ArrayLike<number>, g: Grid, roads: Road[], sites: Site[], zones: ZoneItem[], want: number, seed: number): Site[] {
+  const F = WORLD.farms
+  if (want <= 0) return []
+  const r = mulberry(seed)
+  const pts: number[] = []
+  for (const rd of roads) for (let i = 2; i + 1 < rd.pts.length; i += 2) {
+    const n = Math.ceil(Math.hypot(rd.pts[i] - rd.pts[i - 2], rd.pts[i + 1] - rd.pts[i - 1]) / 40)
+    for (let k = 0; k < n; k++) pts.push(rd.pts[i - 2] + ((rd.pts[i] - rd.pts[i - 2]) * k) / n, rd.pts[i - 1] + ((rd.pts[i + 1] - rd.pts[i - 1]) * k) / n)
+  }
+  const at = (x: number, z: number) => h[Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))]
+  const discs = zones.map(zoneDisc)
+  const cand: { x: number; z: number; k: number }[] = []
+  const edge = WORLD.sites.edgeM, W = (g.cols - 1) * g.step, H = (g.rows - 1) * g.step
+  for (let z = g.minZ + edge; z < g.minZ + H - edge; z += F.gridM) for (let x = g.minX + edge; x < g.minX + W - edge; x += F.gridM) {
+    const qx = x + (r() - 0.5) * F.gridM, qz = z + (r() - 0.5) * F.gridM, y = at(qx, qz)
+    if (y <= 3) continue
+    const sl = Math.max(Math.abs(at(qx + 20, qz) - at(qx - 20, qz)), Math.abs(at(qx, qz + 20) - at(qx, qz - 20))) / 40
+    if (sl > F.maxSlope) continue
+    let dry = true
+    for (let a = 0; a < 8 && dry; a++) if (at(qx + Math.cos(a * 0.785) * 60, qz + Math.sin(a * 0.785) * 60) <= 1) dry = false
+    if (!dry) continue
+    if (sites.some((s) => Math.hypot(s.x - qx, s.z - qz) < SITE_RADIUS[s.kind] + F.siteGapM)) continue
+    if (discs.some((d) => Math.hypot(d.x - qx, d.z - qz) < d.r + 120)) continue
+    let dr = Infinity
+    for (let i = 0; i + 1 < pts.length; i += 2) { const d = Math.hypot(pts[i] - qx, pts[i + 1] - qz); if (d < dr) dr = d }
+    if (dr < F.roadM[0] || dr > F.roadM[1]) continue
+    cand.push({ x: qx, z: qz, k: r() })
+  }
+  cand.sort((a, b) => a.k - b.k)
+  const out: Site[] = []
+  for (const q of cand) {
+    if (out.length >= want) break
+    if (out.some((o) => Math.hypot(o.x - q.x, o.z - q.z) < F.spacingM)) continue
+    out.push({ id: `FARM_${out.length + 1}`, x: q.x, z: q.z, kind: 'hamlet' })
+  }
+  return out
 }
 
 /** places on a score map: flat, low, near water / coast, away from the edge; spacing per kind */
@@ -141,7 +199,20 @@ export function placeWorldSites(h: ArrayLike<number>, g: Grid, river: Float32Arr
   for (const kind of ['town', 'village', 'hamlet'] as SiteKind[]) {
     const ks = subSeed(seed, 'site-' + kind)
     // each kind has its own jitter: the towns stay put when the hamlet slider moves
-    const list = cand.filter((q) => q.slope <= S.maxSlope[kind]).map((q) => ({ q, s: q.base + rand01(ks, q.c, q.r) * 1.2 })).sort((a, b) => b.s - a.s)
+    // houses need flat lots over the whole footprint, not only at the centre: mean grade on two rings
+    const R = SITE_RADIUS[kind] / g.step, k2 = Math.max(1, Math.round(20 / g.step))
+    const spread = (q: { c: number; r: number }) => {
+      let t = 0, n = 0
+      for (const f of [0.45, 0.9]) for (let a = 0; a < 8; a++) {
+        const c = Math.round(q.c + Math.cos(a * 0.785) * R * f), r = Math.round(q.r + Math.sin(a * 0.785) * R * f)
+        t += Math.max(Math.abs(at(c + k2, r) - at(c - k2, r)), Math.abs(at(c, r + k2) - at(c, r - k2))) / (2 * k2 * g.step); n++
+      }
+      return t / n
+    }
+    const list = cand.filter((q) => q.slope <= S.maxSlope[kind]).map((q) => {
+      const sp = kind === 'hamlet' ? q.slope : spread(q)
+      return { q, sp, s: q.base + rand01(ks, q.c, q.r) * 1.2 - (sp / S.maxSlope[kind]) * S.spreadWeight }
+    }).filter((x) => x.sp <= S.maxSlope[kind] * 1.3).sort((a, b) => b.s - a.s)
     let n = 0
     for (const { q } of list) {
       if (n >= want[kind]) break
@@ -174,12 +245,23 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 2. rivers + lakes (same as the Water step's "Generate")
   await step('water')
   const live = base.slice()
-  const sim0 = computeRivers(live, g.cols, g.rows, g.step, { rain: WORLD.water.rain, windAngle: 0, threshold: WORLD.water.threshold, depth: 4 })
-  const traced = traceRivers(live, g, sim0.flow, sim0.down, WORLD.water.threshold, WORLD.water.riverDepth)
+  // [M] real maps carry a few streams fed by a real catchment, not one per gully: the threshold is a catchment
+  // area (km²) turned into grid cells, courses shorter than minLen are dropped, and only the longest ones are kept
+  // (tributaries are traced after the course they join, so cutting the list never orphans one)
+  const W = WORLD.water
+  let landCells = 0
+  for (let i = 0; i < base.length; i++) if (base[i] > 0.5) landCells++
+  const landKm2 = (landCells * g.step * g.step) / 1e6
+  const thr = riverThreshold(g.step)
+  const sim0 = computeRivers(live, g.cols, g.rows, g.step, { rain: W.rain, windAngle: 0, threshold: thr, depth: 4 })
+  const maxCourses = Math.max(W.minCourses, Math.round(landKm2 * W.coursesPerKm2))
+  const traced = traceRivers(live, g, sim0.flow, sim0.down, thr, W.riverDepth, W.minLenM).slice(0, maxCourses)
   const { filled } = computeRivers(base.slice(), g.cols, g.rows, g.step, { rain: 1, windAngle: 0, threshold: 1e9, depth: 0 })
-  const lk = placeLakes(base, filled, g, traced, { minArea: WORLD.water.lakeMinArea, sourceShare: WORLD.water.lakeSourceShare, depth: WORLD.water.riverDepth, seed: subSeed(seed, 'lakes') })
+  const maxLakes = Math.max(1, Math.round(landKm2 * W.lakesPerKm2)) // biggest pits first
+  const lk = placeLakes(base, filled, g, traced, { minArea: W.lakeMinArea, sourceShare: W.lakeSourceShare, depth: W.riverDepth, seed: subSeed(seed, 'lakes'), maxLakes })
+  const lakes = lk.lakes
   const waters: Water[] = [
-    ...lk.lakes.map((w, i) => ({ ...w, id: `WATER_LAKE_${i + 1}` })),
+    ...lakes.map((w, i) => ({ ...w, id: `WATER_LAKE_${i + 1}` })),
     ...lk.rivers.map((w, i) => ({ ...w, id: `WATER_RIVER_${i + 1}`, auto: true, carve: false })),
   ]
   let zones: ZoneItem[] = []
@@ -222,14 +304,39 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   cur = composeHeights(base, g, waters, zones, roads)
   // 6. road network (places + zone gates)
   await step('roads')
-  const net = { sites: sites.length, spacing: 300, maxSlope: WORLD.roads.maxSlope, seed: subSeed(seed, 'roads'), main: WORLD.roads.main as RoadType, minor: WORLD.roads.minor as RoadType, lane: WORLD.roads.lane as RoadType }
+  const net = { sites: sites.length, spacing: 300, maxSlope: WORLD.roads.maxSlope, seed: subSeed(seed, 'roads'), main: WORLD.roads.main as RoadType, minor: WORLD.roads.minor as RoadType, lane: WORLD.roads.lane as RoadType,
+    loops: Math.round(WORLD.roads.loopsPerKm2 * landKm2), loopDetour: WORLD.roads.loopDetour, loopMaxM: WORLD.roads.loopMaxM, loopType: WORLD.roads.loopType as RoadType }
   const rid = roadIdMaker()
   const linked = [...sites, ...access.filter((a) => a.x > g.minX && a.z > g.minZ && a.x < g.minX + (g.cols - 1) * g.step && a.z < g.minZ + (g.rows - 1) * g.step)]
   roads = linked.length >= 2 ? buildNetwork(cur.heights, g, cur.sim.river, linked, net, []) : []
-  for (const r of roads) { r.auto = true; r.id = rid(r.type) }
+  // farmsteads: [M] Everon 197 lone buildings (1-2) and 136 km of dirt + 74 km of paths for 344 km: a dirt track
+  // leaves the network for each farm, which adds the T junctions a tree of places lacks
+  if (roads.length) {
+    const farms = placeFarms(cur.heights, g, roads, sites, zones, Math.round(WORLD.farms.perKm2 * landKm2 * p.hamlets), subSeed(seed, 'farms'))
+    const anchor = sites.find((s) => roads.some((r) => r.pts.some((v, i) => i % 2 === 0 && Math.hypot(v - s.x, r.pts[i + 1] - s.z) < SITE_RADIUS[s.kind])))
+    if (farms.length && anchor) {
+      const more = buildNetwork(cur.heights, g, cur.sim.river, [anchor, ...farms], { ...net, loops: 0, lane: WORLD.farms.track as RoadType }, roads)
+      roads.push(...more)
+      const reached = farms.filter((f) => more.some((r) => Math.hypot(r.pts[0] - f.x, r.pts[1] - f.z) < SITE_RADIUS.hamlet))
+      sites = [...sites, ...reached]
+    }
+  }
+  for (const r of roads) if (!r.auto) { r.auto = true; r.id = rid(r.type) }
   cur = composeHeights(base, g, waters, zones, roads)
   const steep = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
-  if (steep.size) { roads = roads.filter((r) => !steep.has(r.id)); cur = composeHeights(base, g, waters, zones, roads) }
+  // a road the carving left too steep for its type is first downgraded (dirt road, then dirt trail: steeper
+  // limits), dropped only when even a trail cannot climb it, so the tree is not cut for one junction bump
+  if (steep.size) {
+    for (const r of roads) if (steep.has(r.id)) {
+      const g0 = worstGrade(r.pts, cur.heights, g).grade
+      const t = (['dirt', 'trailDirt'] as RoadType[]).find((x) => maxGrade(x) > maxGrade(r.type) && maxGrade(x) >= g0 + 0.01)
+      if (t) { r.type = t; steep.delete(r.id) }
+    }
+    roads = roads.filter((r) => !steep.has(r.id))
+    cur = composeHeights(base, g, waters, zones, roads)
+    const still = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
+    if (still.size) { roads = roads.filter((r) => !still.has(r.id)); cur = composeHeights(base, g, waters, zones, roads) }
+  }
   // a place no road reaches is dropped (the checker would flag it)
   const isolated = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'isolated').map((i) => i.id))
   sites = sites.filter((s) => !isolated.has(s.id))
@@ -266,8 +373,16 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 8. villages v2
   await step('villages')
   const allRoads = [...roads, ...zones.flatMap((z) => z.roads)]
-  const vr = settleVillages(sites, allRoads, waters, cur.heights, g, { seed: subSeed(seed, 'villages'), density: 1, variant: 'auto', blocked: zoneBlocked(zones) })
-  const settlement = { placed: vr.placed, lanes: vr.lanes, paths: vr.paths, squares: vr.squares }
+  // one pass per kind (towns first: they get the room), each with its own street count / fill ([M] sizes per class)
+  const settlement: WorldResult['settlement'] = { placed: [], lanes: [], paths: [], squares: [] }
+  for (const kind of ['town', 'village', 'hamlet', 'farm'] as const) {
+    const ks = sites.filter((s) => (kind === 'farm' ? s.id.startsWith('FARM_') : s.kind === kind && !s.id.startsWith('FARM_')))
+    if (!ks.length) continue
+    const V = WORLD.villages[kind]
+    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: subSeed(seed, 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones) }, settlement.placed)
+    settlement.placed = vr.placed
+    settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)
+  }
   // 9. power lines: HV tree between towns and villages, LV to the hamlets along the roads
   await step('power')
   const power: (PowerLine & { id: string })[] = []
@@ -283,7 +398,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         inT.forEach((a, i) => out.forEach((b, j) => { const d = Math.hypot(a.x - b.x, a.z - b.z); if (d < bd) { bd = d; bi = i; bj = j } }))
         const a = inT[bi], b = out.splice(bj, 1)[0]
         inT.push(b)
-        const l = routePowerLine(h, g, a.x, a.z, b.x, b.z, { kind: 'hv', isWater, keepOut: keepOut([a, b]) })
+        const l = routePowerWindow(h, g, a.x, a.z, b.x, b.z, { kind: 'hv', isWater, keepOut: keepOut([a, b]) })
         if (l) power.push({ ...l, id: pid('hv') })
       }
     }
@@ -296,7 +411,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         if (d < bd) { bd = d; bx = l.poles[i]; bz = l.poles[i + 1] }
       }
       if (!Number.isFinite(bx) || bd > WORLD.power.lvMax || bd < SITE_RADIUS[v.kind] * 0.5) continue
-      const l = routePowerLine(h, g, bx, bz, v.x, v.z, { kind: 'lv', isWater, roads: roadPts, keepOut: keepOut([v]) })
+      const l = routePowerWindow(h, g, bx, bz, v.x, v.z, { kind: 'lv', isWater, roads: roadPts, keepOut: keepOut([v]) })
       if (l) power.push({ ...l, id: pid('lv') })
     }
   }

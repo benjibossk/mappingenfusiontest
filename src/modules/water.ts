@@ -540,7 +540,7 @@ export function riverBanks(waters: Water[], before: ArrayLike<number>, grid: Gri
 //! where they cross a lake, so the water leaves the lake at its outlet.
 export function placeLakes(
   heights: ArrayLike<number>, filled: ArrayLike<number>, grid: Grid, rivers: Omit<Water, 'id'>[],
-  opts: { minArea: number; sourceShare: number; depth: number; seed: number },
+  opts: { minArea: number; sourceShare: number; depth: number; seed: number; maxLakes?: number },
 ): { lakes: Omit<Water, 'id'>[]; rivers: Omit<Water, 'id'>[] } {
   const { cols, rows, step } = grid
   const n = cols * rows
@@ -611,6 +611,13 @@ export function placeLakes(
       pts.push(cx + Math.cos(an) * k, cz + Math.sin(an) * k)
     }
     lakes.push({ type: 'lake', pts, width: 0, depth: opts.depth, auto: true })
+  }
+  // optional cap: the biggest lakes win (before the rivers are cut, so a dropped lake leaves its river whole)
+  if (opts.maxLakes !== undefined && lakes.length > opts.maxLakes) {
+    const area = (p: number[]) => { let a = 0; for (let i = 0; i < p.length; i += 2) { const j = (i + 2) % p.length; a += p[i] * p[j + 1] - p[j] * p[i + 1] } return Math.abs(a) / 2 }
+    const keep = lakes.map((l) => ({ l, a: area(l.pts) })).sort((a, b) => b.a - a.a).slice(0, opts.maxLakes).map((q) => q.l)
+    lakes.length = 0
+    lakes.push(...keep)
   }
   // rivers: the parts inside a lake are dropped (one point kept inside to join the water)
   const wetAt = (x: number, z: number) => lakes.some((l) => inside(l.pts, x, z))

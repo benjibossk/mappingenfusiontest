@@ -29,6 +29,7 @@ export interface VillageOptions {
   church?: boolean // one church on the square (default true)
   port?: boolean // quay + boat sheds when the site touches the sea (default true)
   maxSlope?: number // steepest street grade (0.15)
+  dropScale?: number // multiplies the per-category ground drop a footprint may straddle (1 = MAX_DROP)
   pool?: Building[] // replaces the vanilla list (captured parcels: parcelPool)
   blocked?: [number, number, number, number][] // world boxes already taken
 }
@@ -87,7 +88,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     return false
   }
   const inSquare = (x: number, z: number, m: number) => res.squares.some((s) => Math.hypot(x - s.x, z - s.z) < s.r + m)
-  const fits = (b: Building, c: number[], wm = WATER_MARGIN, soft = true, drop = MAX_DROP[b.cat]) => {
+  const fits = (b: Building, c: number[], wm = WATER_MARGIN, soft = true, drop = MAX_DROP[b.cat] * (o.dropScale ?? 1)) => {
     for (const q of placed) if (Math.abs(q.x - c[0]) < 80 && Math.abs(q.z - c[1]) < 80 && overlap(c, q.corners, GAP)) return false
     for (const [x0, z0, x1, z1] of o.blocked ?? []) if (overlap(c, [x0, z0, x1, z0, x1, z1, x0, z1], GAP)) return false
     if (soft) for (const g of reserved) if (Math.abs(g[0] - c[0]) < 80 && Math.abs(g[1] - c[1]) < 80 && overlap(c, g, 0)) return false

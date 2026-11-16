@@ -11,7 +11,18 @@ export const WORLD = {
     seaDepth: 30,
     roughness: 0.6,
   },
-  water: { rain: 1, threshold: 400, riverDepth: 1.5, lakeMinArea: 2000, lakeSourceShare: 0.3 }, // UI defaults (step Water)
+  water: {
+    rain: 1, threshold: 400, riverDepth: 1.5, // threshold (cells) = UI default of the Water step only
+    /** random world: catchment (km²) a cell drains before it is a river. 400 cells (0.03 km² at 8 m) drew ~100 gullies
+     *  on 4 km; [M] Arland has a handful of streams, Everon ~10 named rivers on 12.8 km. 0.35 km² -> 2-6 on 4 km [est] */
+    catchmentKm2: 0.35,
+    minLenM: 500, // a course (or tributary) shorter than this is a gully, not drawn [est]
+    coursesPerKm2: 0.45, // longest courses kept per km² of land, tributaries included (4 km ~3-4, 8 km ~10) [est]
+    minCourses: 2,
+    lakeMinArea: 6000, // a pit must hold >= 0.6 ha to be a lake (was 2 000 m²: dozens of ponds) [est]
+    lakeSourceShare: 0.1,
+    lakesPerKm2: 0.12, // cap, biggest first: 4 km ~1, 8 km ~3 [est; Everon has 2-3 ponds / reservoirs]
+  },
   sites: {
     /** localities (towns + villages) per km² of land: [enfumap] median 0.46 (range 0.15-3.3, Everon 0.65) */
     perKm2: 0.46,
@@ -27,9 +38,23 @@ export const WORLD = {
     minAny: 260,
     maxSlope: { town: 0.08, village: 0.1, hamlet: 0.16 }, // [KB§4] < 6 % ideal, ridges > 10 % rejected [est per kind]
     maxAltFrac: 0.6, // [KB§4]
+    spreadWeight: 1.5, // score penalty for the mean grade over a town / village footprint (lots need flat ground) [est]
     waterBonusM: 500, // [KB§4]
     edgeM: 300, // [enfumap] islands: 0 % of localities within 1 km of the edge (we keep 300 m, small maps) [est]
   },
+  /** settleVillages per kind: [M] Everon class sizes: town 189, bourgs 40-119 (median ~60), villages 10-39, hamlets 3-9.
+   *  maxStreets undefined = the variant default (+0-1) */
+  villages: {
+    /** the generated relief is bumpy at 8-16 m a cell: footprints may straddle 1.5x the default drop (foundations hide it) [est] */
+    dropScale: 1.5,
+    town: { density: 1.25, maxStreets: 16 as number | undefined },
+    village: { density: 1.15, maxStreets: 7 as number | undefined },
+    hamlet: { density: 0.6, maxStreets: undefined as number | undefined },
+    farm: { density: 0.15, maxStreets: 0 as number | undefined }, // farmsteads: 1-3 buildings
+  },
+  /** farmsteads at the end of a dirt track ([M] Everon 197 lone buildings for ~80 km² of land -> ~2.5/km²; we
+   *  place fewer, each one costs a routed track) [est] */
+  farms: { perKm2: 0.9, gridM: 150, maxSlope: 0.1, siteGapM: 250, roadM: [180, 900] as [number, number], spacingM: 380, track: 'dirt' },
   airfield: {
     minMapKm: 4, // [KB§6] one per map >= 10 km, 0-1 below; we offer it from 4 km [est]
     /** [M] runways 1 000 m x 40 m (Everon), 1 217 m x 60 m (Arland 4 km), 1 007 m (Kolguyev): medium (1 100 m) from 4 km */
@@ -48,9 +73,16 @@ export const WORLD = {
     searchM: 2000, // [KB§8] 0.5-2 km from a town
     size: { w: 220, d: 160 },
   },
-  roads: { maxSlope: 10, main: 'asphalt', minor: 'asphaltNarrow', lane: 'dirt' }, // UI defaults (step Roads)
+  roads: {
+    maxSlope: 10, main: 'asphalt', minor: 'asphaltNarrow', lane: 'dirt', // UI defaults (step Roads)
+    /** random world: shortcut links that turn the tree into a mesh. [M] Everon ~637 junctions for 344 km (1 per
+     *  540 m), Arland 79 for 46 km: a pure tree has one junction per place. A pair is linked when the road between
+     *  them is > loopDetour x their straight distance */
+    loopsPerKm2: 0.6, loopDetour: 1.7, loopMaxM: 2200, loopType: 'dirt',
+  },
   power: { lvMax: 2500 }, // UI default; pole span is power.ts POWER_DEFAULTS ([M] median 35-50 m between poles)
-  // [M] road density 1.4-2.8 km/km² (Everon 2.1): not a target of buildNetwork, reported by the test only
+  // [M] road density 1.4-2.8 km/km² of map (Everon 2.1): not a target of buildNetwork; tree + farm tracks + loops give
+  // 1.8-2.7 km per km² of LAND (see docs/MAP_KNOWLEDGE_BASE.md "Calibration du générateur")
   vegetation: {
     /** forest cover of the land at slider 1: [enfumap] green (forest + meadow) median 44 % [visual]; [KB§11] forest 35-50 % */
     forestCover: 0.35,
