@@ -16,7 +16,7 @@ import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'bridges', 'issues'] as const
+const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues'] as const
 const hiddenLayers = new Set<string>()
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
 let collab: Collab | null = null // shared room, see src/collab.ts
@@ -80,6 +80,13 @@ import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
+import { settleVillages, type VillageVariant } from './modules/village'
+import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
+import { suggestIndustrialSites, INDUSTRIAL_TYPES, type IndustrialType } from './modules/industrial'
+import { suggestMilitary, type MilitaryKind } from './modules/military'
+import { suggestAirfield, type AirfieldSize } from './modules/airfield'
+import { quantise, suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
+import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, generateWorld, type WorldResult } from './modules/worldgen'
 
 // the side panel is a guided path: one step per tab, in the order a map is built
 const STEPS = [
@@ -94,6 +101,7 @@ const STEPS = [
 
 // stroke icons for the UI chrome (MILSPEC style: 1.6px stroke, currentColor)
 const ICON: Record<string, string> = {
+  dice: '<rect x="4" y="4" width="16" height="16"/><path d="M8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>',
@@ -188,12 +196,34 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
   <section class="stage">
     <canvas id="map" class="map" width="800" height="800"></canvas>
+    <div id="rwDlg" class="rwdlg" hidden role="dialog" aria-modal="true" aria-labelledby="rwTitle">
+      <div class="rwbox">
+        <h2 id="rwTitle">${ic('dice')} ${t('wg.title')}</h2>
+        <p class="hint">${t('wg.lead')}</p>
+        <div class="form">
+          <label>${t('wg.seed')} ${info('info.wgSeed')} <span class="seedrow"><input id="rwSeed" type="number" step="1" value="1"><button id="rwDice" type="button" class="secondary icon" title="${t('wg.dice')}" aria-label="${t('wg.dice')}">${ic('dice', 16)}</button></span></label>
+          <label>${t('wg.size')} <select id="rwSize"><option value="2048">2 km</option><option value="4096" selected>4 km</option><option value="8192">8 km</option></select></label>
+          ${(['towns', 'villages', 'hamlets', 'industry', 'military', 'forests'] as const).map((k) => `<label>${t(('wg.' + k) as K)} ${info(('info.wg.' + k) as K)} <input id="rw_${k}" type="range" min="0" max="2" step="0.25" value="1"><output id="rw_${k}_v">1</output></label>`).join('')}
+        </div>
+        <div class="row">
+          <label class="check"><input id="rwAir" type="checkbox" checked> ${t('wg.airfield')} ${info('info.wg.airfield')}</label>
+          <label class="check"><input id="rwPower" type="checkbox" checked> ${t('wg.power')}</label>
+        </div>
+        <div id="rwRun" hidden><progress id="rwProg" max="${WORLD_STAGES.length}" value="0"></progress> <span id="rwStage" class="hint"></span></div>
+        <p class="hint">${t('wg.replace')}</p>
+        <div class="row">
+          <button id="rwGo" type="button">${t('wg.go')}</button>
+          <button id="rwCancel" type="button" class="secondary">${t('wg.cancel')}</button>
+        </div>
+      </div>
+    </div>
     <div id="welcome" class="welcome" hidden>
       <span class="kicker">${t('welcome.kicker')}</span>
       <h2>reforger-mapper</h2>
       <p>${t('welcome.lead')}</p>
       <div class="choices">
         <button type="button" data-go="tGen" class="rec">${ic('island', 32)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
+        <button type="button" data-go="tRandom">${ic('dice', 32)}<strong>${t('welcome.random')}</strong><span>${t('welcome.random.tip')}</span><em>${t('welcome.random.foot')}</em></button>
         <button type="button" data-go="tReal">${ic('map', 32)}<strong>${t('welcome.real')}</strong><span>${t('welcome.real.tip')}</span><em>${t('welcome.real.foot')}</em></button>
         <button type="button" id="welcomeJoin">${ic('users', 32)}<strong>${t('welcome.join')}</strong><span>${t('welcome.join.tip')}</span><em>${t('welcome.join.foot')}</em></button>
       </div>
@@ -225,7 +255,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         ${connectSteps()}
         <div class="row"><button type="button" class="secondary wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button></div>
         <h3>${t('help.faq')}</h3>
-        ${(['1', '2', '3', '4', '5'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
+        ${(['1', '2', '3', '4', '5', '6', '7'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
         <h3>${t('help.glossary')}</h3>
         <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
         <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
@@ -249,6 +279,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="row">
         <button id="tGen" type="button">${t('btn.tGen')}</button>
         <button id="tReroll" type="button" class="secondary">${t('btn.tReroll')}</button>
+      </div>
+      <div class="row">
+        <button id="tRandom" type="button" class="secondary" title="${t('wg.tip')}">${ic('dice', 16)} ${t('btn.tRandom')}</button>
       </div>
       <div class="row">
         <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
@@ -407,6 +440,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="setPaths" type="checkbox" checked> ${t('lbl.setPaths')}</label>
           <label class="check"><input id="setParcels" type="checkbox"> ${t('lbl.setParcels')}</label>
         </div>
+        <label class="check"><input id="setV2" type="checkbox" checked> ${t('lbl.setV2')} ${info('info.setV2')}</label>
+        <div class="form" id="setV2Box">
+          <label>${t('lbl.setVariant')} ${info('info.setVariant')} <select id="setVariant"><option value="auto">${t('opt.var.auto')}</option><option value="village">${t('opt.var.village')}</option><option value="town">${t('opt.var.town')}</option></select></label>
+          <label>${t('lbl.setMaxStreets')} ${info('info.setMaxStreets')} <input id="setMaxStreets" type="number" min="0" max="10" step="1" value="" placeholder="${t('opt.var.auto')}"></label>
+          <label class="check"><input id="setStreets" type="checkbox" checked> ${t('lbl.setStreets')} ${info('info.setStreets')}</label>
+          <label class="check"><input id="setFarms" type="checkbox" checked> ${t('lbl.setFarms')} ${info('info.setFarms')}</label>
+          <label class="check"><input id="setChurch" type="checkbox" checked> ${t('lbl.setChurch')}</label>
+          <label class="check"><input id="setPort" type="checkbox" checked> ${t('lbl.setPort')} ${info('info.setPort')}</label>
+        </div>
         <button id="parcelLib" type="button">${t('pc.open')}</button>
         ${hint('hint.set')}
         <div class="row">
@@ -416,6 +458,31 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
         <span id="setInfo" class="hint"></span>
       </fieldset>
+      <details class="adv" id="indBox"><summary>${t('legend.ind')} ${info('info.ind')}</summary>
+        <div class="form">
+          <label>${t('lbl.indType')} <select id="indType">${INDUSTRIAL_TYPES.map((k) => `<option value="${k}">${t(('opt.ind.' + k) as K)}</option>`).join('')}</select></label>
+          <label>${t('lbl.zoneSeed')} <input id="indSeed" type="number" step="1" value="1"></label>
+        </div>
+        ${hint('hint.ind')}
+        <div class="row">
+          <button id="indSuggest" type="button">${t('btn.zoneSuggest')}</button>
+          <button id="indClear" type="button" class="secondary">${t('btn.indClear')}</button>
+        </div>
+        <span id="indInfo" class="hint"></span>
+      </details>
+      <details class="adv" id="milBox"><summary>${t('legend.mil')} ${info('info.mil')}</summary>
+        <div class="form">
+          <label>${t('lbl.milWhat')} <select id="milWhat"><option value="main">${t('opt.mil.main')}</option><option value="outpost">${t('opt.mil.outpost')}</option><option value="checkpoint">${t('opt.mil.checkpoint')}</option><option value="air-small">${t('opt.air.small')}</option><option value="air-medium">${t('opt.air.medium')}</option><option value="air-large">${t('opt.air.large')}</option></select></label>
+          <label>${t('lbl.zoneSeed')} <input id="milSeed" type="number" step="1" value="1"></label>
+        </div>
+        ${hint('hint.mil')}
+        <div class="row">
+          <button id="milSuggest" type="button">${t('btn.zoneSuggest')}</button>
+          <button id="milClear" type="button" class="secondary">${t('btn.milClear')}</button>
+        </div>
+        <span id="milInfo" class="hint"></span>
+      </details>
+      <div class="row"><button id="zoneSend" type="button" class="secondary">${t('btn.zoneSend')}</button></div>
     </div>
     <div class="tab" data-tab="camp" hidden>
       <div class="form">
@@ -443,6 +510,20 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
       ${hint('hint.areas')}
+      <details class="adv" id="satBox"><summary>${t('legend.sat')} ${info('info.sat')}</summary>
+        <p id="satNone" class="hint">${t('sat.none')}</p>
+        <div id="satBody">
+          <label>${t('lbl.satSmooth')} ${info('info.satSmooth')} <input id="satSmooth" type="range" min="0" max="4" step="1" value="1"></label>
+          <div class="row"><button id="satAnalyse" type="button">${t('btn.satAnalyse')}</button></div>
+          <ul id="satSwatches" class="swatches"></ul>
+          <label class="check"><input id="satPreview" type="checkbox" checked> ${t('lbl.satPreview')}</label>
+          <div class="row">
+            <button id="satSend" type="button">${t('btn.satSend')}</button>
+            <button id="satPng" type="button" class="secondary">${t('btn.satPng')}</button>
+          </div>
+          <span id="satInfo" class="hint"></span>
+        </div>
+      </details>
     </div>
 
     <div class="tab" data-tab="wb" hidden>
@@ -622,6 +703,8 @@ function draw() {
   if (furn && layer('furniture') && $<HTMLInputElement>('furnShow').checked && tool() === 'road') drawFurniture(furn)
   if (layer('power')) drawPower()
   if (layer('buildings')) drawSettlements()
+  if (layer('zones')) drawZones()
+  drawSatPreview()
   if (layer('sites')) drawSites()
 
   const z = zonePoints()
@@ -731,6 +814,7 @@ function heightLabel(x: number, z: number): string {
 
 map.addEventListener('click', (e) => {
   if (skipClick) return void (skipClick = false)
+  if (zonePick) return void placeZone(...eventPos(e))
   if (tool() === 'comment') return void commentClick(...eventPos(e))
   if (tool() === 'water' && !waterDraft && toggleBridge(...eventPos(e))) return
   if (tool() === 'water') return void waterClick(...toWorld(...eventPos(e)))
@@ -900,13 +984,23 @@ let settled: Placed[] = [] // settlement buildings (tab Routes, Villages)
 let setLanes: Road[] = [] // settlement lanes and footpaths, squares (tab Villages)
 let setPaths: Road[] = []
 let setSquares: Square[] = []
-const setState = () => JSON.stringify({ settled, setLanes, setPaths, setSquares })
+let setGardens: { site: string; corners: number[] }[] = [] // v2 back gardens (drawn only)
+let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
+let zonePick: { kind: ZoneKind; sub: string } | null = null
+let zoneCands: { x: number; z: number; yaw: number }[] = []
+const ZONE_FILL: Record<string, string> = { lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc' }
+let satQ: Quantised | null = null
+let satSurf: string[] = []
+let satCanvas: HTMLCanvasElement | null = null
+const setState = () => JSON.stringify({ settled, setLanes, setPaths, setSquares, setGardens, zones })
 function loadSetState(js: string | undefined) {
   const v = js ? JSON.parse(js) : {}
   settled = Array.isArray(v) ? v : v.settled ?? []
   setLanes = v.setLanes ?? []
   setPaths = v.setPaths ?? []
   setSquares = v.setSquares ?? []
+  setGardens = Array.isArray(v.setGardens) ? v.setGardens : []
+  zones = Array.isArray(v.zones) ? v.zones : []
 }
 let waters: Water[] = []
 let waterDraft: Water | null = null
@@ -975,6 +1069,7 @@ function recompose(final: boolean) {
   island.heights = sculpt.compose().map((h) => h - seaLevel)
   preWater = island.heights.slice()
   const wl = waters.length ? carveWater(island.heights, g, waters) : undefined
+  if (zones.length) applyZones(island.heights, g, zones) // platforms / runway planes, before the road beds
   const beds = roads.length ? carveRoads(island.heights, g, roads, { water: wl }) : null
   rivers = undefined
   riverSim = undefined
@@ -1155,7 +1250,7 @@ function panTo(x: number, z: number) { view.x = x; view.z = z; draw() }
 
 // history: one entry per undo checkpoint, named from what changed since the previous one
 let pendingAct = ''
-for (const id of ['tGen', 'wGen', 'netGen', 'powerGen', 'setGen', 'generate']) document.getElementById(id)?.addEventListener('click', () => { pendingAct = id }, true)
+for (const id of ['tGen', 'wGen', 'netGen', 'powerGen', 'setGen', 'generate', 'rwGo']) document.getElementById(id)?.addEventListener('click', () => { pendingAct = id }, true)
 let lastLogged = { key: '', at: 0 }
 let genAt = 0 // a generator often makes several checkpoints: they count as its one entry
 function diffList(a: string, b: string): [string, any] | null {
@@ -1173,7 +1268,7 @@ function diffList(a: string, b: string): [string, any] | null {
 function stepOfAction(action: string, fallback?: string): string {
   const active = fallback ?? tabButtons.find((x) => x.classList.contains('active'))?.dataset.tab ?? ''
   const k = action.split('.')
-  if (k[0] === 'gen') return ({ tGen: 'island', wGen: 'water', netGen: 'roads', powerGen: 'roads', setGen: 'villages', generate: 'camp' } as Record<string, string>)[k[1]] ?? active
+  if (k[0] === 'gen') return ({ tGen: 'island', wGen: 'water', netGen: 'roads', powerGen: 'roads', setGen: 'villages', generate: 'camp', rwGo: 'island' } as Record<string, string>)[k[1]] ?? active
   const by: Record<string, string> = { road: 'roads', power: 'roads', water: 'water', site: 'villages', villages: 'villages', zone: 'camp', send: 'wb' }
   if (by[k[0]]) return by[k[0]]
   if (k[0] === 'relief') return active === 'brush' ? 'brush' : 'island'
@@ -1674,7 +1769,7 @@ function stepSigs(): string[] {
     relief,
     waters.length || rivers ? `${waters.length}:${ptsSum(waters)}:${oid(rivers)}` : '',
     roads.length || powerLines.length ? `${roads.length}:${ptsSum(roads)}:${powerLines.length}:${ptsSum(powerLines.map((l) => ({ pts: l.path })))}` : '',
-    settled.length ? `${settled.length}:${oid(settled)}` : '',
+    settled.length || zones.length ? `${settled.length}:${oid(settled)}:${zones.map((z) => z.id).join(',')}` : '',
     result || areas.length ? `${oid(result)}:${areas.length}` : '',
     '',
   ]
@@ -2445,6 +2540,13 @@ function hitBuilding(wx: number, wz: number): Placed | null {
   return null
 }
 function drawSettlements() {
+  for (const gd of setGardens) { // v2 back gardens
+    ctx.beginPath()
+    for (let i = 0; i + 1 < gd.corners.length; i += 2) { const [sx, sy] = toScreen(gd.corners[i], gd.corners[i + 1]); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+    ctx.closePath()
+    ctx.fillStyle = '#8fd06a40'
+    ctx.fill()
+  }
   // greens, then lanes (road width) and footpaths (thin dashed) under the buildings
   for (const s of setSquares) {
     const [sx, sy] = toScreen(s.x, s.z)
@@ -2512,7 +2614,16 @@ $<HTMLButtonElement>('setGen').addEventListener('click', async () => {
   if (chk('setParcels')) {
     try { pool = parcelPool(await loadParcels()) } catch (e) { logEl.textContent = t('err.parcels') + (e as Error).message; return }
   }
-  const res = settle(sites, [...roads, ...existingRoads()], waters, island.heights, island.grid, { seed: num('setSeed'), density: num('setDensity') }, { square: chk('setSquare'), lanes: chk('setLanes'), paths: chk('setPaths'), pool, blocked: existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box) })
+  const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
+  const allRoads = [...roads, ...existingRoads(), ...zones.flatMap((z) => z.roads)]
+  const maxStreets = $<HTMLInputElement>('setMaxStreets').value.trim()
+  const res = chk('setV2')
+    ? settleVillages(sites, allRoads, waters, island.heights, island.grid, {
+      seed: num('setSeed'), density: num('setDensity'), variant: $<HTMLSelectElement>('setVariant').value as VillageVariant,
+      streets: chk('setStreets'), maxStreets: maxStreets === '' ? undefined : Number(maxStreets), farms: chk('setFarms'), church: chk('setChurch'), port: chk('setPort'), pool, blocked,
+    })
+    : settle(sites, allRoads, waters, island.heights, island.grid, { seed: num('setSeed'), density: num('setDensity') }, { square: chk('setSquare'), lanes: chk('setLanes'), paths: chk('setPaths'), pool, blocked })
+  setGardens = 'gardens' in res ? (res.gardens as typeof setGardens) : []
   settled = res.placed
   setLanes = res.lanes
   setPaths = res.paths
@@ -2521,7 +2632,7 @@ $<HTMLButtonElement>('setGen').addEventListener('click', async () => {
   logEl.textContent = $<HTMLSpanElement>('setInfo').textContent
   draw()
 })
-$<HTMLButtonElement>('setClear').addEventListener('click', () => { settled = []; setLanes = []; setPaths = []; setSquares = []; setInfo(); draw() })
+$<HTMLButtonElement>('setClear').addEventListener('click', () => { settled = []; setLanes = []; setPaths = []; setSquares = []; setGardens = []; setInfo(); draw(); refreshSteps() })
 // buildings plus their lanes and footpaths (SET_* family, replaced on resend); roads and water stay
 $<HTMLButtonElement>('setSend').addEventListener('click', () =>
   run(t('run.l.set'), async () => {
@@ -2663,7 +2774,7 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: FOREST_GEN[a.leaf ?? 'mixed'][a.tall ?? 'mid'] }))
     const setShapes = settled.length ? settlementShapes({ lanes: setLanes, paths: setPaths }) : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined) : []
-    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes], entities = [...(wr.entities ?? []), ...setEnts]
+    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities)]
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
@@ -3181,3 +3292,309 @@ refreshStatus()
     for (const o of all) if (isOpen(o)) close(o)
   })
 }
+
+// --- big sites (tab Villages): industrial zones, military bases, airfields (zones.ts) ---
+// "Suggest" ranks spots on the map; the next click places the site (on a numbered spot or anywhere)
+function drawZones() {
+  ctx.lineCap = 'round'
+  for (const zn of zones) {
+    for (const b of zn.boxes) {
+      ctx.beginPath()
+      for (let i = 0; i + 1 < b.corners.length; i += 2) { const [sx, sy] = toScreen(b.corners[i], b.corners[i + 1]); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+      ctx.closePath()
+      ctx.fillStyle = ZONE_FILL[b.role] ?? (zn.kind === 'industrial' ? '#b07a4a' : zn.kind === 'military' ? '#6a7d4a' : '#9aa4b0')
+      ctx.fill()
+      ctx.strokeStyle = '#222a'
+      ctx.lineWidth = 1
+      ctx.stroke()
+    }
+    for (const sh of zn.shapes) {
+      const w = sh.paramKeys?.includes('RoadWidth') ? Number(sh.paramValues?.[sh.paramKeys.indexOf('RoadWidth')]) : 0
+      ctx.beginPath()
+      for (let i = 0; i + 1 < sh.points.length; i += 2) { const [sx, sy] = toScreen(sh.points[i], sh.points[i + 1]); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+      ctx.strokeStyle = w ? '#8c8c8c' : zn.kind === 'military' ? '#c8d0a0' : '#e0e0e0'
+      ctx.lineWidth = w ? Math.max(2, w / view.mpp) : 1.5
+      ctx.setLineDash(w ? [] : [4, 3])
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+    const [sx, sy] = toScreen(zn.x, zn.z)
+    ctx.font = '11px sans-serif'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = '#000a'
+    ctx.fillStyle = '#fff'
+    const label = t(('zone.name.' + zn.kind) as K, { n: zn.id.replace(/\D+/g, '') })
+    ctx.strokeText(label, sx + 8, sy - 8)
+    ctx.fillText(label, sx + 8, sy - 8)
+  }
+  zoneCands.forEach((c, i) => {
+    const [sx, sy] = toScreen(c.x, c.z)
+    ctx.beginPath()
+    ctx.arc(sx, sy, 11, 0, Math.PI * 2)
+    ctx.fillStyle = i === 0 ? '#ffd24acc' : '#ffffffaa'
+    ctx.fill()
+    ctx.strokeStyle = '#000'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.fillStyle = '#000'
+    ctx.font = 'bold 12px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(String(i + 1), sx, sy + 4)
+    ctx.textAlign = 'start'
+  })
+}
+const siteDiscs = (extra: number) => sites.map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] + extra }))
+function zoneInfo() {
+  const n = (k: ZoneKind) => zones.filter((z) => z.kind === k).length
+  $('indInfo').textContent = n('industrial') ? t('zone.info.ind', { n: n('industrial') }) : ''
+  $('milInfo').textContent = n('military') || n('airfield') ? t('zone.info.mil', { n: n('military'), a: n('airfield') }) : ''
+}
+function startPick(kind: ZoneKind, sub: string, cands: { x: number; z: number; yaw: number }[]) {
+  zonePick = { kind, sub }
+  zoneCands = cands
+  map.style.cursor = 'copy'
+  logEl.textContent = cands.length ? t('log.zonePick', { n: cands.length }) : t('log.zonePickNone')
+  draw()
+}
+function endPick() {
+  zonePick = null
+  zoneCands = []
+  setTool(currentTool)
+  draw()
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && zonePick) { endPick(); logEl.textContent = '' } })
+function placeZone(sx: number, sy: number) {
+  if (!island || !zonePick) return
+  const [wx, wz] = toWorld(sx, sy)
+  let best = -1, bd = 30
+  zoneCands.forEach((c, i) => { const [cx, cy] = toScreen(c.x, c.z); const d = Math.hypot(cx - sx, cy - sy); if (d < bd) { bd = d; best = i } })
+  const near = zoneCands.reduce<{ yaw: number; d: number }>((m, c) => { const d = Math.hypot(c.x - wx, c.z - wz); return d < m.d ? { yaw: c.yaw, d } : m }, { yaw: 0, d: Infinity })
+  const at = best >= 0 ? zoneCands[best] : { x: wx, z: wz, yaw: near.yaw }
+  const { kind, sub } = zonePick
+  const g = island.grid, id = nextZoneId(zones, kind)
+  let zn: ZoneItem
+  if (kind === 'industrial') zn = makeIndustrial(island.heights, g, [...roads, ...existingRoads()], { id, type: sub as IndustrialType, x: at.x, z: at.z, seed: num('indSeed') + zones.length })
+  else if (kind === 'military') zn = makeMilitary(island.heights, g, { id, kind: sub as MilitaryKind, x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
+  else zn = makeAirfield(island.heights, g, { id, size: sub as AirfieldSize, x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
+  endPick()
+  if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.zoneEmpty'))
+  zones.push(zn)
+  recompose(true)
+  setInfo()
+  zoneInfo()
+  refreshSteps()
+  logEl.textContent = t('log.zoneMade', { name: t(('zone.name.' + kind) as K, { n: id.replace(/\D+/g, '') }), b: zn.entities.length }) + (zn.warnings.length ? ' · ' + zn.warnings.join(' · ') : '')
+}
+$<HTMLButtonElement>('indSuggest').addEventListener('click', () => {
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  const all = [...roads, ...existingRoads()]
+  if (!all.length) return void (logEl.textContent = t('err.zoneNoRoads'))
+  const g = island.grid, h = island.heights
+  const isWater = (x: number, z: number) => groundAt(x, z) <= 0.5
+  const c = suggestIndustrialSites(groundAt, all, {
+    type: $<HTMLSelectElement>('indType').value as IndustrialType, n: 5, isWater,
+    bounds: { minX: g.minX, minZ: g.minZ, maxX: g.minX + (g.cols - 1) * g.step, maxZ: g.minZ + (g.rows - 1) * g.step },
+    villages: [...siteDiscs(40), ...zones.map(zoneDisc)],
+  })
+  void h
+  startPick('industrial', $<HTMLSelectElement>('indType').value, c.map((q) => ({ x: q.x, z: q.z, yaw: 0 })))
+})
+$<HTMLButtonElement>('milSuggest').addEventListener('click', () => {
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  const what = $<HTMLSelectElement>('milWhat').value
+  const keepOut = [...siteDiscs(300), ...zones.map((z) => { const d = zoneDisc(z); return { ...d, r: d.r + 100 } })]
+  if (what.startsWith('air-')) {
+    const size = what.slice(4) as AirfieldSize
+    startPick('airfield', size, suggestAirfield(island.heights, island.grid, { size, seaLevel: 0, keepOut, count: 5 }).map((q) => ({ x: q.x, z: q.z, yaw: q.yaw })))
+  } else {
+    const kind = what as MilitaryKind
+    startPick('military', kind, suggestMilitary(island.heights, island.grid, { kind, seaLevel: 0, keepOut, roads: [...roads, ...existingRoads()].map((r) => r.pts), count: 5 }).map((q) => ({ x: q.x, z: q.z, yaw: q.yaw })))
+  }
+})
+function clearZones(kinds: ZoneKind[]) {
+  if (!zones.some((z) => kinds.includes(z.kind))) return
+  zones = zones.filter((z) => !kinds.includes(z.kind))
+  recompose(true)
+  setInfo()
+  zoneInfo()
+  refreshSteps()
+}
+$<HTMLButtonElement>('indClear').addEventListener('click', () => clearZones(['industrial']))
+$<HTMLButtonElement>('milClear').addEventListener('click', () => clearZones(['military', 'airfield']))
+$<HTMLButtonElement>('zoneSend').addEventListener('click', () =>
+  run(t('run.l.zones'), async () => {
+    if (!zones.length) throw new Error(t('err.zoneNone'))
+    return t('log.zoneSendRelief') + '\n' + (await toWb({ version: 0, shapes: zones.flatMap((z) => z.shapes), entities: zones.flatMap((z) => z.entities) }))
+  }),
+)
+zoneInfo()
+
+// --- surfaces from the satellite photo (tab Fields): 5 colours -> 5 surfaces (satmask.ts, idea by Jove Chiere) ---
+const SAT_SURFACES = [...new Set([...Object.keys(SURFACE_COLOURS), 'ForestDeciduous_01_Base', 'ForestConiferous_01_Base', 'Crop_Field_01', 'Heather_01', 'Concrete_01', 'Dirt_01', 'SeaBed_01'])].sort()
+function satAvail() {
+  const ok = !!traceImg && !!island
+  $('satNone').hidden = ok
+  for (const id of ['satAnalyse', 'satSend', 'satPng']) $<HTMLButtonElement>(id).disabled = !ok || (id !== 'satAnalyse' && !satQ)
+}
+function drawSatPreview() {
+  satAvail()
+  if (!satCanvas || !island || !$<HTMLInputElement>('satPreview').checked) return
+  const g = island.grid
+  const [x0, y0] = toScreen(g.minX, g.minZ + (g.rows - 1) * g.step)
+  const [x1, y1] = toScreen(g.minX + (g.cols - 1) * g.step, g.minZ)
+  ctx.save()
+  ctx.globalAlpha = 0.6
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(satCanvas, x0, y0, x1 - x0, y1 - y0)
+  ctx.restore()
+}
+function satSurfaces() {
+  if (!satQ || !island) return null
+  const g = island.grid
+  return satelliteSurfaces(satQ, g, { surfaces: satSurf, bounds: { minX: g.minX, minZ: g.minZ, maxX: g.minX + (g.cols - 1) * g.step, maxZ: g.minZ + (g.rows - 1) * g.step } })
+}
+function renderSwatches() {
+  const ul = $('satSwatches')
+  ul.textContent = ''
+  if (!satQ) return
+  satQ.palette.forEach(([r, gg, b], i) => {
+    const li = el('li')
+    const sw = el('i', 'swatch')
+    sw.style.background = `rgb(${r},${gg},${b})`
+    const pct = el('span', 'hint', `${Math.round(satQ!.share[i] * 100)} %`)
+    const sel = el('select')
+    sel.setAttribute('aria-label', t('sat.pick', { n: i + 1 }))
+    for (const k of SAT_SURFACES) { const o = el('option', '', k); o.value = k; sel.append(o) }
+    sel.value = satSurf[i]
+    sel.addEventListener('change', () => { satSurf[i] = sel.value })
+    li.append(sw, pct, sel)
+    ul.append(li)
+  })
+}
+$<HTMLButtonElement>('satAnalyse').addEventListener('click', () => {
+  if (!traceImg || !island) return
+  const t0 = performance.now()
+  const src = traceImg, w0 = src.width, h0 = src.height, k = Math.min(1, 1024 / Math.max(w0, h0))
+  const cv = document.createElement('canvas')
+  cv.width = Math.max(1, Math.round(w0 * k)); cv.height = Math.max(1, Math.round(h0 * k))
+  const c2 = cv.getContext('2d')!
+  c2.drawImage(src, 0, 0, cv.width, cv.height)
+  const img = c2.getImageData(0, 0, cv.width, cv.height)
+  const sm = num('satSmooth')
+  satQ = quantise({ width: img.width, height: img.height, data: img.data }, { k: 5, blur: sm, median: sm > 0, minRegion: sm * 8 })
+  satSurf = suggestSurfaces(satQ).map((s) => (SAT_SURFACES.includes(s) ? s : SAT_SURFACES[0]))
+  const pv = previewRgba(satQ)
+  satCanvas = document.createElement('canvas')
+  satCanvas.width = satQ.width; satCanvas.height = satQ.height
+  satCanvas.getContext('2d')!.putImageData(new ImageData(Uint8ClampedArray.from(pv), satQ.width, satQ.height), 0, 0)
+  renderSwatches()
+  $('satInfo').textContent = t('sat.done', { w: satQ.width, h: satQ.height, ms: Math.round(performance.now() - t0) })
+  draw()
+})
+$<HTMLInputElement>('satPreview').addEventListener('change', () => draw())
+$<HTMLButtonElement>('satPng').addEventListener('click', () => {
+  const s = satSurfaces()
+  if (!s) return
+  const chans = [...new Set(satSurf)]
+  const { png, legend } = packRgbaMask(s, chans.slice(0, 5))
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([png as BlobPart], { type: 'image/png' }))
+  a.download = `masque-satellite-${num('tSeed')}.png`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  $('satInfo').textContent = t('sat.legend', { l: Object.entries(legend).map(([c, n]) => `${c} = ${n}`).join(' · ') })
+})
+$<HTMLButtonElement>('satSend').addEventListener('click', () =>
+  run(t('run.l.sat'), async () => {
+    const s = satSurfaces()
+    if (!s || !island) throw new Error(t('sat.none'))
+    const r = await writeMasks({
+      addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
+      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled)],
+    })
+    return t('test.masks', { dir: r.dir })
+  }),
+)
+satAvail()
+
+// --- random world (worldgen.ts): one seed -> relief, water, places, sites, roads, villages, power, forests ---
+const rwDlg = $<HTMLDivElement>('rwDlg')
+let rwBusy = false, rwStop = false
+const RW_SLIDERS = ['towns', 'villages', 'hamlets', 'industry', 'military', 'forests'] as const
+for (const k of RW_SLIDERS) {
+  const inp = $<HTMLInputElement>('rw_' + k), out = $('rw_' + k + '_v')
+  inp.addEventListener('input', () => { out.textContent = `×${Number(inp.value).toFixed(2).replace(/\.?0+$/, '')}` })
+  out.textContent = '×1'
+}
+const rollSeed = () => { $<HTMLInputElement>('rwSeed').value = String(1 + Math.floor(Math.random() * 999999)) }
+$<HTMLButtonElement>('rwDice').addEventListener('click', rollSeed)
+$<HTMLButtonElement>('tRandom').addEventListener('click', () => {
+  if (rwBusy) return
+  rollSeed()
+  $<HTMLSelectElement>('rwSize').value = String(WORLD_DEFAULTS.size)
+  $('rwRun').hidden = true
+  rwDlg.hidden = false
+  $<HTMLButtonElement>('rwGo').focus()
+})
+$<HTMLButtonElement>('rwCancel').addEventListener('click', () => { if (rwBusy) rwStop = true; else rwDlg.hidden = true })
+rwDlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') $<HTMLButtonElement>('rwCancel').click() })
+function applyWorld(w: WorldResult) {
+  const set = (id: string, v: number) => { $<HTMLInputElement>(id).value = String(v) }
+  set('tSize', w.island.size); set('tSeed', w.island.seed); set('tMax', w.island.maxHeight); set('tSea', w.island.seaDepth)
+  set('tLand', w.island.landRatio); set('tRough', w.island.roughness); set('tIslands', 1); set('tSeaLevel', 0)
+  set('rThreshold', 400); set('rRain', 1); set('rWind', 0)
+  $<HTMLInputElement>('rLive').checked = true
+  $<HTMLButtonElement>('tGen').click() // same island (same function and seed), fresh sculpt + history base
+  waters = w.waters
+  sites = w.sites
+  roads = w.roads
+  powerLines = w.power
+  areas = w.areas.map((a) => ({ id: a.id, kind: a.kind, leaf: a.leaf, pts: a.pts }))
+  result = null
+  settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
+  setGardens = []
+  zones = w.zones
+  pendingAct = 'rwGo'
+  doneSnap.fill(null); ownSnap.fill('') // a fresh world: every step that has content counts as done
+  waterInfo(); roadInfo(); powerInfo(); zoneInfo()
+  recompose(true)
+  setInfo()
+  draw()
+  refreshSteps()
+}
+$<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
+  if (rwBusy) return
+  rwBusy = true; rwStop = false
+  const box = rwDlg.querySelector('.rwbox') as HTMLElement
+  box.querySelectorAll('input,select,button').forEach((x) => { if (x.id !== 'rwCancel') (x as HTMLInputElement).disabled = true })
+  $<HTMLButtonElement>('rwGo').disabled = true
+  $('rwRun').hidden = false
+  const prog = $<HTMLProgressElement>('rwProg'), stage = $('rwStage')
+  const v = (k: string) => Number($<HTMLInputElement>('rw_' + k).value)
+  const t0 = performance.now()
+  try {
+    const w = await generateWorld({
+      seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
+      towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
+      airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked,
+    }, {
+      progress: (s, i, n) => { prog.value = i; stage.textContent = t('wg.stage', { i: i + 1, n, s: t(('wg.st.' + s) as K) }) },
+      cancelled: () => rwStop,
+    })
+    prog.value = WORLD_STAGES.length
+    applyWorld(w)
+    rwDlg.hidden = true
+    const c = (k: string) => w.sites.filter((q) => q.kind === k).length
+    logEl.textContent = t('log.world', {
+      seed: w.params.seed, town: c('town'), village: c('village'), hamlet: c('hamlet'), roads: w.roads.length, zones: w.zones.length,
+      b: w.settlement.placed.length, ms: Math.round(performance.now() - t0),
+    }) + (w.issues.length ? ' · ' + t('log.worldIssues', { n: w.issues.length }) : '')
+  } catch (e) {
+    if (e instanceof Cancelled) stage.textContent = t('wg.cancelled')
+    else stage.textContent = (e as Error).message
+  } finally {
+    rwBusy = false
+    box.querySelectorAll('input,select,button').forEach((x) => ((x as HTMLInputElement).disabled = false))
+    $<HTMLButtonElement>('rwGo').disabled = false
+  }
+})

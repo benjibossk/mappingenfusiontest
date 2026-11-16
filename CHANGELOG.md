@@ -9,6 +9,14 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [Unreleased]
 
 ### Added
+- **Random world**: one number makes a whole map (relief, rivers / lakes, places on a score map, airfield, military bases, road network, industrial zones, villages v2, power lines, forests, surfaces). Dialog with seed + dice, map size, density sliders, airfield / power toggles, per-stage progress, Cancel. Deterministic per seed with sub-seeds per stage and zone (`src/modules/worldgen.ts`), numbers in `src/data/worldParams.ts` from MAP_KNOWLEDGE_BASE.md (enfumap + measured Everon / Arland / Kolguyev). The result lands in the normal steps (undo, autosave, history).
+- **Villages v2 wired**: new village maker on by default (kind of place, side streets, farm yards, church, port, streets per place); back gardens drawn.
+- **Industrial zones, military bases, airfields** (step Villages): "Suggest spots" shows ranked numbered spots, a click builds the site; ground levelled before the road beds; new map layer; sent with "Send all" or their own button (`src/modules/zones.ts`).
+- **Surfaces from the satellite photo** (step Fields & forests): 5 colours read from the photo, a surface per colour, smoothing, preview on the map, send as ground masks or save an RGBA PNG.
+
+### Fixed
+- 13 road generator refs in `roads.ts` now carry their `{GUID}` (check_prefabs: 0 KO outside comments).
+- Pre-send check no longer flags piers built over the water on purpose.
 - **Guided UI**: welcome screen (New island / Real place / Join a room / Open a file), 7 numbered steps (Relief, Sculpt, Water, Roads, Villages, Fields & forests, Send) with Next / Previous, done / out-of-date / to-do state, advanced settings folded.
 - **MILSPEC Tactical theme**: ink background, amber accents, Oswald titles, mono data, cursor X / Z / altitude status bar.
 - **Help**: "?" bubble with the 7 steps, controls, FAQ and glossary; guided tour on first visit.

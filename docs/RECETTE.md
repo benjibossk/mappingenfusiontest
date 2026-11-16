@@ -112,3 +112,24 @@ HT béton `{F9CF7B0E9B97B012}PG_PowerLine_HV_01_Concrete.et`, BT `{20E4877A07D28
 - [ ] Champs sur une zone montagneuse : message « N parcelles écartées : trop pentues… », pas de parcelle au sommet.
 - [ ] Panneau Partager : « Rejoindre un salon… », « Aperçu de la carte (photo ou relief) ».
 - [ ] Textes gris longs : 1re phrase + icône (i) au survol.
+
+## R9 — Générateurs branchés + monde aléatoire (ajouté le 2026-11-16)
+Navigateur (vérifié par Playwright, captures `world-*.png` du scratchpad) :
+- [ ] Accueil : 4e carte « Monde aléatoire » ; étape 1 : bouton « Monde aléatoire ». Fenêtre : numéro (dé), taille 2/4/8 km, 6 curseurs (×0 à ×2), aérodrome, lignes électriques.
+- [ ] « Fabriquer le monde » : barre « Étape i/11 : … », puis île + rivières + lieux + routes + villages + lignes + forêts + grands sites ; les étapes passent en vert ; Ctrl+Z ramène la carte d'avant.
+- [ ] Même numéro, mêmes réglages → même carte (test node : même empreinte SHA-1) ; changer « Hameaux » ne bouge pas les villes.
+- [ ] Annuler pendant le calcul : « Arrêté. Rien n'a été modifié. »
+- [ ] Villages : « Nouveau générateur de villages » coché par défaut (type de lieu, rues, cours de ferme, église, port) ; jardins en vert clair derrière les maisons.
+- [ ] Zones industrielles / Base militaire / Aérodrome : « Proposer des emplacements » → pastilles numérotées ; clic → site construit, sol aplani ; Échap annule ; « Retirer » vide.
+- [ ] Calques : « Industrie, bases, aérodromes » masque/affiche les sites.
+- [ ] Champs et forêts → « Surfaces depuis la photo satellite » : grisé sans photo ; avec photo : « Lire les couleurs » → 5 pastilles + % + liste de surfaces, aperçu sur la carte, « Enregistrer le PNG (R, V, B, A) ».
+
+Workbench (à faire par Benji, rien de neuf côté plugin : les sites partent comme formes + objets, comme les routes et les bâtiments) :
+| # | Action | Attendu | État |
+|---|---|---|---|
+| 1 | Monde aléatoire 4 km → Envoyer (relief puis tout) | Relief aplani sous l'aérodrome / les bases / les zones (pas de marche) | ⬜ |
+| 2 | Inspecter `AIR_1_air_…_rwy` | Spline `RG_Road_Concrete_USSR_02`, `RoadWidth` 35 : la piste s'affiche-t-elle en entier ? (sinon repli 2-3 splines de 15 m) | ⬜ |
+| 3 | Base militaire | Mur `WG_ConcreteWall_USSR_03` / grillage ouvert au portail, tours, casernes ; emprises **estimées** : chevauchements ? | ⬜ |
+| 4 | Zone industrielle | Rue reliée à la route principale, clôture `WG_NetFence_01` (chemin sans GUID), bâtiments sur la plateforme | ⬜ |
+| 5 | Village v2 en bord de mer | Ponton `PierWooden_01_25m` au-dessus de l'eau (ycm), abris à bateaux sur la plage | ⬜ |
+| 6 | « Envoyer comme masques du sol » (satellite) | Les 5 surfaces apparaissent dans le Workbench, aucun bloc > 5 surfaces | ⬜ |

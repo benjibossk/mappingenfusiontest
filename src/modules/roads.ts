@@ -20,20 +20,20 @@ export const ROAD_TYPES: Record<RoadType, {
   colour: string
 }> = {
   asphalt: { label: t('road.type.asphalt'), generator: '{723C2AAE6E9AD131}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01.et', half: 4, edge: 1.5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#3a3a3e' },
-  asphaltLine: { label: t('road.type.asphaltLine'), generator: 'Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01_DashedLine.et', half: 4, edge: 1.5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#44444a' },
-  asphaltNarrow: { label: t('road.type.asphaltNarrow'), generator: 'Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01_Narrow.et', half: 3, edge: 1.2, core: 'Asphalt_01', side: 'Dirt_01', colour: '#4a4a4e' },
-  asphalt2: { label: t('road.type.asphalt2'), generator: 'Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_02.et', half: 4, edge: 1.5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#3e3e44' },
-  asphalt3: { label: t('road.type.asphalt3'), generator: 'Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_03.et', half: 4, edge: 1.5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#424248' },
-  cobble: { label: t('road.type.cobble'), generator: 'Prefabs/WEGenerators/Roads/Cobblestone/RG_Road_Cobblestone_01.et', half: 3, edge: 1, core: 'Cobblestone_01_Wave', side: 'Dirt_01', colour: '#6d655a' },
-  cobbleRough: { label: t('road.type.cobbleRough'), generator: 'Prefabs/WEGenerators/Roads/Cobblestone/RG_Road_Cobblestone_01_rough.et', half: 3, edge: 1, core: 'Cobblestone_01_Wave', side: 'Dirt_01', colour: '#746a5c' },
-  concrete: { label: t('road.type.concrete'), generator: 'Prefabs/WEGenerators/Roads/Concrete/RG_Road_Concrete_USSR_02.et', half: 4, edge: 1.2, core: 'Concrete_01', side: 'Dirt_01', colour: '#8a8a86' },
-  concretePanel: { label: t('road.type.concretePanel'), generator: 'Prefabs/WEGenerators/Roads/Concrete/RG_Road_ConcretePanel_01.et', half: 3.5, edge: 1.2, core: 'Concrete_02', side: 'Dirt_01', colour: '#93938e' },
+  asphaltLine: { label: t('road.type.asphaltLine'), generator: '{512AB601E1636E26}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01_DashedLine.et', half: 4, edge: 1.5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#44444a' },
+  asphaltNarrow: { label: t('road.type.asphaltNarrow'), generator: '{8E689EDC77E2A3DC}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01_Narrow.et', half: 3, edge: 1.2, core: 'Asphalt_01', side: 'Dirt_01', colour: '#4a4a4e' },
+  asphalt2: { label: t('road.type.asphalt2'), generator: '{1E681E4ED25E5E1F}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_02.et', half: 4, edge: 1.5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#3e3e44' },
+  asphalt3: { label: t('road.type.asphalt3'), generator: '{FBF452B7DEBBC974}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_03.et', half: 4, edge: 1.5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#424248' },
+  cobble: { label: t('road.type.cobble'), generator: '{24948AB10942D327}Prefabs/WEGenerators/Roads/Cobblestone/RG_Road_Cobblestone_01.et', half: 3, edge: 1, core: 'Cobblestone_01_Wave', side: 'Dirt_01', colour: '#6d655a' },
+  cobbleRough: { label: t('road.type.cobbleRough'), generator: '{836900316A627744}Prefabs/WEGenerators/Roads/Cobblestone/RG_Road_Cobblestone_01_rough.et', half: 3, edge: 1, core: 'Cobblestone_01_Wave', side: 'Dirt_01', colour: '#746a5c' },
+  concrete: { label: t('road.type.concrete'), generator: '{82B82C5E2B744C86}Prefabs/WEGenerators/Roads/Concrete/RG_Road_Concrete_USSR_02.et', half: 4, edge: 1.2, core: 'Concrete_01', side: 'Dirt_01', colour: '#8a8a86' },
+  concretePanel: { label: t('road.type.concretePanel'), generator: '{EEB3D2A6FCAADFD6}Prefabs/WEGenerators/Roads/Concrete/RG_Road_ConcretePanel_01.et', half: 3.5, edge: 1.2, core: 'Concrete_02', side: 'Dirt_01', colour: '#93938e' },
   dirt: { label: t('road.type.dirt'), generator: '{8E83BBD5CEC42A11}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_01.et', half: 2, edge: 1, core: 'Dirt_01', colour: '#8a6f4a' },
-  dirt2: { label: t('road.type.dirt2'), generator: 'Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_02.et', half: 2, edge: 1, core: 'Dirt_02', colour: '#8f7550' },
-  forest: { label: t('road.type.forest'), generator: 'Prefabs/WEGenerators/Roads/Dirt/RG_Road_Forest_01.et', half: 2, edge: 1, core: 'Dirt_03', colour: '#6f5a3c' },
-  trailDirt: { label: t('road.type.trailDirt'), generator: 'Prefabs/WEGenerators/Roads/Dirt/RG_TrailDirt_01.et', half: 1, edge: 0.6, core: 'Dirt_01', colour: '#9a7d55' },
-  trailGravel: { label: t('road.type.trailGravel'), generator: 'Prefabs/WEGenerators/Roads/Dirt/RG_TrailGravel_01.et', half: 1, edge: 0.6, core: 'Dirt_02', colour: '#a39880' },
-  trailForest: { label: t('road.type.trailForest'), generator: 'Prefabs/WEGenerators/Roads/Dirt/RG_TrailForest_01.et', half: 1, edge: 0.6, core: 'Dirt_03', colour: '#6a5638' },
+  dirt2: { label: t('road.type.dirt2'), generator: '{E2D78F357200A53F}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_02.et', half: 2, edge: 1, core: 'Dirt_02', colour: '#8f7550' },
+  forest: { label: t('road.type.forest'), generator: '{0032466D94C588E6}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Forest_01.et', half: 2, edge: 1, core: 'Dirt_03', colour: '#6f5a3c' },
+  trailDirt: { label: t('road.type.trailDirt'), generator: '{E4FE524AD8080397}Prefabs/WEGenerators/Roads/Dirt/RG_TrailDirt_01.et', half: 1, edge: 0.6, core: 'Dirt_01', colour: '#9a7d55' },
+  trailGravel: { label: t('road.type.trailGravel'), generator: '{F49A6A9439B063BB}Prefabs/WEGenerators/Roads/Dirt/RG_TrailGravel_01.et', half: 1, edge: 0.6, core: 'Dirt_02', colour: '#a39880' },
+  trailForest: { label: t('road.type.trailForest'), generator: '{BA46C6FF0A547B99}Prefabs/WEGenerators/Roads/Dirt/RG_TrailForest_01.et', half: 1, edge: 0.6, core: 'Dirt_03', colour: '#6a5638' },
 }
 
 export const ROAD_COLOURS: Record<string, [number, number, number]> = {
