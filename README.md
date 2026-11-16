@@ -2,163 +2,124 @@
 
 # Reforger Mapper
 
-> Reforger Mapper is an unofficial, work-in-progress web tool (Vite + TypeScript) to quickly design Arma Reforger terrains: generate an island, sculpt the heightmap, paint surface masks, lay out roads, rivers, lakes and bridges, then send everything to the Enfusion Workbench through a small local bridge and a Workbench plugin (`MapGen` menu). Vanilla assets only. MIT licensed. The UI is in English and French (toggle in the top bar); the documentation is in English.
+**English** · [Français](README.fr.md)
 
-Web tool to map quickly for **Arma Reforger** (Enfusion engine) and auto-fill a map with vanilla assets, then send it to the Workbench World Editor.
+> Sketch an Arma Reforger map in your browser in 7 guided steps — relief, water, roads, villages, fields and forests — then send it to the Enfusion Workbench in one click.
 
-### What it is — and what it is not
+<p align="center"><img src="docs/img/main-en.jpg" width="100%" alt="A generated island with its road network, villages and power lines"></p>
 
-**It does not replace the Workbench.** The World Editor is a great mapping tool and the place where a map is really finished: detailing, lighting, gameplay, polish. Reforger Mapper does not try to redo it.
+Unofficial, work-in-progress fan tool (Vite + TypeScript), MIT licensed, vanilla assets only.
 
-**It is a planning and teamwork layer on top of it**, to:
-
-- 🎯 **Focus the work**: rough out the big picture fast (relief, road network, rivers, lakes, where villages and fields go) and let generators do the repetitive filling, so mappers spend their Workbench time on what matters.
-- 👥 **Build a map with several people**: a shared, lightweight view of the map that anyone can open, draw on and discuss, without each person needing the whole project in the Workbench. Run `npm run collab` on one machine (port **5790**): it prints a password. Each mapper clicks 👥, enters the server address, the room name and that password: the map syncs and everyone's cursor shows. Nothing is sent before the right password; the server only listens on its own machine unless `MAPGEN_COLLAB_HOST` is set; rooms are erased when the last mapper leaves. *(Share over a LAN or a private VPN such as Tailscale, never openly on the internet; the last change wins. Online site: on the roadmap.)*
-- 🔁 **Go back and forth**: import a world in progress from the Workbench, change the plan, send it back — the Workbench stays the source of truth.
-
-<p align="center">
-  <img src="docs/img/generated-island.png" width="49%" alt="Generated island with rivers">
-  <img src="docs/img/imported-world.png" width="49%" alt="World imported from the Workbench: roads, rivers, lakes and buildings">
-</p>
-<p align="center"><sub>Left: a generated island with its simulated rivers. Right: a world in progress imported from the Workbench, its roads, rivers, lakes and buildings ready to edit.</sub></p>
-
-## At a glance
-
-```mermaid
-flowchart LR
-    subgraph WEB["🌐 Web tool (browser)"]
-        direction TB
-        T[Terrain<br/>generate · sculpt]
-        R[Roads<br/>network · signs · barriers]
-        W[Water<br/>rivers · lakes · bridges]
-        V[Villages<br/>captured parcels]
-        F[Fields<br/>Voronoi plots]
-    end
-    B["🔌 Local bridge<br/>Node · port 5780"]
-    subgraph WB["🛠️ Enfusion Workbench"]
-        direction TB
-        P["MapGen plugin<br/>NET API · port 5775"]
-        WE[World Editor<br/>shapes · generators · prefabs]
-    end
-    WEB -- "send project (JSON)" --> B
-    B -- "MG_ApplyProject" --> P
-    P --> WE
-    WE -. "import: relief, roads,<br/>rivers, lakes, buildings" .-> P
-    P -. "MG_ExportHeights<br/>MG_ExportEntities" .-> B
-    B -. "GET /world · /entities" .-> WEB
-```
+**It does not replace the Workbench.** The World Editor is where a map is really finished (detailing, lighting, gameplay). Reforger Mapper is a planning and teamwork layer on top of it: rough out the big picture fast, let generators do the repetitive filling, plan the map with several people, and go back and forth with a world in progress — the Workbench stays the source of truth.
 
 ## Features
 
-| | Feature | Status |
+- 🧭 **Guided path in 7 steps** with Next / Previous; each step shows if it is done (green ✓), out of date after an earlier change (amber) or still to do (grey). Optional settings are folded under "Advanced settings".
+- 🏝️ **Relief**: procedural island, or a **real place** (Copernicus, IGN LiDAR, GeoTIFF, OpenStreetMap…), or the world open in the Workbench.
+- ⛰️ **Sculpt** brush, 🌊 **rivers and lakes** (drawn or found by a rain simulation), 🌉 bridges.
+- 🛣️ **Roads**: hand-drawn or a whole network between places, road signs and furniture, **⚡ power lines** (high-voltage pylons between the main places, low-voltage poles along roads).
+- 🏘️ **Villages** from house + garden parcels captured on the vanilla maps, 🌾 **fields and forests**.
+- 📤 **Send everything** to the Workbench in one click (shapes, generators, vanilla prefabs on their own layers), with a sent-vs-built report.
+- 👥 **Collaboration tab**: shared rooms, live cursors, **history** of who changed what, **comments** pinned on the map, **satellite / hillshade mini-map**.
+- ❓ **Help bubble**, a **guided tour** on first visit, FAQ and glossary.
+- 🌐 **Languages**: English and French built in; add your own with a JSON file.
+- 🎨 **MILSPEC** look: dark ink background, amber accents, cursor X / Z / altitude in the status bar.
+
+| Welcome | Help |
+|---|---|
+| <img src="docs/img/welcome-en.jpg" alt="Welcome screen"> | <img src="docs/img/help-en.jpg" alt="Help panel"> |
+| **Collaboration** | **Language selector** |
+| <img src="docs/img/collab-en.jpg" alt="Collaboration tab"> | <img src="docs/img/lang-en.jpg" alt="Language selector"> |
+
+## Quick start (no coding needed)
+
+1. Install [Node.js](https://nodejs.org) (LTS). Download this repository (green **Code** button → Download ZIP) and unzip it.
+2. Open a terminal in the folder and type `npm install`, then `npm run dev`. Open the address it prints (http://localhost:5173).
+3. On the welcome screen pick **New island** (recommended), **Real place**, **Join a room**, or **Open a file…** — then follow the steps.
+
+Everything is saved in your browser. **Save…** / **Download the project file** keeps a copy on disk.
+
+## The 7 steps
+
+| # | Step | What you do |
 |---|---|---|
-| 🏝️ | **Island generation**: procedural heightmap (noise, island shape), heightmap export | ✅ |
-| ⛰️ | **Sculpt**: interactive terrain brush (approach inspired by mapgen4) | ✅ |
-| 🎨 | **Surfaces and masks**: surface masks from altitude, slope… + satellite image | ✅ |
-| 🛣️ | **Roads**: drawing, road network (graph), furniture and signs along roads | ✅ |
-| 🌊 | **Water**: rivers (flow accumulation), lakes, banks | ⚠️ placement not right yet |
-| 🌉 | **Bridges** at road / river crossings | ⚠️ placement to fix |
-| ⚡ | **Power lines**: pylons and poles linking villages | ⬛ to do |
-| 🏘️ | **Villages** built from house + garden parcels captured on the vanilla maps | 🧪 testing |
-| 🌾 | **Countryside**: farm plots (Voronoi, inspired by AgriFieldGenerator) | ✅ |
-| 📥 | **Import a world in progress**: relief, roads, rivers, lakes become editable; buildings and signs stay locked | 🧪 testing |
-| 📊 | **Entity budget**: entities per cell vs platform limit, terrain occlusion, duplicates and buried objects | ✅ limits provisional |
-| 📤 | **Send to the Workbench**: shapes, generators and vanilla prefabs, on their own layers | ✅ |
+| 1 | **Relief** | Generate an island, or import a real place or a heightmap. |
+| 2 | **Sculpt** | Shape the ground by hand: raise, dig, flatten, smooth, paint the sea. |
+| 3 | **Water** | Draw rivers and lakes, or let the rain simulation find them. |
+| 4 | **Roads** | Draw roads, or build a whole network between places. Power lines are here too. |
+| 5 | **Villages** | Fill the places along the roads with houses, lanes and squares. |
+| 6 | **Fields & forests** | Mark a zone to split into fields and hedges, then forests and areas. |
+| 7 | **Send** | Check the map, then send everything to the Workbench. |
 
-### Round trip with a world in progress
+Mouse and keyboard: wheel = zoom, middle button = pan, right click = actions, Shift+wheel / Ctrl+wheel = brush radius / strength, Ctrl+Z / Ctrl+Y = undo / redo, Esc = cancel, keys 1–9 = sculpt tools. The **?** bubble (bottom left) reopens the help and the tour.
 
-```mermaid
-sequenceDiagram
-    actor M as Mapper
-    participant S as Web tool
-    participant B as Bridge
-    participant W as Workbench
-    M->>S: "Import the open world"
-    S->>B: GET /world, GET /entities
-    B->>W: MG_ExportHeights, MG_ExportEntities (read only)
-    W-->>S: relief + roads, rivers, lakes, buildings, signs
-    Note over S: roads / rivers / lakes → editable<br/>buildings / signs → locked<br/>bridges → rebuilt by the tool
-    M->>S: edit, add villages, fields…
-    M->>S: Send
-    S->>B: project + list of replaced objects
-    B->>W: MG_ApplyProject
-    Note over W: replaced objects deleted only by the send<br/>that rebuilds them (no duplicates)
-```
+## Connecting the Workbench
 
-### Village generation from captured parcels
+Only needed for step 7 — you can draw everything without it. The chip at the top (**Workbench: not connected / connected**) shows the state; click it for these steps:
+
+1. **Install the addon once**: copy `workbench/Mapgenerator/` into `Documents/My Games/ArmaReforgerWorkbench/addons/`, then add it in the Workbench.
+2. **Enable the NET API**: Workbench > Options, NET API enabled (port **5775**).
+3. Open the Workbench with the Mapgenerator addon and your world loaded.
+4. **Start the relay**: double-click `start-bridge.bat` (Windows), or `npm run bridge` (port **5780**). Leave its window open.
+5. Click **Retry**: the chip turns green.
+
+No AI tool or MCP server is needed. The plugins appear in the World Editor **MapGen** menu:
+`Apply project`, `Apply heightmap`, `Labels`, `Entity budget` (entities per cell, terrain occlusion, duplicates, buried objects), `Capture templates` (house + garden parcels for the village generator), `Measure prefabs`, `Regenerate MG_ shapes`, `Register surfaces`, plus diagnostics (`Stamp calibration`, `Terrain probe`, `Create test shapes`, `Terrain write test` / `test 2`).
+
+When sending, the bridge writes `profile/MapGen/sent.txt`, the plugin writes `built.txt`, and `report.txt` compares them. Big projects are split in ~300 KB parts.
 
 ```mermaid
 flowchart LR
-    A["Vanilla map<br/>(Everon, Arland…)"] -->|"MapGen - Capture templates"| B["Parcels JSON<br/>house + garden, fences,<br/>sheds, trees"]
-    B -->|"GET /templates"| C[Village generator]
-    D[Roads + sites] --> C
-    E["Existing buildings<br/>(locked)"] -->|"kept clear"| C
-    C -->|"parcel = one block,<br/>rotated with its house"| F[World Editor]
+    WEB["🌐 Web tool"] -- "project (JSON)" --> B["🔌 Bridge · 5780"]
+    B -- "MG_ApplyProject" --> P["MapGen plugin · NET API 5775"]
+    P --> WE["World Editor"]
+    P -. "MG_ExportHeights / MG_ExportEntities" .-> B
+    B -. "GET /world · /entities" .-> WEB
 ```
 
-Main modules: `src/modules/` (`island`, `sculpt`, `roads`, `network`, `hydro`, `water`, `campaign`), `src/terrain.ts`, `src/project.ts`, `src/bridge.ts`.
+Importing a world in progress (**Import the open world**): relief, roads, rivers and lakes become editable; buildings and signs stay locked; objects replaced are deleted only by the send that rebuilds them (no duplicates).
 
-## How it works
+## Collaboration
 
-1. **Site**: `npm install` then `npm run dev` → http://localhost:5173
-2. **Local bridge**: `npm run bridge` (Node, port **5780**), which links the site to the Workbench.
-3. **Workbench plugin**: copy `workbench/Mapgenerator/` as an addon into
-   `Documents/My Games/ArmaReforgerWorkbench/addons/`, then add it in the Workbench.
-4. **Enable the Workbench NET API**: Workbench > Options, NET API enabled (port **5775**). The bridge talks to the
-   plugin's own handlers (`MG_*`); nothing else is needed (no AI tool, no MCP server).
+1. One person runs `npm run collab` (port **5790**); it prints a password.
+2. Everyone clicks **Share** (or **Join a room** on the welcome screen), enters the server address, a room name and the password.
+3. The map syncs and everyone's cursor shows. The Collaboration tab has:
+   - **Comments**: pin a numbered comment on the map, reply, resolve.
+   - **History**: who did what, in which step, when — click a line to centre the map there.
+   - **Satellite view**: a mini-map (satellite photo for real places, hillshade otherwise) with opacity control.
 
-   The plugins appear in the World Editor **MapGen** menu:
-   - `MapGen - Apply project`: applies the project sent by the site
-   - `MapGen - Apply heightmap`
-   - `MapGen - Labels`: debug labels
-   - `MapGen - Entity budget`: entity count per cell, terrain occlusion, suspects (duplicates, buried objects)
-   - `MapGen - Capture templates`: captures building parcels (house + garden) from any world, for the village generator
-   - `MapGen - Measure prefabs`
-   - `MapGen - Regenerate MG_ shapes`
-   - `MapGen - Register surfaces`
-   - `MapGen - Stamp calibration`, `MapGen - Terrain probe`, `MapGen - Create test shapes`,
-     `MapGen - Terrain write test` / `test 2` (diagnostic tools)
+History, comments and the last map are kept in `collab/data/<room>.jsonl` / `.project.json` and come back after a restart. Nothing is sent before the right password; the server only listens on its own machine unless `MAPGEN_COLLAB_HOST` is set. Share over a LAN or a private VPN (e.g. Tailscale), never openly on the internet; the last change wins.
 
-## Documentation (`docs/`)
+## Languages and translating
 
-| File | Content |
+Click the language button (top right): pick a language (each shows its % translated), or tick "Follow the browser language". Arrow keys + Enter work, Esc closes.
+
+**Add a language** — no coding needed:
+1. In the language menu, **Export the language file**: you get a JSON with every text key.
+2. Translate the values (keep the keys and `{placeholders}` as they are).
+3. **Import a translation**: it appears as a new language in the list; missing texts fall back to English.
+
+To ship it with the tool for everyone, add the table to `src/i18n.ts` and open a pull request (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+## Development
+
+| Command | What it does |
 |---|---|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture: a single tool, three layers, modules sharing one project |
-| [ROADMAP.md](docs/ROADMAP.md) | Roadmap and tech stack |
-| [RESEARCH.md](docs/RESEARCH.md) | Research file (BARNMAP, Map-generator, mapgen4, AgriFieldGenerator…) |
-| [STATE_OF_ART.md](docs/STATE_OF_ART.md) | State of the art of terrain generation / auto-fill (engines, tools, data, libs) |
-| [CITIES.md](docs/CITIES.md) | Village and town generation: state of the art and proposed pipeline |
-| [GENERATORS.md](docs/GENERATORS.md) | List of vanilla World Editor generator prefabs (`Prefabs/WEGenerators/`) |
-| [ENFUSION_FORMATS.md](docs/ENFUSION_FORMATS.md) | Enfusion formats and API (verified / assumed) |
-| [WIKI_TERRAIN.md](docs/WIKI_TERRAIN.md) | Summary of the Bohemia wiki on Reforger terrain creation |
-| [WORKSHOP_TERRAIN_MODS.md](docs/WORKSHOP_TERRAIN_MODS.md) | Study of Workshop terrain tooling mods |
-| [FINDINGS.md](docs/FINDINGS.md) | Findings and pitfalls (Workbench script, measured prefabs, water, tooling) and remaining work |
-| [BENCHMARK_GIORBEV.md](docs/BENCHMARK_GIORBEV.md) | Analysis of giorbev's benchmark tool |
-| [FF_ET_SKILLS.md](docs/FF_ET_SKILLS.md) | Notes reused from Reforger / Freedom Fighters modding |
+| `npm install` | Install dependencies |
+| `npm run dev` | Site with live reload (http://localhost:5173) |
+| `npm run build` | Type-check (`tsc`) and build to `dist/` |
+| `npm run preview` | Serve the built site |
+| `npm run bridge` | Local relay to the Workbench (port 5780) — or `start-bridge.bat` |
+| `npm run collab` | Collaboration server (port 5790) |
 
-## Status and roadmap
+Layout: `src/` (site: `main.ts`, `i18n.ts`, `collab.ts`, `project.ts`, `terrain.ts`, `realWorld.ts`, `modules/`), `bridge/` (Node relay), `collab/` (room server), `workbench/Mapgenerator/` (Workbench addon). Manual test plan: [docs/RECETTE.md](docs/RECETTE.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 
-**Work in progress** — the goal is a real mapping assistant next to the Workbench (not a replacement), and later an online space where several mappers plan the same map together.
-
-| Phase | Goal | Status |
-|---|---|---|
-| **1. Base** | Terrain, sculpting, roads, rivers, lakes, bridges, fields, send to the Workbench | ✅ done |
-| **2. Work on real maps** | Import a world in progress, edit it, send it back without duplicates | ✅ done, being tested |
-| **3. Villages** | Villages built from parcels: captured on the vanilla maps or made in the parcel library (📦), shared by the community | 🟡 in progress |
-| **4. Fix what exists** | Bridge placement, rivers and lakes sitting right in the relief, better banks | 🟡 in progress |
-| **5. Fill the map** | Rocks on slopes, automatic forests, paths, field zones, power lines | ⬜ to do |
-| **6. Complete import** | Ground surfaces of an existing world, generator settings (road width…) | ⬜ to do |
-| **7. Together** | Shared rooms ✅ (first version) → online site, accounts, SHP / CSV export, real-time merging | 🟡 started |
-| **8. Real-world import** | Start from a real place: elevation (DEM, LiDAR), roads, water, forests, fields and land cover, then edit it like a base mesh | ✅ first full version (elevation, LiDAR GeoTIFF, OpenStreetMap roads / water / forests / fields / buildings, forest and field ground, tracing image), land cover, satellite tracing — on par with BARNMAP |
-
-What changed and when: [CHANGELOG.md](CHANGELOG.md).
-
-### Start from a real place
+## Start from a real place
 
 The idea: load a real area as a **starting shape**, then reshape it with the brush, the generators and the
 parcel library, like a primitive mesh in 3D modelling.
 
-**How (Island tab → 🌍 Real place…):**
+**How (step 1 Relief → 🌍 Real place…, or "Real place" on the welcome screen):**
 1. Open an elevation file — GeoTIFF (Copernicus, national LiDAR terrain models…), ESRI ASCII grid `.asc`
    (e.g. IGN LiDAR HD / RGE ALTI), SRTM `.hgt` or a greyscale PNG (8 or 16 bits) — **or** type a latitude and a
    longitude to download the Copernicus DEM 30 m tile (through the bridge if the browser is refused).
@@ -190,21 +151,46 @@ scaled and simplified); a 30 m DEM is smooth and needs sculpting for small detai
 licence (OpenStreetMap: ODbL, attribution and share-alike; Copernicus: attribution) — the tool writes it in the log
 and keeps it in the project. A busy town can bring hundreds of roads: untick small roads and paths for a first pass.
 
-### Known issues / not finished
+## Known issues
 
 - 🌉 **Bridges**: deck height, length and alignment with the road are often off; some crossings get no bridge or a misplaced one.
 - 🌊 **Rivers**: the course and bed do not always sit right in the relief (water floating above or sunk under the banks); banks are still rough.
 - 💧 **Lakes**: shore and water level not always matched to the terrain; lake placement needs work.
-- ⚡ **Power lines**: no electric network yet (pylons, poles and wires between villages and along roads).
-- 🪨 Rocks, 🌲 automatic forests, 🛤️ paths and 🌾 field zones: not generated yet.
+- 🪨 Rocks, 🌲 automatic forests and 🛤️ paths: not generated yet.
 - 🧱 Ground surfaces are not imported from an existing world (relief only).
 - 📊 Entity budget limits per platform are provisional (no measured FPS data yet).
 
-Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md). Help is welcome on: bridge, river and lake placement, power lines, riverbank / lake shore generation, rocks on steep slopes, automatic forests, paths and field zones, ground surface import, and FPS bench data per platform (Xbox Series S/X, PS5, PC) to calibrate the entity budget.
+Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md). Help is welcome on: bridge, river and lake placement, riverbank / lake shore generation, rocks on steep slopes, automatic forests, paths and field zones, ground surface import, and FPS bench data per platform (Xbox Series S/X, PS5, PC) to calibrate the entity budget.
 
 - **Vanilla assets** only: no third-party content is required or redistributed.
 - **No AI tool required**: the site, the bridge and the plugin are all you need.
 - Sources, inspirations and licences: see [CREDITS.md](CREDITS.md).
+
+## Documentation (`docs/`)
+
+Notes marked (FR) are written in French.
+
+| File | Content |
+|---|---|
+| [RECETTE.md](docs/RECETTE.md) | (FR) Manual test plan: what to check before calling a feature done |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture: one tool, three layers, modules sharing one project |
+| [ROADMAP.md](docs/ROADMAP.md) · [ROADMAP_NEXT.md](docs/ROADMAP_NEXT.md) | Roadmap, tech stack, next steps (FR) |
+| [UX_TEST_2026-11-16.md](docs/UX_TEST_2026-11-16.md) | (FR) Usability test of the guided UI |
+| [FINDINGS.md](docs/FINDINGS.md) | Findings and pitfalls (Workbench script, measured prefabs, water, tooling) |
+| [ENFUSION_FORMATS.md](docs/ENFUSION_FORMATS.md) | Enfusion formats and API (verified / assumed) |
+| [GENERATORS.md](docs/GENERATORS.md) | Vanilla World Editor generator prefabs (`Prefabs/WEGenerators/`) |
+| [WIKI_TERRAIN.md](docs/WIKI_TERRAIN.md) | Summary of the Bohemia wiki on terrain creation |
+| [CITIES.md](docs/CITIES.md) | Village and town generation: state of the art and pipeline |
+| **Research** | |
+| [RESEARCH.md](docs/RESEARCH.md) | BARNMAP, Map-generator, mapgen4, AgriFieldGenerator… |
+| [STATE_OF_ART.md](docs/STATE_OF_ART.md) | Terrain generation / auto-fill: engines, tools, data, libs |
+| [ARTE_STUDY.md](docs/ARTE_STUDY.md) | (FR) ARTE QGIS plugin: algorithms ported to this tool |
+| [TAT_STUDY.md](docs/TAT_STUDY.md) | (FR) Terrain Automation Tools, Outside Terrain Core, Advanced Terrain Tools |
+| [WORKSHOP_TERRAIN_MODS.md](docs/WORKSHOP_TERRAIN_MODS.md) | Workshop terrain tooling mods |
+| [COLLAB_RESEARCH.md](docs/COLLAB_RESEARCH.md) | (FR) Building a map with several people |
+| [INSPIRATIONS.md](docs/INSPIRATIONS.md) · [OTHER_GAMES_TOOLS.md](docs/OTHER_GAMES_TOOLS.md) · [MAPMAKING_BLOGS.md](docs/MAPMAKING_BLOGS.md) | (FR) Tool watch, map tools from other games, how map makers work |
+| [BENCHMARK_GIORBEV.md](docs/BENCHMARK_GIORBEV.md) | giorbev's benchmark tool |
+| [FF_ET_SKILLS.md](docs/FF_ET_SKILLS.md) | Notes reused from Reforger / Freedom Fighters modding |
 
 ## Thanks, credits and sources
 
@@ -234,7 +220,7 @@ This project stands on the work of many people — thank you to all of them. Wha
 | [PCGExtendedToolkit](https://github.com/PCGEx/PCGExtendedToolkit) | PCGEx | — |
 | [Unreal PCG / Biome Core](https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-pcg-biome-core-and-sample-plugins-overview-guide-in-unreal-engine) | Epic Games | proprietary |
 | [ReforgerSatGenerator](https://github.com/granQ/ReforgerSatGenerator) | granQ | — |
-| [ARTE (QGIS plugin)](https://plugins.qgis.org/plugins/ARTE/) | — | — |
+| [ARTE (QGIS plugin)](https://plugins.qgis.org/plugins/ARTE/) | Icebird | MIT (© 2026 Icebird) — road width table, road bed and NoData fill ported (see CREDITS.md) |
 
 ### Data
 
