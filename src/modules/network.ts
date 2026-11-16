@@ -5,12 +5,32 @@
 // 3. each link is routed with A* over the heights: slope costs, sea is forbidden, rivers are crossed
 //    rarely, cells already on a road are cheaper so roads share corridors instead of running side by side
 import type { Grid } from './island'
-import type { Road, RoadType } from './roads'
+import { centreLine, type Road, type RoadType } from './roads'
 
 export type SiteKind = 'town' | 'village' | 'hamlet'
 export interface Site { id: string; x: number; z: number; kind: SiteKind }
 //! settlement footprint radius (m), also the distance under which a road already serves it
 export const SITE_RADIUS: Record<SiteKind, number> = { town: 250, village: 120, hamlet: 50 }
+// steepest grade a vehicle copes with, by road family (shared with the pre-send check in validate.ts)
+const MAX_GRADE: Partial<Record<RoadType, number>> = { dirt: 0.2, dirt2: 0.2, forest: 0.22, trailDirt: 0.3, trailGravel: 0.3, trailForest: 0.3 }
+export const maxGrade = (t: RoadType) => MAX_GRADE[t] ?? 0.12
+/** steepest grade along a road, over 20 m steps (the grid is coarse: shorter steps only measure noise).
+ *  The pre-send check (validate.ts) uses this same measure. */
+export function worstGrade(pts: number[], h: ArrayLike<number>, g: Grid): { grade: number; x: number; z: number } {
+  const at = (x: number, z: number) => {
+    const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
+    return h[r * g.cols + c]
+  }
+  const line = centreLine(pts, 20)
+  let grade = 0, x = 0, z = 0
+  for (let i = 2; i + 1 < line.length; i += 2) {
+    const d = Math.hypot(line[i] - line[i - 2], line[i + 1] - line[i - 1])
+    if (d < 1) continue
+    const gr = Math.abs(at(line[i], line[i + 1]) - at(line[i - 2], line[i - 1])) / d
+    if (gr > grade) { grade = gr; x = (line[i] + line[i - 2]) / 2; z = (line[i + 1] + line[i - 1]) / 2 }
+  }
+  return { grade, x, z }
+}
 const ORDER: Record<SiteKind, number> = { town: 0, village: 1, hamlet: 2 }
 export interface NetworkParams {
   sites: number // how many places to link
@@ -75,6 +95,25 @@ export function pickSites(h: number[], g: Grid, river: Float32Array | undefined,
   // best sites become towns (~15 %), then villages (~35 %), the rest hamlets
   const towns = Math.max(1, Math.round(out.length * 0.15)), villages = Math.round(out.length * 0.35)
   out.forEach((s, i) => (s.kind = i < towns ? 'town' : i < towns + villages ? 'village' : 'hamlet'))
+  // a place must sit wholly on dry land: shrink it (town -> village -> hamlet) until its radius is dry, else drop it
+  const wet = (s: Site) => {
+    const R = SITE_RADIUS[s.kind]
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2
+      for (const f of [0.35, 0.7, 1]) {
+        const c = Math.round((s.x + Math.cos(a) * R * f - g.minX) / g.step), r = Math.round((s.z + Math.sin(a) * R * f - g.minZ) / g.step)
+        if (c < 0 || r < 0 || c >= g.cols || r >= g.rows || h[r * g.cols + c] <= 0.5) return true
+      }
+    }
+    return false
+  }
+  const SMALLER: Record<SiteKind, SiteKind | null> = { town: 'village', village: 'hamlet', hamlet: null }
+  for (let i = out.length - 1; i >= 0; i--) {
+    let k: SiteKind | null = out[i].kind
+    while (k && wet({ ...out[i], kind: k })) k = SMALLER[k]
+    if (k) out[i].kind = k; else out.splice(i, 1)
+  }
+  if (out.length && !out.some((s) => s.kind === 'town')) out[0].kind = 'town'
   const count: Record<string, number> = {}
   out.forEach((s) => (s.id = `${s.kind.toUpperCase()}_${(count[s.kind] = (count[s.kind] ?? 0) + 1)}`))
   return out
@@ -122,7 +161,7 @@ const RANK = DIR_ORDER.map((_, k) => DIR_ORDER.indexOf(k))
 //! A* from `from` to any cell of `goal`; returns the cell path or null.
 //! The state is (cell, heading): a step may turn by one heading notch at most (~25 degrees), which
 //! keeps hairpins wide enough for the road generator; cliffs beside the road and the coast cost extra.
-function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Uint8Array, from: number, goal: Set<number>, goalXY: [number, number], maxSlope: number): number[] | null {
+function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Uint8Array, from: number, goal: Set<number>, goalXY: [number, number], maxSlope: number, hardGrade = Infinity): number[] | null {
   const n = g.cols * g.rows, D = DIRS.length
   const cost = new Float32Array(n * D).fill(Infinity)
   const prev = new Int32Array(n * D).fill(-1)
@@ -158,6 +197,7 @@ function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Ui
       const j = rr * g.cols + cc
       if (h[j] <= 0.3) continue // sea (and the waterline)
       const run = Math.hypot(dc, dr) * g.step
+      if (Math.abs(h[j] - h[i]) / run > hardGrade) continue // steeper than the check allows for this road type
       const grade = Math.abs(h[j] - h[i]) / run / (maxSlope / 100)
       let w = run * (1 + grade * grade * 3 + (grade > 1 ? (grade - 1) * 20 : 0))
       // cross slope: terrain falling sideways = cliff edge or a bench cut into the hill
@@ -268,17 +308,28 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     const target = pool.reduce((best, c) => (dist(c, s) < dist(best, s) ? c : best))
     const goal = new Set<number>([cellOf(target.x, target.z)])
     if (s.kind !== 'town') owner.forEach((_, i) => goal.add(i))
-    const path = route(h, g, river, onRoad, start, goal, [target.x, target.z], p.maxSlope)
-    if (!path || path.length < 2) continue
-    // stop where the path joins an existing road (it would only run on top of it)
-    let end = path.length - 1
-    for (let k = 1; k < path.length; k++) if (onRoad[path[k]]) { end = k; break }
-    const cells = path.slice(0, end + 1)
-    const flat: number[] = []
-    cells.forEach((i) => flat.push(...xyOf(i)))
-    const pts = easeCorners(simplify(flat, g.step * 0.9), 60)
+    const want = s.kind === 'town' ? p.main : s.kind === 'village' ? p.minor : p.lane
+    // The route is held under the road type's grade limit (the one the pre-send check uses), tighter on each retry
+    // since smoothing can cut up a slope the route went round; a hill too steep for that type turns the link into
+    // a dirt track (steeper limit). No road rather than one the check would flag.
+    let type = want, pts: number[] = [], cells: number[] = []
+    search: for (const tt of maxGrade(want) < maxGrade('dirt') ? [want, 'dirt' as RoadType] : [want])
+      for (const f of [0.9, 0.65, 0.45]) {
+        const path = route(h, g, river, onRoad, start, goal, [target.x, target.z], p.maxSlope, maxGrade(tt) * f)
+        if (!path || path.length < 2) break // no way under this limit: a tighter one will not find any either
+        // stop where the path joins an existing road (it would only run on top of it)
+        let end = path.length - 1
+        for (let k = 1; k < path.length; k++) if (onRoad[path[k]]) { end = k; break }
+        const cl = path.slice(0, end + 1)
+        const flat: number[] = []
+        cl.forEach((i) => flat.push(...xyOf(i)))
+        for (const tol of [0.9, 0.4, 0]) {
+          const cand = easeCorners(tol ? simplify(flat, g.step * tol) : flat, 60)
+          if (cand.length >= 4 && worstGrade(cand, h, g).grade <= maxGrade(tt)) { pts = cand; cells = cl; type = tt; break search }
+        }
+      }
     if (pts.length < 4) continue
-    const road: Road = { id: `ROAD_AUTO_${++n}`, type: s.kind === 'town' ? p.main : s.kind === 'village' ? p.minor : p.lane, pts }
+    const road: Road = { id: `ROAD_AUTO_${++n}`, type, pts }
     // T junction: the end point must also be a control point of the road it reaches
     const hit = owner.get(cells[cells.length - 1])
     if (hit) insertPoint(hit, pts[pts.length - 2], pts[pts.length - 1])

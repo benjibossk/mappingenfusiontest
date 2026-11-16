@@ -489,3 +489,21 @@ button.icon { width: 32px; height: 32px; padding: 0; }
 .tourbox p { margin: 6px 0 12px; color: var(--tx-1); line-height: 1.4; }
 .tourbox .row { justify-content: flex-end; gap: 8px; }
 .tourbox button { padding: 6px 12px; }
+
+/* Workbench chip: neutral grey while not connected (drawing does not need it), green once connected */
+.top .status { cursor: pointer; text-transform: none; letter-spacing: .02em; }
+.top .status::before { background: var(--tx-3); }
+.top .status[data-ok="true"] { color: var(--tx-1); }
+.rail button[hidden] { display: none; }
+.top .hist.withlbl { width: auto; gap: 6px; padding: 0 8px; display: inline-flex; align-items: center; }
+.top .hist.withlbl span { font: 12px var(--f-body); }
+.wbguide { border: 1px solid var(--amber); background: var(--ink-0); padding: 10px 12px; margin: 8px 0; }
+.wbguide strong { color: var(--amber-hi); }
+.wbsteps { margin: 6px 0; padding-left: 1.3em; line-height: 1.45; }
+.wbsteps li { margin: 3px 0; }
+.helppanel details.faq { margin: 4px 0; }
+.helppanel details.faq summary { cursor: pointer; color: var(--tx-1); }
+.helppanel details.faq p { margin: 4px 0 8px 1em; color: var(--tx-2); }
+.helppanel dl.gloss { display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; margin: 6px 0; }
+.helppanel dl.gloss dt { font-weight: 600; color: var(--tx-1); }
+.helppanel dl.gloss dd { margin: 0; color: var(--tx-2); }

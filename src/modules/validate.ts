@@ -2,15 +2,13 @@
 // Each issue has a position so the map can point at it.
 
 import type { Grid } from './island'
-import { SITE_RADIUS, type Site } from './network'
-import { centreLine, type Road, type RoadType } from './roads'
+import { SITE_RADIUS, maxGrade, worstGrade, type Site } from './network'
+import type { Road } from './roads'
 import type { Placed } from './settlements'
 
 export interface Issue { kind: 'noBridge' | 'steepRoad' | 'isolated' | 'buildingWet'; x: number; z: number; id: string; value?: number }
 
-// steepest grade a vehicle copes with, by road family
-const MAX_GRADE: Partial<Record<RoadType, number>> = { dirt: 0.2, dirt2: 0.2, forest: 0.22, trailDirt: 0.3, trailGravel: 0.3, trailForest: 0.3 }
-const DEFAULT_GRADE = 0.12
+// grade limits per road type: maxGrade() in network.ts, the same the auto network routes with
 
 export function validate(o: {
   roads: Road[]
@@ -27,19 +25,13 @@ export function validate(o: {
   }
   const out: Issue[] = []
   for (const g of o.refusedGaps) out.push({ kind: 'noBridge', id: g.id, x: (g.from[0] + g.to[0]) / 2, z: (g.from[1] + g.to[1]) / 2 })
-  // grade over 20 m steps (the grid is coarse: shorter steps only measure noise)
+  // grade over 20 m steps, the same measure the auto network routes with (network.ts)
   for (const r of o.roads) {
     if (r.pts.length < 4) continue
-    const line = centreLine(r.pts, 20)
-    let worst = 0, wx = 0, wz = 0
-    for (let i = 2; i + 1 < line.length; i += 2) {
-      const d = Math.hypot(line[i] - line[i - 2], line[i + 1] - line[i - 1])
-      if (d < 1) continue
-      const g = Math.abs(at(line[i], line[i + 1]) - at(line[i - 2], line[i - 1])) / d
-      if (g > worst) { worst = g; wx = (line[i] + line[i - 2]) / 2; wz = (line[i + 1] + line[i - 1]) / 2 }
-    }
-    if (worst > (MAX_GRADE[r.type] ?? DEFAULT_GRADE)) out.push({ kind: 'steepRoad', id: r.id, x: wx, z: wz, value: Math.round(worst * 100) })
+    const w = worstGrade(r.pts, o.heights, o.grid)
+    if (w.grade > maxGrade(r.type)) out.push({ kind: 'steepRoad', id: r.id, x: w.x, z: w.z, value: Math.round(w.grade * 100) })
   }
+
   // a place no road reaches
   for (const s of o.sites) {
     const reach = SITE_RADIUS[s.kind] * 1.5

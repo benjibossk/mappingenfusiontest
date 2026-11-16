@@ -74,6 +74,7 @@ const toWb = async (p: Project) => {
 }
 import { SITE_RADIUS, buildNetwork, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
+import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
@@ -111,6 +112,19 @@ const ICON: Record<string, string> = {
 }
 const ic = (n: string, size = 18) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICON[n]}</svg>`
 const info = (k: Key) => `<i class="info" title="${t(k)}" aria-label="${t(k)}" role="img">${ic('info', 13)}</i>`
+type K = Parameters<typeof t>[0]
+/** friendly, localised map label for a Workbench id (the id stays in the data and the tooltips) */
+function nice(id: string, roadType?: string): string {
+  const n = id.match(/(\d+)$/)?.[1] ?? ''
+  let m = id.match(/^WATER_(RIVER|LAKE)_\d+$/)
+  if (m) return t(m[1] === 'RIVER' ? 'name.river' : 'name.lake', { n })
+  m = id.match(/^(TOWN|VILLAGE|HAMLET)_\d+$/)
+  if (m) return t(('name.' + m[1].toLowerCase()) as K, { n })
+  if (roadType && /^ROAD_/.test(id) && n) return `${t(('road.type.' + roadType) as K)} ${n}`
+  return id
+}
+const connectSteps = () => `<ol class="wbsteps"><li>${t('wb.how.1')}</li><li>${t('wb.how.2')}</li><li>${t('wb.how.3')}</li></ol>`
+let openHelp: (section?: string) => void = () => {}
 const LANG_NAME = LANGS.find((l) => l.code === getLang())?.name ?? getLang()
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -119,10 +133,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <strong class="brand">reforger-mapper</strong>
     <button id="undo" class="hist" title="${t('app.undo')}" aria-label="${t('app.undo')}">${ic('undo')}</button>
     <button id="redo" class="hist" title="${t('app.redo')}" aria-label="${t('app.redo')}">${ic('redo')}</button>
-    <span id="status" class="status" title="${t('app.refresh')}">…</span>
+    <span id="status" class="status" role="button" tabindex="0" title="${t('wb.chip.tip')}">${t('wb.chip.off')}</span>
     <span id="collabInfo" class="hint"></span>
     <span class="grow"></span>
-    <button id="collab" class="hist" title="${t('collab.tip')}" aria-label="${t('collab.tip')}">${ic('users')}</button>
+    <button id="collab" class="hist withlbl" title="${t('collab.tip')}" aria-label="${t('collab.tip')}">${ic('users')}<span>${t('collab.short')}</span></button>
     <div class="langsel">
       <button id="lang" class="langbtn" type="button" title="${t('lang.title')}" aria-haspopup="listbox" aria-expanded="false">${ic('globe', 16)}<span class="lcode">${getLang().toUpperCase()}</span><span class="lname"> · ${LANG_NAME}</span>${completion(getLang()) < 100 ? `<span class="lpct">${completion(getLang())}%</span>` : ''}${ic('caret', 14)}</button>
       <div id="langMenu" class="langmenu" hidden>
@@ -198,6 +212,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <ol class="hpsteps">${STEPS.map((st, i) => `<li><b>${String(i + 1).padStart(2, '0')}</b><span><strong>${t(st.label)}</strong> — ${t(st.lead)}</span><button type="button" class="secondary" data-help-go="${st.tab}">${t('help.go')}</button></li>`).join('')}</ol>
         <h3>${t('help.controls')}</h3>
         <ul class="hpkeys">${(['help.c1', 'help.c2', 'help.c3', 'help.c4', 'help.c5'] as const).map((k) => `<li>${t(k)}</li>`).join('')}</ul>
+        <h3 id="helpConnect">${t('help.connect')}</h3>
+        <p>${t('wb.how.lead')}</p>
+        ${connectSteps()}
+        <div class="row"><button type="button" class="secondary wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button></div>
+        <h3>${t('help.faq')}</h3>
+        ${(['1', '2', '3', '4', '5'] as const).map((k) => `<details class="faq"><summary>${t(('faq.q' + k) as K)}</summary><p>${t(('faq.a' + k) as K)}</p></details>`).join('')}
+        <h3>${t('help.glossary')}</h3>
+        <dl class="gloss">${(['relay', 'wb', 'addon', 'seed', 'heightmap', 'prefab', 'splat', 'power', 'gen', 'budget'] as const).map((k) => `<dt>${t(('gl.' + k) as K)}</dt><dd>${t(('gl.' + k + '.d') as K)}</dd>`).join('')}</dl>
         <div class="row"><button id="helpTour" type="button">${t('help.tour')}</button><a href="https://github.com/benjibossk/mappingenfusiontest#readme" target="_blank" rel="noopener">${t('help.docs')}</a></div>
       </div>
     </div>
@@ -321,7 +343,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label class="check"><input id="powHV" type="checkbox" checked> ${t('lbl.powHV')}</label>
         <div class="form">
           <label>${t('lbl.powHVFrom')} <select id="powHVFrom"><option value="town">${t('opt.powTowns')}</option><option value="village" selected>${t('opt.powVillages')}</option><option value="all">${t('opt.powAll')}</option></select></label>
-          <label>${t('lbl.powHVKind')} <select id="powHVKind"><option value="hv">${t('opt.powHVMetal')}</option><option value="mv">${t('opt.powHVConcrete')}</option></select></label>
+          <label>${t('lbl.powHVKind')} <select id="powHVKind"><option value="hv" title="HV_02">${t('opt.powHVMetal')}</option><option value="mv" title="HV_01">${t('opt.powHVConcrete')}</option></select></label>
         </div>
         <label class="check"><input id="powLV" type="checkbox" checked> ${t('lbl.powLV')}</label>
         <div class="form">
@@ -407,7 +429,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
       </details>
       <div class="row">
-        <button id="forestSend" type="button">${t('btn.forestSend')}</button>
+        <button id="forestGen" type="button">${t('btn.forestGen')}</button>
+        <button id="forestSend" type="button" class="secondary">${t('btn.forestSend')}</button>
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
       <p class="hint">${t('hint.areas')}</p>
@@ -424,6 +447,11 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <ul id="checkList" class="issues"></ul>
       </fieldset>
+      <div id="wbGuide" class="wbguide" hidden>
+        <strong>${t('wb.guide.title')}</strong>
+        ${connectSteps()}
+        <div class="row"><button type="button" class="wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button><button id="wbDownload" type="button" class="secondary" title="${t('wb.download.tip')}">${ic('folder', 14)} ${t('wb.download')}</button></div>
+      </div>
       <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
       <details class="adv"><summary>${t('ui.manual')}</summary>
         <ol class="steps">
@@ -572,13 +600,13 @@ function draw() {
       ctx.fillRect(sx - 2, sy - 2, 4, 4)
     })
     const mid = ring[ring.length >> 1]
-    if (mid) {
+    if (mid && view.mpp < 2.5) { // road names only when zoomed in: at island scale they pile up
       const [sx, sy] = toScreen(mid[0], mid[1])
       ctx.font = '11px sans-serif'
       ctx.lineWidth = 3
       ctx.strokeStyle = '#000a'
-      ctx.strokeText(r.id, sx + 6, sy - 6)
-      ctx.fillText(r.id, sx + 6, sy - 6)
+      ctx.strokeText(nice(r.id, r.type), sx + 6, sy - 6)
+      ctx.fillText(nice(r.id, r.type), sx + 6, sy - 6)
     }
   }
 
@@ -1207,6 +1235,7 @@ function showCollabView(on: boolean) {
   $('collab').classList.toggle('active', on)
   if (on) { connInfo(); renderCollab() }
   else {
+    collabBox.hidden = true
     draftPos = null
     $('cvDraft').hidden = true
     tabButtons.find((x) => x.classList.contains('active'))?.click() // back to the step and its tool
@@ -1426,7 +1455,12 @@ async function run(label: string, f: () => Promise<string>, onOk?: () => void) {
     logEl.textContent = external(await f())
     onOk?.()
   } catch (e) {
-    logEl.textContent = t('run.error', { label, msg: (e as Error).message })
+    const msg = (e as Error).message
+    if (/Failed to fetch|NetworkError|Load failed|Workbench unreachable/.test(msg)) {
+      logEl.textContent = t('err.notConnected')
+      $('wbGuide').hidden = false
+      void refreshStatus()
+    } else logEl.textContent = t('run.error', { label, msg })
   }
 }
 
@@ -1524,8 +1558,11 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
 
 async function refreshStatus() {
   const s = await getStatus()
-  statusEl.textContent = t('status.line', { bridge: s.bridge ? t('status.ok') : t('status.no'), wb: s.workbench ? t('status.ok') : t('status.no'), detail: s.detail })
+  statusEl.textContent = s.workbench ? t('wb.chip.on') : t('wb.chip.off')
+  statusEl.title = (s.workbench ? '' : t('wb.chip.tip') + '\n') + t('status.line', { bridge: s.bridge ? t('status.ok') : t('status.no'), wb: s.workbench ? t('status.ok') : t('status.no'), detail: s.detail })
   statusEl.dataset.ok = String(s.workbench)
+  $('wbGuide').hidden = s.workbench
+  return s.workbench
 }
 
 sendEl.addEventListener('click', async () => {
@@ -1541,8 +1578,15 @@ sendEl.addEventListener('click', async () => {
 })
 
 // no polling: a NET API call landing while a Workbench modal dialog is open crashes the Workbench
-statusEl.title = t('app.refresh')
-statusEl.addEventListener("click", refreshStatus)
+const chipClick = async () => { if (!(await refreshStatus())) openHelp('helpConnect') }
+statusEl.addEventListener('click', chipClick)
+statusEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void chipClick() } })
+document.querySelectorAll<HTMLButtonElement>('.wbRetry').forEach((b) => b.addEventListener('click', async () => {
+  b.disabled = true
+  const ok = await refreshStatus().finally(() => (b.disabled = false))
+  logEl.textContent = ok ? t('wb.retry.ok') : t('wb.retry.no')
+}))
+$<HTMLButtonElement>('wbDownload').addEventListener('click', () => $<HTMLButtonElement>('pSave').click())
 
 // --- layout: tabs, canvas fills the stage ---
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>('#tabs [data-tab]')]
@@ -1634,6 +1678,7 @@ $('stepRegen').addEventListener('click', () => {
   const panel = $<HTMLDivElement>('helpPanel')
   const show = (on: boolean) => { panel.hidden = !on; $('helpFab').classList.toggle('active', on); if (on) $<HTMLButtonElement>('helpClose').focus() }
   $<HTMLButtonElement>('helpFab').addEventListener('click', () => show(panel.hidden === true))
+  openHelp = (section) => { show(true); if (section) document.getElementById(section)?.scrollIntoView({ block: 'start' }) }
   $<HTMLButtonElement>('helpClose').addEventListener('click', () => { show(false); $<HTMLButtonElement>('helpFab').focus() })
   panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); show(false); $<HTMLButtonElement>('helpFab').focus() } })
   panel.querySelectorAll<HTMLButtonElement>('[data-help-go]').forEach((b) => b.addEventListener('click', () => {
@@ -2264,9 +2309,20 @@ $<HTMLButtonElement>('netGen').addEventListener('click', () => {
   }
   let km = 0
   for (const r of made) for (let i = 2; i + 1 < r.pts.length; i += 2) km += Math.hypot(r.pts[i] - r.pts[i - 2], r.pts[i + 1] - r.pts[i - 1])
-  logEl.textContent = t('log.netDone', { sites: sites.length, roads: made.length, km: (km / 1000).toFixed(1) })
   roadInfo()
   recompose(true)
+  // the generator and the pre-send check share one grade limit; a road still flagged (smoothing, carving) is dropped
+  const steep = new Set(runChecks().filter((it) => it.kind === 'steepRoad').map((it) => it.id))
+  const drop = made.filter((r) => steep.has(r.id))
+  if (drop.length) {
+    roads = roads.filter((r) => !drop.includes(r))
+    for (const r of drop) for (let i = 2; i + 1 < r.pts.length; i += 2) km -= Math.hypot(r.pts[i] - r.pts[i - 2], r.pts[i + 1] - r.pts[i - 1])
+    roadInfo()
+    recompose(true)
+    runChecks()
+  }
+  logEl.textContent = t('log.netDone', { sites: sites.length, roads: made.length - drop.length, km: (km / 1000).toFixed(1) })
+    + (drop.length ? ' ' + t('log.netSteep', { n: drop.length }) : '')
 })
 $<HTMLButtonElement>('netClear').addEventListener('click', () => {
   roads = roads.filter((r) => !r.auto)
@@ -2310,9 +2366,9 @@ function drawSites() {
     const lx = sx + R * 0.7 + 4, ly = sy - R * 0.7
     ctx.lineWidth = 3
     ctx.strokeStyle = '#000b'
-    ctx.strokeText(s.id, lx, ly)
+    ctx.strokeText(nice(s.id), lx, ly)
     ctx.fillStyle = SITE_COLOUR[s.kind]
-    ctx.fillText(s.id, lx, ly)
+    ctx.fillText(nice(s.id), lx, ly)
   }
 }
 
@@ -2565,6 +2621,15 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   }),
 )
 $<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; recompose(true); draw(); autosave() })
+// forests for a fictive island (a real place brings its own): replaces the previously generated ones only
+$<HTMLButtonElement>('forestGen').addEventListener('click', () => {
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  const made = generateForests(island.heights, island.grid, { seed: num('tSeed'), cover: 0.35, sites })
+  areas = areas.filter((a) => !a.id.startsWith('FOREST_GEN_'))
+  made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
+  logEl.textContent = made.length ? t('log.forestGen', { n: made.length }) : t('err.forestGenNone')
+  recompose(true); draw(); autosave()
+})
 
 // --- water: rivers and lakes drawn by hand (tab Eau) ---
 function nextWaterId(type: WaterType) {
@@ -2747,9 +2812,9 @@ function drawWater() {
       ctx.textAlign = 'center'
       ctx.lineWidth = 3
       ctx.strokeStyle = '#000'
-      ctx.strokeText(w.id, px, py - 6)
+      ctx.strokeText(nice(w.id), px, py - 6)
       ctx.fillStyle = '#ff0'
-      ctx.fillText(w.id, px, py - 6)
+      ctx.fillText(nice(w.id), px, py - 6)
       ctx.textAlign = 'start'
     }
   }
@@ -3036,3 +3101,28 @@ void loadTrace().then((img) => { if (img && !traceImg) { traceImg = img; draw();
 // first paint once everything is declared
 draw()
 refreshStatus()
+
+// floating panels: only one open at a time (help, collab connect form, language list, layers); Esc closes them
+{
+  const help = $<HTMLDivElement>('helpPanel'), box = $<HTMLDivElement>('collabBox'), lang = $<HTMLDivElement>('langMenu')
+  const layers = $<HTMLDetailsElement>('layers')
+  const isOpen = (el: HTMLElement) => (el === layers ? layers.open : !el.hidden)
+  const close = (el: HTMLElement) => {
+    if (el === layers) layers.open = false
+    else el.hidden = true
+    if (el === help) $('helpFab').classList.remove('active')
+    if (el === lang) $('lang').setAttribute('aria-expanded', 'false')
+  }
+  const all: HTMLElement[] = [help, box, lang, layers]
+  const mo = new MutationObserver((recs) => {
+    for (const r of recs) {
+      const el = r.target as HTMLElement
+      if (isOpen(el)) for (const o of all) if (o !== el && isOpen(o)) close(o)
+    }
+  })
+  for (const el of all) mo.observe(el, { attributes: true, attributeFilter: [el === layers ? 'open' : 'hidden'] })
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return
+    for (const o of all) if (isOpen(o)) close(o)
+  })
+}

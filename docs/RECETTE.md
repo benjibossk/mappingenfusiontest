@@ -93,3 +93,12 @@ HT béton `{F9CF7B0E9B97B012}PG_PowerLine_HV_01_Concrete.et`, BT `{20E4877A07D28
 | 7 | **Workbench** : inspecter un générateur | `m_fDistance` = 80 (HV_02) / 50 (HV_01) / 35 (BT) ; poteaux pas dans l'eau ni au milieu des villages | ⬜ |
 | 8 | Effacer les lignes | Carte et info vidées ; étape Routes reste « fait » si des routes existent | ⬜ |
 | 9 | Photo satellite (calque ou lieu réel), puis recharger la page | La photo revient (IndexedDB) ; « Enregistrer » le projet puis l'ouvrir ailleurs → photo incluse si < 8 Mo | ⬜ |
+
+## R7 — Correctifs du test débutant (ajouté le 2026-11-16, voir UX_TEST_2026-11-16.md)
+- [ ] Relais arrêté : la pastille en haut est **grise** « Workbench : non connecté » ; clic → l'aide s'ouvre sur « Connecter le Workbench » (3 étapes + Réessayer).
+- [ ] Étape 7, « Tout envoyer » relais arrêté : message « Impossible d'envoyer : le Workbench n'est pas connecté… », encadré 3 étapes + Réessayer + « Télécharger le fichier du projet ».
+- [ ] Relais lancé + Workbench ouvert : Réessayer → pastille verte « connecté », l'encadré disparaît.
+- [ ] Un seul panneau flottant à la fois (aide, langue, connexion salon, calques) ; Échap ferme ; fermer la vue Collaboration ferme le formulaire de connexion.
+- [ ] Île fictive → Champs et forêts → « Générer des forêts » : des bois apparaissent, loin des lieux et hors de l'eau.
+- [ ] Réseau auto : après « Relier les lieux », « Vérifier » ne signale aucune route trop raide ; aucun lieu à moitié dans la mer.
+- [ ] Carte : étiquettes « Rivière 1 », « Hameau 3 », « Ville 1 » (noms de route seulement en zoom rapproché) ; un seul bouton « Eau »/« Remettre » dans la barre de gauche.
