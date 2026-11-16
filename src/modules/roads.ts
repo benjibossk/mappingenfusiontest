@@ -2,6 +2,7 @@
 // Outputs: relief flattened along the road, spline shapes with a road generator (Workbench), and road
 // surfaces painted at pixel precision by the bridge (/masks "roads").
 
+import type { WaterLevels } from './water'
 import type { Grid } from './island'
 import { t } from '../i18n'
 import type { ProjectEntity, ProjectShape } from '../project'
@@ -54,6 +55,7 @@ export interface Road {
   pts: number[] // control points, flat X/Z
   width?: number // road width in metres (empty = style default)
   flatten?: boolean // true: relief flattened under the road (off by default)
+  bridge?: boolean // real-world bridge / tunnel (OSM): kept as a road, terrain never flattened
   auto?: boolean // made by the network generator (replaced on regeneration)
 }
 
@@ -114,7 +116,12 @@ export function snap(roads: Road[], x: number, z: number, dist: number): [number
 
 //! Flattens the relief along the roads (in place): smooth height profile along the centre line,
 //! full blend on the road, smooth fade outside. Road beds stay above the sea.
-export function carveRoads(heights: number[], grid: Grid, roads: Road[]) {
+//! `water` (from carveWater): road beds stay 5 cm above the local lake / river level on the banks and
+//! never fill open water (the bridges span it). `widthMul` over-widens the flat band (ARTE: 1.15).
+//! Anti-submersion, cosine edge and width multiplier ported from ARTE (01_engineer.py:518-551),
+//! MIT licence, Copyright (c) 2026 Icebird. See CREDITS.md.
+export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: { water?: WaterLevels; widthMul?: number } = {}) {
+  const water = opts.water, widthMul = opts.widthMul ?? 1.15
   const { cols, rows, step } = grid
   const at = (x: number, z: number) => {
     const gx = Math.min(Math.max(x / step, 0), cols - 1.001), gz = Math.min(Math.max(z / step, 0), rows - 1.001)
@@ -127,7 +134,7 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[]) {
   const target = new Float32Array(heights.length).fill(NaN)
   const weight = new Float32Array(heights.length)
   for (const road of roads) {
-    if (!road.flatten) continue
+    if (!road.flatten || road.bridge) continue
     const T = ROAD_TYPES[road.type]
     const line = centreLine(road.pts, step / 2)
     const m = line.length / 2
@@ -140,7 +147,7 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[]) {
       for (let j = Math.max(0, i - win); j <= Math.min(m - 1, i + win); j++) { s += raw[j]; k++ }
       return Math.max(0.8, s / k)
     })
-    const flat = roadHalf(road) + T.edge + step
+    const flat = roadHalf(road) * widthMul + T.edge + step
     const reach = flat + 3 * step
     for (let i = 0; i < m - 1; i++) {
       const ax = line[i * 2], az = line[i * 2 + 1], bx = line[i * 2 + 2], bz = line[i * 2 + 3]
@@ -154,9 +161,15 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[]) {
           const d = Math.hypot(x - ax - t * dx, z - az - t * dz)
           if (d >= reach) continue
           const u = d <= flat ? 1 : 1 - (d - flat) / (reach - flat)
-          const w = u * u * (3 - 2 * u)
+          const w = 0.5 - 0.5 * Math.cos(Math.PI * u) // cosine ramp
           const k = r * cols + c
-          if (w > weight[k]) { weight[k] = w; target[k] = prof[i] + (prof[i + 1] - prof[i]) * t }
+          if (water && water.wet[k]) continue // open water: left to the bridge generator
+          if (w > weight[k]) {
+            weight[k] = w
+            let v = prof[i] + (prof[i + 1] - prof[i]) * t
+            if (water && !Number.isNaN(water.level[k])) v = Math.max(v, water.level[k] + 0.05)
+            target[k] = v
+          }
         }
     }
   }

@@ -240,11 +240,62 @@ export interface BuildOptions {
   pngRange?: [number, number] // PNG: heights of black and white, metres
 }
 
+/** Fills the "no data" holes of a grid in place with the nearest valid value (multi-source BFS, 8-neighbour).
+ *  Holes touching the border are left alone when `keepBorder` (missing tiles = open sea, see mosaic).
+ *  Returns the number of cells filled. Idea ported from ARTE (01_engineer.py:489-513), MIT licence,
+ *  Copyright (c) 2026 Icebird. See CREDITS.md. */
+export function fillNoData(data: Float32Array, w: number, h: number, isNo: (v: number) => boolean, keepBorder = true): number {
+  const n = w * h
+  const state = new Uint8Array(n) // 0 valid, 1 hole to fill, 2 hole kept
+  const queue = new Int32Array(n)
+  let qh = 0, qt = 0, holes = 0
+  for (let k = 0; k < n; k++) if (isNo(data[k])) { state[k] = 1; holes++ }
+  if (!holes) return 0
+  if (keepBorder) { // flood the holes connected to the border: they stay "no data"
+    for (let k = 0; k < n; k++) {
+      const c = k % w, r = (k / w) | 0
+      if (state[k] === 1 && (c === 0 || r === 0 || c === w - 1 || r === h - 1)) { state[k] = 2; queue[qt++] = k }
+    }
+    while (qh < qt) {
+      const k = queue[qh++], c = k % w, r = (k / w) | 0
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const cc = c + dc, rr = r + dr
+        if (cc < 0 || rr < 0 || cc >= w || rr >= h) continue
+        const j = rr * w + cc
+        if (state[j] === 1) { state[j] = 2; queue[qt++] = j }
+      }
+    }
+    qh = qt = 0
+  }
+  for (let k = 0; k < n; k++) if (state[k] === 0) queue[qt++] = k // seeds: every valid cell
+  let filled = 0
+  while (qh < qt) {
+    const k = queue[qh++], c = k % w, r = (k / w) | 0
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const cc = c + dc, rr = r + dr
+      if (cc < 0 || rr < 0 || cc >= w || rr >= h) continue
+      const j = rr * w + cc
+      if (state[j] !== 1) continue
+      data[j] = data[k]; state[j] = 0; queue[qt++] = j; filled++
+    }
+  }
+  return filled
+}
+
+const filledDems = new WeakSet<Dem>()
+/** interior "no data" holes of a file filled once (nearest valid height) */
+export function fillDemHoles(dem: Dem): number {
+  if (filledDems.has(dem)) return 0
+  filledDems.add(dem)
+  return fillNoData(dem.data, dem.w, dem.h, (v) => Number.isNaN(v) || (dem.nodata !== null && (v === dem.nodata || v < -1e4)))
+}
+
 /** the Reforger terrain grid for an area: X east, Z north, origin at the south-west corner */
 export function buildWorld(dem: Dem, a: Area, o: BuildOptions): WorldExport {
   const cols = o.cols, rows = o.cols, step = a.size / (cols - 1)
   const [lo, hi] = o.pngRange ?? [0, 1]
   const heights = new Array<number>(cols * rows)
+  fillDemHoles(dem) // interior holes: nearest valid height instead of a pit to the sea
   let missing = 0
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {

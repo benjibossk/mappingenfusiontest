@@ -164,3 +164,78 @@ html, body, #app { height: 100%; overflow: hidden; }
 .rw-checks .check { flex-direction: row; align-items: center; gap: .3rem; }
 
 .rw-bar { width: 100%; height: 8px; accent-color: #3a7bd5; }
+
+/* guided path: numbered steps, step header, Previous / Next */
+.stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; counter-reset: none; }
+.stepper li { display: flex; }
+.stepper button { flex: 1; align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: .35rem .1rem; font-size: .68rem; line-height: 1.1; border-radius: 6px; background: #24272d; text-align: center; }
+.stepper button b { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: #33373f; font-size: .78rem; }
+.stepper button.active { background: #2b3b5e; outline: 1px solid #3d6fd8; }
+.stepper button.active b { background: #3d6fd8; }
+.stephead h2 { margin: .2rem 0 0; font-size: 1.1rem; }
+.stephead .lead { margin: .2rem 0 0; font-size: .85rem; opacity: .85; line-height: 1.35; }
+.side details.adv { border: 1px solid #2a2d33; border-radius: 6px; padding: .3rem .5rem; display: flex; flex-direction: column; gap: .5rem; }
+.side details.adv > summary { cursor: pointer; font-size: .82rem; opacity: .8; padding: .15rem 0; }
+.side details.adv[open] > summary { margin-bottom: .4rem; }
+.side details.adv[open] { padding-bottom: .5rem; }
+.side details.adv > * + * { margin-top: .5rem; }
+.side button.big { align-self: stretch; padding: .7rem; font-size: 1rem; background: #2f8a4e; }
+.stepnav { display: flex; justify-content: space-between; gap: .5rem; padding-top: .4rem; border-top: 1px solid #2a2d33; }
+.stepnav button { align-self: auto; }
+@media (max-width: 1100px) { .stepper button span { display: none; } }
+
+/* step badges */
+.stepper button { position: relative; }
+.stepper .badge { position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: #4a4f59; font-style: normal; }
+.stepper button[data-state="done"] .badge { width: 12px; height: 12px; top: 1px; right: 1px; background: #2f9e5b; }
+.stepper button[data-state="done"] .badge::after { content: '✓'; display: grid; place-items: center; height: 100%; font-size: 9px; color: #fff; }
+.stepper button[data-state="stale"] .badge { background: #e0a030; box-shadow: 0 0 0 2px #e0a03044; }
+.stephead { position: relative; }
+.stephead .regen { position: absolute; top: 0; right: 0; padding: 2px 8px; font-size: 16px; background: transparent; border: 1px solid #3a3f48; color: #cdd3dc; }
+.stephead .regen:hover { background: #2b3b5e; border-color: #3d6fd8; }
+.stephead h2 { padding-right: 2.5rem; }
+/* welcome */
+.welcome { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6rem; padding: 16px; background: radial-gradient(circle at 50% 40%, #1c2130, #0f1012 70%); text-align: center; }
+.welcome[hidden] { display: none; }
+.welcome h2 { margin: 0; font-size: 1.6rem; }
+.welcome p { margin: 0 0 .8rem; color: #9aa3b0; }
+.welcome .choices { display: grid; grid-template-columns: repeat(3, minmax(0, 190px)); gap: 12px; }
+.welcome .choices button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 1.1rem .8rem; border-radius: 10px; background: #1e222a; border: 1px solid #333944; color: #e6e9ee; }
+.welcome .choices button:hover { background: #26324c; border-color: #3d6fd8; }
+.welcome .choices b { font-size: 2rem; }
+.welcome .choices span { font-size: .78rem; color: #9aa3b0; }
+@media (max-width: 700px) { .welcome .choices { grid-template-columns: 1fr; } }
+/* header icon buttons */
+.top .hist { background: transparent; border: 1px solid transparent; color: #cdd3dc; border-radius: 6px; padding: 3px 7px; }
+.top .hist:hover { background: #ffffff14; border-color: #ffffff22; }
+.top .hist:disabled { opacity: .35; background: transparent; }
+.log:empty { display: none; }
+/* Collaboration view (👥): replaces the guided steps in the side panel */
+.collabview[hidden] { display: none; }
+.side.collabmode > :not(#collabView):not(#log) { display: none; }
+.top .hist.active { background: #26324c; border-color: #3d6fd8; }
+.cvhead { display: flex; align-items: center; justify-content: space-between; }
+.cvhead h2 { margin: 0; font-size: 1.1rem; }
+.cvconn { margin: .2rem 0 .6rem; display: flex; gap: .5rem; align-items: center; justify-content: space-between; }
+.cvsec { border-top: 1px solid #2a2d33; padding: .4rem 0; }
+.cvsec > summary { cursor: pointer; font-weight: 600; margin-bottom: .4rem; }
+.cvsec .badge:not(:empty) { font-style: normal; background: #f5a524; color: #111; border-radius: 8px; padding: 0 6px; font-size: .75rem; }
+.cvlist { list-style: none; margin: .4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; max-height: 22rem; overflow-y: auto; }
+.cvhist { font-size: .82rem; padding: .25rem .4rem; border-radius: 4px; background: #20232a; }
+.cvhist small { display: block; color: #9aa3b0; }
+.cvhist.go { cursor: pointer; }
+.cvhist.go:hover, .cvmeta:hover { background: #26324c; }
+.cvcom { background: #20232a; border-left: 3px solid #f5a524; border-radius: 4px; padding: .35rem .5rem; font-size: .84rem; }
+.cvcom.resolved { border-left-color: #6b7280; opacity: .7; }
+.cvcom.sel { outline: 1px solid #fff6; }
+.cvmeta { cursor: pointer; border-radius: 3px; }
+.cvmeta .pin { display: inline-block; min-width: 1.2em; text-align: center; background: #f5a524; color: #111; border-radius: 50%; margin-right: .35rem; font-size: .75rem; }
+.cvcom.resolved .pin { background: #6b7280; }
+.cvtext { margin: .2rem 0; white-space: pre-wrap; word-break: break-word; }
+.cvreply { margin-left: .8rem; padding-left: .4rem; border-left: 1px solid #3a3f4a; color: #cdd3dc; }
+.cvrow { display: flex; gap: .3rem; margin-top: .3rem; }
+.cvrow input { flex: 1; }
+.side .cvrow button { padding: .3rem .5rem; }
+.cvdraft { margin: .4rem 0; }
+.cvdraft textarea, .side .cvdraft textarea { min-height: 4rem; }
+.cvmini { width: 100%; max-width: 260px; aspect-ratio: 1; display: block; margin: 0 auto .3rem; border: 1px solid #2a2d33; border-radius: 4px; cursor: pointer; }

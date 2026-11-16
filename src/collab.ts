@@ -4,7 +4,15 @@
 export interface Peer { id: number; name: string }
 export interface RemoteCursor { name: string; x: number; z: number }
 
+/** targeted change kept in the room log (collab/data/<room>.jsonl); id/author/at are set by the server */
+export interface Op {
+  id: string; kind: "history" | "comment" | "reply" | "resolve"; author: string; at: number
+  action?: string; detail?: string; step?: string; x?: number; z?: number; text?: string; ref?: string; resolved?: boolean
+  local?: boolean // made while offline, only in this browser
+}
+
 export interface CollabEvents {
+  ops?: (ops: Op[], replace: boolean) => void
   project: (p: unknown, from: string) => void
   peers: (peers: Peer[]) => void
   cursors: () => void
@@ -27,6 +35,8 @@ export class Collab {
       try { m = JSON.parse(e.data) } catch { return }
       if (m.type === 'welcome') { this.id = m.id; on.status('connected') }
       else if (m.type === 'peers') on.peers((m.peers as Peer[]).filter((p) => p.id !== this.id))
+      else if (m.type === 'log') on.ops?.(m.ops as Op[], true)
+      else if (m.type === 'op') on.ops?.([m.op as Op], false)
       else if (m.type === 'project' && m.from !== this.id) on.project(m.project, m.name)
       else if (m.type === 'cursor') {
         if (m.gone) this.cursors.delete(m.from)
@@ -40,6 +50,10 @@ export class Collab {
 
   sendProject(project: unknown) {
     if (this.open) this.ws.send(JSON.stringify({ type: 'project', project }))
+  }
+
+  sendOp(op: Partial<Op>) {
+    if (this.open) this.ws.send(JSON.stringify({ type: 'op', op }))
   }
 
   /** at most 10 per second */

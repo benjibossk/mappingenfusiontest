@@ -25,7 +25,7 @@ This project builds on the work of many people. Unless stated otherwise, only **
 | PCGExtendedToolkit | PCGEx | https://github.com/PCGEx/PCGExtendedToolkit | — | Idea: road network as a graph |
 | Unreal PCG / Biome Core | Epic Games | https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-pcg-biome-core-and-sample-plugins-overview-guide-in-unreal-engine | proprietary | Idea: data-driven biomes |
 | ReforgerSatGenerator | granQ | https://github.com/granQ/ReforgerSatGenerator | — | Reference |
-| ARTE (QGIS plugin) | — | https://plugins.qgis.org/plugins/ARTE/ | — | Reference (competing tool) |
+| ARTE (QGIS plugin) | Icebird | https://plugins.qgis.org/plugins/ARTE/ | MIT (© 2026 Icebird) | **Ported code** (rewritten in TS): OSM road width table (`osmWidth.ts`), bridge/tunnel exclusion, road bed above water + cosine edge + width multiplier (`roads.ts` carveRoads), nearest-value NoData fill (`dem.ts` fillNoData). Study: `docs/ARTE_STUDY.md` |
 
 ### City builders and games studied (ideas only, CITIES.md §6)
 
@@ -104,3 +104,30 @@ Arma Reforger and Enfusion are trademarks of Bohemia Interactive. Unofficial fan
 - Unknown or unconfirmed licence: ProbableTrain (LGPL-3.0?), WFC, ProtonScatter, PCGEx, ReforgerSatGenerator, ARTE, Lou's tools, Workshop mods (none), IGN LiDAR HD, JS library licences (noted "from memory" in STATE_OF_ART.md).
 - BARNMAP and giorbev permissions: to be kept **in writing** (BARNMAP has no licence; giorbev's Benchmark_Tools has no licence, separate from Map-generator).
 - YouTube video and Fab asset from CITIES.md §1 marked "unverified".
+
+
+## ARTE — MIT licence
+
+```
+MIT License
+
+Copyright (c) 2026 Icebird
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
