@@ -4,7 +4,13 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+## [0.6.0] - 2026-11-16
+
 ### Ajouté
+- **Biomes** : choix du biome à l’étape 1 et dans le monde aléatoire (7 biomes, badge de disponibilité, sauvegardé et partagé). Il pilote les sols exportés, la densité et le mélange des forêts, les générateurs de forêt, les jardins des villages et les teintes 3D. Everon inchangé à graine égale.
+- Page **Bibliothèque d’assets** (thème sombre, bouton Bibliothèque, aperçu 3D des parcelles et assets).
+- **Routes V2** : carrefours soudés, virages arrondis, profil en long, ponts de vallée, îlots reliés.
+- **Collaboration pair à pair**, **vue 3D façon OpsTrack**, **réseaux de l’Atelier** et **simplification des textures** : voir la version anglaise pour le détail.
 - **Mode Atelier** (carte d'accueil « Ouvrir un projet Workbench existant ») : finir un projet fait dans le Workbench, parité avec les outils de Map Generator Pro de giorbev. Étapes A0-A6 : ouvrir le projet (relais ou lecture seule navigateur), diagnostic des tuiles QTRE, surfaces/biomes, eau comme en jeu + réécriture `.layer` (Appliquer / Restaurer), fond de carte en jeu (militaire / réaliste, légende, PNG 2k-8k), `.conf` des courbes de niveau, sauvegardes `_originaux` + export/import d'archive.
 - Relais : routes `/atelier/*` et écriture sûre (refus si Workbench ouvert, SHA, sauvegarde, jamais hors du dossier projet).
 
