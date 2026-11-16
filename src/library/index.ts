@@ -1,31 +1,40 @@
 // Asset library: merge packs, search (text + tags + biome + kind), import / export. Pure.
 
 import { assetBiome, biome } from '../data/biomes.ts'
-import { validatePack, type Asset, type AssetKind, type AssetPack } from './schema.ts'
+import { validatePack, type Asset, type AssetKind, type AssetPack, type Composition } from './schema.ts'
 import { VANILLA_PACK } from './seed.ts'
+import COMPO_JSON from '../../library/compositions-vanilla.json' with { type: 'json' }
+
+/** base-game composition prefabs flattened to parcels (library/compositions-vanilla.json) */
+export const COMPOSITIONS_PACK = COMPO_JSON as unknown as AssetPack
 
 export * from './schema.ts'
 export { VANILLA_PACK }
 
-export interface Library { assets: Asset[]; packs: { id: string; name: string; author: string; count: number }[]; conflicts: string[] }
+export interface Library { assets: Asset[]; compositions: Composition[]; packs: { id: string; name: string; author: string; count: number }[]; conflicts: string[] }
 export interface Query { text?: string; tags?: string[]; biome?: string; kind?: AssetKind | AssetKind[]; source?: string; fallback?: boolean }
 
 /** merge packs in order (first pack wins on a duplicate guid; the duplicate is reported) */
 export function buildLibrary(packs: AssetPack[]): Library {
   const by = new Map<string, Asset>()
-  const lib: Library = { assets: [], packs: [], conflicts: [] }
+  const lib: Library = { assets: [], compositions: [], packs: [], conflicts: [] }
+  const cids = new Set<string>()
   for (const p of packs) {
     let n = 0
     for (const a of p.assets) {
       if (by.has(a.guid)) { lib.conflicts.push(`${a.guid} (${p.id})`); continue }
       by.set(a.guid, a); n++
     }
+    for (const c of p.compositions ?? []) {
+      if (cids.has(c.id)) { lib.conflicts.push(`composition ${c.id} (${p.id})`); continue }
+      cids.add(c.id); lib.compositions.push(c); n++
+    }
     lib.packs.push({ id: p.id, name: p.name, author: p.author, count: n })
   }
   lib.assets = [...by.values()]
   return lib
 }
-export const defaultLibrary = (extra: AssetPack[] = []) => buildLibrary([VANILLA_PACK, ...extra])
+export const defaultLibrary = (extra: AssetPack[] = []) => buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...extra])
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 

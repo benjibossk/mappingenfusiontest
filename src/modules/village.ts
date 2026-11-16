@@ -36,6 +36,8 @@ export interface VillageOptions {
   pool?: Building[] // replaces the vanilla list (captured parcels: parcelPool)
   blocked?: [number, number, number, number][] // world boxes already taken
   biome?: string // BiomeId: back gardens dressed with the biome's lot template (biomes/parcel.ts); Everon / unset = none (unchanged)
+  library?: import('../library/index.ts').Library // packs to draw from (default: vanilla seed + vanilla compositions)
+  compositions?: boolean // gardens also get real composition prefabs from the library (library/*.json packs); with it, Everon gardens are dressed too
 }
 export interface VillageSite { site: string; variant: 'village' | 'town' | 'hamlet'; coastal: boolean; church?: string; streets: number; lots: number }
 export interface VillageResult extends Settlement {
@@ -85,7 +87,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
   const reserved: number[][] = [] // gardens: no building in them
   const maxSlope = o.maxSlope ?? 0.15
   // biome parcels: their own seeded stream (never the village rand()), so the houses stay the same
-  const dress = o.biome && o.biome !== EVERON ? { lib: defaultLibrary(), biome: o.biome as Parameters<typeof gardenParcel>[1] } : null
+  const dress = o.biome && (o.biome !== EVERON || o.compositions) ? { lib: o.library ?? defaultLibrary(), biome: o.biome as Parameters<typeof gardenParcel>[1] } : null
   if (dress) res.parcels = []
 
   const near = (l: Line, x: number, z: number, d: number) => x > l.minX - d && x < l.maxX + d && z > l.minZ - d && z < l.maxZ + d
@@ -455,7 +457,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
         if (free) {
           res.gardens.push({ site: site.id, corners: gc }); reserved.push(gc)
           if (dress) {
-            const pc = gardenParcel(dress.lib, dress.biome, lot, g, hash(`${site.id}-${res.gardens.length}`, o.seed))
+            const pc = gardenParcel(dress.lib, dress.biome, lot, g, hash(`${site.id}-${res.gardens.length}`, o.seed), { compositions: o.compositions })
             // an annex dropped at the back of the garden above keeps its ground
             const items = pc.items.filter((it) => !placed.some((p2) => Math.abs(p2.x - it.x) < 30 && Math.abs(p2.z - it.z) < 30 && inside(p2.corners, it.x, it.z)))
             res.parcels!.push({ site: site.id, items, fences: pc.fences })

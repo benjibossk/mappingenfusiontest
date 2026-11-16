@@ -5,7 +5,8 @@
 import { lotCorners, lotPoint, type Lot } from '../modules/villageLots.ts'
 import { assetBiome, biome, type Biome, type BiomeId, type Weighted } from '../data/biomes.ts'
 import { search, type Library } from '../library/index.ts'
-import type { Asset, AssetKind, Footprint } from '../library/schema.ts'
+import { biomeChain } from '../library/index.ts'
+import type { Asset, AssetKind, Composition, Footprint } from '../library/schema.ts'
 
 export type Range = [number, number]
 export interface LotTemplate {
@@ -18,6 +19,14 @@ export interface LotTemplate {
   fences: { front: boolean; sides: boolean; back: boolean; gate: number } // gate = opening width (m) in the front fence
   props: Range
   gardenTrees: Range
+  compositions?: { tags: string[]; count: Range } // ready-made compositions (library) dropped in the lot when ParcelOptions.compositions
+}
+/** compositions: also place real composition prefabs from the library (off by default: output unchanged) */
+export interface ParcelOptions { compositions?: boolean }
+const DEFAULT_COMPOS: Record<string, { tags: string[]; count: Range }> = {
+  cottage: { tags: ['garden'], count: [1, 2] },
+  village_house: { tags: ['garden', 'yard'], count: [1, 3] },
+  farmstead: { tags: ['yard', 'farm'], count: [2, 4] },
 }
 
 export const LOT_TEMPLATES: LotTemplate[] = [
@@ -32,7 +41,7 @@ export const lotTemplate = (id: string) => LOT_TEMPLATES.find((t) => t.id === id
 
 export interface PlacedAsset { guid: string; kind: AssetKind; x: number; z: number; yaw: number; footprint: Footprint } // yaw degrees, model +Z = street
 export interface PlacedFence { guid: string; pts: number[] } // world polyline x,z,...
-export interface Parcel3D { biome: BiomeId; template: string; corners: number[]; items: PlacedAsset[]; fences: PlacedFence[]; warnings: string[] }
+export interface Parcel3D { biome: BiomeId; template: string; compositions?: string[]; corners: number[]; items: PlacedAsset[]; fences: PlacedFence[]; warnings: string[] }
 
 function rng(seed: number) {
   let s = seed >>> 0 || 1
@@ -61,7 +70,7 @@ function candidates(lib: Library, b: Biome, kinds: AssetKind[], tags: string[] =
   return tagged.length ? tagged : all
 }
 
-export function generateParcel(lib: Library, biomeId: BiomeId, tpl: LotTemplate, lot: Lot, seed = 1): Parcel3D {
+export function generateParcel(lib: Library, biomeId: BiomeId, tpl: LotTemplate, lot: Lot, seed = 1, opts: ParcelOptions = {}): Parcel3D {
   const b = biome(biomeId)
   if (!b) throw new Error(`unknown biome ${biomeId}`)
   const r = rng(seed)
@@ -106,6 +115,31 @@ export function generateParcel(lib: Library, biomeId: BiomeId, tpl: LotTemplate,
       if (a && !tryPlace(a, [backStart, lot.d], 1.5, 1.5)) out.warnings.push(`no room for ${ob.kind}`)
     }
   }
+  if (opts.compositions) placeCompositions()
+  function placeCompositions() {
+    const want = tpl.compositions ?? DEFAULT_COMPOS[tpl.id] ?? { tags: ['garden'], count: [1, 2] as Range }
+    const ids = biomeChain(b!.id, true).concat(assetBiome(b!).id)
+    const pool = (lib.compositions ?? []).filter((c) => c.biomes.some((x) => ids.includes(x)) && c.tags.some((t) => want.tags.includes(t)) && c.size.w <= lot.w - 2 && c.size.d <= lot.d - 2)
+    if (!pool.length) { out.warnings.push(`no composition (${want.tags.join('/')}) for ${b!.id}`); return }
+    const rr = rng(seed ^ 0x9e3779b9) // own stream: the rest of the parcel does not move
+    const a0 = (yaw * Math.PI) / 180, c0 = Math.cos(a0), s0 = Math.sin(a0)
+    for (let n = between(rr, want.count); n > 0; n--) {
+      const c: Composition = pick(rr, pool)!
+      const f: Footprint = { minX: -c.size.w / 2, maxX: c.size.w / 2, minZ: -c.size.d / 2, maxZ: c.size.d / 2, h: 2 }
+      for (let i = 0; i < 30; i++) {
+        const ca = (rr() - 0.5) * lot.w, cb = backStart + rr() * (lot.d - backStart)
+        const q = boxOf(f, ca, cb)
+        if (!inside(q, 1) || taken.some((t) => hit(t, q, 1))) continue
+        const [cx, cz] = lotPoint(lot, ca, cb)
+        for (const it of c.items) {
+          const a = lib.assets.find((x) => x.guid === it.prefab)
+          out.items.push({ guid: it.prefab, kind: a?.kind ?? 'prop', x: cx + it.x * c0 + it.z * s0, z: cz - it.x * s0 + it.z * c0, yaw: yaw + it.yaw, footprint: a?.footprint ?? { minX: -0.5, maxX: 0.5, minZ: -0.5, maxZ: 0.5, h: 1 } })
+        }
+        taken.push(q); (out.compositions ??= []).push(c.id)
+        break
+      }
+    }
+  }
   const props = b.props.map((p) => lib.assets.find((a) => a.guid === p)).filter((a): a is Asset => !!a)
   for (let n = between(r, tpl.props); n > 0 && props.length; n--) tryPlace(pick(r, props)!, [tpl.setback * 0.5, lot.d], 1, 0.6)
   const trees = b.vegetation.gardenTrees.length ? b.vegetation.gardenTrees : b.vegetation.trees
@@ -139,8 +173,8 @@ export function templateForLot(w: number, d: number): LotTemplate {
 
 /** the back garden of a village lot whose house the village generator already placed: the biome
  * template's props, garden trees and side / back fences (no house, no outbuilding, no front fence) */
-export function gardenParcel(lib: Library, biomeId: BiomeId, fullLot: Lot, garden: Lot, seed: number): Parcel3D {
+export function gardenParcel(lib: Library, biomeId: BiomeId, fullLot: Lot, garden: Lot, seed: number, opts: ParcelOptions = {}): Parcel3D {
   const t = templateForLot(fullLot.w, fullLot.d)
   const tpl: LotTemplate = { ...t, house: { kinds: [] }, outbuildings: [], fences: { ...t.fences, front: false } }
-  return generateParcel(lib, biomeId, tpl, garden, seed)
+  return generateParcel(lib, biomeId, tpl, garden, seed, opts)
 }

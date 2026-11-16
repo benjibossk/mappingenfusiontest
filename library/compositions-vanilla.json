@@ -1,0 +1,935 @@
+{
+ "format": "reforger-mapper.assetpack",
+ "version": 1,
+ "id": "compositions-vanilla",
+ "name": "Compositions vanilla",
+ "author": "Bohemia Interactive (extracted by reforger-mapper)",
+ "licence": "Bohemia-EULA",
+ "source": "vanilla",
+ "description": "Civilian composition prefabs of the base game (Prefabs/Compositions/Misc/SubCompositions), flattened to GUID + relative positions. Only references, no game data.",
+ "assets": [],
+ "compositions": [
+  {
+   "id": "crate-firewood-01",
+   "name": "Firewood crate / Caisse de bois de chauffage",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "garden",
+    "props",
+    "firewood"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{A13BCC98B8C380C7}Prefabs/Compositions/Misc/SubCompositions/Decorations/Crate_Firewood_01.et",
+   "size": {
+    "w": 2.132,
+    "d": 2.033
+   },
+   "items": [
+    {
+     "prefab": "{2B1D0128ED660BE9}Prefabs/Props/Crates/BoxWooden_01.et",
+     "x": -0.006,
+     "y": 0,
+     "z": 0.005,
+     "yaw": 0,
+     "scale": 1.5
+    },
+    {
+     "prefab": "{BA8BCF7C77F24A56}Prefabs/Props/Civilian/WoodKindling_01.et",
+     "x": -0.066,
+     "y": 0.033,
+     "z": 0.017,
+     "yaw": 83.6,
+     "scale": 1.125
+    },
+    {
+     "prefab": "{BA8BCF7C77F24A56}Prefabs/Props/Civilian/WoodKindling_01.et",
+     "x": 0.066,
+     "y": 0.023,
+     "z": -0.016,
+     "yaw": -95.638,
+     "scale": 1.125
+    },
+    {
+     "prefab": "{BA8BCF7C77F24A56}Prefabs/Props/Civilian/WoodKindling_01.et",
+     "x": 0.048,
+     "y": 0.229,
+     "z": -0.002,
+     "yaw": -91.36,
+     "scale": 1.125
+    },
+    {
+     "prefab": "{BA8BCF7C77F24A56}Prefabs/Props/Civilian/WoodKindling_01.et",
+     "x": -0.059,
+     "y": 0.21,
+     "z": 0.016,
+     "yaw": 86.681,
+     "scale": 1.125
+    }
+   ]
+  },
+  {
+   "id": "box-wooden-cluttered-01",
+   "name": "Cluttered wooden box / Caisse en vrac",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "garden",
+    "props"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{5DA11A95EEB02443}Prefabs/Compositions/Misc/SubCompositions/BoxWooden_Cluttered_01.et",
+   "size": {
+    "w": 2.262,
+    "d": 2.178
+   },
+   "items": [
+    {
+     "prefab": "{2B1D0128ED660BE9}Prefabs/Props/Crates/BoxWooden_01.et",
+     "x": -0.01,
+     "y": 0,
+     "z": 0.001,
+     "yaw": 0
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": -0.108,
+     "y": 0.014,
+     "z": 0.089,
+     "yaw": 43.728
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": -0.003,
+     "y": 0,
+     "z": 0.086,
+     "yaw": -155.911
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": -0.131,
+     "y": 0.015,
+     "z": -0.054,
+     "yaw": -92.18
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": -0.002,
+     "y": 0.039,
+     "z": -0.05,
+     "yaw": 17.456
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": 0.131,
+     "y": 0.004,
+     "z": -0.089,
+     "yaw": -121.853
+    }
+   ]
+  },
+  {
+   "id": "wooden-box-cluttered-05",
+   "name": "Wooden boxes / Caisses en bois",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "garden",
+    "props",
+    "yard"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{9AEB1E4AD352B78A}Prefabs/Compositions/Misc/SubCompositions/WoodenBoxCluttered_05.et",
+   "size": {
+    "w": 2.132,
+    "d": 2.033
+   },
+   "items": [
+    {
+     "prefab": "{2B1D0128ED660BE9}Prefabs/Props/Crates/BoxWooden_01.et",
+     "x": -0.006,
+     "y": 0,
+     "z": 0.005,
+     "yaw": 0,
+     "scale": 1.5
+    },
+    {
+     "prefab": "{BA8BCF7C77F24A56}Prefabs/Props/Civilian/WoodKindling_01.et",
+     "x": -0.066,
+     "y": 0.033,
+     "z": 0.017,
+     "yaw": 83.6,
+     "scale": 1.125
+    },
+    {
+     "prefab": "{BA8BCF7C77F24A56}Prefabs/Props/Civilian/WoodKindling_01.et",
+     "x": 0.066,
+     "y": 0.023,
+     "z": -0.016,
+     "yaw": -95.638,
+     "scale": 1.125
+    },
+    {
+     "prefab": "{BA8BCF7C77F24A56}Prefabs/Props/Civilian/WoodKindling_01.et",
+     "x": 0.048,
+     "y": 0.229,
+     "z": -0.002,
+     "yaw": -91.36,
+     "scale": 1.125
+    },
+    {
+     "prefab": "{BA8BCF7C77F24A56}Prefabs/Props/Civilian/WoodKindling_01.et",
+     "x": -0.059,
+     "y": 0.21,
+     "z": 0.016,
+     "yaw": 86.681,
+     "scale": 1.125
+    }
+   ]
+  },
+  {
+   "id": "crate-bottles-01",
+   "name": "Bottle crate / Casier à bouteilles",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "garden",
+    "props"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{590D0CC992E8AC25}Prefabs/Compositions/Misc/SubCompositions/Decorations/Crate_Bottles_01.et",
+   "size": {
+    "w": 2.262,
+    "d": 2.178
+   },
+   "items": [
+    {
+     "prefab": "{2B1D0128ED660BE9}Prefabs/Props/Crates/BoxWooden_01.et",
+     "x": -0.01,
+     "y": 0,
+     "z": 0.001,
+     "yaw": 0
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": -0.131,
+     "y": 0.015,
+     "z": -0.054,
+     "yaw": -92.18
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": -0.002,
+     "y": 0.039,
+     "z": -0.05,
+     "yaw": 17.456
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": 0.131,
+     "y": 0.004,
+     "z": -0.089,
+     "yaw": -121.853
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": -0.108,
+     "y": 0.014,
+     "z": 0.089,
+     "yaw": 43.728
+    },
+    {
+     "prefab": "{8963CD1DC1CDB614}Prefabs/Props/Civilian/BeerBottle_01_brown.et",
+     "x": -0.003,
+     "y": 0,
+     "z": 0.086,
+     "yaw": -155.911
+    }
+   ]
+  },
+  {
+   "id": "barrel-tool-rack-01",
+   "name": "Barrel + tool rack / Tonneau et outils",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "garden",
+    "yard",
+    "props",
+    "tools"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{75D125481E2E0664}Prefabs/Compositions/Misc/SubCompositions/Decorations/Barrel_ToolRack_01.et",
+   "size": {
+    "w": 2.359,
+    "d": 3.466
+   },
+   "items": [
+    {
+     "prefab": "{48D88E385C227340}Prefabs/Compositions/Misc/SubCompositions/Barrel_Filled_01.et",
+     "x": 0.089,
+     "y": 0.032,
+     "z": 0.733,
+     "yaw": 50.3
+    },
+    {
+     "prefab": "{5152F05C17652ADB}Prefabs/Props/Civilian/PaintCan_01.et",
+     "x": 0.102,
+     "y": 0.032,
+     "z": -0.194,
+     "yaw": 38.819
+    },
+    {
+     "prefab": "{5152F05C17652ADB}Prefabs/Props/Civilian/PaintCan_01.et",
+     "x": 0.164,
+     "y": 0.032,
+     "z": 0.092,
+     "yaw": 38.819
+    },
+    {
+     "prefab": "{5152F05C17652ADB}Prefabs/Props/Civilian/PaintCan_01.et",
+     "x": 0.04,
+     "y": 0.319,
+     "z": -0.059,
+     "yaw": 38.819
+    },
+    {
+     "prefab": "{A084E2908AA694CB}Prefabs/Structures/BuildingParts/Industrial/ToolRack_Filled_01.et",
+     "x": -0.179,
+     "y": 1.617,
+     "z": 0.018,
+     "yaw": 87.762
+    },
+    {
+     "prefab": "{DF3EF41CE4D441DE}Prefabs/Props/Industrial/BarrelMetal_01_rust.et",
+     "x": 0.18,
+     "y": 0.032,
+     "z": -0.733,
+     "yaw": 85.395
+    }
+   ]
+  },
+  {
+   "id": "barrel-group-tire-01",
+   "name": "Barrels and tyre / Tonneaux et pneu",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "yard",
+    "props"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{B423187F6C8DEFFD}Prefabs/Compositions/Misc/SubCompositions/Decorations/Barrel_Group_Tire_01.et",
+   "size": {
+    "w": 2.829,
+    "d": 2.619
+   },
+   "items": [
+    {
+     "prefab": "{25D05A17E3C163F7}Prefabs/Compositions/Misc/CustomEntities/DestructionEntities/BarrelFuel_01_closed_old_CompositionDestruction.et",
+     "x": 0.256,
+     "y": -0.1,
+     "z": -0.221,
+     "yaw": -46.484
+    },
+    {
+     "prefab": "{4BE795374BE3D67E}Prefabs/Props/Industrial/BarrelFuel_01_closed.et",
+     "x": -0.414,
+     "y": -0.099,
+     "z": -0.309,
+     "yaw": 8.681
+    },
+    {
+     "prefab": "{5D54B7840F14178E}Prefabs/Props/VehicleParts/Tires/Tire_M998.et",
+     "x": -0.054,
+     "y": 0.864,
+     "z": -0.217,
+     "yaw": 17.186
+    },
+    {
+     "prefab": "{5D54B7840F14178E}Prefabs/Props/VehicleParts/Tires/Tire_M998.et",
+     "x": 0.415,
+     "y": 0.077,
+     "z": 0.31,
+     "yaw": 13.094
+    }
+   ]
+  },
+  {
+   "id": "pallet-pile-stacked-01",
+   "name": "Pallet pile / Pile de palettes",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "yard",
+    "farm",
+    "props"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{10BC0DF4C149DECC}Prefabs/Compositions/Misc/SubCompositions/Decorations/PalletPile_Stacked_01.et",
+   "size": {
+    "w": 2,
+    "d": 2
+   },
+   "items": [
+    {
+     "prefab": "{1112756E8A13445B}Prefabs/Props/Industrial/Pallets/Pallet_01_Pile.et",
+     "x": 0,
+     "y": 0,
+     "z": 0,
+     "yaw": 0
+    },
+    {
+     "prefab": "{1112756E8A13445B}Prefabs/Props/Industrial/Pallets/Pallet_01_Pile.et",
+     "x": 0,
+     "y": 0.95,
+     "z": 0,
+     "yaw": -180
+    }
+   ]
+  },
+  {
+   "id": "tire-stack-garbage-01",
+   "name": "Tyre pile / Tas de pneus",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "yard",
+    "farm",
+    "junk"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{17A78A0D3701386A}Prefabs/Compositions/Misc/SubCompositions/Garbage/Tire_Stack_Garbage_01.et",
+   "size": {
+    "w": 2.166,
+    "d": 2.047
+   },
+   "items": [
+    {
+     "prefab": "{DA861447E6D426AE}Prefabs/Props/Industrial/Repair/VehicleGarbage_01_pile_small.et",
+     "x": -0.083,
+     "y": 0,
+     "z": 0.024,
+     "yaw": 0
+    },
+    {
+     "prefab": "{A81F99C793D11875}Prefabs/Props/VehicleParts/Tires/Tire_M151A2.et",
+     "x": 0.083,
+     "y": -0.027,
+     "z": -0.023,
+     "yaw": 89.583
+    },
+    {
+     "prefab": "{A81F99C793D11875}Prefabs/Props/VehicleParts/Tires/Tire_M151A2.et",
+     "x": 0.083,
+     "y": 0.432,
+     "z": -0.023,
+     "yaw": 1.546
+    },
+    {
+     "prefab": "{A81F99C793D11875}Prefabs/Props/VehicleParts/Tires/Tire_M151A2.et",
+     "x": 0.083,
+     "y": 0.199,
+     "z": -0.023,
+     "yaw": -88.174
+    },
+    {
+     "prefab": "{A81F99C793D11875}Prefabs/Props/VehicleParts/Tires/Tire_M151A2.et",
+     "x": 0.083,
+     "y": 0.645,
+     "z": -0.023,
+     "yaw": -0.02
+    }
+   ]
+  },
+  {
+   "id": "garbage-vehicle-03",
+   "name": "Car junk / Ferraille auto",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "yard",
+    "farm",
+    "junk"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{286212B6EFA9C01C}Prefabs/Compositions/Misc/SubCompositions/Garbage/Garbage_Vehicle_03.et",
+   "size": {
+    "w": 5.409,
+    "d": 2.781
+   },
+   "items": [
+    {
+     "prefab": "{342E852E9A1847EA}Prefabs/Props/Industrial/Repair/VehicleGarbage_01_pile_medium.et",
+     "x": -1.704,
+     "y": 0,
+     "z": -0.082,
+     "yaw": 86.734
+    },
+    {
+     "prefab": "{8751F77B1038FC72}Prefabs/Props/Industrial/Repair/VehicleGarbage_01_pile_large.et",
+     "x": 1.705,
+     "y": 0,
+     "z": -0.09,
+     "yaw": 92.879
+    },
+    {
+     "prefab": "{DA861447E6D426AE}Prefabs/Props/Industrial/Repair/VehicleGarbage_01_pile_small.et",
+     "x": 0.32,
+     "y": 0,
+     "z": -0.39,
+     "yaw": 118.813
+    },
+    {
+     "prefab": "{E24A324BDAA2EEE3}Prefabs/Props/Industrial/BarrelMetal_01_blue_open.et",
+     "x": -0.372,
+     "y": 0,
+     "z": 0.39,
+     "yaw": 168.599
+    }
+   ]
+  },
+  {
+   "id": "vehicle-garbage-pile-04",
+   "name": "Vehicle junk pile / Tas de ferraille",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "yard",
+    "farm",
+    "junk"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{4176B677A9F9A7E8}Prefabs/Compositions/Misc/SubCompositions/VehicleGarbagePile_04.et",
+   "size": {
+    "w": 5.409,
+    "d": 2.781
+   },
+   "items": [
+    {
+     "prefab": "{342E852E9A1847EA}Prefabs/Props/Industrial/Repair/VehicleGarbage_01_pile_medium.et",
+     "x": -1.704,
+     "y": 0,
+     "z": -0.082,
+     "yaw": 0
+    },
+    {
+     "prefab": "{8751F77B1038FC72}Prefabs/Props/Industrial/Repair/VehicleGarbage_01_pile_large.et",
+     "x": 1.705,
+     "y": 0,
+     "z": -0.09,
+     "yaw": 0
+    },
+    {
+     "prefab": "{DA861447E6D426AE}Prefabs/Props/Industrial/Repair/VehicleGarbage_01_pile_small.et",
+     "x": 0.32,
+     "y": 0,
+     "z": -0.39,
+     "yaw": 0
+    },
+    {
+     "prefab": "{E24A324BDAA2EEE3}Prefabs/Props/Industrial/BarrelMetal_01_blue_open.et",
+     "x": -0.372,
+     "y": 0,
+     "z": 0.39,
+     "yaw": 0
+    }
+   ]
+  },
+  {
+   "id": "dirt-pile-cluttered-01",
+   "name": "Dirt pile + tools / Tas de terre et outils",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "garden",
+    "yard",
+    "props"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{79120CE2B844B975}Prefabs/Compositions/Misc/SubCompositions/DirtPile_Cluttered_01.et",
+   "size": {
+    "w": 2.009,
+    "d": 2.402
+   },
+   "items": [
+    {
+     "prefab": "{DF649B29EC7635F3}Prefabs/Structures/Military/Fortifications/DirtPile_01/DirtPile_01_small.et",
+     "x": -0.004,
+     "y": 0,
+     "z": -0.201,
+     "yaw": 0
+    },
+    {
+     "prefab": "{A81F99C793D11875}Prefabs/Props/VehicleParts/Tires/Tire_M151A2.et",
+     "x": 0.005,
+     "y": 0,
+     "z": 0.201,
+     "yaw": 0
+    }
+   ]
+  },
+  {
+   "id": "pub-village-e-1l01-fia-01",
+   "name": "Village pub back yard (props) / Arrière-cour du café (objets)",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry"
+   ],
+   "tags": [
+    "yard",
+    "props",
+    "backyard"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{59BF0D5914270864}Prefabs/Compositions/Misc/SubCompositions/Building/PubVillage_E_1L01_FIA_01.et",
+   "size": {
+    "w": 7.875,
+    "d": 7.177
+   },
+   "items": [
+    {
+     "prefab": "{13891AA1F5833C4A}Prefabs/Props/Civilian/Notebook_01_Double.et",
+     "x": 1.338,
+     "y": 0,
+     "z": 0.787,
+     "yaw": -14.116
+    },
+    {
+     "prefab": "{3800AA04761AE0EC}Prefabs/Props/Civilian/Notebook_01_Single_Blue.et",
+     "x": 0.636,
+     "y": 0,
+     "z": 0.576,
+     "yaw": 123.884
+    },
+    {
+     "prefab": "{7A63E9272B714EC7}Prefabs/Props/Civilian/AshtrayStreet_01.et",
+     "x": -2.937,
+     "y": 0,
+     "z": -0.786,
+     "yaw": 46.884
+    },
+    {
+     "prefab": "{7A63E9272B714EC7}Prefabs/Props/Civilian/AshtrayStreet_01.et",
+     "x": -2.907,
+     "y": 0,
+     "z": -2.088,
+     "yaw": 46.884
+    },
+    {
+     "prefab": "{7A63E9272B714EC7}Prefabs/Props/Civilian/AshtrayStreet_01.et",
+     "x": -2.829,
+     "y": 0,
+     "z": -2.46,
+     "yaw": 46.884
+    },
+    {
+     "prefab": "{814C842990C8569A}Prefabs/Props/Civilian/StepladderWooden_01_Open.et",
+     "x": 1.014,
+     "y": 0,
+     "z": 1.511,
+     "yaw": -1.116
+    },
+    {
+     "prefab": "{8F05D427252644F8}Prefabs/Props/Civilian/Suitcase_01.et",
+     "x": 2.546,
+     "y": 0,
+     "z": 2.199,
+     "yaw": 89.884
+    },
+    {
+     "prefab": "{8F05D427252644F8}Prefabs/Props/Civilian/Suitcase_01.et",
+     "x": 0.779,
+     "y": 0,
+     "z": 0.839,
+     "yaw": 3.884
+    },
+    {
+     "prefab": "{97CB57E67481F871}Prefabs/Props/Civilian/Notebook_01_Single_Orange.et",
+     "x": 1.545,
+     "y": 0,
+     "z": 0.67,
+     "yaw": 9.884
+    },
+    {
+     "prefab": "{9A0A7B399D8AEEA0}Prefabs/Props/Civilian/Freezer_01.et",
+     "x": 1.255,
+     "y": 0,
+     "z": -2.47,
+     "yaw": 91.884
+    },
+    {
+     "prefab": "{BCE07A58672955B9}Prefabs/Props/Civilian/Bucket_01.et",
+     "x": 2.938,
+     "y": 0,
+     "z": 2.323,
+     "yaw": 46.884
+    },
+    {
+     "prefab": "{BD65F1D86388640D}Prefabs/Props/Civilian/FireExtinguisher_01.et",
+     "x": -2.514,
+     "y": 0,
+     "z": -2.588,
+     "yaw": 46.884
+    },
+    {
+     "prefab": "{D0B44EB8DBEDDA97}Prefabs/Props/Civilian/Bucket_02.et",
+     "x": 1.866,
+     "y": 0,
+     "z": -2.583,
+     "yaw": 46.884
+    },
+    {
+     "prefab": "{D5247F493225CA91}Prefabs/Props/Civilian/WateringCan_01.et",
+     "x": 0.974,
+     "y": 0,
+     "z": 2.192,
+     "yaw": -57.116
+    }
+   ]
+  },
+  {
+   "id": "shelter-supplies-fia-01",
+   "name": "Supply shelter (camp) / Abri de ravitaillement (campement)",
+   "biomes": [
+    "temperate_everon",
+    "woodland_arland",
+    "nordic_kolguyev",
+    "mediterranean_dry",
+    "desert",
+    "winter_tundra",
+    "tropical"
+   ],
+   "tags": [
+    "camp"
+   ],
+   "source": "vanilla",
+   "author": "Bohemia Interactive",
+   "licence": "Bohemia-EULA",
+   "ref": "{6D03FD4F8C33DCA2}Prefabs/Compositions/Misc/SubCompositions/Storage/Slotted/Shelter_Supplies_FIA_01.et",
+   "size": {
+    "w": 7.512,
+    "d": 9.006
+   },
+   "items": [
+    {
+     "prefab": "{19DA1F395962511D}Prefabs/Vegetation/Cuttings/Pinus_sylvestris_medium_01.et",
+     "x": -0.261,
+     "y": 1.741,
+     "z": 2.601,
+     "yaw": 0
+    },
+    {
+     "prefab": "{19DA1F395962511D}Prefabs/Vegetation/Cuttings/Pinus_sylvestris_medium_01.et",
+     "x": -0.598,
+     "y": 1.296,
+     "z": -3.149,
+     "yaw": -42.648
+    },
+    {
+     "prefab": "{1EC801E208CB16C6}Prefabs/Vegetation/Cuttings/Rubus_idaeus_small_01.et",
+     "x": 1.84,
+     "y": 0.032,
+     "z": 3.503,
+     "yaw": 3.353
+    },
+    {
+     "prefab": "{1EC801E208CB16C6}Prefabs/Vegetation/Cuttings/Rubus_idaeus_small_01.et",
+     "x": -2.248,
+     "y": 0.1,
+     "z": -0.733,
+     "yaw": -82.438
+    },
+    {
+     "prefab": "{1EC801E208CB16C6}Prefabs/Vegetation/Cuttings/Rubus_idaeus_small_01.et",
+     "x": 2.07,
+     "y": 0.08,
+     "z": 0.895,
+     "yaw": 107.708
+    },
+    {
+     "prefab": "{1EC801E208CB16C6}Prefabs/Vegetation/Cuttings/Rubus_idaeus_small_01.et",
+     "x": 1.348,
+     "y": 1.238,
+     "z": 1.572,
+     "yaw": 118.694
+    },
+    {
+     "prefab": "{4A09EF1D855AF2C4}Prefabs/Vegetation/Cuttings/Rosa_canina_small_01.et",
+     "x": -1.642,
+     "y": 0,
+     "z": -3.503,
+     "yaw": -165.932
+    },
+    {
+     "prefab": "{4A09EF1D855AF2C4}Prefabs/Vegetation/Cuttings/Rosa_canina_small_01.et",
+     "x": -1.899,
+     "y": 0.038,
+     "z": 3.398,
+     "yaw": -5.617
+    },
+    {
+     "prefab": "{74843BB0BF08A845}Prefabs/Vegetation/Cuttings/Corylus_avellana_small_01.et",
+     "x": 1.739,
+     "y": 0,
+     "z": -3.491,
+     "yaw": 145.048
+    },
+    {
+     "prefab": "{77C1F093F5F9F515}Prefabs/Compositions/Misc/SubCompositions/Storage/Slotted/Storage_Shelter_FIA_01.et",
+     "x": -0.145,
+     "y": 0.1,
+     "z": 2.063,
+     "yaw": 0
+    },
+    {
+     "prefab": "{89EF4CBC37EABDBE}Prefabs/Vegetation/Cuttings/Carpinus_betulus_large_01.et",
+     "x": -2.412,
+     "y": 0,
+     "z": -2.629,
+     "yaw": -90
+    },
+    {
+     "prefab": "{937999008F178E82}Prefabs/Props/Military/Sandbags/Sandbag_01_short_high_burlap.et",
+     "x": -0.079,
+     "y": 0,
+     "z": -2.996,
+     "yaw": 0
+    },
+    {
+     "prefab": "{B547CF929FCC6BB7}Prefabs/Props/Military/Sandbags/Sandbag_01_end_high_burlap.et",
+     "x": -1.391,
+     "y": 0,
+     "z": -3.003,
+     "yaw": -180
+    },
+    {
+     "prefab": "{B547CF929FCC6BB7}Prefabs/Props/Military/Sandbags/Sandbag_01_end_high_burlap.et",
+     "x": 1.349,
+     "y": 0,
+     "z": -3.003,
+     "yaw": 0
+    },
+    {
+     "prefab": "{C11CE4B95EA336C3}Prefabs/Vegetation/Cuttings/Sambucus_Nigra_medium_01.et",
+     "x": 2.283,
+     "y": 0,
+     "z": -1.598,
+     "yaw": 90
+    },
+    {
+     "prefab": "{C258AD45887AA8CA}Prefabs/Vegetation/Cuttings/Picea_abies_medium_01.et",
+     "x": 0.833,
+     "y": 1.25,
+     "z": -2.967,
+     "yaw": -57.502
+    },
+    {
+     "prefab": "{C258AD45887AA8CA}Prefabs/Vegetation/Cuttings/Picea_abies_medium_01.et",
+     "x": 2.756,
+     "y": 0,
+     "z": 2.611,
+     "yaw": 162.171
+    },
+    {
+     "prefab": "{C258AD45887AA8CA}Prefabs/Vegetation/Cuttings/Picea_abies_medium_01.et",
+     "x": -2.756,
+     "y": 0,
+     "z": 2.854,
+     "yaw": 10.114
+    },
+    {
+     "prefab": "{C258AD45887AA8CA}Prefabs/Vegetation/Cuttings/Picea_abies_medium_01.et",
+     "x": -0.06,
+     "y": 1.676,
+     "z": -0.723,
+     "yaw": -90.106
+    },
+    {
+     "prefab": "{CC92DF5FD9330C37}Prefabs/Compositions/Misc/CustomEntities/DestructionEntities/ShelterStorage_USSR_01_CompositionDestruction.et",
+     "x": -0.07,
+     "y": 0,
+     "z": 0.448,
+     "yaw": 0
+    },
+    {
+     "prefab": "{D16F58EC1C0027D7}Prefabs/Vegetation/Cuttings/Salix_cinerea_medium_01.et",
+     "x": -2.502,
+     "y": 0,
+     "z": 1.544,
+     "yaw": -103.324
+    }
+   ]
+  }
+ ]
+}

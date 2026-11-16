@@ -35,6 +35,23 @@ export interface AssetPack {
   workshop?: string // Workshop page of the addon (mods only)
   description?: string
   assets: Asset[]
+  compositions?: Composition[] // ready-made parcels (composition prefabs, src/library/composition.ts)
+}
+
+/** one child of a composition, relative to the composition centre (model frame, +Z = street front) */
+export interface CompoItem { prefab: string; x: number; y: number; z: number; yaw: number; scale?: number }
+/** a ready-made parcel: a Workbench composition prefab (parent + children) flattened to items */
+export interface Composition {
+  id: string
+  name: string
+  ref?: string // "{GUID}path.et" of the composition prefab itself, when known
+  size: { w: number; d: number } // frontage (x) / depth (z) in metres
+  items: CompoItem[]
+  biomes: (BiomeId | string)[]
+  tags: string[] // role tags: garden, yard, farm, camp, props…
+  source: 'vanilla' | string
+  author: string
+  licence: string
 }
 
 export const GUID_RE = /^\{[0-9A-F]{16}\}[^\s{}]+\.et$/
@@ -43,6 +60,27 @@ const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
 export const guidOf = (ref: string) => ref.slice(1, 17)
 export const nameOf = (ref: string) => ref.slice(ref.lastIndexOf('/') + 1).replace(/\.et$/, '')
+
+const PREFAB_RE = /^\{[0-9A-F]{16}\}[^\s{}]+\.et$/i
+export function validateComposition(c: unknown, where = 'composition'): string[] {
+  if (!c || typeof c !== 'object') return [`${where}: not an object`]
+  const x = c as Partial<Composition>
+  const e: string[] = []
+  if (typeof x.id !== 'string' || !ID_RE.test(x.id)) e.push(`${where}: id must be kebab-case`)
+  if (typeof x.name !== 'string' || !x.name.trim()) e.push(`${where}: name required`)
+  if (!x.size || !(x.size.w > 0 && x.size.d > 0)) e.push(`${where}: size {w,d} > 0`)
+  if (!Array.isArray(x.items) || !x.items.length) e.push(`${where}: items must be a non-empty array`)
+  else x.items.forEach((i, k) => {
+    if (!i || typeof i.prefab !== 'string' || !PREFAB_RE.test(i.prefab)) e.push(`${where}.items[${k}]: prefab must look like {GUID}path.et`)
+    else if (![i.x, i.y, i.z, i.yaw].every((n) => typeof n === 'number' && Number.isFinite(n))) e.push(`${where}.items[${k}]: x,y,z,yaw numbers`)
+  })
+  if (!Array.isArray(x.biomes) || !x.biomes.length) e.push(`${where}: biomes must be a non-empty string array`)
+  if (!Array.isArray(x.tags)) e.push(`${where}: tags must be a string array`)
+  if (x.source !== 'vanilla' && !(typeof x.source === 'string' && ADDON_RE.test(x.source))) e.push(`${where}: source must be "vanilla" or a 16-hex addon GUID`)
+  if (typeof x.author !== 'string' || !x.author.trim()) e.push(`${where}: author required`)
+  if (typeof x.licence !== 'string' || !x.licence.trim()) e.push(`${where}: licence required`)
+  return e
+}
 
 /** problems of one asset ([] = valid) */
 export function validateAsset(a: unknown, where = 'asset'): string[] {
@@ -80,6 +118,10 @@ export function validatePack(p: unknown): string[] {
     if (typeof g === 'string') { if (seen.has(g)) e.push(`assets[${i}]: duplicate guid ${g}`); seen.add(g) }
     if (x.source && a && (a as Asset).source !== x.source) e.push(`assets[${i}]: source differs from pack source`)
   })
+  if (x.compositions !== undefined) {
+    if (!Array.isArray(x.compositions)) e.push('pack: compositions must be an array')
+    else x.compositions.forEach((c, i) => e.push(...validateComposition(c, `compositions[${i}]`)))
+  }
   return e
 }
 
@@ -100,6 +142,7 @@ export const ASSET_PACK_SCHEMA = {
     source: { anyOf: [{ const: 'vanilla' }, { type: 'string', pattern: ADDON_RE.source }] },
     workshop: { type: 'string', format: 'uri' },
     description: { type: 'string' },
+    compositions: { type: 'array', items: { type: 'object', required: ['id', 'name', 'size', 'items', 'biomes', 'tags', 'source', 'author', 'licence'] } },
     assets: {
       type: 'array',
       items: {

@@ -4,8 +4,9 @@
 
 import './page.css'
 import { BIOMES, biome, type Biome, type BiomeId } from '../data/biomes.ts'
-import { ASSET_KINDS, buildLibrary, importPack, search, tagCounts, VANILLA_PACK, type Asset, type AssetKind, type AssetPack, type Library } from './index.ts'
-import { LOT_TEMPLATES, demoLot, generateParcel, lotTemplate } from '../biomes/parcel.ts'
+import { ASSET_KINDS, buildLibrary, COMPOSITIONS_PACK, importPack, search, tagCounts, VANILLA_PACK, type Asset, type AssetKind, type AssetPack, type Composition, type Library } from './index.ts'
+import { compoId, importComposition } from './composition.ts'
+import { LOT_TEMPLATES, demoLot, generateParcel, lotTemplate, type Parcel3D } from '../biomes/parcel.ts'
 import { getLang, t as tr, type Key } from '../i18n.ts'
 import type { Viewer } from './viewer3d.ts'
 
@@ -18,12 +19,16 @@ const AVAIL = { vanilla: tr('lib.vanilla'), partial: tr('lib.partial'), mods: tr
 const repoPacks: AssetPack[] = []
 const loadErrors: string[] = []
 for (const [path, raw] of Object.entries(import.meta.glob('/library/*.json', { eager: true, query: '?raw', import: 'default' }))) {
+  if (path.endsWith('/compositions-vanilla.json')) continue // already built in (COMPOSITIONS_PACK)
   try { repoPacks.push(importPack(raw as string)) } catch (e) { loadErrors.push(`${path}: ${(e as Error).message.split('\n')[0]}`) }
 }
 const localPacks: AssetPack[] = []
-let lib: Library = buildLibrary([VANILLA_PACK, ...repoPacks])
+const userCompos: Composition[] = []
+const userPack = (): AssetPack => ({ format: 'reforger-mapper.assetpack', version: 1, id: 'my-compositions', name: FR ? 'Mes compositions' : 'My compositions', author: 'local', licence: 'CC-BY-4.0', source: 'vanilla', assets: [], compositions: userCompos })
+const rebuild = () => buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...repoPacks, ...localPacks, ...(userCompos.length ? [userPack()] : [])])
+let lib: Library = buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...repoPacks])
 
-const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '' }
+const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '', compos: false, compo: '' }
 
 const app = document.getElementById('lib-app')!
 app.innerHTML = `
@@ -40,6 +45,8 @@ app.innerHTML = `
     <div class="lb-tags" id="f-tags"></div>
     <div class="lb-packs" id="packs"></div>
     <label class="lb-import">${tr('lib.import_a_json_pack')}<input id="f-import" type="file" accept=".json,application/json"></label>
+    <label class="lb-import">${tr('lib.import_compo')}<input id="f-compo" type="file" accept=".et"></label>
+    <a id="compo-dl" class="lb-dl" style="display:none">${tr('lib.compo_export')}</a>
     <p id="msg" class="lb-msg"></p>
   </aside>
   <section class="lb-list"><div class="lb-count" id="count"></div><ul id="list"></ul></section>
@@ -47,6 +54,8 @@ app.innerHTML = `
     <div class="lb-tabs">
       <button id="m-parcel" class="on">${tr('lib.lot')}</button><button id="m-asset">${tr('lib.asset')}</button>
       <select id="f-tpl">${LOT_TEMPLATES.map((t) => `<option value="${t.id}">${lab(t.label)}</option>`).join('')}</select>
+      <select id="f-compo-sel"></select>
+      <label class="lb-check"><input type="checkbox" id="f-compos"> ${tr('lib.real_compos')}</label>
       <button id="reroll" title="seed">🎲</button>
     </div>
     <div id="view3d" class="lb-canvas"></div>
@@ -98,6 +107,16 @@ async function preview() {
   if (!v) return
   $('m-parcel').classList.toggle('on', st.mode === 'parcel'); $('m-asset').classList.toggle('on', st.mode === 'asset')
   ;($('f-tpl') as HTMLSelectElement).style.display = st.mode === 'parcel' ? '' : 'none'
+  $('f-compo-sel').style.display = st.mode === 'parcel' ? '' : 'none'
+  const cs = $<HTMLSelectElement>('f-compo-sel')
+  cs.innerHTML = `<option value="">${tr('lib.compo_none')}</option>` + lib.compositions.map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${c.items.length})</option>`).join('')
+  cs.value = st.compo
+  const compo = st.mode === 'parcel' && st.compo ? lib.compositions.find((c) => c.id === st.compo) : undefined
+  if (compo) {
+    v.showParcel(compoParcel(compo), b)
+    $('info').innerHTML = `${esc(compo.name)} · ${compo.size.w.toFixed(1)}×${compo.size.d.toFixed(1)} m · ${compo.items.length} ${tr('lib.items')} · ${esc(compo.tags.join(', '))}${compo.ref ? `<br><code>${esc(compo.ref)}</code>` : ''}<br><small>${esc(compo.author)} · ${esc(compo.licence)}</small>`
+    return
+  }
   if (st.mode === 'asset') {
     const a = lib.assets.find((x) => x.guid === st.sel) ?? results()[0]
     if (!a) { $('info').textContent = tr('lib.no_asset'); return }
@@ -106,13 +125,38 @@ async function preview() {
     $('info').innerHTML = `<code>${esc(a.guid)}</code><br>${kindLabel(a.kind)} · ${(f.maxX - f.minX).toFixed(1)}×${(f.maxZ - f.minZ).toFixed(1)}×${f.h} m${f.measured ? '' : ' (' + tr('lib.estimated') + ')'} · ${esc(a.source)} · ${esc(a.author)} · ${esc(a.licence)}<br>${tr('lib.biomes')} : ${a.biomes.join(', ')}`
   } else {
     const t = lotTemplate(st.tpl)!
-    const p = generateParcel(lib, st.biome, t, demoLot(t.size.w[1], t.size.d[1]), st.seed)
+    const p = generateParcel(lib, st.biome, t, demoLot(t.size.w[1], t.size.d[1]), st.seed, { compositions: st.compos })
     v.showParcel(p, b)
-    $('info').innerHTML = `${esc(lab(t.label))} · ${t.size.w[1]}×${t.size.d[1]} m · ${p.items.length} ${tr('lib.items')}, ${p.fences.length} ${tr('lib.fences')} · seed ${st.seed}`
+    $('info').innerHTML = `${esc(lab(t.label))} · ${t.size.w[1]}×${t.size.d[1]} m · ${p.items.length} ${tr('lib.items')}, ${p.fences.length} ${tr('lib.fences')} · seed ${st.seed}${p.compositions?.length ? ' · ' + esc(p.compositions.join(', ')) : ''}`
       + (p.warnings.length ? `<br><span class="lb-warn">${p.warnings.map(esc).join('<br>')}</span>` : '')
   }
 }
 
+/** a composition alone, as a parcel at the origin (street = -Z) */
+function compoParcel(c: Composition): Parcel3D {
+  const w = c.size.w / 2, d = c.size.d / 2
+  return { biome: st.biome, template: c.id, corners: [-w, -d, w, -d, w, d, -w, d], fences: [], warnings: [],
+    items: c.items.map((it) => { const a = lib.assets.find((x) => x.guid === it.prefab); return { guid: it.prefab, kind: a?.kind ?? 'prop', x: it.x, z: it.z, yaw: it.yaw, footprint: a?.footprint ?? { minX: -0.5, maxX: 0.5, minZ: -0.5, maxZ: 0.5, h: 1 } } }) }
+}
+$<HTMLSelectElement>('f-compo-sel').onchange = (e) => { st.compo = (e.target as HTMLSelectElement).value; void preview() }
+$<HTMLInputElement>('f-compos').onchange = (e) => { st.compos = (e.target as HTMLInputElement).checked; void preview() }
+$<HTMLInputElement>('f-compo').onchange = async (e) => {
+  const f = (e.target as HTMLInputElement).files?.[0]
+  if (!f) return
+  try {
+    let id = compoId(f.name)
+    while (lib.compositions.some((c) => c.id === id)) id += '-2'
+    const c = importComposition(await f.text(), { id, name: f.name.replace(/\.et$/i, ''), biomes: [st.biome], tags: ['garden', 'yard'], source: 'vanilla', author: 'local', licence: 'CC-BY-4.0' })
+    userCompos.push(c)
+    lib = rebuild()
+    st.compo = c.id; st.mode = 'parcel'
+    const a = $<HTMLAnchorElement>('compo-dl')
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(userPack(), null, 1)], { type: 'application/json' }))
+    a.download = 'my-compositions.json'; a.style.display = ''
+    $('msg').textContent = `${tr('lib.compo_imported')} : ${c.name} (${c.items.length})`
+    renderPacks(); render()
+  } catch (err) { $('msg').textContent = (err as Error).message }
+}
 $<HTMLSelectElement>('f-biome').onchange = (e) => { st.biome = (e.target as HTMLSelectElement).value as BiomeId; st.tags = []; render() }
 $<HTMLSelectElement>('f-kind').onchange = (e) => { st.kind = (e.target as HTMLSelectElement).value as AssetKind | ''; st.tags = []; render() }
 $<HTMLInputElement>('f-fb').onchange = (e) => { st.fallback = (e.target as HTMLInputElement).checked; render() }
@@ -136,7 +180,7 @@ $<HTMLInputElement>('f-import').onchange = async (e) => {
   if (!f) return
   try {
     localPacks.push(importPack(await f.text()))
-    lib = buildLibrary([VANILLA_PACK, ...repoPacks, ...localPacks])
+    lib = rebuild()
     $('msg').textContent = tr('lib.pack_imported') + (lib.conflicts.length ? ` — ${lib.conflicts.length} ${tr('lib.duplicates_skipped')}` : '')
     renderPacks(); render()
   } catch (err) { $('msg').textContent = (err as Error).message }

@@ -149,6 +149,46 @@ orientation sur lot tourné.
 
 ---
 
+## 2bis. Compositions (parcelles toutes faites)
+
+Une **composition** = un prefab `.et` dont l'entité parente porte des enfants (positions relatives).
+L'importeur `src/library/composition.ts` (`parseComposition` / `importComposition`) l'aplatit en
+`Composition` (`items[]` : GUID/chemin du prefab, x/y/z, yaw, scale — centrés sur la boîte
+englobante, `size` = boîte + 1 m). Les packs JSON acceptent un tableau `compositions[]`.
+`generateParcel(..., { compositions: true })` / `gardenParcel(..., { compositions: true })` /
+option `compositions` du générateur de villages en déposent dans les lots (taille + biome + tags
+`garden` / `yard` / `farm` / `camp`). Désactivé par défaut : Everon et les sorties existantes sont inchangés.
+
+Pack livré : `library/compositions-vanilla.json` (13 sous-compositions civiles du jeu de base,
+GUID + positions seulement). Constat de l'inventaire (2026-11) : sur 824 `.et` de
+`Prefabs/Compositions` (624 avec enfants), **aucun jardin / cour / potager tout fait** — presque tout
+est militaire (Conflict, FOB, tentes, sacs de sable). Seuls ~13 petits groupes civils servent
+(bois de chauffage, caisses, tonneaux + outils, pneus, ferraille, arrière-cour du café). Les
+`PrefabLibrary/*` sont des objets seuls, pas des compositions. Mods installés : rien de civil à part
+`Rural Store Furniture` (MinusBuildingPack, intérieur). Packs publics à regarder (licence à vérifier
+sur chaque page) : *ARMA EXPANDED – COMPOSITIONS* (696CC2C2A5E625D9), *iRON79 Compositions*
+(60A68ED7293C691A), *FF-Extra Vanilla Compositions* (1B49AE0CA14D8860), *Ghura Prop Library*
+(E9512A473BD6820F, licence restrictive).
+
+### Créer sa parcelle dans le Workbench (méthode Casseburne)
+
+1. Ouvre un monde de test dans le **World Editor** (n'importe quelle map vide suffit).
+2. Pose tes objets : maison, cabanon, clôtures, potager, banc, bois de chauffage… comme un vrai jardin.
+   Pense à orienter la parcelle : **l'avant (côté rue) vers +Z** (flèche bleue du gizmo).
+3. Crée une **GenericEntity** vide (clic droit > Create entity > GenericEntity) et place-la **au milieu**
+   du jardin, au ras du sol.
+4. Dans la **Hierarchy**, glisse tous tes objets **sur** la GenericEntity : ils deviennent ses enfants
+   (leurs positions deviennent relatives au parent).
+5. Glisse la GenericEntity depuis la Hierarchy **dans le Resource Browser**, dans un dossier de ton
+   addon (ex. `Prefabs/Compositions/MesParcelles/`) : le Workbench crée un **prefab de composition**
+   `MonJardin_01.et`. (Pour le modifier plus tard : clic droit > *Break Prefab instance*, voir la vidéo
+   https://youtu.be/4vwKvS_xvbM.)
+6. Dans reforger-mapper, page **Bibliothèque** > **Importer une composition (.et)** > choisis ce fichier
+   (il est dans `Documents/My Games/ArmaReforgerWorkbench/addons/<ton addon>/Prefabs/...`).
+   Elle apparaît dans la liste *Compositions* avec un aperçu 3D, pour le biome choisi.
+7. **Télécharger en pack JSON** pour la garder / la partager (dépôt `library/*.json`). Si tes objets
+   viennent d'un mod, mets son GUID d'addon dans `source` du pack.
+
 ## 3. Bibliothèque publique — contribution, modération, attribution
 
 - **Format** : un fichier JSON par pack, `format: "reforger-mapper.assetpack"`, `version: 1`,
