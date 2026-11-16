@@ -8,6 +8,18 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+### Added
+- **Atelier mode** (welcome card "Open an existing Workbench project"): finish a project made in the Workbench, parity with giorbev's Map Generator Pro tools. Own layout (stepper A0-A6, layers | map | inspector, journal, X/Z/Y cursor, busy panel, help with FAQ + glossary, EN/FR).
+  - A0 open a project folder through the relay (or read-only in the browser, File System Access), list worlds, summary (grid, heights, materials, .layer objects, water).
+  - A1 tile diagnostic: textures per block vs. QTRE budget 5/7, problem list, texture search, per-tile table, CSV.
+  - A2 surfaces: terrain materials usage + biome presets (giorbev JSON) checked against the project.
+  - A3 water as in game (lakes / rivers recomputed from the heights), corrections (lake <= 60 points, river split by width) and `.layer` rewrite with Apply / Restore.
+  - A4 in-game 2D map background (military 80s or realistic style, legend, 2k/4k/8k PNG, save into the project) + import guidance.
+  - A5 contour-line `.conf` (`SCR_MapConfig`) with optional wall hiding.
+  - A6 backups (`_originaux/<time>/`) + Restore, `.rmatelier.zip` export, `.mgp.zip` import.
+- Relay: `/atelier/*` endpoints and `safeWrite` (refuses while the Workbench runs, SHA check, backup, never outside the project folder).
+- Tests: `node --test "tests/atelier/*.test.*"` (parsers on real files, safeWrite round trip).
+
 ## [0.5.0] - 2026-11-16
 
 The big "newcomer" release: a guided interface, a one-click random world and many new things to put on the map.

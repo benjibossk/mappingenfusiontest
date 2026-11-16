@@ -4,6 +4,10 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+### Ajouté
+- **Mode Atelier** (carte d'accueil « Ouvrir un projet Workbench existant ») : finir un projet fait dans le Workbench, parité avec les outils de Map Generator Pro de giorbev. Étapes A0-A6 : ouvrir le projet (relais ou lecture seule navigateur), diagnostic des tuiles QTRE, surfaces/biomes, eau comme en jeu + réécriture `.layer` (Appliquer / Restaurer), fond de carte en jeu (militaire / réaliste, légende, PNG 2k-8k), `.conf` des courbes de niveau, sauvegardes `_originaux` + export/import d'archive.
+- Relais : routes `/atelier/*` et écriture sûre (refus si Workbench ouvert, SHA, sauvegarde, jamais hors du dossier projet).
+
 ## [0.5.0] - 2026-11-16
 
 La grande version « débutant » : une interface guidée, un monde aléatoire en un clic et beaucoup de nouveautés à poser sur la carte.

@@ -156,3 +156,19 @@ Navigateur (Playwright sur `vite preview` :5200, captures `wkr-*.png` du scratch
 - [ ] `npx tsx scripts/check-worker-determinism.ts 4096 3` : « IDENTICAL » (même hash direct / via worker).
 Bench 8 km (seeds 1-5) : remplissage des lots 30-34 % → 69-73 % ; bâtiments 597/401/351/416/572 → 880/662/565/673/913 ; 0 problème au contrôle ; 14-19 s.
 Limite connue : les rivières « en direct » (recompose) et les lignes électriques / villages manuels restent sur la page ; sans worker (navigateur ancien) tout tourne dans la page et Annuler n'agit qu'entre deux étapes.
+
+## R12 — Mode Atelier (ajouté le 2026-11-16)
+Automatique : `node --test "tests/atelier/*.test.*"` (14 tests : `.terr`/`.ttile` 16×16 et 19×19, eau + réécriture `.layer`, classement des prefabs, `.conf`, raster, zip, safeWrite).
+Navigateur (Playwright sur `vite preview`, relais lancé, copie de Normandy_Edit dans le scratchpad ; captures `atelier-*.png` ; 0 erreur de page) :
+- [ ] Accueil : carte « Ouvrir un projet Workbench existant (Atelier) » ; le mode générateur est inchangé.
+- [ ] A0 : coller le chemin du dossier addon → « Ouvrir » ; le monde unique se charge seul (panneau « En cours » avec barre) ; résumé : grille, hauteurs, matériaux, objets, eau.
+- [ ] Relais arrêté → message clair ; « Choisir un dossier » (Chrome/Edge) ouvre en lecture seule (badge « lecture seule », pas de bouton Appliquer).
+- [ ] A1 : blocs colorés (sous / au / au-delà du budget / vides), liste des problèmes, clic tuile → tableau des blocs ; recherche d'une texture ; CSV téléchargé.
+- [ ] A2 : usage des surfaces + présence des textures de chaque biome.
+- [ ] A3 : « Analyser » → liste lacs/rivières, contours rouge (actuel) / vert (proposé), eau bleue ; « Appliquer » écrit, journal « original gardé dans _originaux/… ».
+- [ ] Workbench ouvert → Appliquer refusé (« fermez le Workbench »), fichier intact.
+- [ ] A4 : aperçu militaire puis réaliste ; PNG 4096 téléchargé ; « Enregistrer dans le projet » → `UI/Textures/Map/`.
+- [ ] A5 : `.conf` mis à jour en direct ; téléchargement / enregistrement dans `Configs/Map/`.
+- [ ] A6 : sauvegarde listée → « Restaurer » ; fichier identique octet pour octet à l'original ; export `.rmatelier.zip`.
+- [ ] Bouton FR/EN : la page se recharge et rouvre l'Atelier dans l'autre langue.
+Dans Workbench (manuel) : ouvrir le monde corrigé, vérifier lacs/rivières régénérés ; importer le PNG (ToSRGB, Tiled off, Mips off) et le brancher sur `SCR_MapEntity` ; brancher le `.conf` via `SCR_MapConfigComponent` du GameMode.
