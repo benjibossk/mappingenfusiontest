@@ -107,3 +107,11 @@ Vue 3D de l'Atelier (monde Workbench existant) : relief décodé + carte « réa
 À câbler (barre d'outils, hors `view3d/`) :
 - sélecteur **Qualité** (auto / haute / basse) qui forcerait `TREE_NEAR` / `TREE_FAR` / pixel ratio ;
 - affichage du compteur d'arbres visibles et des fps dans la barre.
+
+## Forests and walls, second pass (0.6.0)
+
+What OpsTrack does exactly (GameMap3D chunk, `OD({vegetation})`): per tree x, z, height, radius, kind (0 conifer, 1 broadleaf, 2 bush), seed, read from the real map (prefab sizes). Geometries: open 6-sided `ConeGeometry(.5,1,6,1,true)` for conifers, `IcosahedronGeometry(.5,0)` raised 0.65 for broadleaves (height × 0.87), `OctahedronGeometry(.5,0)` for bushes; one `MeshLambertMaterial` (white, instance colours) per kind; matrix = scale (2r, h, 2r) at the ground, no rotation. Colours ID/PD/LD × (0.8 + seed/255 × 0.4). Cells of 512 m visible to 3000 m + cell radius; one `PointsMaterial` point per tree (size 9, attenuated, colour × 0.35) faded in 1200 → 2600 m. No shadows at all (`<Canvas>` without `shadows`), ambient 0.75 + one directional 1.6 at (x-8000, 9000, z+8000), R3F defaults (ACES, sRGB). Terrain `MeshStandardMaterial` roughness 1. Objects: `BoxGeometry` instanced, `#8d8578` roughness 0.9.
+
+Our data has no real tree sizes, so `forestTrees()` (main.ts) now spaces trees ≥ 8 m on a jittered grid, thins them over the first ~25 m of the edge (lace), opens clearings from a 40 m value noise, puts bushes in edges / clearings / undergrowth, and stores a size factor; `view3d` turns it into conifer 11-26 m (r 2.4-4.5), broadleaf 7-16 m (r 2.2-4.5), bush 1-3 m. The clump densification is gone. Walls / fences (biome parcel fences, zone wall generators) and hedges (campaign) go to the view as polylines and become one thin box per segment.
+
+Atelier (existing maps): exact boxes need each prefab's bounding box. It is not in the `.et` (the prefab only references the `.xob` model); the bbox lives in the model's `.xob` (binary, in the game `.pak`) — reading it needs the PakInspector extract plus an `.xob` header parser, or a Workbench NET API handler calling `entity.GetWorldBounds()` / `GetBounds()` per prefab and returning a table (prefab GUID → min/max). Neither exists yet; buildings in the Atelier keep their estimated footprints.

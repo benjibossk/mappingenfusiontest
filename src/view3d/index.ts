@@ -18,8 +18,9 @@ export interface View3DData {
   hm: HeightGrid
   sea: number
   buildings: Box3D[]
-  trees: Float32Array // x, z, scale (1 = 12 m) triplets
-  treeNeedle?: Uint8Array // 1 = conifer, per tree
+  trees: Float32Array // x, z, size factor (1 = typical) triplets
+  treeNeedle?: Uint8Array // per tree: 0 broadleaf, 1 conifer, 2 bush
+  walls?: { pts: number[]; h: number; t: number; hedge?: boolean }[] // flat X/Z polylines: walls, fences, hedges (thin boxes)
   treeTint?: { needle: number[]; broad: number[]; bush: number[] } // biome multipliers on the crown colours (absent = Everon)
   lakes: number[][] // flat X/Z rings
   bridges?: Box3D[] // decks (cz/cx centre, h = thickness), y from the deck height
@@ -43,7 +44,11 @@ export interface View3DOptions {
   notify?: (msg: string) => void
   onClose: (target: [number, number], span: number) => void
 }
-export interface View3D { refreshDrape(): void; close(): void; stats(): { frames: number; vertices: number; buildings: number; trees: number; drape: string; texture: number } }
+export interface View3D { refreshDrape(): void; close(): void; stats(): { frames: number; vertices: number; buildings: number; trees: number; drape: string; texture: number }
+  /** test hook: aim at world X/Z from `dist` metres, `pitch` degrees above the horizon, from the south rotated by `yaw` degrees */
+  aim(x: number, z: number, dist: number, pitch: number, yaw?: number): void
+  /** test hook: [x, z] of every tree of a kind (0 broad, 1 needle, 2 bush, 9 = buildings), every n-th */
+  sample(kind: number, n: number): number[] }
 
 const MAX_VERTS = 1_000_000
 // trees as OpsTrack (measured in its GameMap3D chunk): low-poly instanced meshes per 512 m cell up to TREE_NEAR,
@@ -239,8 +244,21 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const boxGeo = new BoxGeometry(1, 1, 1).translate(0, 0.5, 0)
   const bldMat = new MeshStandardMaterial({ color: 0x8d8578, roughness: 0.9, metalness: 0 }) // OpsTrack building grey-beige
   const blds = data.buildings.length ? new InstancedMesh(boxGeo, bldMat, data.buildings.length) : null
-  const bridgeMat = new MeshLambertMaterial({ color: 0x8c8c86 })
+  const bridgeMat = bldMat // OpsTrack: decks are the same grey-beige boxes
   const brg = data.bridges?.length ? new InstancedMesh(boxGeo, bridgeMat, data.bridges.length) : null
+  // walls / fences / hedges: one thin box per segment, OpsTrack object grey-beige (hedges dark green)
+  const wallSeg: number[] = [] // cx, cz, len, t, h, yaw, hedge
+  for (const w of data.walls ?? []) for (let i = 0; i + 3 < w.pts.length; i += 2) {
+    const ax = w.pts[i], az = w.pts[i + 1], bx = w.pts[i + 2], bz = w.pts[i + 3], len = Math.hypot(bx - ax, bz - az)
+    if (len > 0.2) wallSeg.push((ax + bx) / 2, (az + bz) / 2, len + w.t * 0.5, w.t, w.h, Math.atan2(bz - az, bx - ax), w.hedge ? 1 : 0)
+  }
+  const nWall = wallSeg.length / 7
+  const walls = nWall ? new InstancedMesh(boxGeo, new MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0 }), nWall) : null
+  if (walls) {
+    const wc = new Float32Array(nWall * 3), grey = new Color(0x8d8578), hedge = new Color(0x2c4a22)
+    for (let i = 0; i < nWall; i++) (wallSeg[i * 7 + 6] ? hedge : grey).toArray(wc, i * 3)
+    walls.instanceColor = new InstancedBufferAttribute(wc, 3)
+  }
   const geos = { // OpsTrack: open 6-sided cone (conifer), faceted icosahedron (broadleaf), octahedron (bush); Lambert, flat shading
     needle: new ConeGeometry(0.5, 1, 6, 1, true).translate(0, 0.5, 0),
     broad: new IcosahedronGeometry(0.5, 0).translate(0, 0.65, 0),
@@ -250,30 +268,15 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const KCOL: Record<Kind, number[]> = { needle: [0.13, 0.25, 0.13], broad: [0.2, 0.34, 0.14], bush: [0.28, 0.33, 0.16] } // OpsTrack linear tints; × 0.5–0.75 here (their sun reaches the forest at a grazing angle, ours is higher)
   const treeMat = new MeshLambertMaterial({ color: 0xffffff })
   const treeChunks: { mesh: InstancedMesh; c: Vector3; list: number[]; kind: Kind }[] = []
-  // densify: each project tree becomes a small clump (≈1 M instances max) so forests read as a closed canopy
-  {
-    const n0 = data.trees.length / 3, kc = Math.max(1, Math.min(6, Math.floor(1_000_000 / Math.max(1, n0))))
-    if (kc > 1) {
-      const tr = new Float32Array(n0 * kc * 3), nd = new Uint8Array(n0 * kc)
-      for (let i = 0; i < n0; i++) for (let c = 0; c < kc; c++) {
-        const o = i * kc + c, h1 = ((o * 2654435761) >>> 0) / 4294967296, h2 = ((o * 2246822519 + 7) >>> 0) / 4294967296
-        const r = c ? 3 + h1 * 5 : 0, a = h2 * 6.283
-        tr[o * 3] = data.trees[i * 3] + Math.cos(a) * r; tr[o * 3 + 1] = data.trees[i * 3 + 1] + Math.sin(a) * r
-        tr[o * 3 + 2] = data.trees[i * 3 + 2] * (c ? 0.7 + h1 * 0.35 : 1)
-        nd[o] = data.treeNeedle?.[i] ?? 0
-      }
-      data = { ...data, trees: tr, treeNeedle: nd }
-    }
-  }
   const nTree = data.trees.length / 3
   const kindOf = (t: number): Kind => {
-    if (data.treeNeedle?.[t]) return 'needle'
-    return ((t * 374761393) >>> 0) % 100 < 12 ? 'bush' : 'broad' // some undergrowth among broadleaves
+    const k = data.treeNeedle?.[t] ?? 0
+    return k === 1 ? 'needle' : k === 2 ? 'bush' : 'broad'
   }
   if (data.treeTint) { const tt = data.treeTint; for (const k of ['needle', 'broad', 'bush'] as Kind[]) KCOL[k] = KCOL[k].map((v, i) => Math.min(1, v * tt[k][i])) }
   const tcol = new Float32Array(nTree * 3)
   for (let t = 0; t < nTree; t++) {
-    const kc = KCOL[kindOf(t)], m = (0.8 + (((t * 2654435761) >>> 0) / 4294967296) * 0.4) * 0.62
+    const kc = KCOL[kindOf(t)], m = (0.8 + (((t * 2654435761) >>> 0) / 4294967296) * 0.4) * 0.78 // a touch darker: our drape is brighter than theirs
     tcol[t * 3] = kc[0] * m; tcol[t * 3 + 1] = kc[1] * m; tcol[t * 3 + 2] = kc[2] * m
   }
   // far canopy: one lit-less point per tree, size in metres, faded in where the meshes stop
@@ -281,7 +284,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   ptsGeo.setAttribute('position', new BufferAttribute(new Float32Array(nTree * 3), 3))
   ptsGeo.setAttribute('color', new BufferAttribute(tcol, 3))
   const ptsMat = new PointsMaterial({ size: 9, sizeAttenuation: true, vertexColors: true })
-  ptsMat.color.setScalar(0.35 / 0.62) // OpsTrack: points at 0.35 of the tint (undo our mesh darkening)
+  ptsMat.color.setScalar(0.35 / 0.78) // OpsTrack: points at 0.35 of the tint (undo the mesh darkening)
   const fadeU = { value: new Vector2(0.4 * TREE_NEAR, 0.87 * TREE_NEAR) }
   ptsMat.onBeforeCompile = (sh) => {
     sh.uniforms.uFade = fadeU
@@ -332,6 +335,16 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
       })
       brg.instanceMatrix.needsUpdate = true; brg.computeBoundingSphere()
     }
+    if (walls) {
+      for (let i = 0; i < nWall; i++) {
+        const o = i * 7, x = wallSeg[o], z = wallSeg[o + 1]
+        tmp.position.set(x, groundAt(x, z) * ex - 0.4, -z)
+        tmp.rotation.set(0, wallSeg[o + 5], 0) // world atan2(dZ, dX) = three yaw about +y since z = -Z
+        tmp.scale.set(wallSeg[o + 2], wallSeg[o + 4] + 0.4, wallSeg[o + 3])
+        tmp.updateMatrix(); walls.setMatrixAt(i, tmp.matrix)
+      }
+      walls.instanceMatrix.needsUpdate = true; walls.computeBoundingSphere()
+    }
     const m4 = new Matrix4(), qn = new Quaternion(), v = new Vector3(), sc = new Vector3(), UP = new Vector3(0, 1, 0)
     const pp = ptsGeo.attributes.position.array as Float32Array
     for (const ch of treeChunks) {
@@ -340,7 +353,10 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
         // per-tree height / crown radius jitter (OpsTrack carries real ones), random yaw so facets never line up
         const h = ((i * 2246822519) >>> 0) / 4294967296, k = ((i * 3266489917) >>> 0) / 4294967296
         let ht: number, rd: number
-        if (ch.kind === 'needle') { ht = (16 + k * 8) * f; rd = (2.6 + h * 1.2) * f } else if (ch.kind === 'bush') { ht = (3 + k * 3) * f; rd = (2 + h * 1.5) * f } else { ht = (13 + k * 6) * f * 0.87; rd = (3.6 + h * 1.8) * f }
+        // realistic sizes (OpsTrack carries the prefab's): conifer 12-28 m / r 2-4 m, broadleaf 8-18 m / r 3-6 m, bush 1-3 m
+        if (ch.kind === 'needle') { ht = Math.min(26, (11 + k * 9) * f); rd = Math.min(4.5, (2.4 + h * 1.4) * (0.7 + f * 0.35)) }
+        else if (ch.kind === 'bush') { ht = 1 + k * 2 * f; rd = 0.8 + h * 1.4 * f }
+        else { ht = Math.min(18, (8 + k * 7) * f) * 0.87; rd = Math.min(4.5, (2.2 + h * 1.6) * (0.7 + f * 0.35)) }
         v.set(x, gy - 0.5, -z)
         qn.setFromAxisAngle(UP, h * Math.PI * 2)
         sc.set(rd * 2, ht, rd * 2)
@@ -355,6 +371,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   place()
   if (blds) scene.add(blds)
   if (brg) scene.add(brg)
+  if (walls) scene.add(walls)
 
   // --- camera ---
   const controls = new MapControls(camera, renderer.domElement)
@@ -550,6 +567,13 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   return {
     refreshDrape() { if (!closed && mode === 'map') { drape(); dirty = true } }, // the realistic drape keeps the data it was opened with
     close,
+    aim: (x, z, dist, pitch, yaw = 0) => {
+      const gy = groundAt(x, z) * ex, p = (pitch * Math.PI) / 180, y = (yaw * Math.PI) / 180
+      controls.target.set(x, gy, -z)
+      camera.position.set(x + Math.sin(y) * Math.cos(p) * dist, gy + Math.sin(p) * dist, -z + Math.cos(y) * Math.cos(p) * dist)
+      controls.update(); dirty = true
+    },
+    sample: (kind, n) => { const r: number[] = []; if (kind === 9) { data.buildings.forEach((b, i) => { if (i % n === 0) r.push(b.cx, b.cz) }); return r } for (let t = 0; t < data.trees.length / 3; t += n) if ((data.treeNeedle?.[t] ?? 0) === kind) r.push(data.trees[t * 3], data.trees[t * 3 + 1]); return r },
     stats: () => ({ frames, vertices: nc * nr, buildings: data.buildings.length, trees: data.trees.length / 3, drape: mode, texture: mode === 'map' ? maxTex : realTex }),
   }
 }

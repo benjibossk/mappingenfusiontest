@@ -4224,7 +4224,9 @@ function box3d(c: number[], h: number) {
   const w = Math.hypot(c[2] - c[0], c[3] - c[1]), d = Math.hypot(c[4] - c[2], c[5] - c[3])
   return { cx, cz, w: Math.max(1, w), d: Math.max(1, d), h, yaw: Math.atan2(c[3] - c[1], c[2] - c[0]) }
 }
-/** trees scattered in the forest areas: jittered grid, capped at ~300 k; needle: 1 = conifer (leaf type of the area, mixed = 40 %) */
+/** trees scattered in the forest areas, OpsTrack-like: spaced trees (min ~7 m apart, the ground shows between crowns),
+ *  natural clearings from a low-frequency noise, bushes along the edges and in the undergrowth; capped at ~400 k.
+ *  needle: 0 = broadleaf, 1 = conifer, 2 = bush; size factor (1 = typical) in the 3rd float */
 function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
   const forests = areas.filter((a) => a.kind === 'forest' && a.pts.length >= 6)
   let tot = 0
@@ -4236,25 +4238,53 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
     tot += Math.abs(ar) / 2
     return [x0, z0, x1, z1]
   })
-  const sp = Math.max(9, Math.sqrt(tot / 300_000))
+  const sp = Math.max(8, Math.sqrt(tot / 400_000))
   const out: number[] = [], kind: number[] = []
   let seed = 1
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  // value noise (~40 m cells): clearings and denser patches
+  const hsh = (i: number, j: number) => (((i * 73856093) ^ (j * 19349663)) >>> 0) % 10007 / 10007
+  const noise = (x: number, z: number) => {
+    const gx = x / 40, gz = z / 40, i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j
+    const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz)
+    const a = hsh(i, j) + (hsh(i + 1, j) - hsh(i, j)) * sx, b = hsh(i, j + 1) + (hsh(i + 1, j + 1) - hsh(i, j + 1)) * sx
+    return a + (b - a) * sz
+  }
   const mixShare = mixedNeedle(currentBiome)
   forests.forEach((a, n) => {
     const [x0, z0, x1, z1] = bb[n], p = a.pts
     for (let z = z0 + sp / 2; z < z1; z += sp) for (let x = x0 + sp / 2; x < x1; x += sp) {
-      const px = x + (rnd() - 0.5) * sp * 0.8, pz = z + (rnd() - 0.5) * sp * 0.8
-      let inside = false
+      const px = x + (rnd() - 0.5) * sp * 0.9, pz = z + (rnd() - 0.5) * sp * 0.9
+      let inside = false, d2 = Infinity
       for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
         if ((p[i + 1] > pz) !== (p[j + 1] > pz) && px < ((p[j] - p[i]) * (pz - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) inside = !inside
+        const ex = p[i] - p[j], ez = p[i + 1] - p[j + 1], l2 = ex * ex + ez * ez || 1
+        const u = Math.max(0, Math.min(1, ((px - p[j]) * ex + (pz - p[j + 1]) * ez) / l2)), qx = p[j] + u * ex - px, qz = p[j + 1] + u * ez - pz
+        d2 = Math.min(d2, qx * qx + qz * qz)
       }
-      if (inside) { out.push(px, pz, 0.7 + rnd() * 0.6); kind.push(a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < mixShare) ? 1 : 0) }
+      if (!inside) continue
+      const d = Math.sqrt(d2), nz = noise(px, pz), r = rnd()
+      // lace edge: trees thin out over the first ~25 m, clearings where the noise is low
+      if (r > Math.min(1, 0.35 + d / 25) || nz < 0.12) {
+        if (r < 0.75 && d < 30) { out.push(px, pz, 0.6 + rnd() * 0.8); kind.push(2) } // edge / clearing bushes
+        continue
+      }
+      const needle = a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < mixShare)
+      out.push(px, pz, 0.55 + rnd() * 0.75 * (0.6 + nz * 0.8)); kind.push(needle ? 1 : 0)
+      if (rnd() < 0.3) { out.push(px + (rnd() - 0.5) * sp, pz + (rnd() - 0.5) * sp, 0.5 + rnd()); kind.push(2) } // undergrowth
     }
   })
   // biome garden trees (not Everon)
   for (const p of setParcels) for (const it of p.items) if (it.kind === 'tree') { out.push(it.x, it.z, 0.6); kind.push(/pinus|picea|abies|larix/i.test(it.guid) ? 1 : 0) }
   return { pts: new Float32Array(out), needle: Uint8Array.from(kind) }
+}
+/** walls, fences and hedges of the project as polylines for the 3D view (thin boxes, OpsTrack-style) */
+function wallLines(): { pts: number[]; h: number; t: number; hedge?: boolean }[] {
+  const out: { pts: number[]; h: number; t: number; hedge?: boolean }[] = []
+  for (const p of setParcels) for (const f of p.fences) if (f.pts.length >= 4) out.push({ pts: f.pts, h: /wall|stone|brick/i.test(f.guid) ? 1.8 : 1.3, t: 0.25 })
+  for (const z of zones) for (const s of z.shapes) if (s.kind === 'polyline' && s.generator && s.points.length >= 4) out.push({ pts: s.points, h: 2.2, t: 0.3 })
+  for (const h of result?.hedges ?? []) if (h.length >= 2) out.push({ pts: h.flat(), h: 2, t: 1.4, hedge: true })
+  return out
 }
 const flat = (ring: number[][]) => ring.flat()
 const roadKind = (t: string) => (/^asphalt/.test(t) ? 'asphalt' : /cobble|concrete/.test(t) ? 'paved' : /^trail/.test(t) ? 'trail' : 'dirt') as 'asphalt' | 'paved' | 'dirt' | 'trail'
@@ -4324,7 +4354,7 @@ btn3d.addEventListener('click', () => void (async () => {
     const trees = forestTrees()
     const bridgesBoxes = worldBridges.map((b) => ({ cx: b.x, cz: b.z, w: 8, d: 16, h: 1.2, yaw: (-b.yaw * Math.PI) / 180 }))
     v3d = await mod.open3d(map.parentElement!, {
-      hm, sea: 0, buildings, trees: trees.pts, treeNeedle: trees.needle, treeTint: treeTint(currentBiome), lakes,
+      hm, sea: 0, buildings, trees: trees.pts, treeNeedle: trees.needle, walls: wallLines(), treeTint: treeTint(currentBiome), lakes,
       bridges: bridgesBoxes, bridgeY: worldBridges.map((b) => (b.ycm !== undefined ? b.ycm / 100 : heightAt(hm, b.x, b.z))),
       target: [view.x, view.z], span: map.width * view.mpp,
     }, {
