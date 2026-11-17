@@ -5,8 +5,9 @@ import type { Grid, SurfaceGrid } from './island'
 import { SITE_RADIUS, maxGrade, worstGrade, type Site } from './network'
 import type { Road } from './roads'
 import type { Placed } from './settlements'
+import { overBudgetCells, type DensityGrid, type Platform } from './platformBudget'
 
-export type IssueKind = 'noBridge' | 'steepRoad' | 'isolated' | 'buildingWet' | 'overlap' | 'overfull' | 'outside' | 'buildingField' | 'roadField'
+export type IssueKind = 'noBridge' | 'steepRoad' | 'isolated' | 'buildingWet' | 'overlap' | 'overfull' | 'outside' | 'buildingField' | 'roadField' | 'overBudget'
 export interface Issue { kind: IssueKind; x: number; z: number; id: string; value?: number }
 
 // grade limits per road type: maxGrade() in network.ts, the same the auto network routes with
@@ -23,6 +24,8 @@ export function validate(o: {
   /** zones (industrial, military, airfield) with their footprints */
   zones?: { id: string; x: number; z: number; boxes: { corners: number[] }[] }[]
   surfaces?: SurfaceGrid[]
+  /** per-platform object budget (platformBudget.ts): cells above it become 'overBudget' */
+  budget?: { platform: Platform; grid: DensityGrid }
 }): Issue[] {
   const { cols, rows, step } = o.grid
   const at = (x: number, z: number) => {
@@ -89,6 +92,7 @@ export function validate(o: {
 
   // more than 5 surfaces per terrain block
   if (o.surfaces) for (const b of overfullBlockList(o.surfaces)) out.push({ kind: 'overfull', id: `${Math.round(b.x)},${Math.round(b.z)}`, x: b.x, z: b.z, value: b.used })
+  if (o.budget) for (const c of overBudgetCells(o.budget.grid, o.budget.platform)) out.push({ kind: 'overBudget', id: `${Math.round(c.x)},${Math.round(c.z)}`, x: c.x, z: c.z, value: c.count })
   return out
 }
 

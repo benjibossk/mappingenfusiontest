@@ -1,3 +1,5 @@
+import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
+import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
 import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
 import { prefabDims } from './library/dims'
@@ -22,12 +24,14 @@ import { generateTown } from './modules/town'
 import { makeSiteZone, SITE_TYPES, type SiteType } from './modules/sitezones'
 import type { Faction } from './modules/modules'
 import { makeProdForest, type ProdLog } from './modules/prodforest'
+import { addRoundabouts, villageWalls } from './modules/roundabouts'
 import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fillFieldZone, flatToPoly, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'names'] as const
+const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names'] as const
 const hiddenLayers = new Set<string>()
+let density: DensityGrid | null = null // object count per cell for the platform budget (platformBudget.ts)
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
 let collab: CollabTransport | null = null // shared room: direct (src/p2p.ts) or server (src/collab.ts)
 let quietUntil = 0 // a project just received from the room is not sent back
@@ -82,10 +86,10 @@ const toWb = async (p: Project) => {
   autosave()
   return (lostPts > 0 || crumbs ? t('log.cleaned', { pts: lostPts, crumbs }) + '\n' : '') + msg
 }
+import { ffBiomeName, ffBiomeValue } from './ffbiome'
 import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
 import { generateForests } from './modules/forestgen'
-import { ffBiomeName, ffBiomeValue } from './ffbiome'
 import { worldToIsland } from './modules/importWorld'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
@@ -657,12 +661,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="form">
         <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
         <label>${t('lbl.tWorld')} <input id="tWorld" value="Worlds/MG_Test"></label>
+        <p id="ffBiomeInfo" class="hint"></p>
       </div>
       <fieldset class="test">
         <legend>${t('legend.check')}</legend>
-        <p id="ffBiomeInfo" class="hint"></p>
         ${hint('hint.check')}
+        <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
+        <p id="checkDensity" class="hint"></p>
         <ul id="checkList" class="issues"></ul>
       </fieldset>
       <div id="wbGuide" class="wbguide" hidden>
@@ -859,6 +865,7 @@ function draw() {
     })
   }
   if (layer('bridges')) drawBridges()
+  if (layer('density') && density) drawDensityHeat(ctx, density, PLATFORM_BUDGETS[budgetPlatform()].perKm2, toScreen)
   if (layer('issues')) drawIssues()
   if (!draping) drawComments()
   if (collab && !draping) drawPeers()
@@ -1056,7 +1063,7 @@ function buildSite(type: SiteType, zone: number[]): ZoneItem {
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)].filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) }))
   const wet = waters.filter((w) => WATER_TYPES[w.type].closed).map((w) => w.pts)
   const ok = (x: number, z: number) => (!terrain || isLand(terrain, x, z)) && !wet.some((p) => pointInPoly(p, x, z)) && !settled.some((b) => Math.abs(b.x - x) < 30 && Math.abs(b.z - z) < 30 && pointInPoly(b.corners, x, z))
-  const zn = makeSiteZone(type, zone, { id, seed: num('seed') * 13 + zones.length, roads: allRoads, ground: terrain ? groundAt : undefined, ok, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts), faction: $<HTMLSelectElement>('zoneFaction').value as Faction, rivers: waters.filter((w) => !WATER_TYPES[w.type].closed).map((w) => w.pts) })
+  const zn = makeSiteZone(type, zone, { id, seed: num('seed') * 13 + zones.length, roads: allRoads, ground: terrain ? groundAt : undefined, ok, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts), faction: $<HTMLSelectElement>('zoneFaction').value as Faction, rivers: waters.filter((w) => !WATER_TYPES[w.type].closed).map((w) => w.pts), water: (x, z) => (!!terrain && !isLand(terrain, x, z)) || wet.some((p) => pointInPoly(p, x, z)) })
   return zn
 }
 function zoneSite(type: SiteType, zone: number[]) {
@@ -1298,7 +1305,7 @@ let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random w
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
 let zonePick: { kind: ZoneKind; sub: string } | null = null
 let zoneCands: { x: number; z: number; yaw: number }[] = []
-const ZONE_FILL: Record<string, string> = { pasture: '#9cc46a44', orchard: '#6fa04a44', grave: '#d8d8d8', lamp: '#ffe066', lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc' }
+const ZONE_FILL: Record<string, string> = { sand: '#e6d39a99', pasture: '#9cc46a44', orchard: '#6fa04a44', grave: '#d8d8d8', lamp: '#ffe066', lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc' }
 let satQ: Quantised | null = null
 let satSurf: string[] = []
 let satCanvas: HTMLCanvasElement | null = null
@@ -2681,14 +2688,14 @@ function setBiome(id: BiomeId, save = true) {
     badge.textContent = t(('biomeAvailability.' + b.availability) as K)
     badge.title = biomeTip(id)
   })
+  const ffEl = document.getElementById('ffBiomeInfo')
+  if (ffEl) ffEl.textContent = t('wb.ffBiome', { name: ffBiomeName(id), value: ffBiomeValue(id) })
   if (save) autosave()
 }
 document.querySelectorAll<HTMLSelectElement>('select[data-biome]').forEach((sel) => sel.addEventListener('change', () => setBiome(sel.value as BiomeId)))
 setBiome(currentBiome, false)
 $<HTMLButtonElement>('libBtn').addEventListener('click', () => window.open('library.html', '_blank'))
 $<HTMLButtonElement>('pSave').addEventListener('click', async () => {
-  const ffEl = document.getElementById('ffBiomeInfo')
-  if (ffEl) ffEl.textContent = t('wb.ffBiome', { name: ffBiomeName(id), value: ffBiomeValue(id) })
   const p = islandProject()
   if (!p) return void (logEl.textContent = t('log.genFirst'))
   const a = document.createElement('a')
@@ -3175,6 +3182,7 @@ function netApply(keep: Road[], made: Road[]) {
     r.id = nextRoadId(r.type)
     roads.push(r)
   }
+  roads = addRoundabouts(roads).roads // P3 #15: rings at busy junctions
   let km = 0
   for (const r of made) for (let i = 2; i + 1 < r.pts.length; i += 2) km += Math.hypot(r.pts[i] - r.pts[i - 2], r.pts[i + 1] - r.pts[i - 1])
   roadInfo()
@@ -3911,7 +3919,10 @@ function roadShapesWithFurniture() {
     const a = h[i] + (h[i + 1] - h[i]) * fx, b = h[i + cols] + (h[i + cols + 1] - h[i + cols]) * fx
     return a + (b - a) * fz
   }
-  return [...shapes, ...roadFurniture(roads, heightAt, num('furnDrop'), num('furnPost'))]
+  // P3 #17: low stone walls where a paved road crosses a village (none in front of houses)
+  const near = (x: number, z: number, r: number) => settled.reduce((c, b) => c + (Math.abs(b.x - x) < r && Math.abs(b.z - z) < r ? 1 : 0), 0)
+  const walls = villageWalls(roads, (x, z) => near(x, z, 45) >= 3, (x, z) => near(x, z, 9) > 0)
+  return [...shapes, ...roadFurniture(roads, heightAt, num('furnDrop'), num('furnPost')), ...walls]
 }
 
 document.querySelectorAll<HTMLInputElement>('#layers [data-layer]').forEach((el) => el.addEventListener('change', () => {
@@ -3928,7 +3939,9 @@ function runChecks() {
   issues = validate({
     roads, sites, settled, heights: island.heights, grid: island.grid, areas, zones, surfaces: island.surfaces,
     refusedGaps: roadGaps().filter((g) => ids.has(g.id) && noBridge.has(gapKey(g))),
+    budget: { platform: budgetPlatform(), grid: (density = contentDensity()) },
   })
+  $('checkDensity').textContent = t('check.density', { n: Math.round(density.total), max: PLATFORM_BUDGETS[budgetPlatform()].total })
   const list = $<HTMLUListElement>('checkList')
   list.innerHTML = ''
   for (const it of issues) {
@@ -3974,6 +3987,12 @@ function drawExisting() {
     if (w > 4) ctx.strokeRect(x0, y0, w, h)
   }
 }
+const budgetPlatform = () => (($<HTMLSelectElement>('checkPlatform')?.value) || 'xss') as Platform
+function contentDensity() {
+  const g = island!.grid
+  const objects = [...settled, ...zones.flatMap((zn) => zn.entities)]
+  return densityGrid({ width: (g.cols - 1) * g.step, height: (g.rows - 1) * g.step, objects, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts) })
+}
 function drawIssues() {
   for (const it of issues) {
     const [x, y] = toScreen(it.x, it.z)
@@ -3994,6 +4013,7 @@ function drawIssues() {
     ctx.fillText('!', x, y + 1)
   }
 }
+$<HTMLSelectElement>('checkPlatform').addEventListener('change', () => { if (issues.length || density) runChecks() })
 $<HTMLButtonElement>('checkRun').addEventListener('click', () => {
   const n = runChecks().length
   logEl.textContent = n ? t('log.checkIssues', { n }) : t('check.none')
@@ -4326,7 +4346,7 @@ function applyWorld(w: WorldResult) {
   sites = w.sites
   roads = w.roads
   powerLines = w.power
-  areas = w.areas.map((a) => ({ id: a.id, kind: a.kind, leaf: a.leaf, pts: a.pts }))
+  areas = w.areas.map((a) => ({ id: a.id, kind: a.kind, leaf: a.leaf, pts: a.pts, ...(a.tall && { tall: a.tall }), ...(a.stage && { stage: a.stage }), ...(a.logs && { logs: a.logs }) }))
   result = w.campaign ?? null
   settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
   setGardens = []
