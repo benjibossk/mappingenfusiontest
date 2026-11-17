@@ -33,7 +33,7 @@ import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fil
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names'] as const
+const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names'] as const
 const hiddenLayers = new Set<string>()
 let density: DensityGrid | null = null // object count per cell for the platform budget (platformBudget.ts)
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
@@ -802,6 +802,7 @@ function draw() {
   drawTrace()
   refreshSteps()
 
+  if (layer('countryside')) drawCountryside()
   if (result && layer('fields')) {
     result.fields.forEach((f, i) => {
       path(f, true)
@@ -1316,6 +1317,7 @@ let setPaths: Road[] = []
 let setSquares: Square[] = []
 let setGardens: { site: string; corners: number[] }[] = [] // v2 back gardens (drawn only)
 let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences
+let countryside: number[][] = [] // random world: the countryside polygons the plots were laid in (worldgen 10b)
 let riparian: RiparianPatch[] = [] // riparian band (riparian.ts): random world, or the Water tab button
 let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random world (3D view only)
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
@@ -3509,6 +3511,19 @@ $<HTMLInputElement>('traceFile').addEventListener('change', (e) => {
 })
 $<HTMLInputElement>('traceAlpha').addEventListener('input', () => draw())
 $<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg instanceof HTMLImageElement) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; void saveTrace(null); draw() })
+/** countryside polygons (random world): light yellow wash + bold dashed yellow outline under the plots */
+function drawCountryside() {
+  ctx.save()
+  ctx.setLineDash([14, 7]); ctx.lineWidth = 2.5
+  for (const p of countryside) {
+    ctx.beginPath()
+    for (let k = 0; k < p.length; k += 2) { const [sx, sy] = toScreen(p[k], p[k + 1]); if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+    ctx.closePath()
+    ctx.fillStyle = 'rgba(255, 200, 40, 0.10)'; ctx.fill()
+    ctx.strokeStyle = 'rgba(255, 196, 0, 0.95)'; ctx.stroke()
+  }
+  ctx.restore()
+}
 /** riparian patches: reeds (pale green-yellow) on the water edge, willows (dark green) behind */
 function drawRiparian() {
   for (const p of riparian) {
@@ -4431,6 +4446,7 @@ function applyWorld(w: WorldResult) {
   setParcels = [...(w.settlement.parcels ?? []), ...(w.settlement.fences ?? [])]
   zones = w.zones
   worldBridges = w.bridges ?? []
+  countryside = w.countryside ?? []
   riparian = w.riparian ?? []; $<HTMLInputElement>('wRipa').checked = riparian.length > 0
   pendingAct = 'rwGo'
   doneSnap.fill(null); ownSnap.fill('') // a fresh world: every step that has content counts as done
@@ -4725,4 +4741,4 @@ btn3d.addEventListener('click', () => void (async () => {
   })
 })())
 // dev-only probe for the Playwright checks: read the world state, move the 2D view
-if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
+if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }

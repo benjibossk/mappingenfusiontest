@@ -5,6 +5,7 @@
 import * as turf from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { generateCampaign } from './campaign'
+import { edgeTracks } from './fieldtracks'
 import { SITE_MAX_SLOPE, SITE_PRIORITY, SITE_TYPES, type SiteType } from './sitezones'
 
 export type ZoneFillType = 'fields' | 'forest' | 'habitation' | 'town' | 'scattered' | 'industrial' | 'production' | SiteType
@@ -267,7 +268,7 @@ export function fillFieldZone(o: FieldZoneOptions): FieldZoneResult {
   const land = o.landOk ?? o.ok
   const hedges = plotHedges(fields, { seen: o.seen, rnd, ok: land, keep: Math.max(0.2, Math.min(1, hedgeChance + 0.3)), minLen: minHedge })
   const groves = plotGroves(fields, { rnd, ok: land })
-  const tracks = o.roads?.length ? plotTracks(fields, o.roads, { ok: land }) : []
+  const tracks = o.roads?.length ? edgeTracks(fields, o.roads, { ok: land }) : [] // along the plot borders (fieldtracks.ts)
   return { fields, hedges, groves, tracks }
 }
 

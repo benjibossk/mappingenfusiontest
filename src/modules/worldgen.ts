@@ -606,7 +606,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const camp: CampaignResult = { fields: [], hedges: [], shapes: [] }
   const seen = new Set<string>(), laid: Feature<Polygon>[] = [], countryside: number[][] = []
   sites.forEach((s, k) => {
-    const R = SITE_RADIUS[s.kind], ring = R * (s.kind === 'town' ? 2.6 : 2.4) + 260
+    const R = SITE_RADIUS[s.kind], ring = R * (s.kind === 'town' ? 2.6 : 2.4) + (s.kind === 'hamlet' ? 420 : 260) // hamlets: a farm needs its fields too
     const ok = (x: number, z: number) => {
       if (isLakeOrSea(x, z) || Math.hypot(x - s.x, z - s.z) < R * 1.05) return false
       if (discs.some((d) => Math.hypot(x - d.x, z - d.z) < d.r + 20)) return false
