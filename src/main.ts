@@ -21,6 +21,7 @@ import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { type CampaignResult } from './modules/campaign'
 import { riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
+import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
@@ -429,6 +430,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.tSeaLevel')} <input id="tSeaLevel" type="number" step="1" value="0"></label>
       </div>
       </details>
+      ${outsideHtml()}
       <div class="row">
         <button id="pSave" type="button" class="secondary">${t('btn.pSave')}</button>
         <button id="pOpen" type="button" class="secondary">${t('btn.pOpen')}</button>
@@ -4719,6 +4721,7 @@ btn3d.addEventListener('click', () => void (async () => {
     v3d = await mod.open3d(map.parentElement!, {
       hm, sea: 0, buildings, props: logBoxes, trees: trees.pts, treeNeedle: trees.needle, walls: wallLines(), treeTint: treeTint(currentBiome), lakes,
       bridges: bridgesBoxes, bridgeY: worldBridges.map((b) => (b.ycm !== undefined ? b.ycm / 100 : heightAt(hm, b.x, b.z))),
+      outside: outsideFor(hm) ?? undefined,
       target: [view.x, view.z], span: map.width * view.mpp,
     }, {
       text: {
@@ -4742,4 +4745,5 @@ btn3d.addEventListener('click', () => void (async () => {
   })
 })())
 // dev-only probe for the Playwright checks: read the world state, move the 2D view
+wireOutside(() => terrain, (m) => { logEl.textContent = m })
 if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
