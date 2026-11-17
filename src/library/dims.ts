@@ -3,6 +3,7 @@
 // Cross-checked against the Workbench measure (profile/MapGen/prefabs.txt): 726/727 identical.
 import CATALOGUE from '../../library/prefabs-catalogue.json' with { type: 'json' }
 import type { Footprint } from './schema.ts'
+import { modDims } from './mods.ts'
 
 export interface PrefabDims { w: number; dz: number; h: number; cx: number; cz: number }
 
@@ -29,7 +30,10 @@ export function prefabDims(guidOrPath: string): PrefabDims | null {
   const g = s.match(/^\{?([0-9A-Fa-f]{16})\}?/)
   if (g) { const v = m.get(g[1].toUpperCase()); if (v) return v }
   const p = s.replace(/^\{[0-9A-Fa-f]{16}\}/, '').replace(/^Prefabs\//i, '').toLowerCase()
-  return p ? m.get(p) ?? null : null
+  const own = p ? m.get(p) ?? null : null
+  if (own) return own
+  const md = modDims(s) // Workshop mod prefab (library/mods)
+  return md ? { w: md[0], dz: md[1], h: md[2], cx: md[3], cz: md[4] } : null
 }
 
 /** footprint from the real dims (measured), or `fallback` when the prefab is unknown */

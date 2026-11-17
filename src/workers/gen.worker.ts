@@ -3,9 +3,13 @@
 import './shim'
 import { OPS, type Op } from './ops'
 import { pack, unpack } from './pack'
+import { enabledMods, setEnabledMods } from '../library/mods'
+import '../data/modBuildings' // ticked mods' buildings join BUILDINGS / INDUSTRIAL (off by default)
 
-self.onmessage = async (e: MessageEvent<{ id: number; op: Op; args: unknown[] }>) => {
+self.onmessage = async (e: MessageEvent<{ id: number; op: Op; args: unknown[]; mods?: string[] }>) => {
   const { id, op, args } = e.data
+  const mods = e.data.mods ?? []
+  if (mods.join() !== enabledMods().join()) setEnabledMods(mods)
   try {
     let last = 0
     const res = await OPS[op](unpack(args) as unknown[], (stage, i, n, f) => {

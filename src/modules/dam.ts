@@ -8,6 +8,7 @@ import type { Grid } from './island'
 import type { ProjectEntity, ProjectShape } from '../project'
 import type { Water } from './water'
 import type { ZoneItem } from './zones'
+import { modDamPieces, modRef } from '../library/mods'
 
 /** GravelDam_01: GUID from the game data (Prefabs/Structures/Infrastructure/Waterworks/GravelDam_01) */
 export const GRAVEL_DAM = { prefab: '{64E482C4598F3E45}Prefabs/Structures/Infrastructure/Waterworks/GravelDam_01/GravelDam_01.et', w: 18.99, d: 1.67, h: 4.47 }
@@ -245,8 +246,11 @@ function placeDamsAt(h: number[] | Float32Array, g: Grid, rivers: Omit<Water, 'i
   return res
 }
 
-/** ZoneItem for the map, the 3D view and the export: GravelDam_01 pieces along the crest + a dirt track on it */
-export function damZone(d: Dam, o: Partial<DamOptions> = {}): ZoneItem {
+/** ZoneItem for the map, the 3D view and the export: GravelDam_01 pieces along the crest + a dirt track on it.
+ *  With the Minus Building Pack enabled (library/mods.ts, off by default) the crest gets its concrete dam
+ *  slices instead: Dam_01 (local X -20..0) + Dam_02 (0..20) share a pivot at road level, so one pair = a 40 m
+ *  module; mesh bbox Z -17..+6.5 (long sloping face on -Z = downstream, so local +Z points upstream). */
+export function damZone(d: Dam, o: Partial<DamOptions> = {}, mods?: string[]): ZoneItem {
   const O = { ...DAM_DEFAULTS, ...o }
   const tx = d.bx - d.ax, tz = d.bz - d.az, L = Math.hypot(tx, tz) || 1, ux = tx / L, uz = tz / L
   const ends = 12 // the crest runs into the hillsides
@@ -255,7 +259,14 @@ export function damZone(d: Dam, o: Partial<DamOptions> = {}): ZoneItem {
   const yaw = (Math.atan2(uz, ux) * 180) / Math.PI
   // upstream crest edge: the wall faces the water, its top ~1 m above the crest
   const off = -(O.crestHalf - GRAVEL_DAM.d / 2)
-  for (let i = 0; i < n; i++) {
+  const mod = modDamPieces(mods)
+  if (mod) {
+    const W = mod[0].d[0] + mod[1].d[0], m = Math.max(1, Math.ceil(len / W))
+    for (let i = 0; i < m; i++) {
+      const s = -len / 2 + (i + 0.5) * (len / m)
+      for (const [k, r] of mod.entries()) entities.push({ id: `${d.id}_CONC_${i + 1}_${k + 1}`, prefab: modRef(r), x: d.cx + ux * s, z: d.cz + uz * s, yaw, ycm: Math.round(d.crest * 100) })
+    }
+  } else for (let i = 0; i < n; i++) {
     const s = -len / 2 + (i + 0.5) * (len / n)
     entities.push({ id: `${d.id}_WALL_${i + 1}`, prefab: GRAVEL_DAM.prefab, x: d.cx + ux * s + d.nx * off, z: d.cz + uz * s + d.nz * off, yaw, ycm: Math.round((d.crest + 1 - GRAVEL_DAM.h) * 100) })
   }

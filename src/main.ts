@@ -3,6 +3,8 @@ import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
 import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
 import { prefabDims } from './library/dims'
+import { modDepsText, modsChecklist } from './modsPanel'
+import './data/modBuildings' // ticked mods' buildings join the generators' pools (off by default)
 import { Collab, type CollabEvents, type CollabTransport, type Op } from './collab'
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
@@ -700,6 +702,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         ${connectSteps()}
         <div class="row"><button type="button" class="wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button><button id="wbDownload" type="button" class="secondary" title="${t('wb.download.tip')}">${ic('folder', 14)} ${t('wb.download')}</button></div>
       </div>
+      <div id="modsBox"></div><pre id="modDeps" class="hint" hidden></pre>
       <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
       <details class="adv"><summary>${t('ui.manual')}</summary>
         <ol class="steps">
@@ -3615,6 +3618,7 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   }),
 )
 // everything at once (roads + water, forests, buildings): one project, the log says what went
+$<HTMLDivElement>('modsBox').append(modsChecklist())
 $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   run(t('run.l.all'), async () => {
     const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
@@ -3625,7 +3629,10 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
-    const msg = await toWb({ version: 0, shapes, entities })
+    const deps = modDepsText(entities.map((e) => e.prefab)), depsEl = $<HTMLPreElement>('modDeps')
+    depsEl.textContent = deps; depsEl.hidden = !deps
+    const msg = await toWb({ version: 0, shapes, entities }) + (deps ? '
+' + deps : '')
     sentSig = stepSigs().slice(0, 6).join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()

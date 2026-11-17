@@ -9,6 +9,9 @@ import { compoId, importComposition } from './composition.ts'
 import { LOT_TEMPLATES, demoLot, generateParcel, lotTemplate, type Parcel3D } from '../biomes/parcel.ts'
 import { getLang, t as tr, type Key } from '../i18n.ts'
 import type { Viewer } from './viewer3d.ts'
+import { modsChecklist } from '../modsPanel.ts'
+import { MOD_INDEX } from './mods.ts'
+import { modAssetPack } from '../data/modBuildings.ts'
 
 const FR = getLang() === 'fr' // same language as the app (i18n.ts)
 const lab = (o: { en: string; fr: string }) => (FR ? o.fr : o.en)
@@ -22,13 +25,16 @@ for (const [path, raw] of Object.entries(import.meta.glob('/library/*.json', { e
   if (path.endsWith('/compositions-vanilla.json')) continue // already built in (COMPOSITIONS_PACK)
   try { repoPacks.push(importPack(raw as string)) } catch (e) { loadErrors.push(`${path}: ${(e as Error).message.split('\n')[0]}`) }
 }
+// Workshop mod registries (library/mods), browsable whether or not they are ticked for the generators
+const modPacks = MOD_INDEX.map((m) => modAssetPack(m.guid)).filter((x): x is AssetPack => !!x)
+repoPacks.push(...modPacks)
 const localPacks: AssetPack[] = []
 const userCompos: Composition[] = []
 const userPack = (): AssetPack => ({ format: 'reforger-mapper.assetpack', version: 1, id: 'my-compositions', name: FR ? 'Mes compositions' : 'My compositions', author: 'local', licence: 'CC-BY-4.0', source: 'vanilla', assets: [], compositions: userCompos })
 const rebuild = () => buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...repoPacks, ...localPacks, ...(userCompos.length ? [userPack()] : [])])
 let lib: Library = buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...repoPacks])
 
-const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '', compos: false, compo: '' }
+const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '', compos: false, compo: '', src: '' }
 
 const app = document.getElementById('lib-app')!
 app.innerHTML = `
@@ -41,9 +47,11 @@ app.innerHTML = `
     <p id="b-desc" class="lb-desc"></p>
     <label class="lb-check"><input type="checkbox" id="f-fb" checked> ${tr('lib.include_fallback_biome')}</label>
     <label>${tr('lib.kind')}<select id="f-kind"><option value="">${tr('lib.all')}</option>${ASSET_KINDS.map((k) => `<option value="${k}">${kindLabel(k)}</option>`).join('')}</select></label>
+    <label>Source<select id="f-src"><option value="">${tr('lib.all')}</option><option value="vanilla">vanilla</option>${modPacks.map((m) => `<option value="${m.source}">${m.name.replace(/s+/g, '')}</option>`).join('')}</select></label>
     <label>${tr('lib.search')}<input id="f-text" type="search" placeholder="FarmHouse, pinus, ussr…"></label>
     <div class="lb-tags" id="f-tags"></div>
     <div class="lb-packs" id="packs"></div>
+    <div id="lb-mods"></div>
     <label class="lb-import">${tr('lib.import_a_json_pack')}<input id="f-import" type="file" accept=".json,application/json"></label>
     <label class="lb-import">${tr('lib.import_compo')}<input id="f-compo" type="file" accept=".et"></label>
     <a id="compo-dl" class="lb-dl" style="display:none">${tr('lib.compo_export')}</a>
@@ -84,7 +92,7 @@ function renderPacks() {
 }
 
 function results(): Asset[] {
-  return search(lib, { biome: st.biome, kind: st.kind || undefined, text: st.text, tags: st.tags, fallback: st.fallback })
+  return search(lib, { source: st.src || undefined, biome: st.src && st.src !== 'vanilla' ? undefined : st.biome, kind: st.kind || undefined, text: st.text, tags: st.tags, fallback: st.fallback })
 }
 
 function render() {
@@ -158,6 +166,8 @@ $<HTMLInputElement>('f-compo').onchange = async (e) => {
   } catch (err) { $('msg').textContent = (err as Error).message }
 }
 $<HTMLSelectElement>('f-biome').onchange = (e) => { st.biome = (e.target as HTMLSelectElement).value as BiomeId; st.tags = []; render() }
+$<HTMLSelectElement>('f-src').onchange = (e) => { st.src = (e.target as HTMLSelectElement).value; st.tags = []; render() }
+document.getElementById('lb-mods')!.append(modsChecklist())
 $<HTMLSelectElement>('f-kind').onchange = (e) => { st.kind = (e.target as HTMLSelectElement).value as AssetKind | ''; st.tags = []; render() }
 $<HTMLInputElement>('f-fb').onchange = (e) => { st.fallback = (e.target as HTMLInputElement).checked; render() }
 $<HTMLInputElement>('f-text').oninput = (e) => { st.text = (e.target as HTMLInputElement).value; render() }

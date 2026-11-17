@@ -2,6 +2,7 @@
 // One worker per job (terminate() is the only real way to stop a busy one); cancel() rejects with Cancelled
 // and nothing is applied. When a worker cannot be made (old browser, file://), the op runs here instead.
 import { OPS, type Op, type Progress } from './ops'
+import { enabledMods } from '../library/mods'
 import { pack, unpack } from './pack'
 import { Cancelled } from '../modules/worldgen'
 
@@ -45,7 +46,7 @@ export function runGen<T = unknown>(op: Op, args: unknown[], o: { progress?: Pro
       j.promise.then(res, rej)
     }
     // the arguments are copied (not transferred): the page keeps using its own heights
-    worker.postMessage({ id, op, args: pack(args, []) })
+    worker.postMessage({ id, op, args: pack(args, []), mods: enabledMods() })
   })
   return { promise, cancel: () => { worker.terminate(); reject(new Cancelled()) }, inWorker: true }
 }
