@@ -8,6 +8,7 @@
 import { WORLD } from '../data/worldParams'
 import { fr } from '../i18n'
 import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
+import { addRoundabouts } from './roundabouts'
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
@@ -402,6 +403,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     }
   }
   for (const r of roads) if (!r.auto) { r.auto = true; r.id = rid(r.type) }
+  roads = addRoundabouts(roads).roads // P3 #15: rings at busy junctions
   cur = composeHeights(base, g, waters, zones, roads)
   const steep = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
   // a road the carving left too steep for its type is first downgraded (dirt road, then dirt trail: steeper
