@@ -37,14 +37,17 @@ function toWorld(st: AttachStation, lx: number, lz: number): [number, number] {
 /** Attachment point of `st` for a line heading to (tx, tz), plus a lead point out of the yard along the
  *  attachment's outward direction (the route starts there, so the first span leaves the portal straight).
  *  `null` lead = no pole data: the line ends on the station centre. */
-export function attachPoint(st: AttachStation, tx: number, tz: number, lead = 15): { at: [number, number]; lead: [number, number] | null } {
+export function attachPoint(st: AttachStation, tx: number, tz: number, lead = 15, fan = 0): { at: [number, number]; lead: [number, number] | null } {
   const def = STATION_ATTACH[guidOf(st.prefab)]
   if (!def) return { at: [st.x, st.z], lead: null }
   let best: [number, number] = [st.x, st.z], bl: [number, number] = best, bd = Infinity
   for (const [lx, lz] of def.pts) {
     const at = toWorld(st, lx, lz)
     // outward = the dominant local axis of the slot (a portal on the back wall points -Z, etc.)
-    const [nx, nz] = Math.abs(lz) >= Math.abs(lx) ? [0, Math.sign(lz) || 1] : [Math.sign(lx) || 1, 0]
+    const [n0x, n0z] = Math.abs(lz) >= Math.abs(lx) ? [0, Math.sign(lz) || 1] : [Math.sign(lx) || 1, 0]
+    // `fan`-th line on this slot: its lead turns ±0.4 rad steps so several feeders leave as a fan, not one bundle
+    const t = (fan % 2 ? 1 : -1) * Math.ceil(fan / 2) * 0.4, ct = Math.cos(t), sn = Math.sin(t)
+    const nx = n0x * ct + n0z * sn, nz = -n0x * sn + n0z * ct
     const o = toWorld(st, lx + nx * lead, lz + nz * lead)
     const d = Math.hypot(o[0] - tx, o[1] - tz)
     if (d < bd) { bd = d; best = at; bl = o }

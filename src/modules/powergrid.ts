@@ -268,14 +268,16 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     return st
   }
   let lid = 0
+  const fans = new Map<Station, number>() // lines already hung on each station (lead fan-out)
   const route = (kind: PowerKind, a: Station, b: Station | [number, number], tag: string): GridLine | null => {
     const bx = Array.isArray(b) ? b[0] : b.x, bz = Array.isArray(b) ? b[1] : b.z
     const spacing = POWER_STYLE[style][kind].spacing
     // ends: the station's real cable slots (powersmooth.ts STATION_ATTACH) + a lead point out of the yard;
     // EHV ends are the generator's own stations (centre)
     const lead = Math.max(12, Math.min(30, spacing * 0.4))
-    const A = kind === 'ehv' && a.byGenerator ? { at: [a.x, a.z] as [number, number], lead: null } : attachPoint(a, bx, bz, lead)
-    const B = Array.isArray(b) ? { at: b, lead: null } : kind === 'ehv' && b.byGenerator ? { at: [b.x, b.z] as [number, number], lead: null } : attachPoint(b, (A.lead ?? A.at)[0], (A.lead ?? A.at)[1], lead)
+    const fan = (s: Station) => { const k = fans.get(s) ?? 0; fans.set(s, k + 1); return k }
+    const A = kind === 'ehv' && a.byGenerator ? { at: [a.x, a.z] as [number, number], lead: null } : attachPoint(a, bx, bz, lead, fan(a))
+    const B = Array.isArray(b) ? { at: b, lead: null } : kind === 'ehv' && b.byGenerator ? { at: [b.x, b.z] as [number, number], lead: null } : attachPoint(b, (A.lead ?? A.at)[0], (A.lead ?? A.at)[1], lead, fan(b))
     const [ax, az] = A.lead ?? A.at, [ex, ez] = B.lead ?? B.at
     const cf = cost(kind)
     const l = routePowerLine(h, g, ax, az, ex, ez, { kind, spacing, cost: cf, isWater: input.isWater })
