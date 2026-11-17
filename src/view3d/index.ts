@@ -80,7 +80,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     <span class="grow"></span>
     <button type="button" data-k="reset">${T.reset}</button>
     <button type="button" data-k="top">${T.top}</button>
-    </div><div class="v3d-help">${T.help}</div><div class="v3d-north" title="N">N</div><div class="v3d-stats" data-k="stats" aria-live="off" style="position:absolute;right:16px;top:68px;padding:4px 8px;background:rgba(16,17,19,.82);border:1px solid rgba(255,255,255,.12);color:#cfd3d8;font:11px ui-monospace,monospace;pointer-events:none"></div>`
+    </div><div class="v3d-help">${T.help}</div><div class="v3d-north" title="N">N</div><div class="v3d-stats" data-k="stats" aria-live="off" style="position:absolute;right:16px;bottom:64px;padding:4px 8px;background:rgba(16,17,19,.82);border:1px solid rgba(255,255,255,.12);color:#cfd3d8;font:11px ui-monospace,monospace;pointer-events:none"></div>`
   host.appendChild(root)
   const q = <E extends HTMLElement>(k: string) => root.querySelector<E>(`[data-k="${k}"]`)!
 
