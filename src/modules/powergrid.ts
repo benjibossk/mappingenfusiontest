@@ -45,7 +45,9 @@ export const STATION_PREFABS: Record<PowerStyle, Record<StationKind, { prefab: s
 /** access track to a station (same dirt road generator as roads.ts) */
 export const ACCESS_ROAD_GEN = '{8E83BBD5CEC42A11}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_01.et'
 
-export interface GridSite { id: string; x: number; z: number; kind: 'town' | 'village' | 'hamlet' | 'industry'; r: number }
+export interface GridSite { id: string; x: number; z: number; kind: 'town' | 'village' | 'hamlet' | 'industry'; r: number; farm?: boolean }
+/** an isolated farm (worldgen FARM_*): one short LV drop, never its own MV feeder */
+export const isFarm = (s: GridSite) => s.kind === 'hamlet' && (s.farm === true || s.id.startsWith('FARM_'))
 
 export interface Station {
   id: string
@@ -79,6 +81,8 @@ export interface GridOptions {
   lv: boolean
   /** longest MV feeder (m) */
   mvMax: number
+  /** longest LV drop to an isolated farm (m), from an LV pole or a pole transformer on an MV line */
+  farmMax: number
   /** longest LV run to a hamlet (m) */
   lvMax: number
   /** power plants (sources): 'auto' = 1 per ~6 km of map side, max 3; 0 = none (towns are the sources) */
@@ -90,7 +94,7 @@ export interface GridOptions {
   ugMin: number
 }
 export type PowerDistrib = 'auto' | 'overhead' | 'underground'
-export const GRID_DEFAULTS: GridOptions = { style: 'eden', ehv: 'auto', hv: true, mv: true, lv: true, mvMax: 4000, lvMax: 900, plants: 'auto', distrib: 'auto', ugMin: 25 }
+export const GRID_DEFAULTS: GridOptions = { style: 'eden', ehv: 'auto', hv: true, mv: true, lv: true, mvMax: 4000, lvMax: 900, farmMax: 600, plants: 'auto', distrib: 'auto', ugMin: 25 }
 
 export interface GridInput {
   heights: Float32Array | number[]
@@ -110,7 +114,7 @@ export interface GridInput {
 /** where a settlement's supply ends: its transformer at the entrance (or the entrance pole of a hamlet);
  *  `ug` = beyond it the distribution is underground (nothing placed) */
 export interface Entrance { site: string; x: number; z: number; ug: boolean }
-export interface GridPlan { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[]; entrances: Entrance[] }
+export interface GridPlan { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[]; entrances: Entrance[]; /** farm id -> how it is fed */ farms?: Record<string, 'lv' | 'pole-trafo'> }
 
 function hAt(h: ArrayLike<number>, g: Grid, x: number, z: number) {
   const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))
@@ -423,7 +427,7 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
   const trafo = new Map<string, Station>()
   if (opt.mv && hs.length) {
     const rank = { town: 0, village: 0, industry: 0, hamlet: 1 }
-    const targets = sites.filter((s) => s.kind !== 'hamlet' || opt.lv)
+    const targets = sites.filter((s) => !isFarm(s) && (s.kind !== 'hamlet' || opt.lv))
     const nodes: Station[] = [...hs]
     const todo = new Set(targets)
     while (todo.size) {
@@ -499,7 +503,7 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       for (const e of picked) route('lv', st, e, s.id)
     }
     for (const s of sites) {
-      if (s.kind !== 'hamlet') continue
+      if (s.kind !== 'hamlet' || isFarm(s)) continue
       if (trafo.has(s.id)) continue // own kiosk: LV from it above
       let bs: Station | null = null, bd = Infinity
       for (const st of trafo.values()) { const d = Math.hypot(st.x - s.x, st.z - s.z); if (d < bd) { bd = d; bs = st } }
@@ -511,6 +515,57 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       let ex = l.poles[l.poles.length - 2], ez = l.poles[l.poles.length - 1]
       if (!u) for (let i = 0; i + 1 < l.poles.length; i += 2) if (Math.hypot(l.poles[i] - s.x, l.poles[i + 1] - s.z) <= s.r * 1.3) { ex = l.poles[i]; ez = l.poles[i + 1]; break }
       entrances.push({ site: s.id, x: ex, z: ez, ug: u })
+    }
+  }
+  // 4. isolated farms: one short straight LV drop from the nearest LV pole; failing that a pole-mounted
+  //    transformer (TransformerSubstation_01) beside the nearest MV pole, and the drop from it
+  const farms: Record<string, 'lv' | 'pole-trafo'> = {}
+  if (opt.lv) {
+    const sp = POWER_STYLE[style].lv.spacing
+    const dry = (x0: number, z0: number, x1: number, z1: number) => {
+      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 10))
+      for (let k = 0; k <= n; k++) if (input.isWater(x0 + ((x1 - x0) * k) / n, z0 + ((z1 - z0) * k) / n)) return false
+      return true
+    }
+    const nearestPole = (kind: PowerKind, x: number, z: number) => {
+      let bx = NaN, bz = NaN, bd = Infinity
+      for (const l of lines) if (l.kind === kind) for (let i = 0; i + 1 < l.poles.length; i += 2) {
+        const d = Math.hypot(l.poles[i] - x, l.poles[i + 1] - z)
+        if (d < bd && dry(l.poles[i], l.poles[i + 1], x, z)) { bd = d; bx = l.poles[i]; bz = l.poles[i + 1] }
+      }
+      return { x: bx, z: bz, d: bd }
+    }
+    for (const s of sites) {
+      if (!isFarm(s)) continue
+      // the drop runs along the road to the point nearest the farm, then the last span(s) to its yard
+      const rd = nearestRoad(roads, s.x, s.z), onRoad = Number.isFinite(rd.x) && rd.d < opt.farmMax
+      const [rx, rz] = onRoad ? verge(rd.x, rd.z) : verge(s.x, s.z)
+      const yard = onRoad ? Math.max(0, rd.d - 15) : 0
+      const fx = onRoad && yard > 15 ? rd.x + ((s.x - rd.x) / rd.d) * yard : rx, fz = onRoad && yard > 15 ? rd.z + ((s.z - rd.z) / rd.d) * yard : rz
+      let src = nearestPole('lv', rx, rz), how: 'lv' | 'pole-trafo' = 'lv', from = 'LV'
+      if (!(src.d <= opt.farmMax) && opt.mv) {
+        const m = nearestPole('mv', rx, rz)
+        if (m.d <= opt.farmMax) {
+          const dims = STATION_PREFABS.eden.mvlv // pole kiosk in both styles: a farm never gets a fenced yard
+          const a = Math.atan2(rx - m.x, rz - m.z), tx = m.x + Math.sin(a) * 6, tz = m.z + Math.cos(a) * 6
+          const st: Station = { id: `PSTA_POLE_${++nid}`, kind: 'mvlv', site: s.id, x: tx, z: tz, yaw: a, w: dims.w, d: dims.d, h: dims.h, y: hAt(h, g, tx, tz), prefab: dims.prefab }
+          stations.push(st)
+          src = { x: tx, z: tz, d: Math.hypot(rx - tx, rz - tz) }; how = 'pole-trafo'; from = st.id
+        }
+      }
+      if (!(src.d <= opt.farmMax)) { unfed.push(s.id); continue }
+      // along the road when one links both ends within 1.6x the straight distance, else straight across
+      const along = src.d < sp * 0.5 ? null : followRoads(ob, src.x, src.z, rx, rz, sp, true)
+      let alen = 0
+      if (along) for (let i = 0; i + 3 < along.length; i += 2) alen += Math.hypot(along[i + 2] - along[i], along[i + 3] - along[i + 1])
+      const head = along && alen <= Math.max(src.d * 2.2, opt.farmMax * 1.5) ? [src.x, src.z, ...along] : [src.x, src.z, rx, rz]
+      const path = fx !== rx || fz !== rz ? [...head, fx, fz] : head
+      const poles = path.length <= 4 && src.d < sp * 0.5 ? path : fixPoles(ob, placePoles(path, sp))
+      let length = 0
+      for (let i = 0; i + 3 < poles.length; i += 2) length += Math.hypot(poles[i + 2] - poles[i], poles[i + 3] - poles[i + 1])
+      lines.push({ kind: 'lv', spacing: sp, path: poles, poles, length, style, id: `POWER_LV_${++lid}`, from, to: s.id })
+      entrances.push({ site: s.id, x: fx, z: fz, ug: false })
+      farms[s.id] = how
     }
   }
   // an LV run crossing an underground-served settlement goes underground there: its poles inside are
@@ -534,7 +589,7 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     })
     lines.splice(k, 1, ...parts)
   }
-  return { lines, stations, access, failed, unfed, entrances }
+  return { lines, stations, access, failed, unfed, entrances, farms }
 }
 
 /** station entities for the export (EHV-end stations are made by their generator) */

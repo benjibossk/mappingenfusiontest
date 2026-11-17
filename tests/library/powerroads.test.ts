@@ -34,7 +34,10 @@ test('random worlds 7/21/77: LV along the roads, no pole in a building, few span
     const crossed = new Set<number>()
     for (const l of w.power) {
       for (let i = 0; i + 1 < l.poles.length; i += 2) {
-        if (l.kind === 'lv') { lv++; if (edge(l.poles[i], l.poles[i + 1]) < 10) near++ }
+        // a farm drop (powergrid step 4) follows the road, then its last leg crosses the fields to the farm yard
+        const farm = l.to.startsWith('FARM') ? w.sites.find((q) => q.id === l.to) : undefined
+        const yardLeg = !!farm && Math.hypot(l.poles[i] - farm.x, l.poles[i + 1] - farm.z) < 250
+        if (l.kind === 'lv' && !yardLeg) { lv++; if (edge(l.poles[i], l.poles[i + 1]) < 10) near++ }
         if (B.some((c) => inRing(l.poles[i], l.poles[i + 1], c))) inB++
       }
       for (let i = 0; i + 3 < l.path.length; i += 2) B.forEach((c, k) => { if (segRingDist(l.path[i], l.path[i + 1], l.path[i + 2], l.path[i + 3], c) === 0) crossed.add(k) })
