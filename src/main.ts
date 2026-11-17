@@ -1186,8 +1186,7 @@ $<HTMLButtonElement>('loadTerrain').addEventListener('click', () => void track((
 })()))
 $<HTMLButtonElement>('generate').addEventListener('click', generate)
 $<HTMLButtonElement>('clearZone').addEventListener('click', () => {
-  setZone([])
-  result = null
+  setZone([]) // the drawn outline only: generated fields stay ("Retirer forêts et champs" removes them)
   draw()
 })
 zoneEl.addEventListener('change', draw)
@@ -4515,3 +4514,5 @@ btn3d.addEventListener('click', () => void (async () => {
     ;(window as unknown as { __view3d: unknown }).__view3d = v3d
   })
 })())
+// dev-only probe for the Playwright checks: read the world state, move the 2D view
+if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
