@@ -9,6 +9,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [Unreleased]
 
 ### Added
+- Forests: progressive edges in the Workbench export (dense core + 1-2 bands of vanilla brushland / pioneer generators, obstacle avoidance, no edge between touching forests).
 - **Off-map terrain ring** (Relief tab, docs/OUTSIDE_TERRAIN.md): `src/modules/outside.ts` builds a 64 m ring (2-8 km wide) around the map from the edge heights, smoothed along the edge with distance, faded to the sea or a low plain with noise; exact seam, coast kept under water; 3D preview; bridge `POST /outside` writes `profile/MapGen/outside.txt` as 33x33 OTC chunks for `MG_ApplyOutside` (repo copy, not compiled yet).
 - **Zone tool Housing: fill follows the zone size and density**: a street grid with loops (parallel streets every 2 lot depths along the main road + cross streets, src/modules/zoneStreets.ts) now serves the whole polygon; lots stay on their street side; deep back strips get second-row houses; new Density selector (sparse / normal / dense, dense = ~2/3 of the street frontage built). A 600×500 m dense zone goes from ~15 houses / 5 streets to ~200 houses / 11 streets.
 - **Countryside zones, more hamlet fields, bending field tracks**: the countryside zones of the random world can be shown on the map (layer "Countryside zones"); hamlets and farms get a wider ring of fields; field tracks now follow the plot borders with gentle bends and join the road network.

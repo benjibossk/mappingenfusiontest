@@ -21,6 +21,7 @@ import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { type CampaignResult } from './modules/campaign'
 import { riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
+import { forestEdges, forestEdgeShapes } from './modules/forestEdge'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
@@ -657,6 +658,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="forestSend" type="button" class="secondary">${t('btn.forestSend')}</button>
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
+      <label class="inline" title="${t('tip.forestEdge')}"><input id="forestEdge" type="checkbox" checked> ${t('lbl.forestEdge')}</label>
       ${hint('hint.areas')}
       <details class="adv" id="satBox"><summary>${t('legend.sat')} ${info('info.sat')}</summary>
         <p id="satNone" class="hint">${t('sat.none')}</p>
@@ -3591,19 +3593,24 @@ function openAreaMenu(e: MouseEvent) {
   menu.hidden = false
   return true
 }
+/** forest shapes sent to the Workbench: with progressive edges (forestEdge.ts) a dense core + 1-2 sparser bands */
+function forestShapesOut(f: MapArea[]): ProjectShape[] {
+  if (!$<HTMLInputElement>('forestEdge').checked) return f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
+  return forestEdgeShapes(forestEdges(f.map((a) => ({ id: a.id, pts: a.pts, leaf: a.leaf, generator: forestGenOf(a), noEdge: a.stage === 'juvenile' || a.stage === 'clearcut' }))))
+}
 // forests: one closed shape per area with the forest generator matching the OSM leaf type (FOREST_ family)
 $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   run(t('run.l.forests'), async () => {
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
-    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID })), entities: prodLogEntities() })
+    return toWb({ version: 0, shapes: forestShapesOut(f), entities: prodLogEntities() })
   }),
 )
 // everything at once (roads + water, forests, buildings): one project, the log says what went
 $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   run(t('run.l.all'), async () => {
     const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
-    const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
+    const forests = forestShapesOut(areas.filter((a) => a.kind === 'forest'))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
     const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
