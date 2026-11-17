@@ -627,6 +627,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div class="tab" data-tab="camp" hidden>
       <div class="form">
         <label>${t('lbl.zoneType')} <select id="zoneType">${ZONE_FILL_TYPES.map((k) => `<option value="${k}">${t(('zt.' + k) as K)}</option>`).join('')}</select></label>
+        <label id="zoneDensRow" hidden>${t('lbl.zoneDens')} <select id="zoneDens"><option value="0.6">${t('dens.sparse')}</option><option value="1">${t('dens.normal')}</option><option value="1.5" selected>${t('dens.dense')}</option></select></label>
         <label id="zoneLeafRow" hidden>${t('lbl.zoneLeaf')} <select id="zoneLeaf"><option value="mixed">${t('leaf.mixed')}</option><option value="needle">${t('leaf.needle')}</option><option value="broad">${t('leaf.broad')}</option></select></label>
         <label id="zoneFactionRow" hidden>${t('lbl.zoneFaction')} <select id="zoneFaction"><option value="US">US</option><option value="USSR">USSR</option><option value="FIA">FIA</option></select></label>
         <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="8"></label>
@@ -1063,7 +1064,7 @@ function zoneHabitation(zone: number[], n: number) {
   const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   const before = settled.length
-  const res = settleVillages([site], allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: num('setDensity'), variant: 'auto', maxSlope: 0.2, polygon: zone, reach, blocked, biome: currentBiome }, settled)
+  const res = settleVillages([site], allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: Number($<HTMLSelectElement>('zoneDens').value) || 1, variant: 'auto', maxSlope: 0.2, polygon: zone, reach, blocked, biome: currentBiome }, settled)
   settled = res.placed
   setLanes = [...setLanes, ...res.lanes]
   setSquares = [...setSquares, ...res.squares]
@@ -4301,7 +4302,7 @@ function clearZones(kinds: ZoneKind[]) {
   zoneInfo()
   refreshSteps()
 }
-$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered'; $('zoneLeafRow').hidden = !['forest', 'production'].includes($<HTMLSelectElement>('zoneType').value); $('zoneFactionRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'camp' })
+$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered'; $('zoneLeafRow').hidden = !['forest', 'production'].includes($<HTMLSelectElement>('zoneType').value); $('zoneFactionRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'camp'; $('zoneDensRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'habitation' })
 $<HTMLButtonElement>('indClear').addEventListener('click', () => clearZones(['industrial']))
 $<HTMLButtonElement>('milClear').addEventListener('click', () => clearZones(['military', 'airfield']))
 $<HTMLButtonElement>('zoneSend').addEventListener('click', () =>

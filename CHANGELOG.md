@@ -9,6 +9,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [Unreleased]
 
 ### Added
+- **Zone tool Housing: fill follows the zone size and density**: a street grid with loops (parallel streets every 2 lot depths along the main road + cross streets, src/modules/zoneStreets.ts) now serves the whole polygon; lots stay on their street side; deep back strips get second-row houses; new Density selector (sparse / normal / dense, dense = ~2/3 of the street frontage built). A 600×500 m dense zone goes from ~15 houses / 5 streets to ~200 houses / 11 streets.
 - **Countryside zones, more hamlet fields, bending field tracks**: the countryside zones of the random world can be shown on the map (layer "Countryside zones"); hamlets and farms get a wider ring of fields; field tracks now follow the plot borders with gentle bends and join the road network.
 - **Real place**: local import of .osm (XML) / .geojson files (picker or drag & drop) with an editable JSON tag -> layer schema: roads (ARTE widths), water, forests, fields, buildings, residential areas, power lines.
 - **Road widths = vanilla** (audit of every Prefabs/WEGenerators/Roads generator, docs/ROAD_NETWORK_V2.md §3.2.1): Asphalt E_01 / DashedLine 12 m (was 8), Narrow 8, cobblestone 8, USSR concrete 7.5, concrete panel 3.5, dirt 02 / forest 4.5, trails 1.75; new styles USSR concrete dashed line (11 m) and narrow (5 m), concrete path, coal road and trail.

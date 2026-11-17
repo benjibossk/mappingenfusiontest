@@ -18,6 +18,7 @@ import { boxed, footprint, hash, inside, lineDist, overlap, rng, sampler, sample
 import { GROW_TOWN, GROW_VILLAGE, growStreets, nearestOn, polyGrade, type GrowOptions, type StreetSeed } from './villageStreets'
 import { lotCorners, lotPoint, splitLot, streetBlocks, type Lot } from './villageLots'
 import { clipDepth, lotTarget, subdivideBlock } from './lotSubdivision'
+import { zoneGridSpacing, zoneStreetGrid } from './zoneStreets'
 import { gardenParcel, type PlacedAsset, type PlacedFence } from '../biomes/parcel'
 import { defaultLibrary } from '../library/index.ts'
 import { EVERON } from '../biomes/vegetation'
@@ -44,7 +45,7 @@ export interface VillageOptions {
 }
 export interface VillageSite { site: string; variant: 'village' | 'town' | 'hamlet'; coastal: boolean; church?: string; streets: number; lots: number }
 export interface VillageResult extends Settlement {
-  lots: { site: string; corners: number[]; used: boolean }[]
+  lots: { site: string; corners: number[]; used: boolean; row?: 2 }[] // row 2: Zone tool second-row lot behind a street lot
   gardens: { site: string; corners: number[] }[] // back gardens (fence / hedge polylines for the wall generator)
   sites: VillageSite[]
   /** per back garden, biome parcels only (not Everon): garden trees, props, side / back fences */
@@ -307,8 +308,33 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       }
     }
 
+    // --- Zone tool: a street grid (loops) serving the whole polygon, along the main road (zoneStreets.ts)
+    if (o.polygon && o.streets !== false) {
+      const poly = o.polygon
+      let best: [number, number, number] | null = null, axis: Line = main[0]
+      for (const l of main) { const n = nearestOn(l.pts, site.x, site.z); if (!best || n[2] < best[2]) { best = n; axis = l } }
+      // direction of the axis road where it passes nearest the centre
+      let ux = 1, uz = 0, bd = Infinity
+      for (let i = 0; i + 3 < axis.pts.length; i += 2) {
+        const dx = axis.pts[i + 2] - axis.pts[i], dz = axis.pts[i + 3] - axis.pts[i + 1], len = Math.hypot(dx, dz)
+        if (len < 1e-6) continue
+        const d = Math.hypot((axis.pts[i] + axis.pts[i + 2]) / 2 - best![0], (axis.pts[i + 1] + axis.pts[i + 3]) / 2 - best![1])
+        if (d < bd) { bd = d; ux = dx / len; uz = dz / len }
+      }
+      const onAxis = best![2] < reach
+      const [ox, oz] = onAxis ? [best![0], best![1]] : [site.x, site.z]
+      const free = (x: number, z: number) => inside(poly, x, z) && lineDist(poly, x, z, true) >= 6 && !wet(x, z, 4) && !inSquare(x, z, 6) &&
+        !(o.blocked ?? []).some(([x0, z0, x1, z1]) => x > x0 - 3 && x < x1 + 3 && z > z0 - 3 && z < z1 + 3) && !placed.some((q) => Math.abs(q.x - x) < 40 && Math.abs(q.z - z) < 40 && (inside(q.corners, x, z) || lineDist(q.corners, x, z, true) < 4))
+      const g = { ...zoneGridSpacing(lotTarget(1, o.density).depth, o.density), skipAxis: onAxis }
+      for (const pts of zoneStreetGrid(poly, ox, oz, ux, uz, free, g)) {
+        const road: Road = { id: `${pre}LANE_${++info.streets}`, type: variant === 'town' ? 'asphaltNarrow' : 'dirt', pts: pts.map((v) => Math.round(v * 100) / 100), auto: true }
+        res.lanes.push(road)
+        const line = boxed(centreLine(road.pts, 4), roadHalf(road))
+        roadLines.push(line); local.push(line)
+      }
+    }
     // --- organic streets grown from the main road (and along the shore)
-    if (o.streets !== false && P.grow.maxStreets > 0) {
+    else if (o.streets !== false && P.grow.maxStreets > 0) {
       const g: GrowOptions = { ...P.grow, maxGrade: maxSlope, maxStreets: o.maxStreets ?? P.grow.maxStreets + Math.floor(rand() * 2) }
       const seeds: StreetSeed[] = []
       const cands: StreetSeed[] = []
@@ -343,7 +369,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     }
 
     // --- lots: street blocks split by OBB, nearest to the centre first
-    const lots: { lot: Lot; f: number }[] = []
+    const lots: { lot: Lot; f: number; row?: 2 }[] = []
     const backs: Lot[] = [] // Zone tool: back strips (no street frontage), shared back yards
     for (const l of local) {
       for (const side of [1, -1]) {
@@ -353,9 +379,26 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
           const f = d / reach, k = f < 0.3 ? 0 : f < 0.6 ? 1 : 2
           if (o.polygon) { // Zone tool: block to the back of the zone, recursive OBB lot subdivision
             const tgt = lotTarget(k, o.density), depth = tgt.depth[1] + 30
-            const sub = subdivideBlock({ ...blk, d: depth, cx: blk.cx + blk.nx * depth / 2, cz: blk.cz + blk.nz * depth / 2 }, tgt, rand, (x, z) => !outZone(x, z))
+            // a lot stays on its street's side of the block: no corner nearer another street (6 m slack at the corners)
+            const mine = (x: number, z: number) => {
+              if (outZone(x, z)) return false
+              const dOwn = lineDist(l.pts, x, z)
+              for (const m of local) if (m !== l && near(m, x, z, dOwn) && lineDist(m.pts, x, z) + 6 < dOwn) return false
+              return true
+            }
+            const sub = subdivideBlock({ ...blk, d: depth, cx: blk.cx + blk.nx * depth / 2, cz: blk.cz + blk.nz * depth / 2 }, tgt, rand, mine)
             for (const lot of sub.lots) lots.push({ lot, f })
-            for (const bk of sub.backs) { const c = clipDepth(bk, (x, z) => !outZone(x, z), 8); if (c) backs.push(c) }
+            for (const bk of sub.backs) {
+              const c = clipDepth(bk, mine, 8)
+              if (!c) continue
+              // deep enough and a dense enough zone: second-row houses (lots across the back strip, facing the street)
+              if (o.density >= 0.8 && c.d >= tgt.depth[0]) {
+                const row = subdivideBlock(c, { front: tgt.front, depth: [tgt.depth[0], Math.max(tgt.depth[1], c.d)] }, rand, mine)
+                for (const lot of row.lots) lots.push({ lot, f: f + 0.05, row: 2 })
+                if (row.lots.length) continue
+              }
+              backs.push(c)
+            }
             continue
           }
           const depth = P.depth[k]
@@ -367,11 +410,14 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     lots.sort((a, b) => a.f - b.f)
     info.lots = lots.length
 
-    for (const { lot, f } of lots) {
+    for (const { lot, f, row } of lots) {
       const k = f < 0.3 ? 0 : f < 0.6 ? 1 : 2
-      const rec = { site: site.id, corners: lotCorners(lot), used: false }
+      const rec: VillageResult['lots'][number] = { site: site.id, corners: lotCorners(lot), used: false }
+      if (row) rec.row = 2
       res.lots.push(rec)
-      if (rand() > P.fill[k] * o.density) continue
+      // Zone tool: the fill follows the chosen density everywhere in the polygon (not the centre / edge rings)
+      const fill = o.polygon ? Math.min(0.95, 0.25 + 0.3 * o.density) * (row ? 0.85 : 1) : P.fill[k] * o.density
+      if (rand() > fill) continue
       // a lot already covered by a building of a crossing street (corner lots overlap) is not a free lot
       if (placed.some((q) => Math.abs(q.x - lot.cx) < 60 && Math.abs(q.z - lot.cz) < 60 && overlap(rec.corners, q.corners, 0) && inside(rec.corners, q.x, q.z))) continue
       {

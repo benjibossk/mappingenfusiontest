@@ -37,6 +37,7 @@ test('zone habitation: lots inside the polygon and every lot on a street', () =>
   for (const l of res.lots) {
     for (let i = 0; i < 8; i += 2) assert.ok(pointInPoly(poly, l.corners[i], l.corners[i + 1]), 'lot outside')
     const mx = (l.corners[0] + l.corners[2]) / 2, mz = (l.corners[1] + l.corners[3]) / 2
+    if (l.row === 2) continue // second-row lot: its front is the back of a street lot
     assert.ok(near(mx, mz)[2] < 16, `lot front ${near(mx, mz)[2].toFixed(1)} m from a street`)
   }
 })
@@ -57,4 +58,34 @@ test('zone habitation: houses do not overlap and face the street (±20°)', () =
     if (d === Infinity) continue // square / farm buildings are not lot houses
     assert.ok(d <= 20, `${h.id} faces ${d.toFixed(0)}° off the street`)
   }
+})
+
+const big = [-300, -250, 300, -250, 300, 250, -300, 250]
+const zone = (density: number) => settleVillages([{ id: 'Z2', x: 0, z: 0, kind: 'town' }], roads, [], flat, flatGrid, { seed: 9, density, polygon: big, reach: 400, maxSlope: 0.2 })
+const dense = zone(1.5), sparse = zone(0.6)
+const houses = (r: typeof dense) => r.placed.filter((q) => q.role === 'house' || q.role === 'farmhouse').length
+
+test('zone habitation: the street grid serves the whole polygon (loops, every part near a street)', () => {
+  assert.ok(dense.lanes.length >= 10, `${dense.lanes.length} streets`)
+  const st = [...roads, ...dense.lanes].map((r) => r.pts)
+  let far = 0, n = 0
+  for (let x = -260; x <= 260; x += 40) for (let z = -210; z <= 210; z += 40) {
+    n++
+    let d = Infinity
+    for (const p of st) d = Math.min(d, nearestOn(p, x, z)[2])
+    if (d > 60) far++
+  }
+  assert.ok(far / n < 0.1, `${far}/${n} samples more than 60 m from a street`)
+})
+
+test('zone habitation: density drives the fill (dense ~60-70 % of the street frontage built)', () => {
+  assert.ok(houses(dense) > 120, `${houses(dense)} houses (dense)`)
+  assert.ok(houses(dense) > houses(sparse) * 1.4, `dense ${houses(dense)} vs sparse ${houses(sparse)}`)
+  const front = dense.lots.filter((l) => l.row !== 2), share = front.filter((l) => l.used).length / front.length
+  assert.ok(share >= 0.58 && share <= 0.78, `dense frontage built ${Math.round(share * 100)} %`)
+})
+
+test('zone habitation: deep back strips get second-row houses', () => {
+  const r = settleVillages([{ id: 'Z3', x: 0, z: 0, kind: 'village' }], roads, [], flat, flatGrid, { seed: 4, density: 1.2, polygon: big, reach: 400, maxSlope: 0.2, streets: false })
+  assert.ok(r.lots.some((l) => l.row === 2 && l.used), 'no second-row house')
 })
