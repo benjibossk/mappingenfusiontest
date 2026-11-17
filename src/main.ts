@@ -3821,7 +3821,7 @@ function runChecks() {
   if (!island) return (issues = [])
   const ids = new Set(roads.map((r) => r.id))
   issues = validate({
-    roads, sites, settled, heights: island.heights, grid: island.grid,
+    roads, sites, settled, heights: island.heights, grid: island.grid, areas, zones, surfaces: island.surfaces,
     refusedGaps: roadGaps().filter((g) => ids.has(g.id) && noBridge.has(gapKey(g))),
   })
   const list = $<HTMLUListElement>('checkList')
