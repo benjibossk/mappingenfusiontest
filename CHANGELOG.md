@@ -9,6 +9,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [Unreleased]
 
 ### Added
+- **Zone tool "Town"** (src/modules/town.ts, PLAN_RESTANT P3 #13): a 100-300 inhabitant town (40-110 buildings) after watabou's ideas (own code): Voronoi cells relaxed round a central square, main streets = shortest paths from the square to the entry roads, secondary streets on the block edges (closed loops, dead ends pruned), outer cells = farms; each block typed (centre, residential, small industry, park, parking, church) and filled by its type, houses facing the street. Random-world towns use it too (falls back to the village generator on cramped sites). Parking / cemetery blocks are left as open ground for now.
 - **Real prefab dimensions**: 4 576 / 4 947 catalogue prefabs carry `d:[w,dz,h,cx,cz]` read from the game .xob mesh bounding boxes (identical to the Workbench measure); `prefabDims()` (src/library/dims.ts) feeds the library footprints and real heights.
 
 ## [0.6.0] - 2026-11-16

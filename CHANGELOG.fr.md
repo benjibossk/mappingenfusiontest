@@ -5,6 +5,7 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 ## [Non publié]
 
 ### Ajouté
+- **Outil Zone « Ville »** (src/modules/town.ts, PLAN_RESTANT P3 #13) : une ville de 100-300 habitants (40-110 bâtiments) d'après les idées de watabou (code maison) : cellules de Voronoï relaxées autour d'une place centrale, rues principales = plus courts chemins de la place aux routes d'entrée, rues secondaires sur les bords des îlots (boucles fermées, impasses élaguées), cellules extérieures = fermes ; chaque îlot typé (centre, habitat, petit artisanat, parc, parking, église) et rempli selon son type, maisons face à la rue. Les villes du monde aléatoire l'utilisent aussi (repli sur le générateur de village si le site est trop exigu). Les îlots parking / cimetière restent pour l'instant en terrain libre.
 - **Vraies dimensions des prefabs** : 4 576 / 4 947 prefabs du catalogue ont `d:[w,dz,h,cx,cz]` lu dans la boîte englobante des maillages .xob du jeu (identique à la mesure Workbench) ; `prefabDims()` (src/library/dims.ts) alimente les emprises et vraies hauteurs de la bibliothèque.
 
 ## [0.6.0] - 2026-11-16

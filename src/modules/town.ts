@@ -238,7 +238,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
 
   // --- 7. secondary streets: district edges not too steep; then prune dead ends (no maze)
   const keepE = new Map<number, typeof cand[number]>()
-  for (const e of cand) if (mainE.has(ekey(e.a, e.b)) || egrade(e.a, e.b) <= STREET_GRADE) keepE.set(ekey(e.a, e.b), e)
+  for (const e of cand) if (mainE.has(ekey(e.a, e.b)) || e.cells.includes(0) || egrade(e.a, e.b) <= STREET_GRADE) keepE.set(ekey(e.a, e.b), e)
   const gateV = new Set(gates.map((g) => g.v))
   for (let changed = true; changed; ) {
     changed = false
@@ -247,7 +247,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     for (const [k, e] of keepE) if (!mainE.has(k) && ((deg.get(e.a) === 1 && !gateV.has(e.a)) || (deg.get(e.b) === 1 && !gateV.has(e.b)))) { keepE.delete(k); changed = true }
   }
   // keep the component of the square
-  const comp = new Set<number>(plazaV.slice(0, 1))
+  const comp = new Set<number>(paths.length ? paths.flat() : plazaV) // the main streets are one tree through the square
   for (let grow = true; grow; ) {
     grow = false
     for (const e of keepE.values()) if (comp.has(e.a) !== comp.has(e.b)) { comp.add(e.a); comp.add(e.b); grow = true }
