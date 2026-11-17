@@ -16,7 +16,7 @@ import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type R
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
 import { buildMotorway, overpassDecks, resolveCrossings } from './motorway'
-import { forestTuning } from '../biomes/vegetation'
+import { forestTuning, leafOf } from '../biomes/vegetation'
 import { styleTracks } from './network'
 import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, type SiteKind } from './network'
@@ -573,6 +573,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const forestRings = [...areas.map((a) => a.pts), ...prod.outlines]
   const topH = cur.heights.reduce((a, b) => Math.max(a, b), 0)
   const camp: CampaignResult = { fields: [], hedges: [], shapes: [] }
+  // field groves are low-ground woods: broadleaf in Everon, mixed in the conifer biomes (#7)
+  const groveLeaf = leafOf(0.2, forestTuning(p.biome).needleShift)
   const seen = new Set<string>(), laid: Feature<Polygon>[] = [], countryside: number[][] = []
   sites.forEach((s, k) => {
     const R = SITE_RADIUS[s.kind], ring = R * (s.kind === 'town' ? 2.6 : 2.4) + (s.kind === 'hamlet' ? 420 : 260) // hamlets: a farm needs its fields too
@@ -600,7 +602,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         camp.shapes.push({ id: `FIELD_${id}_Hedge_${camp.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
       }
       // no grove in a treeless biome (desert): its forests are off too
-      if (Math.min(0.9, WORLD.vegetation.forestCover * p.forests) * forestTuning(p.biome).coverMul >= 0.03) r.groves.forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${id}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
+      if (Math.min(0.9, WORLD.vegetation.forestCover * p.forests) * forestTuning(p.biome).coverMul >= 0.03) r.groves.forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${id}_${j + 1}`, kind: 'forest', leaf: groveLeaf, pts }))
       for (const [j, pts] of r.tracks.entries()) {
         const tr: Road = { id: `ROAD_FIELD_${id}_${j + 1}`, type: 'dirt', pts, auto: true }
         roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too

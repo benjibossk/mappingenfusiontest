@@ -36,6 +36,17 @@ export function forestBias(a: number, slope: number, concavity: number): number 
   return (a > 0.15 && a < 0.75 ? 0.06 : -0.06) + Math.min(slope, 0.4) * 0.15 + Math.max(-0.04, Math.min(0.04, concavity * 0.01))
 }
 
+/** steepest slope (rise/run) a wood grows on: steeper is scree / bare rock */
+export const FOREST_MAX_SLOPE = 0.55
+/** can a wood grow on this cell? Not on very steep cells, nor on the exposed rocky ridges just under the
+ *  tree line (strongly convex cell: centre well above its corners). a / treeLine relative 0..1 */
+export function forestCellOk(a: number, slope: number, concavity: number, treeLine = 1): boolean {
+  if (slope > FOREST_MAX_SLOPE) return false
+  if (a > treeLine) return false
+  if (a > treeLine - 0.12 && concavity < -1.5) return false // rocky crest
+  return true
+}
+
 export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions): GenForest[] {
   const C = 48 // m, forest cell
   const nc = Math.floor(((g.cols - 1) * g.step) / C), nr = Math.floor(((g.rows - 1) * g.step) / C)
@@ -57,22 +68,24 @@ export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions)
       const hs = [at(x, z), at(x - C / 2, z - C / 2), at(x + C / 2, z - C / 2), at(x - C / 2, z + C / 2), at(x + C / 2, z + C / 2)]
       if (Math.min(...hs) < 3) continue
       const slope = (Math.max(...hs) - Math.min(...hs)) / C
-      if (slope > 0.7) continue // cliffs and screes
       if (o.sites.some((s) => Math.hypot(s.x - x, s.z - z) < SITE_RADIUS[s.kind] + 60)) continue
       const n = noise(x / 420, z / 420, o.seed) * 0.7 + noise(x / 130, z / 130, o.seed + 7) * 0.3
       // a bit more wood on the slopes and mid heights, less on the coast and the summits
       const a = hs[0] / top
-      if (a > tune.treeLine) continue // above the biome tree line: bare summits
-      const bias = forestBias(a, slope, (hs[1] + hs[2] + hs[3] + hs[4]) / 4 - hs[0])
+      const cv = (hs[1] + hs[2] + hs[3] + hs[4]) / 4 - hs[0]
+      if (!forestCellOk(a, slope, cv, tune.treeLine)) continue // steep / rocky cells, bare summits above the tree line
+      const bias = forestBias(a, slope, cv)
       if (n + bias < thr) continue
       ok[r * nc + c] = 1
       alt[r * nc + c] = a
     }
-  // compact groups of at most ~60 cells (14 ha) so each convex hull stays close to its cells
+  // compact groups of at most ~60 cells (14 ha) so each convex hull stays close to its cells; a group stays
+  // in one altitude band so a wood climbing a hill turns broadleaf -> mixed -> conifer on the way up
+  const band = (k: number) => leafOf(alt[k], tune.needleShift)
   const seen = new Uint8Array(nc * nr), out: GenForest[] = []
   for (let i = 0; i < ok.length; i++) {
     if (!ok[i] || seen[i]) continue
-    const group: number[] = [], q = [i]
+    const group: number[] = [], q = [i], b0 = band(i)
     seen[i] = 1
     while (q.length && group.length < 60) {
       const k = q.shift()!
@@ -80,21 +93,18 @@ export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions)
       const c = k % nc, r = (k - c) / nc
       for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const cc = c + dc, rr = r + dr, j = rr * nc + cc
-        if (cc < 0 || rr < 0 || cc >= nc || rr >= nr || !ok[j] || seen[j]) continue
+        if (cc < 0 || rr < 0 || cc >= nc || rr >= nr || !ok[j] || seen[j] || band(j) !== b0) continue
         seen[j] = 1; q.push(j)
       }
     }
     for (const k of q) seen[k] = 0 // not taken: free for the next group
     if (group.length < 5) continue
     const pts: [number, number][] = []
-    let mean = 0
     for (const k of group) {
       const c = k % nc, r = (k - c) / nc
-      mean += alt[k] / group.length
       for (const [dx, dz] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) pts.push([g.minX + (c + dx) * C, g.minZ + (r + dz) * C])
     }
-    const leaf = leafOf(mean, tune.needleShift)
-    out.push({ leaf, pts: hull(pts).flat() })
+    out.push({ leaf: b0, pts: hull(pts).flat() })
   }
   return out
 }
