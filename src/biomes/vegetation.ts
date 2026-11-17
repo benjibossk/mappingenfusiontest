@@ -38,6 +38,16 @@ export function forestTuning(id?: string): { coverMul: number; needleShift: numb
 export function leafOf(meanAlt: number, needleShift = 0): Leaf {
   return meanAlt > 0.55 - needleShift ? 'needle' : meanAlt < 0.25 - needleShift ? 'broad' : 'mixed'
 }
+export type ZoneLeafChoice = 'auto' | Leaf
+/** species of a forest drawn with the Zone tool: the user's choice, or 'auto' = from the zone's mean
+ *  relative altitude (leafOf, biome-shifted) when the relief is known, else from the biome's conifer share */
+export function zoneForestLeaf(choice: ZoneLeafChoice, meanAlt: number | undefined, id?: string): Leaf {
+  if (choice !== 'auto') return choice
+  const shift = forestTuning(id).needleShift
+  if (meanAlt !== undefined && Number.isFinite(meanAlt)) return leafOf(meanAlt, shift)
+  const c = coniferShare(biome(id ?? EVERON) ?? EV())
+  return c >= 0.6 ? 'needle' : c <= 0.15 ? 'broad' : 'mixed'
+}
 /** share of conifers drawn in a "mixed" forest in the 3D view (Everon 0.4) */
 export function mixedNeedle(id?: string): number {
   const b = get(id)

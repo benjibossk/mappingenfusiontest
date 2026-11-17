@@ -117,7 +117,7 @@ import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, sta
 let pipeline: Pipeline = emptyPipeline() // recorded generation steps (src/modules/replay.ts), saved in the project; declared early: the autosave reads it at startup
 import { BIOMES, PROPS, biome, type BiomeId } from './data/biomes'
 import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
-import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint } from './biomes/vegetation'
+import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, type ZoneLeafChoice } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
@@ -642,7 +642,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="form">
         <label>${t('lbl.zoneType')} <select id="zoneType">${ZONE_FILL_TYPES.map((k) => `<option value="${k}">${t(('zt.' + k) as K)}</option>`).join('')}</select></label>
         <label id="zoneDensRow" hidden>${t('lbl.zoneDens')} <select id="zoneDens"><option value="0.6">${t('dens.sparse')}</option><option value="1">${t('dens.normal')}</option><option value="1.5" selected>${t('dens.dense')}</option></select></label>
-        <label id="zoneLeafRow" hidden>${t('lbl.zoneLeaf')} <select id="zoneLeaf"><option value="mixed">${t('leaf.mixed')}</option><option value="needle">${t('leaf.needle')}</option><option value="broad">${t('leaf.broad')}</option></select></label>
+        <label id="zoneLeafRow" hidden>${t('lbl.zoneLeaf')} <select id="zoneLeaf"><option value="auto">${t('leaf.auto')}</option><option value="mixed">${t('leaf.mixed')}</option><option value="needle">${t('leaf.needle')}</option><option value="broad">${t('leaf.broad')}</option></select></label>
         <label id="zoneFactionRow" hidden>${t('lbl.zoneFaction')} <select id="zoneFaction"><option value="US">US</option><option value="USSR">USSR</option><option value="FIA">FIA</option></select></label>
         <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="8"></label>
         <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
@@ -1006,14 +1006,26 @@ function zoneFields(zone: number[], n: number) {
   finishZone('fields', zone, t('log.fieldsDone', { fields: kept.length, hedges: hedges.length }))
 }
 /** essence chosen for the zone tool's forest (Mixte / Conifères / Feuillus) */
-function zoneLeaf(): 'broad' | 'needle' | 'mixed' { const v = $<HTMLSelectElement>('zoneLeaf').value; return v === 'broad' || v === 'needle' ? v : 'mixed' }
+function zoneLeaf(zone?: number[]): 'broad' | 'needle' | 'mixed' {
+  const v = $<HTMLSelectElement>('zoneLeaf').value
+  const choice: ZoneLeafChoice = v === 'broad' || v === 'needle' || v === 'mixed' ? v : 'auto'
+  let mean: number | undefined
+  if (choice === 'auto' && island && zone && zone.length >= 6) { // mean relative altitude of the zone (vertices + centroid)
+    let top = 1
+    for (const hh of island.heights) if (hh > top) top = hh
+    let s = 0, n = 0, cx = 0, cz = 0
+    for (let i = 0; i + 1 < zone.length; i += 2) { s += groundAt(zone[i], zone[i + 1]); n++; cx += zone[i]; cz += zone[i + 1] }
+    s += groundAt(cx / n, cz / n); mean = s / (n + 1) / top
+  }
+  return zoneForestLeaf(choice, mean, currentBiome)
+}
 function zoneForest(zone: number[], n: number) {
-  const parts = cutRing(zone, zoneObstacles('forest'))
+  const parts = cutRing(zone, zoneObstacles('forest')), leaf = zoneLeaf(zone)
   // overlapping woods: same species merged, else the new piece is cut by the older wood (forestMerge.ts)
-  const forests = mergeForestPatches([...areas.filter((a) => a.kind === 'forest'), ...parts.map((pts, k) => ({ id: `FOREST_ZONE_${n}_${k + 1}`, kind: 'forest' as const, leaf: zoneLeaf(), pts }))])
+  const forests = mergeForestPatches([...areas.filter((a) => a.kind === 'forest'), ...parts.map((pts, k) => ({ id: `FOREST_ZONE_${n}_${k + 1}`, kind: 'forest' as const, leaf, pts }))])
   const seen = new Set<string>()
   areas = [...areas.filter((a) => a.kind !== 'forest'), ...forests.map((a) => { let id = a.id; for (let k = 2; seen.has(id); k++) id = `${a.id}_${k}`; seen.add(id); return { ...a, id } })]
-  finishZone('forest', zone, parts.length ? t('log.forestGen', { n: parts.length }) : t('err.forestGenNone'))
+  finishZone('forest', zone, parts.length ? t('log.forestGen', { n: parts.length }) + ' · ' + t(('leaf.' + leaf) as K) + ' (' + (forestGenOf({ id: '', kind: 'forest', leaf, pts: [] }).split('/').pop() ?? '').replace('.et', '') + ')' : t('err.forestGenNone'))
 }
 /** production forest: straight dirt tracks (fishbone), compartments with a stage each, felled logs along the tracks.
  *  It replaces the woods already inside the zone; clear-cuts keep a stump-free open area (no forest shape). */
@@ -1023,7 +1035,7 @@ function zoneProduction(zone: number[], n: number) {
   if (pf.tracks.length) roadInfo()
   const zp = flatToPoly(zone)
   if (zp) areas = areas.flatMap((a) => a.kind !== 'forest' || a.id.startsWith(`FOREST_PROD_Z${n}_`) ? [a] : cutRing(a.pts, [zp]).map((pts, k) => ({ ...a, id: k ? `${a.id}_${k}` : a.id, pts })))
-  const ob = zoneObstacles('production'), leaf = zoneLeaf()
+  const ob = zoneObstacles('production'), leaf = zoneLeaf(zone)
   let made = 0, first: MapArea | null = null
   pf.compartments.forEach((c, j) => {
     if (c.stage === 'clearcut') return

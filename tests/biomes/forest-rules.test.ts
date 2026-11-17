@@ -37,3 +37,18 @@ test('a wood climbing a hill changes species with altitude, each forest in one b
   const avg = (l: string) => { const a = f.filter((q) => q.leaf === l).map(meanX); return a.reduce((x, y) => x + y, 0) / a.length }
   assert.ok(avg('broad') < avg('mixed') && avg('mixed') < avg('needle'))
 })
+
+// #12 species of the Zone tool forest
+import { zoneForestLeaf, forestGeneratorFor } from '../../src/biomes/vegetation.ts'
+test('zone forest species: explicit choice kept, auto from altitude then biome', () => {
+  assert.equal(zoneForestLeaf('broad', 0.9), 'broad')
+  assert.equal(zoneForestLeaf('auto', 0.1), 'broad')
+  assert.equal(zoneForestLeaf('auto', 0.8), 'needle')
+  assert.equal(zoneForestLeaf('auto', 0.4), 'mixed')
+  assert.equal(zoneForestLeaf('auto', undefined, 'winter_tundra'), zoneForestLeaf('auto', undefined, 'winter_tundra'))
+  assert.notEqual(zoneForestLeaf('auto', undefined, 'tropical'), 'needle')
+  // conifer biomes lean needle earlier than Everon at the same height
+  const order = { broad: 0, mixed: 1, needle: 2 }
+  assert.ok(order[zoneForestLeaf('auto', 0.5, 'nordic_kolguyev')] >= order[zoneForestLeaf('auto', 0.5)])
+  assert.match(forestGeneratorFor('winter_tundra', zoneForestLeaf('auto', 0.8, 'winter_tundra'), 'mid') ?? '', /FG_Forest_/)
+})
