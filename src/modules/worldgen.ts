@@ -17,6 +17,7 @@ import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
+import { generateTown } from './town'
 import type { Placed, Square } from './settlements'
 import { routePowerLine, type PowerKind, type PowerLine } from './power'
 import type { Feature, Polygon } from 'geojson'
@@ -493,6 +494,20 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const settlement: WorldResult['settlement'] = { placed: [], lanes: [], paths: [], squares: [] }
   for (const kind of ['town', 'village', 'hamlet', 'farm'] as const) {
     const ks = sites.filter((s) => (kind === 'farm' ? s.id.startsWith('FARM_') : s.kind === kind && !s.id.startsWith('FARM_')))
+    if (kind === 'town') {
+      // "vraie ville" (town.ts) on a 300 m disc; a site it cannot lay out (water, slope, cramped) falls back to settleVillages
+      const left: Site[] = []
+      for (const s of ks.splice(0)) {
+        const ring: number[] = []
+        for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; ring.push(s.x + Math.cos(a) * 300, s.z + Math.sin(a) * 300) }
+        const tr = generateTown(ring, allRoads, waters, cur.heights, g, { seed: subSeed(seed, 'town-' + s.id), density: WORLD.villages.town.density, blocked: zoneBlocked(zones), prefix: s.id }, settlement.placed)
+        if (tr.placed.length - settlement.placed.length < 30) { left.push(s); continue }
+        settlement.placed = tr.placed
+        settlement.lanes.push(...tr.lanes); settlement.squares.push(...tr.squares)
+      }
+      ks.push(...left)
+      if (!ks.length) continue
+    }
     if (!ks.length) continue
     const V = WORLD.villages[kind]
     const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: subSeed(seed, 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome }, settlement.placed)
