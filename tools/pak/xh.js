@@ -1,0 +1,3 @@
+const pak=require('./pak.js');const I=require('../xob/idx.json');const D='D:/Program Files/Steam/steamapps/common/Arma Reforger/addons/data/';
+const k=process.argv[2].toLowerCase();const e=I[k];const b=pak.read(D+e.pak,e);console.log(b.length);
+let o=12;const out=[];while(o<b.length&&out.length<12){const id=b.toString('latin1',o,o+4),l=b.readUInt32BE(o+4);out.push(id+':'+l);if(id=='HEAD'){const h=b.subarray(o+8,o+8+Math.min(l,160));console.log(h.toString('hex').match(/.{1,32}/g).join('\n'));const f=[];for(let i=0;i+4<=h.length;i+=4)f.push(h.readFloatLE(i).toFixed(3));console.log(f.join(' '));}o+=8+l+(l&1);}console.log(b.toString('latin1',0,12),out);
