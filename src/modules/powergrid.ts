@@ -21,6 +21,7 @@
 import type { Grid } from './island'
 import type { ProjectEntity, ProjectShape } from '../project'
 import { attachPoint, smoothPath } from './powersmooth'
+import { CLEAR, PowerObstacles, clearSpans, fixPoles, followRoads, type PowerWorld } from './powerroads'
 import { buildPowerCost, placePoles, routePowerLine, POWER_STYLE, type KeepOut, type PowerKind, type PowerLine, type PowerStyle } from './power'
 
 export type StationKind = 'plant' | 'ehv' | 'hv' | 'mvlv' | 'ind'
@@ -95,6 +96,9 @@ export interface GridInput {
   size: number
   /** extra no-go discs for every line and plant (airfields, military bases) */
   avoid?: KeepOut[]
+  /** built world (road half widths, houses, fenced plots, bridges): road-following wooden lines, house
+   *  clearance (powerroads.ts). Absent = `roads` with a 3 m half width, no buildings. */
+  world?: PowerWorld
 }
 
 export interface GridPlan { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[] }
@@ -152,7 +156,7 @@ export function flattenPad(h: Float32Array | number[], g: Grid, st: Station) {
   }
 }
 
-interface PlaceCtx { input: GridInput; stations: Station[]; keep: (KeepOut & { id: string })[] }
+interface PlaceCtx { input: GridInput; stations: Station[]; keep: (KeepOut & { id: string })[]; ob?: PowerObstacles }
 
 /** Best spot for a station: on rings around `cx,cz`, flat, dry, out of the other sites, near a road,
  *  biased toward `prefer` (radians, optional). Yaw turns the gate (+Z face) to the nearest road. */
@@ -172,6 +176,7 @@ function placeStation(ctx: PlaceCtx, cx: number, cz: number, rings: number[], di
     const yaw = Number.isFinite(rd.x) ? Math.atan2(rd.x - x, rd.z - z) : a + Math.PI
     const fp = footprint(x, z, yaw, dims.w, dims.d)
     if (fp.some(([px, pz]) => input.isWater(px, pz))) continue
+    if (ctx.ob && (ctx.ob.bldDist(x, z, half + 4) < half + 3 || fp.some(([px, pz]) => ctx.ob!.inLot(px, pz)))) continue // never on a house or a plot
     const relief = padRelief(h, g, { x, z, yaw, w: dims.w + 8, d: dims.d + 8 })
     if (relief > 8) continue
     let score = relief * 4 + (Number.isFinite(rd.d) ? Math.max(0, rd.d - 30) / 15 : 30) + R / 200
@@ -244,10 +249,29 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
   const ctx: PlaceCtx = { input, stations, keep }
   // heavy lines never cross a village centre; LV runs inside villages
   const centreOut: KeepOut[] = [...sites.filter((s) => s.kind !== 'industry').map((s) => ({ x: s.x, z: s.z, r: s.r * 0.5 })), ...(input.avoid ?? [])]
+  // HV / EHV stay out of the villages and towns themselves (stations sit outside, at r + 40 m)
+  const townOut: KeepOut[] = [...sites.filter((s) => s.kind !== 'industry').map((s) => ({ x: s.x, z: s.z, r: s.r * 0.9 })), ...(input.avoid ?? [])]
+  const ob = new PowerObstacles(input.world ?? { roads: roads.map((pts) => ({ pts, half: 3 })) })
+  ctx.ob = ob
+  const bld = ob.hasBuildings || (input.world?.lots?.length ?? 0) > 0
+  // wooden-pole lines follow the streets: LV, and the USSR MV (HV_03_Wooden)
+  const follows = (k: PowerKind) => k === 'lv' || (k === 'mv' && style === 'ussr')
+  const blockFor = (k: PowerKind) => {
+    if (!bld) return undefined
+    if (k === 'lv') return (x: number, z: number) => ob.bldDist(x, z, 1) === 0
+    const r = CLEAR[k] + g.step * 0.5
+    return (x: number, z: number) => ob.bldDist(x, z, r) < r || ob.inLot(x, z)
+  }
+  const loose = new Map<PowerKind, Float32Array>()
+  const costLoose = (k: PowerKind) => { // retry field: houses forbidden, without their clearance (dense villages)
+    let c = loose.get(k)
+    if (!c) { c = buildPowerCost(h, g, { kind: k, isWater: input.isWater, roads: k === 'mv' || k === 'lv' ? roads : undefined, keepOut: k === 'lv' ? input.avoid : k === 'mv' ? centreOut : townOut, block: (x, z) => ob.bldDist(x, z, 1) === 0 }); loose.set(k, c) }
+    return c
+  }
   const costs = new Map<PowerKind, Float32Array>()
   const cost = (k: PowerKind) => {
     let c = costs.get(k)
-    if (!c) { c = buildPowerCost(h, g, { kind: k, isWater: input.isWater, roads: k === 'mv' || k === 'lv' ? roads : undefined, keepOut: k === 'lv' ? input.avoid : centreOut }); costs.set(k, c) }
+    if (!c) { c = buildPowerCost(h, g, { kind: k, isWater: input.isWater, roads: k === 'mv' || k === 'lv' ? roads : undefined, keepOut: k === 'lv' ? input.avoid : k === 'mv' ? centreOut : townOut, block: blockFor(k) }); costs.set(k, c) }
     return c
   }
   let nid = 0
@@ -279,9 +303,24 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     const A = kind === 'ehv' && a.byGenerator ? { at: [a.x, a.z] as [number, number], lead: null } : attachPoint(a, bx, bz, lead, fan(a))
     const B = Array.isArray(b) ? { at: b, lead: null } : kind === 'ehv' && b.byGenerator ? { at: [b.x, b.z] as [number, number], lead: null } : attachPoint(b, (A.lead ?? A.at)[0], (A.lead ?? A.at)[1], lead, fan(b))
     const [ax, az] = A.lead ?? A.at, [ex, ez] = B.lead ?? B.at
-    const cf = cost(kind)
-    const l = routePowerLine(h, g, ax, az, ex, ez, { kind, spacing, cost: cf, isWater: input.isWater })
+    const along = follows(kind) ? followRoads(ob, ax, az, ex, ez, spacing, Array.isArray(b)) : null
+    if (along) {
+      let path = along
+      if (A.lead) path = [...A.at, ...path]
+      if (B.lead) path = [...path, ...B.at]
+      const poles = (bld ? clearSpans(ob, fixPoles(ob, placePoles(path, spacing)), spacing) : fixPoles(ob, placePoles(path, spacing)))
+      let length = 0
+      for (let i = 0; i + 3 < poles.length; i += 2) length += Math.hypot(poles[i + 2] - poles[i], poles[i + 3] - poles[i + 1])
+      const it: GridLine = { kind, spacing, path: poles, poles, length, style, id: `POWER_${kind.toUpperCase()}_${++lid}`, from: a.id, to: Array.isArray(b) ? tag : b.id }
+      lines.push(it)
+      return it
+    }
+    let cf = cost(kind)
+    let l = routePowerLine(h, g, ax, az, ex, ez, { kind, spacing, cost: cf, isWater: input.isWater })
+    if (!l && bld) { cf = costLoose(kind); l = routePowerLine(h, g, ax, az, ex, ez, { kind, spacing, cost: cf, isWater: input.isWater }) }
+    if (!l && bld) { cf = buildPowerCost(h, g, { kind, isWater: input.isWater, roads: kind === 'mv' || kind === 'lv' ? roads : undefined, keepOut: kind === 'lv' ? input.avoid : kind === 'mv' ? centreOut : townOut }); l = routePowerLine(h, g, ax, az, ex, ez, { kind, spacing, cost: cf, isWater: input.isWater }) } // last resort: as before (the validator flags it)
     if (!l) { failed++; return null }
+    const clr = bld ? Math.min(CLEAR[kind], kind === 'lv' ? 1 : CLEAR[kind]) : 0
     // smoothing: no span under 45 % of the pole spacing, no near-straight kinks (the A* zigzag)
     const ok = (x0: number, z0: number, x1: number, z1: number) => {
       const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / (g.step * 0.5))
@@ -290,14 +329,15 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
         const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
         if (cf[r * g.cols + c] === Infinity) return false
       }
-      return true
+      return !clr || ob.spanBld(x0, z0, x1, z1, clr) >= clr
     }
     let path = smoothPath(l.path, spacing * 0.45, ok)
     if (A.lead) path = [...A.at, ...path]
     if (B.lead) path = [...path, ...B.at]
     let length = 0
     for (let i = 0; i + 3 < path.length; i += 2) length += Math.hypot(path[i + 2] - path[i], path[i + 3] - path[i + 1])
-    const it: GridLine = { ...l, path, poles: placePoles(path, spacing), length, style, id: `POWER_${kind.toUpperCase()}_${++lid}`, from: a.id, to: Array.isArray(b) ? tag : b.id }
+    const poles = (bld ? clearSpans(ob, fixPoles(ob, placePoles(path, spacing)), spacing) : fixPoles(ob, placePoles(path, spacing)))
+    const it: GridLine = { ...l, path: poles, poles, length, style, id: `POWER_${kind.toUpperCase()}_${++lid}`, from: a.id, to: Array.isArray(b) ? tag : b.id }
     lines.push(it)
     return it
   }

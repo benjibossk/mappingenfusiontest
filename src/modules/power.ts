@@ -64,6 +64,8 @@ export interface PowerOptions {
   keepOut?: KeepOut[]
   /** road centre lines, flat x/z pairs */
   roads?: number[][]
+  /** extra forbidden cells (houses + clearance, fenced plots: powerroads.ts) */
+  block?: (x: number, z: number) => boolean
   /** precomputed cost field (buildPowerCost) shared by many routes of the same kind */
   cost?: Float32Array
 }
@@ -109,6 +111,7 @@ function costField(h: ArrayLike<number>, g: Grid, o: PowerOptions): Float32Array
       let k = slope > maxSlope ? Infinity : 1 + 6 * (slope / maxSlope) ** 2
       if (k !== Infinity && o.isWater?.(x, z)) k = Infinity
       if (k !== Infinity && o.keepOut) for (const q of o.keepOut) if (Math.hypot(x - q.x, z - q.z) < q.r) { k = Infinity; break }
+      if (k !== Infinity && o.block?.(x, z)) k = Infinity
       if (k !== Infinity && o.roads && bonus !== 1) {
         let best = Infinity
         for (const p of o.roads) for (let i = 0; i + 3 < p.length; i += 2) best = Math.min(best, segDist(x, z, p[i], p[i + 1], p[i + 2], p[i + 3]))

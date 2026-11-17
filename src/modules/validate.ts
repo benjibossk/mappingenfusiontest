@@ -5,9 +5,10 @@ import type { Grid, SurfaceGrid } from './island'
 import { SITE_RADIUS, maxGrade, worstGrade, type Site } from './network'
 import type { Road } from './roads'
 import type { Placed } from './settlements'
+import { segRingDist } from './powerroads'
 import { overBudgetCells, type DensityGrid, type Platform } from './platformBudget'
 
-export type IssueKind = 'noBridge' | 'steepRoad' | 'isolated' | 'buildingWet' | 'overlap' | 'overfull' | 'outside' | 'buildingField' | 'roadField' | 'overBudget'
+export type IssueKind = 'noBridge' | 'steepRoad' | 'isolated' | 'buildingWet' | 'overlap' | 'overfull' | 'outside' | 'buildingField' | 'roadField' | 'overBudget' | 'powerOverBuilding'
 export interface Issue { kind: IssueKind; x: number; z: number; id: string; value?: number }
 
 // grade limits per road type: maxGrade() in network.ts, the same the auto network routes with
@@ -26,6 +27,8 @@ export function validate(o: {
   surfaces?: SurfaceGrid[]
   /** per-platform object budget (platformBudget.ts): cells above it become 'overBudget' */
   budget?: { platform: Platform; grid: DensityGrid }
+  /** power lines (pole polylines): a span over a house is an issue */
+  power?: { id: string; path: number[] }[]
 }): Issue[] {
   const { cols, rows, step } = o.grid
   const at = (x: number, z: number) => {
@@ -87,6 +90,18 @@ export function validate(o: {
   for (const r of o.roads) for (const f of fields) {
     for (let i = 0; i + 1 < r.pts.length; i += 2) if (inPoly(r.pts[i], r.pts[i + 1], f.pts)) {
       out.push({ kind: 'roadField', id: r.id + ' / ' + f.id, x: r.pts[i], z: r.pts[i + 1] }); break
+    }
+  }
+
+  // power line spans over a house (one issue per line)
+  for (const l of o.power ?? []) {
+    const p = l.path
+    span: for (let i = 0; i + 3 < p.length; i += 2) {
+      const x0 = Math.min(p[i], p[i + 2]), x1 = Math.max(p[i], p[i + 2]), z0 = Math.min(p[i + 1], p[i + 3]), z1 = Math.max(p[i + 1], p[i + 3])
+      for (const b of o.settled) {
+        if (Math.abs(b.x - (x0 + x1) / 2) > (x1 - x0) / 2 + 40 || Math.abs(b.z - (z0 + z1) / 2) > (z1 - z0) / 2 + 40) continue
+        if (segRingDist(p[i], p[i + 1], p[i + 2], p[i + 3], b.corners) === 0) { out.push({ kind: 'powerOverBuilding', id: l.id + ' / ' + b.id, x: b.x, z: b.z }); break span }
+      }
     }
   }
 

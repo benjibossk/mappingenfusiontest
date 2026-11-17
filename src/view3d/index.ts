@@ -5,7 +5,7 @@ import {
   ACESFilmicToneMapping, AmbientLight, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry,
   DirectionalLight, DoubleSide, Group, IcosahedronGeometry, OctahedronGeometry, Points, PointsMaterial, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial,
   MeshStandardMaterial, Object3D, PerspectiveCamera, PlaneGeometry, Quaternion, Scene, Shape, ShapeGeometry, SRGBColorSpace,
-  Vector2, Vector3, WebGLRenderer, InstancedBufferAttribute, type Material, type Texture,
+  Vector2, Vector3, WebGLRenderer, InstancedBufferAttribute, LineBasicMaterial, LineSegments, type Material, type Texture,
 } from 'three'
 import { MOUSE } from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
@@ -14,7 +14,7 @@ import { qualityPreset, loadQuality, saveQuality, drawForestTint, type Quality }
 export type { RealLayers } from './drape'
 
 export interface HeightGrid { minX: number; minZ: number; step: number; cols: number; rows: number; heights: ArrayLike<number> } // row 0 = minZ (south)
-export interface Box3D { cx: number; cz: number; w: number; d: number; h: number; yaw: number } // yaw: radians, world X/Z
+export interface Box3D { cx: number; cz: number; w: number; d: number; h: number; yaw: number; toGround?: boolean } // yaw: radians, world X/Z; toGround: from the ground up to the top (bridge piers)
 export interface View3DData {
   hm: HeightGrid
   sea: number
@@ -25,8 +25,10 @@ export interface View3DData {
   treeTint?: { needle: number[]; broad: number[]; bush: number[] } // biome multipliers on the crown colours (absent = Everon)
   lakes: number[][] // flat X/Z rings
   props?: Box3D[] // small brown boxes on the ground (felled-log piles of production forests)
-  bridges?: Box3D[] // decks (cz/cx centre, h = thickness), y from the deck height
-  bridgeY?: number[]
+  bridges?: Box3D[] // bridge parts from the real prefab dims: deck slabs, railings, piers (toGround); h = thickness
+  bridgeY?: number[] // top of each part (m)
+  /** power lines: poles (flat X/Z) and pole height (m); cables hang between them with a catenary sag */
+  power?: { poles: number[]; h: number }[]
   outside?: HeightGrid // off-map ring (modules/outside.ts): low-res relief drawn around the block, under its own sea
   target: [number, number] // world X/Z the 2D view looks at
   span: number // metres across the 2D view
@@ -291,6 +293,19 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const blds = data.buildings.length ? new InstancedMesh(boxGeo, bldMat, data.buildings.length) : null
   const bridgeMat = bldMat // OpsTrack: decks are the same grey-beige boxes
   const brg = data.bridges?.length ? new InstancedMesh(boxGeo, bridgeMat, data.bridges.length) : null
+  // power: one instanced thin box per pole, cables as line segments (8 per span, parabolic sag ~1.5 % of the span)
+  const poleList: number[] = [] // x, z, h
+  for (const l of data.power ?? []) for (let i = 0; i + 1 < l.poles.length; i += 2) poleList.push(l.poles[i], l.poles[i + 1], l.h)
+  const nPole = poleList.length / 3
+  const poleMesh = nPole ? new InstancedMesh(boxGeo, new MeshStandardMaterial({ color: 0x5a4a3a, roughness: 1, metalness: 0 }), nPole) : null
+  const SAG_N = 8
+  let nSeg = 0
+  for (const l of data.power ?? []) nSeg += Math.max(0, l.poles.length / 2 - 1) * SAG_N
+  const cableGeo = new BufferGeometry()
+  cableGeo.setAttribute('position', new BufferAttribute(new Float32Array(nSeg * 6), 3))
+  const cables = nSeg ? new LineSegments(cableGeo, new LineBasicMaterial({ color: 0x222222 })) : null
+  if (poleMesh) scene.add(poleMesh)
+  if (cables) { cables.frustumCulled = false; scene.add(cables) }
   const prp = data.props?.length ? new InstancedMesh(boxGeo, new MeshStandardMaterial({ color: 0x7a5230, roughness: 1, metalness: 0 }), data.props.length) : null
   // walls / fences / hedges: one thin box per segment, OpsTrack object grey-beige (hedges dark green)
   const wallSeg: number[] = [] // cx, cz, len, t, h, yaw, hedge
@@ -386,11 +401,32 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     }
     if (brg && data.bridges) {
       data.bridges.forEach((b, i) => {
-        tmp.position.set(b.cx, (data.bridgeY?.[i] ?? groundAt(b.cx, b.cz)) * ex - b.h, -b.cz)
-        tmp.rotation.set(0, b.yaw, 0); tmp.scale.set(b.w, b.h, b.d)
+        const top = (data.bridgeY?.[i] ?? groundAt(b.cx, b.cz)) * ex
+        const hh = b.toGround ? Math.max(0.5, top - groundAt(b.cx, b.cz) * ex + 0.5) : b.h
+        tmp.position.set(b.cx, top - hh, -b.cz)
+        tmp.rotation.set(0, b.yaw, 0); tmp.scale.set(b.w, hh, b.d)
         tmp.updateMatrix(); brg.setMatrixAt(i, tmp.matrix)
       })
       brg.instanceMatrix.needsUpdate = true; brg.computeBoundingSphere()
+    }
+    if (poleMesh) {
+      for (let i = 0; i < nPole; i++) {
+        const x = poleList[i * 3], z = poleList[i * 3 + 1], ph = poleList[i * 3 + 2], t = ph > 15 ? 1.6 : 0.35
+        tmp.position.set(x, groundAt(x, z) * ex - 0.3, -z); tmp.rotation.set(0, 0, 0); tmp.scale.set(t, ph + 0.3, t)
+        tmp.updateMatrix(); poleMesh.setMatrixAt(i, tmp.matrix)
+      }
+      poleMesh.instanceMatrix.needsUpdate = true; poleMesh.computeBoundingSphere()
+    }
+    if (cables) {
+      const a = cableGeo.attributes.position.array as Float32Array
+      let o = 0
+      for (const l of data.power ?? []) for (let i = 0; i + 3 < l.poles.length; i += 2) {
+        const x0 = l.poles[i], z0 = l.poles[i + 1], x1 = l.poles[i + 2], z1 = l.poles[i + 3]
+        const y0 = groundAt(x0, z0) * ex + l.h * 0.95, y1 = groundAt(x1, z1) * ex + l.h * 0.95, sag = 0.015 * Math.hypot(x1 - x0, z1 - z0)
+        const at = (t: number) => [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t - 4 * sag * t * (1 - t), -(z0 + (z1 - z0) * t)]
+        for (let k = 0; k < SAG_N; k++) { const p = at(k / SAG_N), q = at((k + 1) / SAG_N); a.set(p, o); a.set(q, o + 3); o += 6 }
+      }
+      cableGeo.attributes.position.needsUpdate = true; cableGeo.computeBoundingSphere()
     }
     if (walls) {
       for (let i = 0; i < nWall; i++) {

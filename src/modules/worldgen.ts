@@ -27,7 +27,7 @@ import { generateTown } from './town'
 import { makeSiteZone } from './sitezones'
 import type { Placed, Square } from './settlements'
 import type { PowerLine } from './power'
-import { worldPowerGrid } from './worldpower'
+import { powerWorld, worldPowerGrid } from './worldpower'
 import type { Station } from './powergrid'
 import type { Feature, Polygon } from 'geojson'
 import { generateForests } from './forestgen'
@@ -552,7 +552,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   }
   // 9. power grid: hierarchical planner (worldpower.ts -> powergrid.ts), stations + access tracks, pads flattened
   await step('power')
-  const pw = p.power ? worldPowerGrid(cur.heights, g, sites, zones, allRoads.map((r) => r.pts), isLakeOrSea, p.size) : null
+  const pw = p.power ? worldPowerGrid(cur.heights, g, sites, zones, allRoads.map((r) => r.pts), isLakeOrSea, p.size, 'eden', powerWorld([...allRoads, ...settlement.lanes], settlement.placed.map((q) => q.corners), builtLots.filter((l) => l.used).map((l) => l.corners), zones)) : null
   const power: (PowerLine & { id: string })[] = pw?.lines ?? []
   // 10. forests (none over a zone)
   await step('forests')
@@ -623,6 +623,6 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   await step('surfaces')
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
-  const issues = validate({ roads, sites, settled: settlement.placed, refusedGaps: [], heights: cur.heights, grid: g })
+  const issues = validate({ roads, sites, settled: settlement.placed, power, refusedGaps: [], heights: cur.heights, grid: g })
   return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
 }
