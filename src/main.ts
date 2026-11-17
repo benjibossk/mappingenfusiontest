@@ -3,6 +3,7 @@ import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
 import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
 import { prefabDims } from './library/dims'
+import { bridgeParts } from './modules/bridges3d'
 import { modDepsText, modsChecklist } from './modsPanel'
 import './data/modBuildings' // ticked mods' buildings join the generators' pools (off by default)
 import { Collab, type CollabEvents, type CollabTransport, type Op } from './collab'
@@ -12,7 +13,7 @@ import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
 import { POWER_DEFAULTS, placePoles, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
-import { accessShapes, planGrid, stationEntities, type GridSite, type Station } from './modules/powergrid'
+import { accessShapes, planGrid, stationEntities, type PowerDistrib, type GridSite, type Station } from './modules/powergrid'
 import { FOREST_AVOID, GENERATORS, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
@@ -312,6 +313,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="rwDams" type="checkbox"> ${t('lbl.dams')} ${info('info.dams')}</label>
           <label class="check"><input id="rwPower" type="checkbox" checked> ${t('wg.power')}</label>
         </div>
+        <div class="form"><label>${t('lbl.powDistrib')} ${info('info.powDistrib')} <select id="rwPowDistrib"><option value="auto" selected>${t('opt.powDistAuto')}</option><option value="overhead">${t('opt.powDistOver')}</option><option value="underground">${t('opt.powDistUnder')}</option></select></label></div>
         <div id="rwRun" class="rwrun" hidden>
           <div class="rwnum"><span id="rwSeedK" class="kicker"></span><span class="grow"></span><b id="rwPct" class="busypct"></b><span id="rwEta" class="busytime"></span></div>
           <progress id="rwProg" max="100" value="0"></progress>
@@ -539,6 +541,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="form">
           <label>${t('lbl.powMVMax')} <input id="powMVMax" type="number" step="100" min="500" value="4000"></label>
           <label>${t('lbl.powLVMax')} <input id="powLVMax" type="number" step="100" min="200" value="900"></label>
+          <label>${t('lbl.powDistrib')} ${info('info.powDistrib')} <select id="powDistrib"><option value="auto" selected>${t('opt.powDistAuto')}</option><option value="overhead">${t('opt.powDistOver')}</option><option value="underground">${t('opt.powDistUnder')}</option></select></label>
         </div>
         <div class="hint"><span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#5ec8ff"></span> EHV · <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#ffd24a"></span> HV · <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#ff8a3a"></span> MV · <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#e8e2c8"></span> LV · <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#c050ff"></span> ${t('lbl.powStations')}</div>
         ${hint('hint.power')}
@@ -2643,6 +2646,7 @@ function islandProject() {
   document.querySelectorAll<HTMLInputElement>('.side .tab input[id]').forEach((el) => {
     if (el.type !== 'file' && el.id !== 'roadFlatten') inputs[el.id] = el.type === 'checkbox' ? el.checked : el.value
   })
+  inputs.powDistrib = $<HTMLSelectElement>('powDistrib').value // power distribution in settlements (a select)
   return {
     kind: 'reforger-mapper-island', version: 1, inputs, pipeline,
     macro: b64(new Uint8Array(sculpt.macro.buffer.slice(0))),
@@ -4024,7 +4028,7 @@ function generatePower() {
   const plan = planGrid({ heights: h, grid: g, sites: gs, roads: roadPts, isWater, size: (g.cols - 1) * g.step, avoid, world: powerWorld([...roads, ...existingRoads()], settled.map((b) => b.corners), [], zones) }, {
     style: $<HTMLSelectElement>('powStyle').value as PowerStyle,
     ehv: ehv === 'auto' ? 'auto' : ehv === 'on', hv: chk('powHV'), mv: chk('powMV'), lv: chk('powLV'),
-    mvMax: num('powMVMax'), lvMax: num('powLVMax'),
+    mvMax: num('powMVMax'), lvMax: num('powLVMax'), distrib: $<HTMLSelectElement>('powDistrib').value as PowerDistrib,
     plants: $<HTMLSelectElement>('powPlants').value === 'auto' ? 'auto' : Number($<HTMLSelectElement>('powPlants').value),
   })
   powerLines = plan.lines; powerStations = plan.stations; powerAccess = plan.access
@@ -4526,6 +4530,7 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
     seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
     towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
     airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome, motorway: $<HTMLInputElement>('rwMotorway').checked, dams: $<HTMLInputElement>('rwDams').checked,
+    powerDistrib: $<HTMLSelectElement>('rwPowDistrib').value as PowerDistrib,
   }
   const params = (replayParams as unknown as typeof fromDlg | undefined) ?? fromDlg
   // the whole pipeline runs in the generator worker: the page (busy panel, bar, Cancel) stays live.
@@ -4601,27 +4606,8 @@ type View3DMod = typeof import('./view3d')
 const BLD_H: Record<string, number> = { houseS: 5, houseM: 7, houseL: 9, farm: 7, annex: 3.5, shed: 4, civic: 12, block: 15 }
 /** 3D pole heights per voltage (m, vanilla WoodenSmall ~8, concrete ~11, HV_02 ~22, EHV_01 ~35) */
 const POLE_H: Record<PowerKind, number> = { lv: 8, mv: 11, hv: 22, ehv: 35 }
-/** 3D bridge parts from the real prefab dims (catalogue): deck slab + two railings per deck piece, piers
- *  down to the ground. Entity origin conventions of bridges.ts: deck top = origin + 0.13 (slab 1.43 m),
- *  pillar top = origin + 7.05. Prefab local X (w) runs along the deck: world (cos yaw, -sin yaw). */
-function bridgeParts(ents: ProjectEntity[], ground: (x: number, z: number) => number): { boxes: { cx: number; cz: number; w: number; d: number; h: number; yaw: number; toGround?: boolean }[]; top: number[] } {
-  const boxes: { cx: number; cz: number; w: number; d: number; h: number; yaw: number; toGround?: boolean }[] = [], top: number[] = []
-  for (const b of ents) {
-    const yd = ((b.yaw ?? 0) * Math.PI) / 180, ux = Math.cos(yd), uz = -Math.sin(yd), vx = Math.sin(yd), vz = Math.cos(yd)
-    const dm = prefabDims(b.prefab), y0 = b.ycm !== undefined ? b.ycm / 100 : ground(b.x, b.z)
-    const w = dm?.w ?? 16, d = dm?.dz ?? 8, cx = b.x + ux * (dm?.cx ?? 0) + vx * (dm?.cz ?? 0), cz = b.z + uz * (dm?.cx ?? 0) + vz * (dm?.cz ?? 0)
-    const yaw = -yd
-    if (/PILLAR/i.test(b.id ?? '')) { boxes.push({ cx, cz, w: Math.min(w, 2.5), d: d * 0.85, h: 0, yaw, toGround: true }); top.push(y0 + 7.05); continue }
-    const isWood = /Wooden/i.test(b.prefab)
-    const t = y0 + (isWood ? (dm?.h ?? 2) * 0.2 : 0.13), slab = isWood ? 0.5 : Math.min(1.43, dm?.h ?? 1.43)
-    // long axis: the larger of w / d (wooden pier bridges run along their local Z)
-    const along = w >= d ? { len: w, wid: d, ax: ux, az: uz, px: vx, pz: vz, yw: yaw } : { len: d, wid: w, ax: vx, az: vz, px: ux, pz: uz, yw: yaw - Math.PI / 2 }
-    boxes.push({ cx, cz, w: along.len, d: along.wid, h: slab, yaw: along.yw }); top.push(t)
-    for (const sg of [1, -1]) { boxes.push({ cx: cx + along.px * sg * (along.wid / 2 - 0.2), cz: cz + along.pz * sg * (along.wid / 2 - 0.2), w: along.len, d: 0.3, h: 1, yaw: along.yw }); top.push(t + 1) }
-    if (isWood) { boxes.push({ cx, cz, w: 1, d: along.wid * 0.8, h: 0, yaw: along.yw, toGround: true }); top.push(t - slab) }
-  }
-  return { boxes, top }
-}
+/** zone boxes that are ground surfaces (plots, paving, base area): draped, never 3D blocks */
+const FLAT_ROLES = new Set(['lot', 'pave', 'area'])
 function box3d(c: number[], h: number) {
   const cx = (c[0] + c[2] + c[4] + c[6]) / 4, cz = (c[1] + c[3] + c[5] + c[7]) / 4
   const w = Math.hypot(c[2] - c[0], c[3] - c[1]), d = Math.hypot(c[4] - c[2], c[5] - c[3])
@@ -4805,7 +4791,7 @@ btn3d.addEventListener('click', () => void (async () => {
     const buildings = [
       ...settled.map((b) => box3d(b.corners, prefabDims(b.prefab)?.h || BLD_H[b.cat] || 6)), // real height (catalogue dims) when known
       ...powerStations.map((q) => ({ cx: q.x, cz: q.z, w: q.w, d: q.d, h: q.h, yaw: q.yaw })), // transformer stations (powergrid.ts)
-      ...zones.flatMap((z) => z.boxes.filter((b) => z.kind === 'site' ? b.corners.length === 8 && (b.h ?? 0) >= 0.2 : b.corners.length >= 8).map((b) => box3d(b.corners, b.h ?? (/hangar|tower/i.test(b.role) ? 12 : 7)))),
+      ...zones.flatMap((z) => z.boxes.filter((b) => !FLAT_ROLES.has(b.role) && (z.kind === 'site' ? b.corners.length === 8 && (b.h ?? 0) >= 0.2 : b.corners.length >= 8)).map((b) => box3d(b.corners, b.h ?? (/hangar|tower/i.test(b.role) ? 12 : 7)))),
     ]
     const lakes = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts)
     const trees = withRiparianTrees(forestTrees())
@@ -4840,4 +4826,4 @@ btn3d.addEventListener('click', () => void (async () => {
 })())
 // dev-only probe for the Playwright checks: read the world state, move the 2D view
 wireOutside(() => terrain, (m) => { logEl.textContent = m })
-if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get pipeline() { return pipeline }, get result() { return result }, get zones() { return zones }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
+if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get worldBridges() { return worldBridges }, get pipeline() { return pipeline }, get result() { return result }, get zones() { return zones }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }

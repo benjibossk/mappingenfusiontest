@@ -83,8 +83,14 @@ export interface GridOptions {
   lvMax: number
   /** power plants (sources): 'auto' = 1 per ~6 km of map side, max 3; 0 = none (towns are the sources) */
   plants: number | 'auto'
+  /** distribution inside settlements: 'auto' = towns and big villages underground (no pole past the
+   *  entrance), hamlets and small villages one short overhead street run; 'overhead' everywhere; 'underground' everywhere */
+  distrib: PowerDistrib
+  /** auto: a village with more buildings than this is served underground */
+  ugMin: number
 }
-export const GRID_DEFAULTS: GridOptions = { style: 'eden', ehv: 'auto', hv: true, mv: true, lv: true, mvMax: 4000, lvMax: 900, plants: 'auto' }
+export type PowerDistrib = 'auto' | 'overhead' | 'underground'
+export const GRID_DEFAULTS: GridOptions = { style: 'eden', ehv: 'auto', hv: true, mv: true, lv: true, mvMax: 4000, lvMax: 900, plants: 'auto', distrib: 'auto', ugMin: 25 }
 
 export interface GridInput {
   heights: Float32Array | number[]
@@ -101,7 +107,10 @@ export interface GridInput {
   world?: PowerWorld
 }
 
-export interface GridPlan { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[] }
+/** where a settlement's supply ends: its transformer at the entrance (or the entrance pole of a hamlet);
+ *  `ug` = beyond it the distribution is underground (nothing placed) */
+export interface Entrance { site: string; x: number; z: number; ug: boolean }
+export interface GridPlan { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[]; entrances: Entrance[] }
 
 function hAt(h: ArrayLike<number>, g: Grid, x: number, z: number) {
   const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))
@@ -440,29 +449,53 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     }
   }
 
-  // 3. LV: from each village transformer along its streets (two runs to the far side), hamlets from
-  //    the nearest transformer within lvMax
+  // 3. LV. Distribution model: the supply of each settlement ends at its entrance (the MV->LV transformer
+  //    on its edge, facing the feeder, or for a hamlet the last pole of its LV run, on the road it arrives
+  //    by). Past it: underground (towns, big villages - nothing placed) or one short overhead street run
+  //    along the main street (small villages, hamlets) - never one drop per house.
+  const entrances: Entrance[] = []
+  const nb = (s: GridSite) => { let n = 0; for (const b of input.world?.buildings ?? []) if (b.length >= 2 && Math.hypot(b[0] - s.x, b[1] - s.z) < s.r) n++; return n }
+  const ug = (s: GridSite) => opt.distrib === 'underground' || (opt.distrib === 'auto' && (s.kind === 'town' || (s.kind === 'village' && nb(s) > opt.ugMin)))
+  const verge = (x: number, z: number): [number, number] => { // on the verge beside the road, clear of the houses
+    const rd = nearestRoad(roads, x, z)
+    if (!Number.isFinite(rd.x) || rd.d >= 30) return [x, z]
+    const cand: [number, number][] = [8, -8, 6, -6, 11, -11].map((o) => [rd.x + Math.cos(rd.dir) * o, rd.z - Math.sin(rd.dir) * o])
+    return cand.find(([cx, cz]) => ob.bldDist(cx, cz, 4) >= 3) ?? cand[0]
+  }
+  /** entrance of `s` seen from (fx, fz): the road point on its edge closest to the source */
+  const entranceOf = (s: GridSite, fx: number, fz: number): [number, number] => {
+    let bx = NaN, bz = NaN, bd = Infinity
+    for (const p of roads) for (let i = 0; i + 1 < p.length; i += 2) {
+      const dc = Math.hypot(p[i] - s.x, p[i + 1] - s.z)
+      if (dc < s.r * 0.7 || dc > s.r * 1.2) continue
+      const d = Math.hypot(p[i] - fx, p[i + 1] - fz)
+      if (d < bd) { bd = d; bx = p[i]; bz = p[i + 1] }
+    }
+    if (!Number.isFinite(bx)) { const a = Math.atan2(fx - s.x, fz - s.z); bx = s.x + Math.sin(a) * s.r * 0.9; bz = s.z + Math.cos(a) * s.r * 0.9 }
+    return verge(bx, bz)
+  }
+  for (const s of sites) { const st = trafo.get(s.id); if (st && s.kind !== 'industry') entrances.push({ site: s.id, x: st.x, z: st.z, ug: ug(s) }) }
   if (opt.lv) {
     for (const s of sites) {
       const st = trafo.get(s.id)
-      if (!st || s.kind === 'industry' || s.kind === 'hamlet') continue
+      if (!st || s.kind === 'industry' || ug(s)) continue
+      // overhead: 'auto' = one short run down the main street (to <= 0.6 r past the centre), 'overhead' = two runs to the far side
+      const runs = opt.distrib === 'overhead' ? 2 : 1, reach = opt.distrib === 'overhead' ? 0.85 : 0.6
       const ends: [number, number][] = []
       for (const p of roads) for (let i = 0; i + 1 < p.length; i += 2) {
         const x = p[i], z = p[i + 1]
-        if (Math.hypot(x - s.x, z - s.z) > s.r * 0.85) continue
+        if (Math.hypot(x - s.x, z - s.z) > s.r * reach) continue
         ends.push([x, z])
       }
       ends.sort((a, b) => Math.hypot(b[0] - st.x, b[1] - st.z) - Math.hypot(a[0] - st.x, a[1] - st.z))
       const picked: [number, number][] = []
       for (const e of ends) {
-        if (picked.length >= 2) break
+        if (picked.length >= runs) break
         if (Math.hypot(e[0] - st.x, e[1] - st.z) < s.r * 0.6) break
         if (picked.some((q) => Math.hypot(q[0] - e[0], q[1] - e[1]) < s.r * 0.8)) continue
-        // offset off the road axis so the poles stand on the verge
-        const rd = nearestRoad(roads, e[0], e[1])
-        picked.push([e[0] + Math.cos(rd.dir) * 8, e[1] - Math.sin(rd.dir) * 8])
+        picked.push(verge(e[0], e[1]))
       }
-      if (!picked.length) picked.push([s.x + (s.x - st.x) * 0.5, s.z + (s.z - st.z) * 0.5])
+      if (!picked.length) picked.push([s.x + (s.x - st.x) * 0.3, s.z + (s.z - st.z) * 0.3])
       for (const e of picked) route('lv', st, e, s.id)
     }
     for (const s of sites) {
@@ -471,10 +504,37 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       let bs: Station | null = null, bd = Infinity
       for (const st of trafo.values()) { const d = Math.hypot(st.x - s.x, st.z - s.z); if (d < bd) { bd = d; bs = st } }
       if (!bs || bd > opt.lvMax) { if (opt.mv && !unfed.includes(s.id)) unfed.push(s.id); continue }
-      if (!route('lv', bs, [s.x, s.z], s.id)) unfed.push(s.id)
+      const u = ug(s), gate = entranceOf(s, bs.x, bs.z)
+      // underground: the run stops at the entrance pole; overhead: on along the main street to the centre
+      const l = route('lv', bs, u ? gate : verge(s.x, s.z), s.id)
+      if (!l) { unfed.push(s.id); continue }
+      let ex = l.poles[l.poles.length - 2], ez = l.poles[l.poles.length - 1]
+      if (!u) for (let i = 0; i + 1 < l.poles.length; i += 2) if (Math.hypot(l.poles[i] - s.x, l.poles[i + 1] - s.z) <= s.r * 1.3) { ex = l.poles[i]; ez = l.poles[i + 1]; break }
+      entrances.push({ site: s.id, x: ex, z: ez, ug: u })
     }
   }
-  return { lines, stations, access, failed, unfed }
+  // an LV run crossing an underground-served settlement goes underground there: its poles inside are
+  // dropped and the line is split into its overhead pieces
+  const ugDisc = sites.filter((s) => s.kind !== 'industry' && ug(s)).map((s) => ({ x: s.x, z: s.z, r: s.r * 0.75 }))
+  if (ugDisc.length) for (let k = lines.length - 1; k >= 0; k--) {
+    const l = lines[k]
+    if (l.kind !== 'lv') continue
+    const runs: number[][] = []
+    let cur: number[] = []
+    for (let i = 0; i + 1 < l.poles.length; i += 2) {
+      const x = l.poles[i], z = l.poles[i + 1]
+      if (ugDisc.some((d) => Math.hypot(x - d.x, z - d.z) < d.r)) { if (cur.length) runs.push(cur); cur = [] } else cur.push(x, z)
+    }
+    if (cur.length) runs.push(cur)
+    if (runs.length === 1 && runs[0].length === l.poles.length) continue
+    const parts = runs.filter((r) => r.length >= 4).map((r, j) => {
+      let length = 0
+      for (let i = 0; i + 3 < r.length; i += 2) length += Math.hypot(r[i + 2] - r[i], r[i + 3] - r[i + 1])
+      return { ...l, path: r, poles: r, length, id: j ? `${l.id}_${j + 1}` : l.id }
+    })
+    lines.splice(k, 1, ...parts)
+  }
+  return { lines, stations, access, failed, unfed, entrances }
 }
 
 /** station entities for the export (EHV-end stations are made by their generator) */

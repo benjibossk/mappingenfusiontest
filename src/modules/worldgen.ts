@@ -55,6 +55,7 @@ export interface WorldParams {
   roadsV2?: boolean // road network V2 finish (docs/ROAD_NETWORK_V2.md), default true
   motorway?: boolean // dual-carriageway motorway across the map (motorway.ts), default off; needs roadsV2
   dams?: boolean // earth dam + reservoir on a river throat (dam.ts), default off
+  powerDistrib?: 'auto' | 'overhead' | 'underground' // power distribution inside settlements (powergrid.ts), default auto
   biome?: string // BiomeId (docs/BIOMES_LIBRARY.md): forests and village parcels; default Everon = unchanged
 }
 export const WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { size: 4096, towns: 1, villages: 1, hamlets: 1, industry: 1, military: 1, airfield: true, power: true, forests: 1 }
@@ -552,7 +553,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   }
   // 9. power grid: hierarchical planner (worldpower.ts -> powergrid.ts), stations + access tracks, pads flattened
   await step('power')
-  const pw = p.power ? worldPowerGrid(cur.heights, g, sites, zones, allRoads.map((r) => r.pts), isLakeOrSea, p.size, 'eden', powerWorld([...allRoads, ...settlement.lanes], settlement.placed.map((q) => q.corners), builtLots.filter((l) => l.used).map((l) => l.corners), zones)) : null
+  const pw = p.power ? worldPowerGrid(cur.heights, g, sites, zones, allRoads.map((r) => r.pts), isLakeOrSea, p.size, 'eden', powerWorld([...allRoads, ...settlement.lanes], settlement.placed.map((q) => q.corners), builtLots.filter((l) => l.used).map((l) => l.corners), zones), p.powerDistrib ?? 'auto') : null
   const power: (PowerLine & { id: string })[] = pw?.lines ?? []
   // 10. forests (none over a zone)
   await step('forests')

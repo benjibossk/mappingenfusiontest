@@ -4,7 +4,7 @@
 import type { Grid } from './island'
 import { SITE_RADIUS, type Site } from './network'
 import type { ZoneItem } from './zones'
-import { planGrid, type GridLine, type GridSite, type Station } from './powergrid'
+import { planGrid, type PowerDistrib, type GridLine, type GridSite, type Station } from './powergrid'
 import type { PowerStyle } from './power'
 import { centreLine, roadHalf, type Road } from './roads'
 import type { Disc, PowerWorld } from './powerroads'
@@ -30,7 +30,7 @@ export function powerWorld(roads: Road[], buildings: number[][], lots: number[][
   return { roads: roads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 8), half: roadHalf(r) })), buildings: [...buildings, ...zb], lots, noPole }
 }
 
-export interface WorldPower { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[] }
+export interface WorldPower { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[]; entrances?: { site: string; x: number; z: number; ug: boolean }[] }
 
 /** airfields / military bases: discs no line or plant may cross (main.ts generatePower, same rule) */
 export function zoneAvoid(zones: ZoneItem[]) {
@@ -43,10 +43,10 @@ export function zoneAvoid(zones: ZoneItem[]) {
 
 /** Plan the grid of a generated world. Flattens the station pads in `heights` (in place). */
 export function worldPowerGrid(heights: number[] | Float32Array, g: Grid, sites: Site[], zones: ZoneItem[], roads: number[][],
-  isWater: (x: number, z: number) => boolean, size: number, style: PowerStyle = 'eden', world?: PowerWorld): WorldPower {
+  isWater: (x: number, z: number) => boolean, size: number, style: PowerStyle = 'eden', world?: PowerWorld, distrib: PowerDistrib = 'auto'): WorldPower {
   const gs: GridSite[] = [
     ...sites.map((q) => ({ id: q.id, x: q.x, z: q.z, kind: q.kind as GridSite['kind'], r: SITE_RADIUS[q.kind] })),
     ...zones.filter((z) => z.kind === 'industrial').map((z) => ({ id: z.id, x: z.x, z: z.z, kind: 'industry' as const, r: 100 })),
   ]
-  return planGrid({ heights, grid: g, sites: gs, roads, isWater, size, avoid: zoneAvoid(zones), world }, { style })
+  return planGrid({ heights, grid: g, sites: gs, roads, isWater, size, avoid: zoneAvoid(zones), world }, { style, distrib })
 }
