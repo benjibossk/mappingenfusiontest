@@ -18,6 +18,7 @@ import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type 
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { type CampaignResult } from './modules/campaign'
+import { riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
@@ -455,6 +456,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="row">
         <button id="wGen" type="button" class="secondary">${t('btn.waterGen')}</button>
       </div>
+      <div class="row">
+        <label class="check"><input id="wRipa" type="checkbox"> ${t('lbl.waterRipa')}</label>
+        <button id="wRipaGen" type="button" class="secondary">${t('btn.waterRipa')}</button>
+      </div>
       <details class="adv"><summary>${t('ui.tests')}</summary>
         <button id="wTest" type="button" class="secondary">${t('btn.waterTest')}</button>
       </details>
@@ -807,7 +812,7 @@ function draw() {
 
   if (layer('existing')) drawExisting()
   if (layer('areas')) drawAreas()
-  if (layer('water')) drawWater()
+  if (layer('water')) { drawWater(); drawRiparian() }
   if (layer('roads')) for (const r of [...roads, ...(roadDraft ? [roadDraft] : [])]) {
     const ring: number[][] = []
     for (let i = 0; i + 1 < r.pts.length; i += 2) ring.push([r.pts[i], r.pts[i + 1]])
@@ -1301,6 +1306,7 @@ let setPaths: Road[] = []
 let setSquares: Square[] = []
 let setGardens: { site: string; corners: number[] }[] = [] // v2 back gardens (drawn only)
 let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences
+let riparian: RiparianPatch[] = [] // riparian band (riparian.ts): random world, or the Water tab button
 let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random world (3D view only)
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
 let zonePick: { kind: ZoneKind; sub: string } | null = null
@@ -3455,6 +3461,19 @@ $<HTMLInputElement>('traceFile').addEventListener('change', (e) => {
 })
 $<HTMLInputElement>('traceAlpha').addEventListener('input', () => draw())
 $<HTMLButtonElement>('traceClear').addEventListener('click', () => { if (traceImg instanceof HTMLImageElement) URL.revokeObjectURL(traceImg.src); traceImg = null; $<HTMLInputElement>('traceFile').value = ''; void saveTrace(null); draw() })
+/** riparian patches: reeds (pale green-yellow) on the water edge, willows (dark green) behind */
+function drawRiparian() {
+  for (const p of riparian) {
+    ctx.beginPath()
+    for (let k = 0; k < p.pts.length; k += 2) { const [sx, sy] = toScreen(p.pts[k], p.pts[k + 1]); if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+    ctx.closePath()
+    ctx.fillStyle = p.kind === 'reed' ? 'rgba(190,200,90,0.6)' : 'rgba(40,120,70,0.55)'
+    ctx.fill()
+    ctx.strokeStyle = p.kind === 'reed' ? 'rgba(210,215,110,0.95)' : 'rgba(60,150,90,0.95)'
+    ctx.lineWidth = 1
+    ctx.stroke()
+  }
+}
 function drawAreas() {
   for (const a of areas) {
     ctx.beginPath()
@@ -3797,7 +3816,7 @@ function waterAndRoads(): Project {
   const half = (id: string) => { const r = roads.find((q) => q.id === id); return r ? { half: roadHalf(r), dirt: DIRT_ROADS.has(r.type) } : undefined }
   return {
     version: 0,
-    shapes: [...allWaterShapes(), ...split.shapes],
+    shapes: [...allWaterShapes(), ...split.shapes, ...($<HTMLInputElement>('wRipa').checked ? riparianShapes(riparian) : [])],
     entities: [
       ...(furn ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []),
       ...(island && preWater ? riverBanks(waters, preWater, island.grid) : []),
@@ -3816,6 +3835,29 @@ $<HTMLButtonElement>('wSend').addEventListener('click', () =>
   }),
 )
 
+// riparian band along the drawn rivers / lakes: width from the height above the water + the bank grade
+function makeRiparian() {
+  if (!island) return []
+  const ring = (b: number[][]) => b.flat()
+  return riparianBands(island.heights, island.grid, waters, {
+    seed: num('tSeed') || 1,
+    roads: [...roads, ...setLanes, ...setPaths, ...zones.flatMap((z) => z.roads)].filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) })),
+    polys: [...areas.map((a) => a.pts), ...(result?.fields ?? []).map(ring), ...zones.flatMap((z) => z.boxes.filter((b) => b.corners.length >= 8).map((b) => b.corners))],
+    points: [...sites.map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] })), ...settled.map((b) => ({ x: b.x, z: b.z, r: 12 })), ...worldBridges.map((b) => ({ x: b.x, z: b.z, r: 20 }))],
+  })
+}
+$<HTMLButtonElement>('wRipaGen').addEventListener('click', () => {
+  if (!island || !waters.length) return void (logEl.textContent = t('err.noWater'))
+  riparian = makeRiparian()
+  $<HTMLInputElement>('wRipa').checked = true
+  logEl.textContent = t('log.ripa', { n: riparian.length, reed: riparian.filter((p) => p.kind === 'reed').length })
+  draw()
+})
+$<HTMLInputElement>('wRipa').addEventListener('change', (e) => {
+  if ((e.target as HTMLInputElement).checked && !riparian.length && island && waters.length) riparian = makeRiparian()
+  if (!(e.target as HTMLInputElement).checked) riparian = []
+  draw()
+})
 // roads (and their barriers) cut where they cross water: the gap is left for a bridge
 // --- power lines (step Routes): HV between the main sites, LV from the grid into each village along roads ---
 const POWER_COLOUR: Record<PowerKind, string> = { hv: '#ffd24a', mv: '#ffa63a', lv: '#e8e2c8' }
@@ -4353,6 +4395,7 @@ function applyWorld(w: WorldResult) {
   setParcels = [...(w.settlement.parcels ?? []), ...(w.settlement.fences ?? [])]
   zones = w.zones
   worldBridges = w.bridges ?? []
+  riparian = w.riparian ?? []; $<HTMLInputElement>('wRipa').checked = riparian.length > 0
   pendingAct = 'rwGo'
   doneSnap.fill(null); ownSnap.fill('') // a fresh world: every step that has content counts as done
   waterInfo(); roadInfo(); powerInfo(); zoneInfo()
@@ -4439,6 +4482,30 @@ function box3d(c: number[], h: number) {
 /** trees scattered in the forest areas, OpsTrack-like: spaced trees (min ~7 m apart, the ground shows between crowns),
  *  natural clearings from a low-frequency noise, bushes along the edges and in the undergrowth; capped at ~400 k.
  *  needle: 0 = broadleaf, 1 = conifer, 2 = bush; size factor (1 = typical) in the 3rd float */
+/** 3D: reeds as low bushes, willows as bushes with a few broadleaf trees, scattered in the riparian patches */
+function withRiparianTrees(f: { pts: Float32Array; needle: Uint8Array }) {
+  const pts = Array.from(f.pts), needle = Array.from(f.needle)
+  let seed = 7
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  const inside = (p: number[], x: number, z: number) => {
+    let c = false
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c
+    return c
+  }
+  for (const p of riparian) {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i + 1 < p.pts.length; i += 2) { x0 = Math.min(x0, p.pts[i]); x1 = Math.max(x1, p.pts[i]); z0 = Math.min(z0, p.pts[i + 1]); z1 = Math.max(z1, p.pts[i + 1]) }
+    const sp = p.kind === 'reed' ? 3 : 6
+    for (let x = x0; x <= x1; x += sp) for (let z = z0; z <= z1; z += sp) {
+      const jx = x + (rnd() - 0.5) * sp, jz = z + (rnd() - 0.5) * sp
+      if (!inside(p.pts, jx, jz)) continue
+      const tree = p.kind === 'willow' && rnd() < 0.15
+      pts.push(jx, jz, p.kind === 'reed' ? 0.25 + rnd() * 0.15 : tree ? 0.8 + rnd() * 0.3 : 0.45 + rnd() * 0.25)
+      needle.push(tree ? 0 : 2)
+    }
+  }
+  return { pts: new Float32Array(pts), needle: new Uint8Array(needle) }
+}
 function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
   const forests = areas.filter((a) => a.kind === 'forest' && a.pts.length >= 6)
   let tot = 0
@@ -4592,7 +4659,7 @@ btn3d.addEventListener('click', () => void (async () => {
       ...zones.flatMap((z) => z.boxes.filter((b) => z.kind === 'site' ? b.corners.length === 8 && (b.h ?? 0) >= 0.2 : b.corners.length >= 8).map((b) => box3d(b.corners, b.h ?? (/hangar|tower/i.test(b.role) ? 12 : 7)))),
     ]
     const lakes = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts)
-    const trees = forestTrees()
+    const trees = withRiparianTrees(forestTrees())
     const logBoxes = areas.flatMap((a) => (a.logs ?? []).map((l) => { const y = (l.yaw * Math.PI) / 180; return { cx: l.x, cz: l.z, w: 6, d: 3, h: 1.4, yaw: Math.atan2(Math.cos(y), Math.sin(y)) } }))
     const bridgesBoxes = worldBridges.map((b) => ({ cx: b.x, cz: b.z, w: 8, d: 16, h: 1.2, yaw: (-b.yaw * Math.PI) / 180 }))
     v3d = await mod.open3d(map.parentElement!, {
@@ -4621,4 +4688,4 @@ btn3d.addEventListener('click', () => void (async () => {
   })
 })())
 // dev-only probe for the Playwright checks: read the world state, move the 2D view
-if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
+if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }

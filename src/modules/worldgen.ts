@@ -27,6 +27,7 @@ import type { Feature, Polygon } from 'geojson'
 import { generateForests } from './forestgen'
 import type { CampaignResult } from './campaign'
 import { mergeForestPatches } from './forestMerge'
+import { riparianBands, type RiparianPatch } from './riparian'
 import { countrysideZones, fillFieldZone, pointObstacle, roadObstacles } from './zonefill'
 import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
@@ -75,6 +76,8 @@ export interface WorldResult {
   overfull: number
   /** V2 valley bridges (decks + piers) for the roads' `spans`; the river crossings stay with splitAtWater at export */
   bridges?: ProjectEntity[]
+  /** riparian band (reeds + willows) along the rivers and lake shores (riparian.ts) */
+  riparian?: RiparianPatch[]
 }
 
 /** 32-bit hash of the seed and a stage name (+ index): the sub-seed of one stage / zone */
@@ -621,10 +624,16 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       }
     })
   })
+  // 10c. riparian band along rivers / lake shores: width from the height above the water + the bank grade
+  const riparian = riparianBands(cur.heights, g, waters, {
+    seed: subSeed(seed, 'riparian'), roads: allRoads.map((r) => ({ pts: r.pts, half: roadHalf(r) })),
+    polys: [...camp.fields.map((f) => f.flat()), ...areas.map((a) => a.pts)],
+    points: [...sites.map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] })), ...discs.map((d) => ({ x: d.x, z: d.z, r: d.r + 10 })), ...bridgesOut.map((b) => ({ x: b.x, z: b.z, r: 20 })), ...settlement.placed.map((b) => ({ x: b.x, z: b.z, r: 12 }))],
+  })
   // 11. surfaces (5 per block at most)
   await step('surfaces')
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, refusedGaps: [], heights: cur.heights, grid: g })
-  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }) }
+  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
 }
