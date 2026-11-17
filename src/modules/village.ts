@@ -34,7 +34,7 @@ export interface VillageOptions {
   church?: boolean // one church on the square (default true)
   port?: boolean // quay + boat sheds when the site touches the sea (default true)
   maxSlope?: number // steepest street grade (0.15)
-  dropScale?: number // multiplies the per-category ground drop a footprint may straddle (1 = MAX_DROP)
+  dropScale?: number // multiplies the per-category ground drop a footprint may straddle (1 = MAX_DROP; Zone tool default 1.4: drawn zones are rarely flat)
   pool?: Building[] // replaces the vanilla list (captured parcels: parcelPool)
   blocked?: [number, number, number, number][] // world boxes already taken
   biome?: string // BiomeId: back gardens dressed with the biome's lot template (biomes/parcel.ts); Everon / unset = none (unchanged)
@@ -108,7 +108,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
   }
   const outZone = (x: number, z: number) => !!o.polygon && !inside(o.polygon, x, z)
   const inSquare = (x: number, z: number, m: number) => res.squares.some((s) => Math.hypot(x - s.x, z - s.z) < s.r + m)
-  const fits = (b: Building, c: number[], wm = WATER_MARGIN, soft = true, drop = MAX_DROP[b.cat] * (o.dropScale ?? 1)) => {
+  const fits = (b: Building, c: number[], wm = WATER_MARGIN, soft = true, drop = MAX_DROP[b.cat] * (o.dropScale ?? (o.polygon ? 1.4 : 1))) => {
     for (const q of placed) if (Math.abs(q.x - c[0]) < 80 && Math.abs(q.z - c[1]) < 80 && overlap(c, q.corners, GAP)) return false
     for (const [x0, z0, x1, z1] of o.blocked ?? []) if (overlap(c, [x0, z0, x1, z0, x1, z1, x0, z1], GAP)) return false
     if (soft) for (const g of reserved) if (Math.abs(g[0] - c[0]) < 80 && Math.abs(g[1] - c[1]) < 80 && overlap(c, g, 0)) return false
@@ -323,7 +323,9 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       }
       const onAxis = best![2] < reach
       const [ox, oz] = onAxis ? [best![0], best![1]] : [site.x, site.z]
-      const free = (x: number, z: number) => inside(poly, x, z) && lineDist(poly, x, z, true) >= 6 && !wet(x, z, 4) && !inSquare(x, z, 6) &&
+      // no street up a slope steeper than the street grade (houses would not fit there either)
+      const flat = (x: number, z: number) => Math.hypot(at(x + 6, z) - at(x - 6, z), at(x, z + 6) - at(x, z - 6)) / 12 <= Math.min(maxSlope, 0.15)
+      const free = (x: number, z: number) => inside(poly, x, z) && lineDist(poly, x, z, true) >= 6 && flat(x, z) && !wet(x, z, 4) && !inSquare(x, z, 6) &&
         !(o.blocked ?? []).some(([x0, z0, x1, z1]) => x > x0 - 3 && x < x1 + 3 && z > z0 - 3 && z < z1 + 3) && !placed.some((q) => Math.abs(q.x - x) < 40 && Math.abs(q.z - z) < 40 && (inside(q.corners, x, z) || lineDist(q.corners, x, z, true) < 4))
       const g = { ...zoneGridSpacing(lotTarget(1, o.density).depth, o.density), skipAxis: onAxis }
       for (const pts of zoneStreetGrid(poly, ox, oz, ux, uz, free, g)) {
