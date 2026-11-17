@@ -59,6 +59,10 @@ Screenshots of the generators (Zone tool and random world), taken in the app.
 | **Power grid** | |
 | <img src="docs/img/gallery/power-world-overview.jpg" alt="Power grid: plant, 110 kV lines, substations"> | <img src="docs/img/gallery/power-world-village.jpg" alt="Transformer cascade down to village lines"> |
 | Power grid: plant, 110 kV lines, substations | Transformer cascade down to village lines |
+| <img src="docs/img/gallery/power-village-entrance.jpg" alt="Village fed from a transformer at its entrance, one short street line"> | <img src="docs/img/gallery/power-hamlet-entrance.jpg" alt="Hamlet: entrance pole, one line inside"> |
+| Village fed from a transformer at its entrance, one short street line | Hamlet: entrance pole, one line inside |
+| <img src="docs/img/gallery/overpass-3d.jpg" alt="Overpass deck on the road in 3D"> | |
+| Overpass deck on the road in 3D | |
 | **Towns, countryside and forests** | |
 | <img src="docs/img/gallery/habitation-dense-2d.jpg" alt="Housing zone: street loops, two rows of lots"> | <img src="docs/img/gallery/town-roads-world.jpg" alt="Through-roads become town streets"> |
 | Housing zone: street loops, two rows of lots | Through-roads become town streets |
