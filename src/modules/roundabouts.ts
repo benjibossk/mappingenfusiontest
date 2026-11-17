@@ -11,7 +11,7 @@ import { FENCES } from '../data/biomes'
 
 const RANK: Record<string, number> = { main: 5, secondary: 4, local: 3, street: 2, track: 1, trail: 0 }
 
-export interface Node { x: number; z: number; branches: number; mains: number; type: RoadType }
+export interface Node { x: number; z: number; branches: number; mains: number; secs: number; type: RoadType }
 
 function nearestOnLine(pts: number[], x: number, z: number): { d: number; end: boolean } {
   let best = Infinity, end = false
@@ -36,7 +36,7 @@ export function junctionNodes(roads: Road[], tol = 3): Node[] {
   const nodes: Node[] = []
   for (const [x, z] of cand) {
     if (nodes.some((n) => Math.hypot(n.x - x, n.z - z) < tol * 4)) continue
-    let branches = 0, mains = 0, rank = -1, type: RoadType = 'asphalt', roadsHere = 0
+    let branches = 0, mains = 0, secs = 0, rank = -1, type: RoadType = 'asphalt', roadsHere = 0
     for (const r of roads) {
       if (r.pts.length < 4) continue
       const q = nearestOnLine(r.pts, x, z)
@@ -45,9 +45,10 @@ export function junctionNodes(roads: Road[], tol = 3): Node[] {
       branches += q.end ? 1 : 2
       const c = classOf(r.type)
       if (c === 'main') mains++
+      if (c === 'secondary') secs++
       if ((RANK[c] ?? 0) > rank) { rank = RANK[c] ?? 0; type = r.type }
     }
-    if (roadsHere >= 2) nodes.push({ x, z, branches, mains, type })
+    if (roadsHere >= 2) nodes.push({ x, z, branches, mains, secs, type })
   }
   return nodes
 }
@@ -96,6 +97,22 @@ export function clipCircle(pts: number[], cx: number, cz: number, R: number): nu
   return out.filter((p) => p.length >= 4 && len(p) >= 4)
 }
 
+//! closed ring (16 points) with the given points on it inserted in angular order (ring vertices closer than
+//! 3 m to one of them are dropped); first point = last point
+export function ringWith(cx: number, cz: number, R: number, on: [number, number][], k = 16): number[] {
+  const ang = (x: number, z: number) => { const a = Math.atan2(z - cz, x - cx); return a < 0 ? a + Math.PI * 2 : a }
+  const base = ringPoints(cx, cz, R, k).slice(0, k * 2)
+  const pts: [number, number, number][] = on.map(([x, z]) => [ang(x, z), x, z])
+  for (let i = 0; i < k; i++) {
+    const x = base[i * 2], z = base[i * 2 + 1]
+    if (!on.some(([a, b]) => Math.hypot(a - x, b - z) < 3)) pts.push([ang(x, z), x, z])
+  }
+  pts.sort((p, q) => p[0] - q[0])
+  const out = pts.flatMap(([, x, z]) => [x, z])
+  out.push(out[0], out[1])
+  return out
+}
+
 export function ringPoints(cx: number, cz: number, R: number, k = 16): number[] {
   const out: number[] = []
   for (let i = 0; i <= k; i++) {
@@ -105,17 +122,46 @@ export function ringPoints(cx: number, cz: number, R: number, k = 16): number[] 
   return out
 }
 
-//! Roads with roundabouts: qualifying nodes (>= 4 branches, or main x main, paved) at least 4 R apart
-//! and from other junctions; branches clipped at the ring, ring added as an auto road (`<id>_RB`).
-export function addRoundabouts(roads: Road[], o: { minBranches?: number; radius?: number } = {}): { roads: Road[]; rings: { x: number; z: number; r: number }[] } {
+//! ring radius by the class of the busiest road at the node (m)
+export const RING_RADIUS: Record<string, number> = { main: 14, secondary: 11, local: 9 }
+const MERGE_M = 60 // two T junctions closer than this become one roundabout
+
+//! Roads with roundabouts. A roundabout is just a closed round spline and the roads that touch it: every branch
+//! is clipped at the ring and its new end is also a ring control point (shared point, so the same height).
+//! Qualifying nodes (paved, >= 3 branches): >= 4 branches, a main road meeting another main or a secondary road,
+//! a main or secondary road meeting a local one at the entrance of a place (`places`: centre + radius, node within 2.2 r), or two
+//! paved T junctions closer than 60 m (merged into one ring between them). Rings stay clear of the other 3+ branch
+//! junctions (R..2R+10 m; one inside the ring is absorbed: its roads are clipped at the ring too) and of each
+//! other (3 (R1 + R2)). Motorway roads (MW_*) never get one.
+export function addRoundabouts(roads: Road[], o: { minBranches?: number; radius?: number; places?: { x: number; z: number; r: number }[] } = {}): { roads: Road[]; rings: { x: number; z: number; r: number }[] } {
   const minB = o.minBranches ?? 4
-  const all = junctionNodes(roads)
-  const picks = all.filter((n) => isPaved(n.type) && (n.branches >= minB || n.mains >= 2) && n.branches >= 3)
+  const all = junctionNodes(roads.filter((r) => !r.id.startsWith('MW_')))
+  const radius = (t: RoadType) => o.radius ?? RING_RADIUS[classOf(t)] ?? 9
+  const best = (a: RoadType, b: RoadType) => ((RANK[classOf(a)] ?? 0) >= (RANK[classOf(b)] ?? 0) ? a : b)
+  type Cand = { x: number; z: number; r: number; type: RoadType; from: Node[] }
+  const cands: Cand[] = []
+  for (const n of all) {
+    if (!isPaved(n.type) || n.branches < 3) continue
+    const entrance = n.mains + n.secs >= 1 && (o.places ?? []).some((q) => Math.hypot(q.x - n.x, q.z - n.z) < q.r * 2.2)
+    if (n.branches >= minB || n.mains >= 2 || (n.mains >= 1 && n.secs >= 1) || entrance) cands.push({ x: n.x, z: n.z, r: radius(n.type), type: n.type, from: [n] })
+  }
+  // two close T junctions -> one ring through both (its radius reaches past both nodes)
+  const used = new Set<Node>()
+  for (const a of all) for (const b of all) {
+    if (a === b || used.has(a) || used.has(b) || !isPaved(a.type) || !isPaved(b.type) || a.branches < 3 || b.branches < 3) continue
+    const d = Math.hypot(a.x - b.x, a.z - b.z)
+    if (d >= MERGE_M || d < 1) continue
+    const type = best(a.type, b.type), r = Math.min(30, Math.max(radius(type), d / 2 + 6))
+    used.add(a); used.add(b)
+    cands.push({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, r, type, from: [a, b] })
+  }
+  // merged pairs first (they solve two junctions), then the busiest classes
+  cands.sort((p, q) => q.from.length - p.from.length || (RANK[classOf(q.type)] ?? 0) - (RANK[classOf(p.type)] ?? 0))
   const rings: { x: number; z: number; r: number; type: RoadType }[] = []
-  for (const n of picks) {
-    const R = o.radius ?? (classOf(n.type) === 'main' ? 14 : 11)
-    const clash = all.some((m) => m !== n && Math.hypot(m.x - n.x, m.z - n.z) < R * 3) || rings.some((g) => Math.hypot(g.x - n.x, g.z - n.z) < (g.r + R) * 3)
-    if (!clash) rings.push({ x: n.x, z: n.z, r: R, type: n.type })
+  for (const c of cands) {
+    const R = c.r
+    const clash = all.some((m) => { const d = Math.hypot(m.x - c.x, m.z - c.z); return !c.from.includes(m) && m.branches >= 3 && d > R * 0.9 && d < R * 2 + 10 }) || rings.some((g) => Math.hypot(g.x - c.x, g.z - c.z) < (g.r + R) * 3)
+    if (!clash) rings.push({ x: c.x, z: c.z, r: R, type: c.type })
   }
   if (!rings.length) return { roads, rings: [] }
   let out = roads
@@ -129,8 +175,28 @@ export function addRoundabouts(roads: Road[], o: { minBranches?: number; radius?
     out = next
   }
   let id = roads.filter((r) => /^RB_\d+$/.test(r.id)).reduce((m, r) => Math.max(m, +r.id.slice(3)), 0)
-  rings.forEach((g) => out.push({ id: `RB_${++id}`, type: g.type, pts: ringPoints(g.x, g.z, g.r), auto: true, width: g.r >= 14 ? 8 : 6.5 }))
+  for (const g of rings) {
+    // the road ends lying on this ring become ring control points (exactly the same point)
+    const ends: [number, number][] = []
+    for (const r of out) for (const e of [0, r.pts.length - 2]) {
+      const x = r.pts[e], z = r.pts[e + 1]
+      if (Math.abs(Math.hypot(x - g.x, z - g.z) - g.r) < 0.05 && !ends.some(([a, b]) => a === x && b === z)) ends.push([x, z])
+    }
+    out.push({ id: `RB_${++id}`, type: g.type, pts: ringWith(g.x, g.z, g.r, ends), auto: true, width: g.r >= 14 ? 8 : 6.5 })
+  }
   return { roads: out, rings: rings.map(({ x, z, r }) => ({ x, z, r })) }
+}
+
+//! rings left with fewer than 2 roads touching them (a branch dropped later, e.g. too steep) are removed
+export function dropOrphanRings(roads: Road[]): Road[] {
+  const ends = new Set<string>()
+  for (const r of roads) if (!r.id.startsWith('RB_') && r.pts.length >= 4) for (const e of [0, r.pts.length - 2]) ends.add(`${r.pts[e]},${r.pts[e + 1]}`)
+  return roads.filter((r) => {
+    if (!r.id.startsWith('RB_')) return true
+    let n = 0
+    for (let i = 0; i + 2 < r.pts.length; i += 2) if (ends.has(`${r.pts[i]},${r.pts[i + 1]}`)) n++
+    return n >= 2
+  })
 }
 
 export const VILLAGE_WALL = FENCES.stone1

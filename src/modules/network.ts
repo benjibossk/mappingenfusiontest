@@ -15,7 +15,7 @@ export interface Site { id: string; x: number; z: number; kind: SiteKind }
 //! settlement footprint radius (m), also the distance under which a road already serves it
 export const SITE_RADIUS: Record<SiteKind, number> = { town: 250, village: 120, hamlet: 50 }
 // steepest grade a vehicle copes with, by road family (shared with the pre-send check in validate.ts)
-const MAX_GRADE: Partial<Record<RoadType, number>> = { dirt: 0.2, dirt2: 0.2, forest: 0.22, trailDirt: 0.3, trailGravel: 0.3, trailForest: 0.3 }
+const MAX_GRADE: Partial<Record<RoadType, number>> = { dirt: 0.2, dirt2: 0.2, forest: 0.22, trailDirt: 0.3, trailGravel: 0.3, trailForest: 0.3, coal: 0.2, trailCoal: 0.3, concretePath: 0.3, motorway: 0.06 }
 export const maxGrade = (t: RoadType) => MAX_GRADE[t] ?? 0.12
 /** steepest grade along a road, over 20 m steps (the grid is coarse: shorter steps only measure noise).
  *  The pre-send check (validate.ts) uses this same measure. */
@@ -371,7 +371,8 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
         if (d < bd) { bd = d; aim = [x, z] }
       })
     }
-    const want = s.kind === 'town' ? p.main : s.kind === 'village' ? p.minor : p.lane
+    // classes (ROAD_NETWORK_V2 §3): town-town and village-town = main, village-village = secondary, hamlet = local
+    const want = s.kind === 'town' || (s.kind === 'village' && target.kind === 'town') ? p.main : s.kind === 'village' ? p.minor : p.lane
     // Slope-aware routing, like a real road engineer: A* pays for grade and may wind up the hill (serpentines,
     // one heading notch per step), each step held under a per-step limit. The accepted test is the grade of
     // the bed once carved (cut/fill over ~80 m, see bedGrade), not of the raw bumpy ground. The per-step limit
@@ -568,8 +569,23 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
   }
 }
 
+//! Road styles by surroundings (road classes, docs/ROAD_NETWORK_V2.md §3): auto tracks / trails mostly inside a
+//! wood take the forest styles (RG_Road_Forest_01 / RG_TrailForest_01); auto trails in the open alternate dirt and
+//! gravel. Only the style changes (same class, same width within 0.25 m, grade limit equal or higher).
+export function styleTracks(roads: Road[], inForest: (x: number, z: number) => boolean) {
+  for (const r of roads) {
+    if (!r.auto || r.pts.length < 4 || (r.type !== 'dirt' && r.type !== 'trailDirt')) continue
+    const line = centreLine(r.pts, 25)
+    let wood = 0
+    for (let i = 0; i < line.length; i += 2) if (inForest(line[i], line[i + 1])) wood++
+    const share = wood / (line.length / 2)
+    if (share > 0.5) r.type = r.type === 'dirt' ? 'forest' : 'trailForest'
+    else if (r.type === 'trailDirt' && [...r.id].reduce((h, c) => h + c.charCodeAt(0), 0) % 2) r.type = 'trailGravel'
+  }
+}
+
 //! closest point to (x, z) on a polyline
-function nearestOn(p: number[], x: number, z: number): [number, number] {
+export function nearestOn(p: number[], x: number, z: number): [number, number] {
   let best: [number, number] = [p[0], p[1]], bd = Infinity
   for (let k = 2; k + 1 < p.length; k += 2) {
     const [ax, az, bx, bz] = [p[k - 2], p[k - 1], p[k], p[k + 1]]
@@ -582,7 +598,7 @@ function nearestOn(p: number[], x: number, z: number): [number, number] {
 }
 
 //! adds (x, z) as a control point of `road`, on its closest segment (no-op if already there)
-function insertPoint(road: Road, x: number, z: number) {
+export function insertPoint(road: Road, x: number, z: number) {
   const p = road.pts
   for (let k = 0; k < p.length; k += 2) if (p[k] === x && p[k + 1] === z) return
   let best = 2, bd = Infinity

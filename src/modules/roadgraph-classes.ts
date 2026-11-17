@@ -17,18 +17,19 @@ export interface RoadClassSpec {
 }
 
 export const ROAD_CLASSES: Record<RoadClass, RoadClassSpec> = {
-  main: { type: 'asphaltLine', alt: ['concrete'], width: 8, design: 0.08, rMin: 60, kCrest: 15, rank: 5 },
+  main: { type: 'asphaltLine', alt: ['concreteLine', 'concrete', 'motorway'], width: 12, design: 0.08, rMin: 60, kCrest: 15, rank: 5 },
   secondary: { type: 'asphalt', alt: ['asphalt2', 'asphalt3'], width: 8, design: 0.1, rMin: 40, kCrest: 12, rank: 4 },
-  local: { type: 'asphaltNarrow', alt: ['concretePanel'], width: 6, design: 0.12, rMin: 25, kCrest: 10, rank: 3 },
-  street: { type: 'cobble', alt: ['cobbleRough'], width: 6, design: 0.12, rMin: 10, kCrest: 6, rank: 2 },
-  track: { type: 'dirt', alt: ['dirt2', 'forest'], width: 4, design: 0.15, rMin: 15, kCrest: 6, rank: 1 },
-  trail: { type: 'trailDirt', alt: ['trailGravel', 'trailForest'], width: 2, design: 0.25, rMin: 5, kCrest: 3, rank: 0 },
+  local: { type: 'asphaltNarrow', alt: ['concreteNarrow', 'concretePanel'], width: 8, design: 0.12, rMin: 25, kCrest: 10, rank: 3 },
+  street: { type: 'cobble', alt: ['cobbleRough'], width: 8, design: 0.12, rMin: 10, kCrest: 6, rank: 2 },
+  track: { type: 'dirt', alt: ['dirt2', 'forest', 'coal'], width: 4, design: 0.15, rMin: 15, kCrest: 6, rank: 1 },
+  trail: { type: 'trailDirt', alt: ['trailGravel', 'trailForest', 'trailCoal', 'concretePath'], width: 1.75, design: 0.25, rMin: 5, kCrest: 3, rank: 0 },
 }
 
 const BY_TYPE: Record<RoadType, RoadClass> = {
   asphaltLine: 'main', asphalt: 'secondary', asphalt2: 'secondary', asphalt3: 'secondary', concrete: 'main',
   asphaltNarrow: 'local', concretePanel: 'local', cobble: 'street', cobbleRough: 'street',
   dirt: 'track', dirt2: 'track', forest: 'track', trailDirt: 'trail', trailGravel: 'trail', trailForest: 'trail',
+  motorway: 'main', concreteLine: 'main', concreteNarrow: 'local', concretePath: 'trail', coal: 'track', trailCoal: 'trail',
 }
 
 //! class of a road style

@@ -109,12 +109,67 @@ Aller-retour `roads → graphe → roads` sans perte = premier test.
 ### 3.2 Classes → prefabs Reforger
 | Classe | `RoadType` défaut | Largeur | Pente max | Rmin | Usage |
 |---|---|---|---|---|---|
-| main | `asphaltLine` (E_01_DashedLine) | 8 m | 8 % | 60 m | ville ↔ ville |
-| secondary | `asphalt` (E_01) | 8 m | 10 % | 40 m | ville ↔ village |
-| local | `asphaltNarrow` | 6 m | 12 % | 25 m | village ↔ hameau |
-| street | `cobble` / `asphaltNarrow` | 6 m | 12 % | 10 m (arcs) | rues de bourg |
-| track | `dirt` / `dirt2` / `forest` | 4 m | 15 % | 15 m | fermes, forêts |
-| trail | `trailDirt`/`trailGravel`/`trailForest` | 2 m | 25 % | 5 m | sentiers |
+| main | `asphaltLine` (E_01_DashedLine) | 12 m | 8 % | 60 m | ville ↔ ville, village ↔ ville |
+| secondary | `asphalt` (E_01) | 12 m | 10 % | 40 m | village ↔ village |
+| local | `asphaltNarrow` | 8 m | 12 % | 25 m | hameau → réseau |
+| street | `cobble` / `asphaltNarrow` | 8 m | 12 % | 10 m (arcs) | rues de bourg |
+| track | `dirt` / `dirt2` / `forest` / `coal` | 4-4,5 m | 15 % | 15 m | fermes, boucles, forêts |
+| trail | `trailDirt`/`trailGravel`/`trailForest`/`trailCoal` | 1,75 m | 25 % | 5 m | sentiers, raccords d'îlots |
+| (motorway) | `motorway` (E_01, 2 chaussées) | 2 × 12 m | 6 % | 250 m visé | option autoroute |
+
+#### 3.2.1 Audit des largeurs (2026-11-17, `game_read` des .et vanilla, parents suivis)
+`RoadWidth` = valeur du `RoadGeneratorEntity` (c'est elle qu'on envoie, `half` = RoadWidth / 2). Les GUID
+connus viennent du catalogue ; les nouveaux styles sont en chemin nu (GUID résolu par le plugin, jamais inventé).
+
+| Prefab (Prefabs/WEGenerators/Roads/…) | RoadWidth vanilla | `RoadType` | half avant → après |
+|---|---|---|---|
+| Asphalt/RG_Road_Asphalt_E_01 | 12 | `asphalt`, `motorway` | 4 → **6** |
+| Asphalt/RG_Road_Asphalt_E_01_DashedLine | 12 (RoadEntity Width 8) | `asphaltLine` | 4 → **6** |
+| Asphalt/RG_Road_Asphalt_E_01_Narrow | 8 | `asphaltNarrow` | 3 → **4** |
+| Asphalt/RG_Road_Asphalt_E_02 | 8 | `asphalt2` | 4 (ok) |
+| Asphalt/RG_Road_Asphalt_E_03 | 8 | `asphalt3` | 4 (ok) |
+| Cobblestone/RG_Road_Cobblestone_01 (+ _rough) | 8 | `cobble`, `cobbleRough` | 3 → **4** |
+| Concrete/RG_Road_Concrete_USSR_02 (parent _base 7,5) | 7,5 | `concrete` | 4 → **3,75** |
+| Concrete/RG_Road_Concrete_USSR_01_dashedline | 11 | `concreteLine` (nouveau) | 5,5 |
+| Concrete/RG_Road_Concrete_USSR_01_narrow | 5 | `concreteNarrow` (nouveau) | 2,5 |
+| Concrete/RG_Road_ConcretePanel_01 | 3,5 | `concretePanel` | 3,5 → **1,75** |
+| Concrete/RG_Path_Concrete_USSR_01 (parent _base 7,5) | 2,25 | `concretePath` (nouveau) | 1,125 |
+| Dirt/RG_Road_Dirt_01 | 4 | `dirt` | 2 (ok) |
+| Dirt/RG_Road_Dirt_02 | 4,5 | `dirt2` | 2 → **2,25** |
+| Dirt/RG_Road_Forest_01 | 4,5 | `forest` | 2 → **2,25** |
+| Dirt/RG_Road_Coal_01 | 4,5 | `coal` (nouveau) | 2,25 |
+| Dirt/RG_TrailDirt_01, RG_TrailGravel_01, RG_TrailForest_01 | 1,75 | `trail*` | 1 → **0,875** |
+| Dirt/RG_TrailCoal_01 | 1,75 | `trailCoal` (nouveau) | 0,875 |
+| Concrete/RG_Runway_10m/20m/40m/60m | — | (pistes, airfield.ts) | — |
+| VergePosts/PG_StoneVergePost_01 | — | (bornes, mobilier) | — |
+
+`edge` (fondu) suit `RoadFalloffWidth` (2 m asphalte, 4 m terre/pavés, 2,2 m sentiers). Pas d'asphalte vanilla
+plus large que 12 m ni de 2×2 voies : l'autoroute = deux splines E_01 parallèles. Glissière centrale :
+`Walls/Crashbarrier/WG_CrashBarrier_01B` (catalogue).
+
+#### 3.2.2 Classement automatique (réseau auto, monde aléatoire)
+- ville ↔ ville et village → ville : **main** (`asphaltLine`, ligne pointillée) ; village ↔ village : **secondary**
+  (`asphalt`) ; hameau / accès de zone : **local** (`asphaltNarrow`) ; trop raide → `dirt` puis `trailDirt`.
+- boucles et pistes de ferme : **track** `dirt` ; une piste / un sentier auto à plus de 50 % en forêt devient
+  `forest` / `trailForest` (`styleTracks`), un sentier en terrain ouvert alterne `trailDirt` / `trailGravel`.
+- rues de bourg : **street** (`cobble` sur les places, town.ts).
+
+#### 3.2.3 Autoroute (option, décochée par défaut — étape Routes et monde aléatoire)
+`motorway.ts` : axe entre les deux plus grands lieux les plus éloignés (bouts sortis de 160 m du lieu), routé
+par l'A* du réseau à 6 % (repli 12 %), lissé (Douglas-Peucker 60 m + Chaikin + relaxation, points près de la mer
+figés) vers Rmin 250 m. Deux chaussées `MW_A` / `MW_B` à ±9 m (terre-plein 6 m), fusionnées sur 150 m aux
+bouts, liées au réseau par `MW_LINK_*`. Échangeurs (2-3) : une route qui croise l'axe = losange (bretelles
+`MW_RAMP_*` sortie avant / entrée après, des deux côtés), sinon demi-échangeur vers la route proche. Aucun
+croisement à niveau : toute autre route qui coupe une chaussée passe dessus (`Road.lift` relève le lit de 7 m
+avec rampes à la pente de projet + `spans` tablier `planBridge`), ou est coupée (bout trop près, biais < 20°,
+pistes tardives champs / forêt de production).
+
+#### 3.2.4 Giratoires
+Juste une spline fermée (16 pts) et des routes qui la touchent : chaque branche coupée sur l'anneau, son bout
+inséré comme point de contrôle de l'anneau (même point → même hauteur). Posés sur un nœud revêtu ≥ 3 branches
+si : ≥ 4 branches, main × main, main × secondary, main/secondary × local à l'entrée d'un lieu (< 2,2 R lieu), ou
+deux T revêtus à < 60 m (fusionnés, rayon ≥ d/2 + 6). Rayon : main 14, secondary 11, local 9 m. Un anneau
+qui perd ses branches (route trop raide supprimée) est retiré.
 
 Les seuils de pente alimentent le coût du routage pente-sensible de `network.ts`
 (paramètre, pas réécriture) et la validation (`worstGrade`).

@@ -26,7 +26,8 @@ import { generateTown } from './modules/town'
 import { makeSiteZone, SITE_TYPES, type SiteType } from './modules/sitezones'
 import type { Faction } from './modules/modules'
 import { makeProdForest, type ProdLog } from './modules/prodforest'
-import { addRoundabouts, villageWalls } from './modules/roundabouts'
+import { addRoundabouts, dropOrphanRings, villageWalls } from './modules/roundabouts'
+import { buildMotorway, overpassDecks } from './modules/motorway'
 import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fillFieldZone, flatToPoly, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
@@ -297,6 +298,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
         <div class="row">
           <label class="check"><input id="rwAir" type="checkbox" checked> ${t('wg.airfield')} ${info('info.wg.airfield')}</label>
+          <label class="check"><input id="rwMotorway" type="checkbox"> ${t('lbl.motorway')} ${info('info.motorway')}</label>
           <label class="check"><input id="rwPower" type="checkbox" checked> ${t('wg.power')}</label>
         </div>
         <div id="rwRun" class="rwrun" hidden>
@@ -499,9 +501,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label>${t('lbl.netSites')} <input id="netSites" type="number" min="2" max="40" value="8"></label>
           <label>${t('lbl.netSpacing')} <input id="netSpacing" type="number" step="50" min="100" value="600"></label>
           <label>${t('lbl.netSlope')} <input id="netSlope" type="number" step="1" min="2" value="10"></label>
-          <label>${t('lbl.netMain')} <select id="netMain">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}"${k === 'asphalt' ? ' selected' : ''}>${rt.label}</option>`).join('')}</select></label>
-          <label>${t('lbl.netMinor')} <select id="netMinor">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}"${k === 'asphaltNarrow' ? ' selected' : ''}>${rt.label}</option>`).join('')}</select></label>
-          <label>${t('lbl.netLane')} <select id="netLane">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}"${k === 'dirt' ? ' selected' : ''}>${rt.label}</option>`).join('')}</select></label>
+          <label>${t('lbl.netMain')} <select id="netMain">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}"${k === 'asphaltLine' ? ' selected' : ''}>${rt.label}</option>`).join('')}</select></label>
+          <label>${t('lbl.netMinor')} <select id="netMinor">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}"${k === 'asphalt' ? ' selected' : ''}>${rt.label}</option>`).join('')}</select></label>
+          <label>${t('lbl.netLane')} <select id="netLane">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}"${k === 'asphaltNarrow' ? ' selected' : ''}>${rt.label}</option>`).join('')}</select></label>
+          <label class="check"><input id="netMotorway" type="checkbox"> ${t('lbl.motorway')} ${info('info.motorway')}</label>
         </div>
         ${hint('hint.net')}
         <div class="row">
@@ -3198,7 +3201,7 @@ function netApply(keep: Road[], made: Road[]) {
     r.id = nextRoadId(r.type)
     roads.push(r)
   }
-  roads = addRoundabouts(roads).roads // P3 #15: rings at busy junctions
+  roads = addRoundabouts(roads, { places: sites.map((s) => ({ x: s.x, z: s.z, r: SITE_RADIUS[s.kind] })) }).roads // P3 #15: rings at busy junctions
   let km = 0
   for (const r of made) for (let i = 2; i + 1 < r.pts.length; i += 2) km += Math.hypot(r.pts[i] - r.pts[i - 2], r.pts[i + 1] - r.pts[i - 1])
   roadInfo()
@@ -3207,14 +3210,29 @@ function netApply(keep: Road[], made: Road[]) {
   const steep = new Set(runChecks().filter((it) => it.kind === 'steepRoad').map((it) => it.id))
   const drop = made.filter((r) => steep.has(r.id))
   if (drop.length) {
-    roads = roads.filter((r) => !drop.includes(r))
+    roads = dropOrphanRings(roads.filter((r) => !drop.includes(r)))
     for (const r of drop) for (let i = 2; i + 1 < r.pts.length; i += 2) km -= Math.hypot(r.pts[i] - r.pts[i - 2], r.pts[i + 1] - r.pts[i - 1])
     roadInfo()
     recompose(true)
     runChecks()
   }
+  // optional motorway (motorway.ts): built last, the other roads are lifted over it or cut back
+  let mwMsg = ''
+  if ($<HTMLInputElement>('netMotorway').checked && island) {
+    const isl = island
+    const mw = buildMotorway(isl.heights, isl.grid, rivers, sites, roads, { maxSlope: num('netSlope') })
+    if (mw) {
+      roads.push(...mw.made)
+      roadInfo()
+      recompose(true)
+      const g = island.grid, hs = island.heights
+      const at = (x: number, z: number) => hs[Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))]
+      worldBridges = [...worldBridges.filter((b) => !/_OVER\d/.test(b.id ?? '')), ...overpassDecks(roads, at)]
+      mwMsg = ' ' + t('log.motorway', { km: ((mw.axis.length / 2) * 0.02).toFixed(1), n: mw.interchanges.length, o: mw.overpasses })
+    } else mwMsg = ' ' + t('log.motorwayNone')
+  }
   logEl.textContent = t('log.netDone', { sites: sites.length, roads: made.length - drop.length, km: (km / 1000).toFixed(1) })
-    + (drop.length ? ' ' + t('log.netSteep', { n: drop.length }) : '')
+    + (drop.length ? ' ' + t('log.netSteep', { n: drop.length }) : '') + mwMsg
 }
 $<HTMLButtonElement>('netClear').addEventListener('click', () => {
   roads = roads.filter((r) => !r.auto)

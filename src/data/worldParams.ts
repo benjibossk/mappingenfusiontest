@@ -74,7 +74,7 @@ export const WORLD = {
     size: { w: 220, d: 160 },
   },
   roads: {
-    maxSlope: 10, main: 'asphalt', minor: 'asphaltNarrow', lane: 'dirt', // UI defaults (step Roads)
+    maxSlope: 10, main: 'asphaltLine', minor: 'asphalt', lane: 'asphaltNarrow', // UI defaults (step Roads): main = town-town (widest asphalt, dashed line), secondary = village, local = hamlet
     /** random world: shortcut links that turn the tree into a mesh. [M] Everon ~637 junctions for 344 km (1 per
      *  540 m), Arland 79 for 46 km: a pure tree has one junction per place. A pair is linked when the road between
      *  them is > loopDetour x their straight distance */

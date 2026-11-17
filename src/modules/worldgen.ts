@@ -8,12 +8,15 @@
 import { WORLD } from '../data/worldParams'
 import { fr } from '../i18n'
 import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
-import { addRoundabouts } from './roundabouts'
+import { addRoundabouts, dropOrphanRings } from './roundabouts'
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
+import { buildMotorway, overpassDecks, resolveCrossings } from './motorway'
+import { forestTuning } from '../biomes/vegetation'
+import { styleTracks } from './network'
 import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
@@ -47,6 +50,7 @@ export interface WorldParams {
   power: boolean
   forests: number
   roadsV2?: boolean // road network V2 finish (docs/ROAD_NETWORK_V2.md), default true
+  motorway?: boolean // dual-carriageway motorway across the map (motorway.ts), default off; needs roadsV2
   biome?: string // BiomeId (docs/BIOMES_LIBRARY.md): forests and village parcels; default Everon = unchanged
 }
 export const WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { size: 4096, towns: 1, villages: 1, hamlets: 1, industry: 1, military: 1, airfield: true, power: true, forests: 1 }
@@ -406,7 +410,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     }
   }
   for (const r of roads) if (!r.auto) { r.auto = true; r.id = rid(r.type) }
-  roads = addRoundabouts(roads).roads // P3 #15: rings at busy junctions
+  roads = addRoundabouts(roads, { places: sites.map((s) => ({ x: s.x, z: s.z, r: SITE_RADIUS[s.kind] })) }).roads // P3 #15: rings at busy junctions
   cur = composeHeights(base, g, waters, zones, roads)
   const steep = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
   // a road the carving left too steep for its type is first downgraded (dirt road, then dirt trail: steeper
@@ -422,6 +426,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const still = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
     if (still.size) { roads = roads.filter((r) => !still.has(r.id)); cur = composeHeights(base, g, waters, zones, roads) }
   }
+  // a ring whose branches were dropped as too steep goes too
+  { const n0 = roads.length; roads = dropOrphanRings(roads); if (roads.length < n0) cur = composeHeights(base, g, waters, zones, roads) }
   // V2: (a) every piece of road joined to the network; (b) valley bridges where the bed would sit on a high fill
   const bridgesOut: ProjectEntity[] = []
   if (p.roadsV2 !== false && roads.length) {
@@ -433,6 +439,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         const okLinks = links.filter((l) => worstGrade(l.pts, test, g).grade <= maxGrade(l.type)&& l.pts.length > 4) // a straight fallback (no route found) is refused; rivers are bridged at export
         if (okLinks.length) { roads.push(...okLinks); cur = composeHeights(base, g, waters, zones, roads) }
       }
+    }
+    // (c) optional motorway: built on the carved relief, other roads lifted over it or cut back (no level crossing)
+    if (p.motorway) {
+      const mw = buildMotorway(lakeAsSea(cur.heights, lakes0), g, cur.sim.river, sites, roads, { maxSlope: WORLD.roads.maxSlope })
+      if (mw) { roads.push(...mw.made); cur = composeHeights(base, g, waters, zones, roads) }
     }
     const bare = composeHeights(base, g, waters, zones, []).heights
     const atB = (x: number, z: number) => bare[Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))]
@@ -446,14 +457,16 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         .filter((c) => c.kind === 'valley' && c.i0 > 0 && c.i1 < m - 1)
       const kept: { from: number; to: number }[] = []
       spans.forEach((c, k) => {
+        if ((r.spans ?? []).some((sp) => c.to > sp.from - 20 && c.from < sp.to + 20)) return // an overpass deck already there
         const a: [number, number] = [line[c.i0 * 2], line[c.i0 * 2 + 1]], b: [number, number] = [line[c.i1 * 2], line[c.i1 * 2 + 1]]
         const plan = planBridge(`${r.id}_V${k}`, a, b, Math.max(y[c.i0], y[c.i1]), roadHalf(r), atB, { dirt: !isPaved(r.type) })
         if (plan.tooHigh || Math.abs(y[c.i0] - y[c.i1]) > 1) return // too high for two piers, or a sloping deck: keep the fill
         kept.push({ from: c.from, to: c.to })
         bridgesOut.push(...plan.entities)
       })
-      if (kept.length) { r.spans = kept; any = true }
+      if (kept.length) { r.spans = [...(r.spans ?? []), ...kept].sort((a, b) => a.from - b.from); any = true }
     }
+    if (p.motorway) bridgesOut.push(...overpassDecks(roads, atB))
     if (any) cur = composeHeights(base, g, waters, zones, roads)
   }
   // a place no road reaches is dropped (the checker would flag it)
@@ -617,7 +630,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         camp.hedges.push(h)
         camp.shapes.push({ id: `FIELD_${id}_Hedge_${camp.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
       }
-      r.groves.forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${id}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
+      // no grove in a treeless biome (desert): its forests are off too
+      if (Math.min(0.9, WORLD.vegetation.forestCover * p.forests) * forestTuning(p.biome).coverMul >= 0.03) r.groves.forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${id}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
       for (const [j, pts] of r.tracks.entries()) {
         const tr: Road = { id: `ROAD_FIELD_${id}_${j + 1}`, type: 'dirt', pts, auto: true }
         roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too
@@ -630,6 +644,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     polys: [...camp.fields.map((f) => f.flat()), ...areas.map((a) => a.pts)],
     points: [...sites.map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] })), ...discs.map((d) => ({ x: d.x, z: d.z, r: d.r + 10 })), ...bridgesOut.map((b) => ({ x: b.x, z: b.z, r: 20 })), ...settlement.placed.map((b) => ({ x: b.x, z: b.z, r: 12 }))],
   })
+  // tracks and trails through the woods take the forest styles (and open-ground trails gravel); the late
+  // tracks (fields, production forests) may not cross the motorway either: cut back there
+  styleTracks(roads, (x, z) => forestRings.some((p) => pointInPoly(p, x, z)))
+  if (p.motorway && roads.some((r) => r.id === 'MW_A')) resolveCrossings(roads, roads.filter((r) => r.id.startsWith('MW_')), { cutOnly: true })
+  { const keep = new Set(dropOrphanRings(roads)); for (let k = roads.length - 1; k >= 0; k--) if (!keep.has(roads[k])) roads.splice(k, 1) }
   // 11. surfaces (5 per block at most)
   await step('surfaces')
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))
