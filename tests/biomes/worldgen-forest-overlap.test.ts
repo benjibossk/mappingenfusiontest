@@ -5,7 +5,7 @@ import { pointInPoly } from '../../src/modules/industrial.ts'
 
 test('random world: forest patches never overlap', async () => {
   let hits = 0, n = 0
-  for (const seed of [1, 7, 42]) {
+  for (const seed of [1, 7, 42, 777]) {
     const w = await generateWorld({ ...WORLD_DEFAULTS, size: 4096, seed })
     const A = w.areas
     n += A.length

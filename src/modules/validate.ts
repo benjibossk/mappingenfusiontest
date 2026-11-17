@@ -119,7 +119,9 @@ export function polyOverlap(a: number[], b: number[]): [number, number] | null {
     for (let j = 0; j + 1 < b.length; j += 2) {
       const j2 = (j + 2) % b.length
       const h = segHit(a[i], a[i + 1], a[i2], a[i2 + 1], b[j], b[j + 1], b[j2], b[j2 + 1])
-      if (h) return h
+      // a real overlap has ground inside both polygons next to the crossing; borders shared after a
+      // forest merge/cut cross at float precision only and are not reported
+      if (h) for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2], [1.5, 1.5], [-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5]]) if (inPoly(h[0] + dx, h[1] + dz, a) && inPoly(h[0] + dx, h[1] + dz, b)) return h
     }
   }
   if (inPoly(a[0], a[1], b)) return [a[0], a[1]]
