@@ -23,8 +23,8 @@ import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { type CampaignResult } from './modules/campaign'
 import { cutForests, isAutumnBiome, riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
-import { forestEdges, forestEdgeShapes } from './modules/forestEdge'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
+import { forestEdges, forestEdgeShapes } from './modules/forestEdge'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
@@ -3631,8 +3631,7 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
     const deps = modDepsText(entities.map((e) => e.prefab)), depsEl = $<HTMLPreElement>('modDeps')
     depsEl.textContent = deps; depsEl.hidden = !deps
-    const msg = await toWb({ version: 0, shapes, entities }) + (deps ? '
-' + deps : '')
+    const msg = await toWb({ version: 0, shapes, entities }) + (deps ? '\n' + deps : '')
     sentSig = stepSigs().slice(0, 6).join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()
