@@ -16,7 +16,8 @@ import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { mergeForestPatches } from './modules/forestMerge'
-import { ZONE_FILL_TYPES, ZONE_PRIORITY, clipPlots, cutRing, flatToPoly, plotHedges, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
+import { scatterBuildings } from './modules/scattered'
+import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, flatToPoly, plotHedges, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
@@ -601,6 +602,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div class="tab" data-tab="camp" hidden>
       <div class="form">
         <label>${t('lbl.zoneType')} <select id="zoneType">${ZONE_FILL_TYPES.map((k) => `<option value="${k}">${t(('zt.' + k) as K)}</option>`).join('')}</select></label>
+        <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="20"></label>
         <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
       ${hint('hint.zoneType')}
@@ -874,7 +876,7 @@ function zoneObstacles(type: ZoneFillType): Poly[] {
   for (const w of waters) {
     if (WATER_TYPES[w.type].closed) { const p = flatToPoly(w.pts); if (p) ob.push(p) } else ob.push(...roadObstacles([{ pts: w.pts, half: w.width / 2 }], 3))
   }
-  if (type === 'industrial' || type === 'habitation') return ob // they bring / follow their own streets
+  if (type === 'industrial' || type === 'habitation' || type === 'scattered') return ob // they bring / follow their own streets
   const all = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   ob.push(...roadObstacles(all.map((r) => ({ pts: r.pts, half: roadHalf(r) })), 3))
   if (P > ZONE_PRIORITY.habitation) for (const b of settled) ob.push(pointObstacle(b.x, b.z, 14))
@@ -883,18 +885,18 @@ function zoneObstacles(type: ZoneFillType): Poly[] {
   return ob
 }
 /** the new zone wins over lower-priority content already there: fields / hedges / forests cut by it */
-function cutLower(type: ZoneFillType, zone: number[]) {
-  const P = ZONE_PRIORITY[type], zp = flatToPoly(zone)
-  if (!zp) return
+function cutLower(type: ZoneFillType, zone: number[], rings: number[][] = [zone]) {
+  const P = ZONE_PRIORITY[type], zps = rings.map(flatToPoly).filter((p): p is Poly => !!p)
+  if (!zps.length) return
   if (P < ZONE_PRIORITY.fields && result) {
-    result.fields = clipPlots(result.fields, { obstacles: [zp], ok: () => true, minArea: 1500, okShare: 0 })
-    const keep = result.hedges.map((h) => { const m = h[0], n = h[h.length - 1]; return !pointInPoly(zone, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2) })
+    result.fields = clipPlots(result.fields, { obstacles: zps, ok: () => true, minArea: 1500, okShare: 0 })
+    const keep = result.hedges.map((h) => { const m = h[0], n = h[h.length - 1]; return !rings.some((rg) => pointInPoly(rg, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2)) })
     result.hedges = result.hedges.filter((_, i) => keep[i])
     result.shapes = result.shapes.filter((_, i) => keep[i])
   }
   if (P < ZONE_PRIORITY.forest) areas = areas.flatMap((a) => {
     if (a.kind !== 'forest') return [a]
-    const parts = cutRing(a.pts, [zp])
+    const parts = cutRing(a.pts, zps)
     return parts.map((pts, k) => ({ ...a, id: k ? `${a.id}_${k}` : a.id, pts }))
   })
 }
@@ -921,10 +923,11 @@ function generate() {
   if (type === 'forest') return zoneForest(zone, n)
   if (!island) return void (logEl.textContent = t('log.genFirst'))
   if (type === 'industrial') return zoneIndustrial(zone)
+  if (type === 'scattered') return zoneScattered(zone, n)
   zoneHabitation(zone, n)
 }
-function finishZone(type: ZoneFillType, zone: number[], msg: string) {
-  cutLower(type, zone)
+function finishZone(type: ZoneFillType, zone: number[], msg: string, rings?: number[][]) {
+  cutLower(type, zone, rings)
   autosave()
   if (result) projectEl.value = JSON.stringify({ version: 0, shapes: result.shapes } satisfies Project, null, 1)
   logEl.textContent = msg + (terrain ? '' : t('log.noTerrain'))
@@ -999,6 +1002,18 @@ function zoneHabitation(zone: number[], n: number) {
   setParcels = [...setParcels, ...(res.parcels ?? [])]
   const made = settled.length - before
   finishZone('habitation', zone, made ? t('log.zoneHouses', { n: made, s: res.lanes.length }) : t('err.zoneNoHouse'))
+}
+function zoneScattered(zone: number[], n: number) {
+  if (!island) return
+  let sid = `Z${n}`
+  while (settled.some((b) => b.site === sid)) sid += 'b'
+  const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
+  const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
+  const res = scatterBuildings(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, haPerGroup: Math.max(2, num('zoneHa') || 20), maxSlope: ZONE_MAX_SLOPE.scattered, blocked, prefix: sid }, settled)
+  const made = res.placed.length - settled.length
+  settled = res.placed
+  setLanes = [...setLanes, ...res.lanes]
+  finishZone('scattered', zone, res.groups ? t('log.zoneScattered', { g: res.groups, n: made, s: res.lanes.length }) : t('err.zoneNoHouse'), res.yards)
 }
 
 // --- map interaction ---
@@ -4084,6 +4099,7 @@ function clearZones(kinds: ZoneKind[]) {
   zoneInfo()
   refreshSteps()
 }
+$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered' })
 $<HTMLButtonElement>('indClear').addEventListener('click', () => clearZones(['industrial']))
 $<HTMLButtonElement>('milClear').addEventListener('click', () => clearZones(['military', 'airfield']))
 $<HTMLButtonElement>('zoneSend').addEventListener('click', () =>

@@ -5,12 +5,12 @@
 import * as turf from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 
-export type ZoneFillType = 'fields' | 'forest' | 'habitation' | 'industrial'
-export const ZONE_FILL_TYPES: ZoneFillType[] = ['fields', 'forest', 'habitation', 'industrial']
+export type ZoneFillType = 'fields' | 'forest' | 'habitation' | 'scattered' | 'industrial'
+export const ZONE_FILL_TYPES: ZoneFillType[] = ['fields', 'forest', 'habitation', 'scattered', 'industrial']
 /** steepest ground (rise / run) each type accepts */
-export const ZONE_MAX_SLOPE: Record<ZoneFillType, number> = { fields: 0.15, forest: 1, habitation: 0.2, industrial: 0.06 }
+export const ZONE_MAX_SLOPE: Record<ZoneFillType, number> = { fields: 0.15, forest: 1, habitation: 0.2, scattered: 0.15, industrial: 0.06 }
 /** lower number = higher priority (wins an overlap) */
-export const ZONE_PRIORITY: Record<'water' | 'roads' | ZoneFillType, number> = { water: 0, roads: 1, habitation: 2, industrial: 3, fields: 4, forest: 5 }
+export const ZONE_PRIORITY: Record<'water' | 'roads' | ZoneFillType, number> = { water: 0, roads: 1, habitation: 2, scattered: 2, industrial: 3, fields: 4, forest: 5 }
 
 export interface RoadLike { pts: number[]; half: number }
 type Poly = Feature<Polygon | MultiPolygon>
