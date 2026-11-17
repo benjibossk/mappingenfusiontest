@@ -4493,7 +4493,7 @@ btn3d.addEventListener('click', () => void (async () => {
     }, {
       text: {
         back: t('v3d.back'), exag: t('v3d.exag'), reset: t('v3d.reset'), top: t('v3d.top'), trees: t('v3d.trees'), help: t('v3d.help'),
-        grid: t('v3d.grid'), drape: t('v3d.drape'), real: t('v3d.real'), map: t('v3d.map'), sat: t('v3d.sat'), genMs: (s) => t('v3d.genMs', { s }),
+        grid: t('v3d.grid'), quality: t('v3d.quality'), qLow: t('v3d.qLow'), qMed: t('v3d.qMed'), qHigh: t('v3d.qHigh'), visTrees: t('v3d.visTrees'), drape: t('v3d.drape'), real: t('v3d.real'), map: t('v3d.map'), sat: t('v3d.sat'), genMs: (s) => t('v3d.genMs', { s }),
         stage: (k) => t(('v3d.st.' + k) as K),
       },
       drape: drapeCanvas,

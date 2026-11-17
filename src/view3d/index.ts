@@ -10,6 +10,7 @@ import {
 import { MOUSE } from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
 import { realDrape, type RealLayers } from './drape'
+import { qualityPreset, loadQuality, saveQuality, drawForestTint, type Quality } from './quality'
 export type { RealLayers } from './drape'
 
 export interface HeightGrid { minX: number; minZ: number; step: number; cols: number; rows: number; heights: ArrayLike<number> } // row 0 = minZ (south)
@@ -30,6 +31,7 @@ export interface View3DData {
 }
 export interface View3DText {
   back: string; exag: string; reset: string; top: string; trees: string; help: string; grid: string
+  quality?: string; qLow?: string; qMed?: string; qHigh?: string; visTrees?: string
   drape: string; real: string; map: string; sat: string; genMs: (s: string) => string
   stage: (k: 'mesh' | 'drape' | 'real' | 'objects') => string
 }
@@ -73,10 +75,12 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     <span class="v3d-sep"></span>
     <label class="v3d-tog"><input type="checkbox" checked data-k="trees"> ${T.trees}</label>
     <label class="v3d-tog"><input type="checkbox" checked data-k="grid"> ${T.grid}</label>
+    <span class="v3d-sep"></span>
+    <label class="v3d-relief">${T.quality ?? 'Quality'} <select data-k="quality" aria-label="${T.quality ?? 'Quality'}"><option value="low">${T.qLow ?? 'Low'}</option><option value="medium">${T.qMed ?? 'Medium'}</option><option value="high">${T.qHigh ?? 'High'}</option></select></label>
     <span class="grow"></span>
     <button type="button" data-k="reset">${T.reset}</button>
     <button type="button" data-k="top">${T.top}</button>
-    </div><div class="v3d-help">${T.help}</div><div class="v3d-north" title="N">N</div>`
+    </div><div class="v3d-help">${T.help}</div><div class="v3d-north" title="N">N</div><div class="v3d-stats" data-k="stats" aria-live="off" style="position:absolute;right:16px;top:68px;padding:4px 8px;background:rgba(16,17,19,.82);border:1px solid rgba(255,255,255,.12);color:#cfd3d8;font:11px ui-monospace,monospace;pointer-events:none"></div>`
   host.appendChild(root)
   const q = <E extends HTMLElement>(k: string) => root.querySelector<E>(`[data-k="${k}"]`)!
 
@@ -226,7 +230,22 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     if (announce) announce = false, o.notify?.(T.genMs(((performance.now() - t0) / 1000).toFixed(1)))
     dx0 = d.x0; dz0 = d.z0; dside = d.side
     setUV(); geo.attributes.uv.needsUpdate = true
-    const tex = new CanvasTexture(d.canvas)
+    baseDrape = d
+    applyDrape()
+  }
+  let baseDrape: { canvas: HTMLCanvasElement; x0: number; z0: number; side: number } | null = null, tinted = false, treesOn = true
+  // trees hidden: the forests stay readable as a green tint + outline on the drape (a copy, the base stays clean)
+  const applyDrape = () => {
+    const d = baseDrape; if (!d) return
+    let cv = d.canvas
+    tinted = !treesOn && !!o.real?.forests.length
+    if (tinted) {
+      cv = document.createElement('canvas'); cv.width = d.canvas.width; cv.height = d.canvas.height
+      const g = cv.getContext('2d')!
+      g.drawImage(d.canvas, 0, 0)
+      drawForestTint(g, cv.width, d.x0, d.z0, d.side, o.real!.forests)
+    }
+    const tex = new CanvasTexture(cv)
     tex.colorSpace = SRGBColorSpace
     tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
     drapeTex?.dispose()
@@ -286,10 +305,13 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const ptsMat = new PointsMaterial({ size: 9, sizeAttenuation: true, vertexColors: true })
   ptsMat.color.setScalar(0.35 / 0.78) // OpsTrack: points at 0.35 of the tint (undo the mesh darkening)
   const fadeU = { value: new Vector2(0.4 * TREE_NEAR, 0.87 * TREE_NEAR) }
+  const farU = { value: 0 } // quality: far limit of the tree points (0 = whole map)
   ptsMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uFar = farU
     sh.uniforms.uFade = fadeU
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform vec2 uFade;')
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform vec2 uFade;\nuniform float uFar;')
       .replace('#include <logdepthbuf_vertex>', `float otFade = smoothstep(uFade.x, uFade.y, -mvPosition.z);
+        if (uFar > 0.0) otFade *= 1.0 - smoothstep(uFar * 0.85, uFar, -mvPosition.z);
         gl_PointSize *= otFade;
         if (otFade < 1.0 && gl_PointSize < 1.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         #include <logdepthbuf_vertex>`)
@@ -494,12 +516,13 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     if (!dirty) return
     dirty = false
     const rr = TREE_NEAR + TREE_CHUNK * 0.71 + 120
-    for (const ch of treeChunks) ch.mesh.visible = treesOn && ch.c.distanceToSquared(camera.position) < rr * rr
+    visTrees = 0
+    for (const ch of treeChunks) { ch.mesh.visible = treesOn && ch.c.distanceToSquared(camera.position) < rr * rr; if (ch.mesh.visible) visTrees += ch.mesh.count }
     pts.visible = treesOn
     // auto quality: the first ~40 frames are timed; a slow GPU gets shorter tree ranges and a lower pixel ratio
     const now = performance.now()
     if (qN < 40) { if (qN++ > 4) qSum += now - qLast; qLast = now; dirty = true }
-    else if (qN === 40) {
+    else if (qN === 40 && !userQ) {
       qN++
       const ms = qSum / 35
       if (ms > 30) { TREE_NEAR = 1200; renderer.setPixelRatio(1); dirty = true }
@@ -509,11 +532,27 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     // ground target follows the relief so the orbit stays on the ground
     if (!looking) controls.target.y = groundAt(controls.target.x, -controls.target.z) * ex
     renderer.render(scene, camera)
-    frames++
+    frames++; fpsN++
     v2.set(controls.target.x - camera.position.x, controls.target.z - camera.position.z)
     north.style.transform = `rotate(${Math.atan2(v2.x, -v2.y) * -1}rad)`
   }
-  let treesOn = true
+  let visTrees = 0, fpsN = 0, fpsT = performance.now()
+  // quality: a saved choice wins over the auto timing of the first frames
+  const savedQ = loadQuality(), userQ = savedQ !== null
+  const setQuality = (qv: Quality) => {
+    const p = qualityPreset(qv, window.devicePixelRatio)
+    TREE_NEAR = p.treeNear; fadeU.value.set(0.4 * TREE_NEAR, 0.87 * TREE_NEAR); farU.value = p.pointsFar
+    renderer.setPixelRatio(p.pixelRatio); resize(); dirty = true
+  }
+  const qSel = q<HTMLSelectElement>('quality')
+  qSel.value = savedQ ?? 'high'
+  if (savedQ) setQuality(savedQ)
+  qSel.addEventListener('change', () => { const v = qSel.value as Quality; saveQuality(v); setQuality(v) })
+  const statsEl = q('stats')
+  const statsTimer = window.setInterval(() => {
+    const t = performance.now(), fps = (fpsN * 1000) / Math.max(1, t - fpsT), fpsN0 = fpsN; fpsN = 0; fpsT = t
+    statsEl.textContent = `${T.visTrees ?? 'Trees'} ${treesOn ? visTrees.toLocaleString() : 0} │ ${fpsN0 ? fps.toFixed(0) : '–'} FPS`
+  }, 500)
   resize()
   loop()
 
@@ -527,7 +566,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   })
   q('reset').addEventListener('click', () => look(hm.minX + sideW / 2, hm.minZ + sideH / 2, side, true))
   q('top').addEventListener('click', () => look(controls.target.x, -controls.target.z, camera.position.distanceTo(controls.target), false))
-  q<HTMLInputElement>('trees').addEventListener('change', (e) => { treesOn = (e.target as HTMLInputElement).checked; dirty = true })
+  q<HTMLInputElement>('trees').addEventListener('change', (e) => { treesOn = (e.target as HTMLInputElement).checked; if (tinted !== (!treesOn && !!o.real?.forests.length)) applyDrape(); dirty = true })
   q<HTMLInputElement>('grid').addEventListener('change', (e) => { gridU.value = (e.target as HTMLInputElement).checked ? 1 : 0; dirty = true })
   const segBtns = [...q('drape').querySelectorAll<HTMLButtonElement>('[data-v]')]
   const markSeg = () => segBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === mode)))
@@ -543,7 +582,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   function close() {
     if (closed) return
     closed = true
-    cancelAnimationFrame(raf)
+    cancelAnimationFrame(raf); clearInterval(statsTimer)
     window.removeEventListener('keydown', onKey, true)
     cvs.removeEventListener('pointerdown', onPDown); window.removeEventListener('pointermove', onPMove); window.removeEventListener('pointerup', onPUp)
     cvs.removeEventListener('wheel', onWheel, true); cvs.removeEventListener('contextmenu', onCtx); endLook()
