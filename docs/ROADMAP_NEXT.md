@@ -28,7 +28,7 @@ Sources marquées `[NV]` = non vérifiées par lecture de la page.
 
 ### En cours / à valider (RECETTE.md)
 - R1 Angers 32 km (envoi complet, 0 « invalid segments »), R2 interface guidée, R3 limite de surfaces
-  (**❌ 1 bloc en dépassement sur l'île seed 1**), R4 apports ARTE (largeurs OSM, ponts/tunnels,
+  (✅ 0 bloc en dépassement : limitPerBlock garanti, test `tests/biomes/surfaces-limit.test.ts` îles 2048/4096 seeds 1-8 + mondes), R4 apports ARTE (largeurs OSM, ponts/tunnels,
   NoData).
 
 ### Prévu pour les établissements (CITIES.md §3.3, §3.8, §6.10) — statut
