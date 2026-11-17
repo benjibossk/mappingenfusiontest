@@ -27,6 +27,7 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 ## [0.6.0] - 2026-11-16
 
 ### Ajouté
+- **Surfaces** : la roche dépend désormais de la pente et du relief (crêtes, ruptures de pente, hauteur de falaise, altitude, parois quasi verticales) avec une part plafonnée des terres ; les longues pentes régulières gardent herbe / sol forestier et les éboulis ne sont qu’au pied des falaises. Les îles escarpées ne sont plus presque entièrement en roche.
 - **Biomes** : choix du biome à l’étape 1 et dans le monde aléatoire (7 biomes, badge de disponibilité, sauvegardé et partagé). Il pilote les sols exportés, la densité et le mélange des forêts, les générateurs de forêt, les jardins des villages et les teintes 3D. Everon inchangé à graine égale.
 - Page **Bibliothèque d’assets** (thème sombre, bouton Bibliothèque, aperçu 3D des parcelles et assets).
 - **Routes V2** : carrefours soudés, virages arrondis, profil en long, ponts de vallée, îlots reliés.

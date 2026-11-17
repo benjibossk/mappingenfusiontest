@@ -1,6 +1,7 @@
 // Procedural island: height grid (bridge POST /heightmap) + surface weights and colours (POST /masks).
 // Grids are row 0 = south, west to east, like the bridge expects.
 import { groundWeights, terrainShape } from './groundMasks'
+import { rockMasks } from './rockMask'
 
 export interface IslandParams {
   size: number // terrain size in metres (X = Z)
@@ -156,6 +157,8 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   // P2 #10/#11: ridges -> rock/gravel, hollows -> moist grass, low-frequency grass variants
   const shape = terrainShape(heights, cols, rows, step)
   const variants = noise2(9157, 2)
+  // rock from slope AND relief context, capped share; scree at cliff feet only (rockMask.ts)
+  const rm = rockMasks(heights, cols, rows, step, maxHeight, shape)
   const at = (c: number, r: number) => heights[Math.min(Math.max(r, 0), rows - 1) * cols + Math.min(Math.max(c, 0), cols - 1)]
   const covered0 = (i: number, h: number) => !!(cover && cover[i] && h > 1)
   for (let i = 0; i < heights.length; i++) {
@@ -170,10 +173,8 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const bare = deepAll * 0.75 * band(patches((c * step) / 45, (r * step) / 45), 0.52, 0.75)
     const deep = deepAll - bare
     const bed = river ? Math.min(river[i], 1 - deepAll) : 0
-    const steep = band(slope, 0.2, 0.4)
-    const nearWater = 1 - band(h, 10, 20)
-    const cliff = steep * (h > -2 ? 1 : 0) * (1 - bed)
-    let scree = cliff * nearWater * (1 - band(slope, 0.3, 0.5)) // foot of coastal cliffs
+    const cliff = Math.min(1, rm.rock[i] + rm.scree[i]) * (h > -2 ? 1 : 0) * (1 - bed)
+    let scree = Math.min(cliff, rm.scree[i] * (1 - bed))
     let rock = cliff - scree
     let free = clamp01(1 - deepAll - bed - cliff)
     const take = (w: number) => { const t = Math.min(free, Math.max(w, 0)); free -= t; return t }
@@ -183,10 +184,11 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const high = band(h, maxHeight * 0.45, maxHeight * 0.7)
     const inland = band(h, 10, 16)
     const gw = groundWeights(slope, shape.tpi[i], shape.curv[i], variants((c * step) / 300, (r * step) / 300))
-    rock += free * inland * gw.rock
-    scree += free * inland * gw.gravel
+    // gw.rock is left to rockMasks (crests are part of its relief context); gravel only on gentle ridges
+    const gravel = gw.gravel * (1 - band(slope, 0.3, 0.5))
+    scree += free * inland * gravel
     const moist = covered0(i, h) ? 0 : free * inland * gw.moist
-    free -= free * inland * (gw.rock + gw.gravel) + moist
+    free -= free * inland * gravel + moist
     const rest = Math.max(free, 0)
     weights.SeaBed_01.push(deep)
     weights.Pebbles_01.push(bed)

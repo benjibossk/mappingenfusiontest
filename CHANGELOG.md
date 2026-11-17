@@ -31,6 +31,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [0.6.0] - 2026-11-16
 
 ### Added
+- **Surfaces**: rock now depends on slope and relief (crests, slope breaks, cliff height, altitude, near-vertical faces) with a capped share of the land; long even slopes keep their grass / forest floor and scree only lies at cliff feet. Steep islands are no longer almost all rock.
 - **Biomes**: biome choice at step 1 and in the random world (7 biomes, availability badge, saved and shared with the project). It drives exported ground surfaces, forest density and conifer / broadleaf mix, forest generators, village gardens (lot templates) and 3D tints. Everon unchanged for the same seed.
 - **Asset library** page (dark theme, Library button, 3D preview of lots and assets).
 - **Roads V2**: junction welding, fillets, vertical profile, valley bridges, island auto-connect.
