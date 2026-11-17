@@ -13,12 +13,20 @@ import { centreLine } from './roads'
 import { riverCourse, WATER_TYPES, type Water } from './water'
 import { sampler } from './settlements'
 import { ZONE_AVOID, type ProjectShape } from '../project'
+import { cutRing, flatToPoly } from './zonefill'
 
 /** vanilla generators (GUIDs read from the game data, FG_*_aut.et parents) */
 export const RIPARIAN_GEN = {
   reed: '{49CE476916C86620}Prefabs/WEGenerators/Brushland/FG_Brushland_Phragmites.et',
   willow: '{7B7AEA8C75A2F011}Prefabs/WEGenerators/Brushland/FG_Brushland_Salix.et', // Salix cinerea bushes + Salix fragilis trees
 } as const
+/** autumn variants (vanilla FG_*_aut.et, GUIDs read from the game data) for the autumnal biomes */
+export const RIPARIAN_GEN_AUT = {
+  reed: '{62D576323E43CAAC}Prefabs/WEGenerators/Brushland/FG_Brushland_Phragmites_aut.et',
+  willow: '{893F06A3B99F2D0B}Prefabs/WEGenerators/Brushland/FG_Brushland_Salix_aut.et',
+} as const
+/** a biome is autumnal when its grass surface is an _aut one (Kolguyev, tundra) */
+export const isAutumnBiome = (b?: { surfaces: { grass: string } }) => !!b && /_aut$/i.test(b.surfaces.grass)
 
 export type RiparianKind = keyof typeof RIPARIAN_GEN
 export interface RiparianPatch { id: string; kind: RiparianKind; water: string; side: -1 | 1; pts: number[] }
@@ -31,7 +39,9 @@ export interface RiparianOptions {
   cliff?: number // grade right at the water edge: no band at all (default 0.8 ≈ 39°)
   cover?: number // 0..1 share of the bank length kept (noise gaps), default 0.7
   roads?: { pts: number[]; half: number }[]
-  polys?: number[][] // flat X/Z rings to keep out of (fields, villages, zones, forests…)
+  polys?: number[][] // flat X/Z rings to keep out of (fields, villages, zones…)
+  /** carved bank width (m): the height above the water is measured from the bank top there, not the bed */
+  bank?: number
   points?: { x: number; z: number; r: number }[] // bridges, buildings
   /** filled with the reason each probe line stopped (gap, cliff, blocked, hand, steep, limit) */
   stats?: Record<string, number>
@@ -97,7 +107,7 @@ interface Bank { line: number[]; half: number; closed: boolean; id: string; leve
 
 /** riparian patches for every river / lake of `waters` (pure: same input -> same output) */
 export function riparianBands(heights: ArrayLike<number>, grid: Grid, waters: Water[], o: RiparianOptions = {}): RiparianPatch[] {
-  const maxW = o.maxWidth ?? 40, handMax = o.handMax ?? 5, steep = o.steep ?? 0.45, cliff = o.cliff ?? 0.8, cover = o.cover ?? 0.7, seed = o.seed ?? 1
+  const bank = o.bank ?? 0, maxW = o.maxWidth ?? 40, handMax = o.handMax ?? 5, steep = o.steep ?? 0.45, cliff = o.cliff ?? 0.8, cover = o.cover ?? 0.7, seed = o.seed ?? 1
   const at = sampler(heights, grid)
   const mask = obstacleMask(grid, heights, waters, o)
   const { cols, rows, step, minX, minZ } = grid
@@ -140,8 +150,11 @@ export function riparianBands(heights: ArrayLike<number>, grid: Grid, waters: Wa
         if (noise1(arc, ns) > cover + 0.15) { st('gap'); continue }
         const x0 = L[k * 2], z0 = L[k * 2 + 1]
         const ex = x0 + nx[k] * (b.half + 1), ez = z0 + nz[k] * (b.half + 1)
-        const level = b.level ?? Math.min(at(x0 + nx[k] * b.half, z0 + nz[k] * b.half), at(x0 - nx[k] * b.half, z0 - nz[k] * b.half))
-        const edgeGrade = Math.abs(at(ex + nx[k] * 4, ez + nz[k] * 4) - at(ex, ez)) / 4
+        const bed = b.level ?? Math.min(at(x0 + nx[k] * b.half, z0 + nz[k] * b.half), at(x0 - nx[k] * b.half, z0 - nz[k] * b.half))
+        // carved bank: the reference is its top on this side (else the bank height alone eats the HAND budget)
+        const tx = ex + nx[k] * bank, tz = ez + nz[k] * bank
+        const level = bank > 0 ? Math.max(bed, Math.min(at(tx, tz), bed + handMax)) : bed
+        const edgeGrade = Math.abs(at(tx + nx[k] * 4, tz + nz[k] * 4) - at(tx, tz)) / 4
         if (edgeGrade > cliff) { st('cliff'); continue } // cliff / gorge wall: nothing
         // inner side of a bend: never wider than the bend radius (the offset line would fold over the water)
         let lim = maxW * (0.55 + 0.45 * noise1(arc * 0.5 + 500, ns + 1))
@@ -159,7 +172,7 @@ export function riparianBands(heights: ArrayLike<number>, grid: Grid, waters: Wa
           if (blocked(px, pz)) { why = 'blocked'; break }
           const h = at(px, pz)
           if (h - level > handMax) { why = 'hand'; break }
-          if (Math.abs(h - prev) / PROBE > steep) { why = 'steep'; break }
+          if (d > bank && Math.abs(h - prev) / PROBE > steep) { why = 'steep'; break }
           prev = h; w = d
         }
         if (blocked(ex, ez)) { w = 0; why = 'edge' }
@@ -200,8 +213,29 @@ export function riparianBands(heights: ArrayLike<number>, grid: Grid, waters: Wa
 }
 
 /** Workbench shapes: one area generator per patch, clear of roads / rivers / lakes / power lines / objects */
-export function riparianShapes(patches: RiparianPatch[]): ProjectShape[] {
-  return patches.map((p) => ({ id: p.id, kind: 'polyline', closed: true, points: p.pts, generator: RIPARIAN_GEN[p.kind], avoid: { ...ZONE_AVOID, objects: true } }))
+export function riparianShapes(patches: RiparianPatch[], o: { autumn?: boolean } = {}): ProjectShape[] {
+  const gen = o.autumn ? RIPARIAN_GEN_AUT : RIPARIAN_GEN
+  return patches.map((p) => ({ id: p.id, kind: 'polyline', closed: true, points: p.pts, generator: gen[p.kind], avoid: { ...ZONE_AVOID, objects: true } }))
+}
+
+/** forests cut by the riparian patches: the band replaces the forest edge on its strip instead of the
+ *  forest swallowing it (pieces < 400 m² dropped; a ring turf cannot cut is kept whole) */
+export function cutForests<A extends { id: string; kind: string; pts: number[] }>(areas: A[], patches: RiparianPatch[]): A[] {
+  if (!patches.length) return areas
+  const bb = (p: number[]) => { let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (let i = 0; i + 1 < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); z0 = Math.min(z0, p[i + 1]); z1 = Math.max(z1, p[i + 1]) } return [x0, z0, x1, z1] }
+  const obs = patches.map((p) => ({ b: bb(p.pts), f: flatToPoly(p.pts) })).filter((q) => q.f)
+  const out: A[] = []
+  for (const a of areas) {
+    if (a.kind !== 'forest' || a.pts.length < 6) { out.push(a); continue }
+    const ab = bb(a.pts)
+    const hit = obs.filter((q) => q.b[0] < ab[2] && q.b[2] > ab[0] && q.b[1] < ab[3] && q.b[3] > ab[1]).map((q) => q.f!)
+    if (!hit.length) { out.push(a); continue }
+    let pieces: number[][]
+    try { pieces = cutRing(a.pts, hit) } catch { out.push(a); continue }
+    if (pieces.length === 1) out.push({ ...a, pts: pieces[0] })
+    else pieces.forEach((pts, j) => out.push({ ...a, id: `${a.id}_R${j + 1}`, pts }))
+  }
+  return out
 }
 
 /** band width (m) measured at one station, for diagnostics / tests: largest patch extent near (x, z) */

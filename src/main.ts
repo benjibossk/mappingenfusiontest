@@ -20,7 +20,7 @@ import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type 
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { type CampaignResult } from './modules/campaign'
-import { riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
+import { cutForests, isAutumnBiome, riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
 import { forestEdges, forestEdgeShapes } from './modules/forestEdge'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
 import { mergeForestPatches } from './modules/forestMerge'
@@ -1329,6 +1329,7 @@ let setGardens: { site: string; corners: number[] }[] = [] // v2 back gardens (d
 let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences
 let countryside: number[][] = [] // random world: the countryside polygons the plots were laid in (worldgen 10b)
 let riparian: RiparianPatch[] = [] // riparian band (riparian.ts): random world, or the Water tab button
+let ripaSig = '', ripaTimer = 0 // before the first draw(): ripaWatch runs from it (a later `let` threw TDZ and killed the page init)
 let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random world (3D view only)
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
 let zonePick: { kind: ZoneKind; sub: string } | null = null
@@ -3537,6 +3538,7 @@ function drawCountryside() {
 }
 /** riparian patches: reeds (pale green-yellow) on the water edge, willows (dark green) behind */
 function drawRiparian() {
+  ripaWatch()
   for (const p of riparian) {
     ctx.beginPath()
     for (let k = 0; k < p.pts.length; k += 2) { const [sx, sy] = toScreen(p.pts[k], p.pts[k + 1]); if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
@@ -3895,7 +3897,7 @@ function waterAndRoads(): Project {
   const half = (id: string) => { const r = roads.find((q) => q.id === id); return r ? { half: roadHalf(r), dirt: DIRT_ROADS.has(r.type) } : undefined }
   return {
     version: 0,
-    shapes: [...allWaterShapes(), ...split.shapes, ...($<HTMLInputElement>('wRipa').checked ? riparianShapes(riparian) : [])],
+    shapes: [...allWaterShapes(), ...split.shapes, ...($<HTMLInputElement>('wRipa').checked ? riparianShapes(riparian, { autumn: isAutumnBiome(biome(currentBiome)) }) : [])],
     entities: [
       ...(furn ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []),
       ...(island && preWater ? riverBanks(waters, preWater, island.grid) : []),
@@ -3915,19 +3917,34 @@ $<HTMLButtonElement>('wSend').addEventListener('click', () =>
 )
 
 // riparian band along the drawn rivers / lakes: width from the height above the water + the bank grade
-function makeRiparian() {
+// drawn rivers / lakes edited: the band follows (debounced), forests are left alone then
+function ripaSigOf() { return waters.map((w) => `${w.id}:${w.type}:${w.width}:${w.pts.length}:${w.pts.reduce((a, b) => a + b, 0).toFixed(1)}`).join('|') }
+function ripaWatch() {
+  const sig = ripaSigOf()
+  if (sig === ripaSig) return
+  const first = !ripaSig
+  ripaSig = sig
+  if (first || !riparian.length || !$<HTMLInputElement>('wRipa').checked) return
+  clearTimeout(ripaTimer)
+  ripaTimer = window.setTimeout(() => { if (!island || !$<HTMLInputElement>('wRipa').checked) return; riparian = waters.length ? makeRiparian() : []; draw() }, 600)
+}
+/** cut = the band takes the forest edge (forests cut along it) instead of stopping at the forest */
+function makeRiparian(cut = false) {
   if (!island) return []
   const ring = (b: number[][]) => b.flat()
-  return riparianBands(island.heights, island.grid, waters, {
+  const out = riparianBands(island.heights, island.grid, waters, {
     seed: num('tSeed') || 1,
     roads: [...roads, ...setLanes, ...setPaths, ...zones.flatMap((z) => z.roads)].filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) })),
-    polys: [...areas.map((a) => a.pts), ...(result?.fields ?? []).map(ring), ...zones.flatMap((z) => z.boxes.filter((b) => b.corners.length >= 8).map((b) => b.corners))],
+    polys: [...areas.filter((a) => !cut || a.kind !== 'forest').map((a) => a.pts), ...(result?.fields ?? []).map(ring), ...zones.flatMap((z) => z.boxes.filter((b) => b.corners.length >= 8).map((b) => b.corners))],
     points: [...sites.map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] })), ...settled.map((b) => ({ x: b.x, z: b.z, r: 12 })), ...worldBridges.map((b) => ({ x: b.x, z: b.z, r: 20 }))],
   })
+  if (cut) { const c = cutForests(areas, out); areas.splice(0, areas.length, ...c) }
+  return out
 }
 $<HTMLButtonElement>('wRipaGen').addEventListener('click', () => {
   if (!island || !waters.length) return void (logEl.textContent = t('err.noWater'))
-  riparian = makeRiparian()
+  riparian = makeRiparian(true)
+  ripaSig = ripaSigOf()
   $<HTMLInputElement>('wRipa').checked = true
   logEl.textContent = t('log.ripa', { n: riparian.length, reed: riparian.filter((p) => p.kind === 'reed').length })
   draw()
@@ -4463,7 +4480,7 @@ function applyWorld(w: WorldResult) {
   zones = w.zones
   worldBridges = w.bridges ?? []
   countryside = w.countryside ?? []
-  riparian = w.riparian ?? []; $<HTMLInputElement>('wRipa').checked = riparian.length > 0
+  riparian = w.riparian ?? []; ripaSig = ripaSigOf(); $<HTMLInputElement>('wRipa').checked = riparian.length > 0
   pendingAct = 'rwGo'
   doneSnap.fill(null); ownSnap.fill('') // a fresh world: every step that has content counts as done
   waterInfo(); roadInfo(); powerInfo(); zoneInfo()
