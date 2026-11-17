@@ -11,6 +11,7 @@ import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Gr
 import { addRoundabouts, dropOrphanRings } from './roundabouts'
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
+import { damZone, placeDams } from './dam'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
@@ -51,6 +52,7 @@ export interface WorldParams {
   forests: number
   roadsV2?: boolean // road network V2 finish (docs/ROAD_NETWORK_V2.md), default true
   motorway?: boolean // dual-carriageway motorway across the map (motorway.ts), default off; needs roadsV2
+  dams?: boolean // earth dam + reservoir on a river throat (dam.ts), default off
   biome?: string // BiomeId (docs/BIOMES_LIBRARY.md): forests and village parcels; default Everon = unchanged
 }
 export const WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { size: 4096, towns: 1, villages: 1, hamlets: 1, industry: 1, military: 1, airfield: true, power: true, forests: 1 }
@@ -333,12 +335,17 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const { filled } = computeRivers(base.slice(), g.cols, g.rows, g.step, { rain: 1, windAngle: 0, threshold: 1e9, depth: 0 })
   const maxLakes = Math.max(1, Math.round(landKm2 * W.lakesPerKm2)) // biggest pits first
   const lk = placeLakes(base, filled, g, traced, { minArea: W.lakeMinArea, sourceShare: W.lakeSourceShare, depth: W.riverDepth, seed: subSeed(seed, 'lakes'), maxLakes })
-  const lakes = lk.lakes
+  // dams (dam.ts, docs/DAMS.md): an embankment sculpted into the relief at a valley throat, its reservoir upstream
+  const dm = p.dams ? (() => {
+    const nat = lakeMask(g, lk.lakes.map((w, i) => ({ ...w, id: `L${i}` })), 0)
+    return placeDams(base, g, lk.rivers, { count: Math.max(1, Math.round(p.size / 4096)) }, (k) => nat[k] === 1)
+  })() : null
+  const lakes = [...lk.lakes, ...(dm?.lakes ?? [])]
   const waters: Water[] = [
     ...lakes.map((w, i) => ({ ...w, id: `WATER_LAKE_${i + 1}` })),
-    ...lk.rivers.map((w, i) => ({ ...w, id: `WATER_RIVER_${i + 1}`, auto: true, carve: false })),
+    ...(dm?.rivers ?? lk.rivers).map((w, i) => ({ ...w, id: `WATER_RIVER_${i + 1}`, auto: true, carve: false })),
   ]
-  let zones: ZoneItem[] = []
+  let zones: ZoneItem[] = dm ? dm.dams.map((d) => damZone(d)) : []
   let roads: Road[] = []
   let cur = composeHeights(base, g, waters, zones, roads)
   // 3. places
@@ -356,7 +363,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const siteDiscs = (extra: number) => sites.map((s) => ({ x: s.x, z: s.z, r: SITE_RADIUS[s.kind] + extra }))
   // 4. airfield: the flattest long strip, away from the places
   await step('airfield')
-  const access: Site[] = [] // gates the road network must reach (not settled)
+  const access: Site[] = zones.filter((z) => z.access).map((z) => ({ id: `ACCESS_${z.id}`, x: z.access![0], z: z.access![1], kind: 'hamlet' as const })) // gates the road network must reach (not settled); dam crests first
   if (p.airfield && p.size >= WORLD.airfield.minMapKm * 1000) {
     const size = WORLD.airfield.sizeFor(p.size)
     const s = suggestAirfield(lakeAsSea(cur.heights, lakes0), g, { size, seaLevel: 0, keepOut: siteDiscs(WORLD.airfield.keepOutM), count: 1 })[0]

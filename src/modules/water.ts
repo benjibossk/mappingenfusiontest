@@ -28,6 +28,7 @@ export interface Water {
   depth: number // depth below the water level, metres
   auto?: boolean // traced from the simulated rivers (replaced on regeneration)
   carve?: boolean // river: dig a bed; otherwise the water just lies on the ground (banks may cover it)
+  level?: number // lake: fixed water level (dam reservoir, dam.ts); absent = from the shore
 }
 
 //! River course the generator can mesh: sharp vertices dropped, corners rounded (Chaikin), so that
@@ -72,6 +73,7 @@ const sampler = (heights: ArrayLike<number>, grid: Grid) => {
 
 //! lake: water level = lowest point of the outline (the outline is then lowered to it)
 function lakeLevel(w: Water, at: (x: number, z: number) => number) {
+  if (w.level !== undefined) return w.level // dam reservoir (dam.ts): level set by the crest
   const ring = closedRing(w.pts, 4)
   let m = Infinity
   for (let i = 0; i < ring.length; i += 2) m = Math.min(m, at(ring[i], ring[i + 1]))
