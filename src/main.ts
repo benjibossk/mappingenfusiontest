@@ -19,6 +19,7 @@ import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
 import { makeSiteZone, SITE_TYPES, type SiteType } from './modules/sitezones'
+import type { Faction } from './modules/modules'
 import { makeProdForest, type ProdLog } from './modules/prodforest'
 import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fillFieldZone, flatToPoly, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
@@ -607,6 +608,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="form">
         <label>${t('lbl.zoneType')} <select id="zoneType">${ZONE_FILL_TYPES.map((k) => `<option value="${k}">${t(('zt.' + k) as K)}</option>`).join('')}</select></label>
         <label id="zoneLeafRow" hidden>${t('lbl.zoneLeaf')} <select id="zoneLeaf"><option value="mixed">${t('leaf.mixed')}</option><option value="needle">${t('leaf.needle')}</option><option value="broad">${t('leaf.broad')}</option></select></label>
+        <label id="zoneFactionRow" hidden>${t('lbl.zoneFaction')} <select id="zoneFaction"><option value="US">US</option><option value="USSR">USSR</option><option value="FIA">FIA</option></select></label>
         <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="8"></label>
         <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
@@ -1051,7 +1053,7 @@ function zoneSite(type: SiteType, zone: number[]) {
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)].filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) }))
   const wet = waters.filter((w) => WATER_TYPES[w.type].closed).map((w) => w.pts)
   const ok = (x: number, z: number) => (!terrain || isLand(terrain, x, z)) && !wet.some((p) => pointInPoly(p, x, z)) && !settled.some((b) => Math.abs(b.x - x) < 30 && Math.abs(b.z - z) < 30 && pointInPoly(b.corners, x, z))
-  const zn = makeSiteZone(type, zone, { id, seed: num('seed') * 13 + zones.length, roads: allRoads, ground: terrain ? groundAt : undefined, ok, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts) })
+  const zn = makeSiteZone(type, zone, { id, seed: num('seed') * 13 + zones.length, roads: allRoads, ground: terrain ? groundAt : undefined, ok, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts), faction: $<HTMLSelectElement>('zoneFaction').value as Faction, rivers: waters.filter((w) => !WATER_TYPES[w.type].closed).map((w) => w.pts) })
   if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.siteEmpty', { w: zn.warnings.join(' · ') }))
   zones.push(zn)
   finishZone(type, zone, t('log.siteMade', { name: t(('zt.' + type) as K), n: zn.entities.length, s: zn.shapes.length }) + (zn.warnings.length ? ' · ' + zn.warnings.join(' · ') : ''), ['hunting', 'checkpoint'].includes(type) ? [] : [zone])
@@ -4171,7 +4173,7 @@ function clearZones(kinds: ZoneKind[]) {
   zoneInfo()
   refreshSteps()
 }
-$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered'; $('zoneLeafRow').hidden = !['forest', 'production'].includes($<HTMLSelectElement>('zoneType').value) })
+$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered'; $('zoneLeafRow').hidden = !['forest', 'production'].includes($<HTMLSelectElement>('zoneType').value); $('zoneFactionRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'camp' })
 $<HTMLButtonElement>('indClear').addEventListener('click', () => clearZones(['industrial']))
 $<HTMLButtonElement>('milClear').addEventListener('click', () => clearZones(['military', 'airfield']))
 $<HTMLButtonElement>('zoneSend').addEventListener('click', () =>

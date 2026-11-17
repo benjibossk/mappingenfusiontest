@@ -8,13 +8,15 @@ import { ZONE_AVOID, type ProjectEntity, type ProjectShape } from '../project'
 import type { ZoneItem } from './zones'
 import { FENCES, VEG } from '../data/biomes'
 import { round } from './gen-common'
+import { makeCamp, makeJunkyard, type Faction, type ModuleOut } from './modules'
+import type { FlattenRequest as Platform } from './industrial'
 import { centroid, contourFrame, distLine, fencePerimeter, frameOf, inPoly, nearestPoint, polyArea, rectAt, rowGrid, slopeAt, type RoadLine } from './rowgrid'
 
-export type SiteType = 'pasture' | 'parking' | 'cemetery' | 'hunting' | 'orchard' | 'vineyard' | 'junkyard' | 'checkpoint'
-export const SITE_TYPES: SiteType[] = ['pasture', 'parking', 'cemetery', 'hunting', 'orchard', 'vineyard', 'junkyard', 'checkpoint']
-export const SITE_MAX_SLOPE: Record<SiteType, number> = { pasture: 0.15, parking: 0.08, cemetery: 0.12, hunting: 0.35, orchard: 0.35, vineyard: 0.4, junkyard: 0.15, checkpoint: 0.2 }
+export type SiteType = 'pasture' | 'parking' | 'cemetery' | 'hunting' | 'orchard' | 'vineyard' | 'junkyard' | 'checkpoint' | 'camp'
+export const SITE_TYPES: SiteType[] = ['pasture', 'parking', 'cemetery', 'hunting', 'orchard', 'vineyard', 'junkyard', 'checkpoint', 'camp']
+export const SITE_MAX_SLOPE: Record<SiteType, number> = { pasture: 0.15, parking: 0.08, cemetery: 0.12, hunting: 0.35, orchard: 0.35, vineyard: 0.4, junkyard: 0.15, checkpoint: 0.2, camp: 0.15 }
 /** Zone-tool priority (zonefill.ts ZONE_PRIORITY): fenced sites cut fields / forests like housing; stands and checkpoints cut nothing */
-export const SITE_PRIORITY: Record<SiteType, number> = { pasture: 2, parking: 2, cemetery: 2, hunting: 6, orchard: 2, vineyard: 2, junkyard: 2, checkpoint: 6 }
+export const SITE_PRIORITY: Record<SiteType, number> = { pasture: 2, parking: 2, cemetery: 2, hunting: 6, orchard: 2, vineyard: 2, junkyard: 2, checkpoint: 6, camp: 2 }
 
 export const SITE_PREFABS = {
   hayBale: '{6A8D0F8B78685E0A}Prefabs/Props/Agriculture/Farm/HayBale_01.et',
@@ -53,6 +55,8 @@ export interface SiteContext {
   ok?: (x: number, z: number) => boolean // land, out of water / buildings
   forests?: number[][] // forest rings (hunting stands)
   vine?: boolean // orchard zone in vine mode (kept for the 'vineyard' type)
+  faction?: Faction // military camp side (US / USSR / FIA)
+  rivers?: number[][] // open water centre lines (module sites keep off them)
 }
 
 function rng(seed: number) {
@@ -70,6 +74,8 @@ export function makeSiteZone(type: SiteType, polygon: number[], c: SiteContext):
   const ok = c.ok ?? (() => true)
   const [cx, cz] = centroid(polygon)
   let yawOut = 0
+  const plat: Platform[] = []
+  const take = (m: ModuleOut) => { ents.push(...m.entities); shapes.push(...m.shapes); boxes.push(...m.boxes); plat.push(...m.plat); warnings.push(...m.warnings); yawOut = m.yaw }
 
   if (type === 'pasture') {
     shapes.push(fencePerimeter(polygon, FENCES.wood1, `${c.id}_fence`))
@@ -187,12 +193,10 @@ export function makeSiteZone(type: SiteType, polygon: number[], c: SiteContext):
       }
       boxes.push({ corners: polygon.slice(), role: 'orchard' })
     }
-  } else if (type === 'junkyard') {
-    shapes.push(fencePerimeter(polygon, SITE_PREFABS.metalWall, `${c.id}_wall`))
-    const f = frameOf(polygon, c.roads)
-    const g = rowGrid(polygon, { dx: 6, dz: 8, margin: 4, frame: f, jitter: 0.25, yawJitter: 25, rand, ok, ground: c.ground, maxSlope: 0.15 })
-    for (const p of g) if (rand() < 0.75) prop(pick(SITE_PREFABS.wrecks), p.x, p.z, p.yaw + 90 + (rand() < 0.3 ? 90 : 0), 2, 4.5, 1.8)
-    for (const p of rowGrid(polygon, { dx: 12, dz: 12, margin: 3, frame: f, jitter: 0.8, rand })) { if (rand() < 0.5) decal(pick(SITE_PREFABS.dirt), p.x, p.z, rand() * 360); if (rand() < 0.3) decal(pick(SITE_PREFABS.oil), p.x + 2, p.z, rand() * 360) }
+  } else if (type === 'junkyard' || type === 'camp') {
+    // module assembly on a cell grid (modules.ts): lanes from the gate, constraint-solved module per cell
+    const mc = { id: c.id, seed: c.seed, roads: c.roads, ground: c.ground, ok, maxSlope: SITE_MAX_SLOPE[type], faction: c.faction, avoid: c.rivers }
+    take(type === 'camp' ? makeCamp(polygon, mc) : makeJunkyard(polygon, mc))
     boxes.push({ corners: polygon.slice(), role: 'lot' })
   } else if (type === 'checkpoint') {
     // the road crossing the polygon: middle of its longest inside run, composition sized by the road width
@@ -236,7 +240,7 @@ export function makeSiteZone(type: SiteType, polygon: number[], c: SiteContext):
       decal(SITE_PREFABS.crossWalk, b.x + b.ux * len * 0.5, b.z + b.uz * len * 0.5, yawOut + 90)
     }
   }
-  return { id: c.id, kind: 'site', sub: type, x: cx, z: cz, yaw: Math.round(yawOut), seed: c.seed, boxes, shapes, entities: ents, flat: [], plat: [], roads: [], warnings }
+  return { id: c.id, kind: 'site', sub: type, x: cx, z: cz, yaw: Math.round(yawOut), seed: c.seed, boxes, shapes, entities: ents, flat: [], plat, roads: [], warnings }
 }
 
 /** square metres of a polygon (UI messages) */
