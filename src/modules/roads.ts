@@ -3,6 +3,7 @@
 // surfaces painted at pixel precision by the bridge (/masks "roads").
 
 import type { WaterLevels } from './water'
+import { embankRoads } from './embank'
 import type { Grid } from './island'
 import { t } from '../i18n'
 import type { ProjectEntity, ProjectShape } from '../project'
@@ -182,6 +183,7 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
     }
   }
   layBeds(heights, { target, weight })
+  if (!opts.legacyProfile) embankRoads(heights, grid, { target, weight }, water?.wet) // fill shoulders 1:2
   return { target, weight }
 }
 //! Height profile of a road bed along `line` (= centreLine(road.pts, step / 2)), the one carveRoads lays:
