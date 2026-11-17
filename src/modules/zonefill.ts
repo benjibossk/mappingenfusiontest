@@ -4,13 +4,14 @@
 
 import * as turf from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
+import { generateCampaign } from './campaign'
 
-export type ZoneFillType = 'fields' | 'forest' | 'habitation' | 'scattered' | 'industrial'
-export const ZONE_FILL_TYPES: ZoneFillType[] = ['fields', 'forest', 'habitation', 'scattered', 'industrial']
+export type ZoneFillType = 'fields' | 'forest' | 'habitation' | 'scattered' | 'industrial' | 'production'
+export const ZONE_FILL_TYPES: ZoneFillType[] = ['fields', 'forest', 'habitation', 'scattered', 'industrial', 'production']
 /** steepest ground (rise / run) each type accepts */
-export const ZONE_MAX_SLOPE: Record<ZoneFillType, number> = { fields: 0.15, forest: 1, habitation: 0.2, scattered: 0.15, industrial: 0.06 }
+export const ZONE_MAX_SLOPE: Record<ZoneFillType, number> = { fields: 0.15, forest: 1, habitation: 0.2, scattered: 0.15, industrial: 0.12, production: 0.6 }
 /** lower number = higher priority (wins an overlap) */
-export const ZONE_PRIORITY: Record<'water' | 'roads' | ZoneFillType, number> = { water: 0, roads: 1, habitation: 2, scattered: 2, industrial: 3, fields: 4, forest: 5 }
+export const ZONE_PRIORITY: Record<'water' | 'roads' | ZoneFillType, number> = { water: 0, roads: 1, habitation: 2, scattered: 2, industrial: 3, fields: 4, forest: 5, production: 5 }
 
 export interface RoadLike { pts: number[]; half: number }
 type Poly = Feature<Polygon | MultiPolygon>
@@ -232,4 +233,69 @@ export function plotTracks(kept: number[][][], roads: number[][], o: { maxLen?: 
     out.push([q[0], q[1], best.x, best.z].map((v) => Math.round(v * 100) / 100))
   }
   return out
+}
+
+/** Zone tool "Champs" defaults (main.ts form): the random world uses the same, so both look alike */
+export const FIELD_ZONE_DEFAULTS = { fieldSize: 90, jitter: 0.6, angle: 15, hedgeChance: 0.5, minHedge: 15 }
+export interface FieldZoneOptions {
+  zone: number[] // flat X/Z ring
+  seed: number
+  prefix: string
+  fieldSize?: number; jitter?: number; angle?: number; hedgeChance?: number; minHedge?: number
+  /** farmable (land, slope, forest...): plots */
+  ok: (x: number, z: number) => boolean
+  /** land: hedges, groves, tracks (default ok) */
+  landOk?: (x: number, z: number) => boolean
+  obstacles: Poly[]
+  laid?: Feature<Polygon>[]
+  seen?: Set<string>
+  /** road centre lines the dirt tracks join (none = no track) */
+  roads?: number[][]
+  hedgeSeed: number
+}
+export interface FieldZoneResult { fields: number[][][]; hedges: number[][][]; groves: number[][]; tracks: number[][] }
+/** the "Champs" zone pipeline: Voronoi plots clipped to the zone and the obstacles, hedges on the plot
+ *  borders, groves at some corners, dirt tracks to the nearest road. Shared by the Zone tool and worldgen. */
+export function fillFieldZone(o: FieldZoneOptions): FieldZoneResult {
+  const d = FIELD_ZONE_DEFAULTS
+  const fieldSize = o.fieldSize ?? d.fieldSize, hedgeChance = o.hedgeChance ?? d.hedgeChance, minHedge = o.minHedge ?? d.minHedge
+  const raw = generateCampaign({ zone: o.zone, fieldSize, jitter: o.jitter ?? d.jitter, angle: o.angle ?? d.angle, hedgeChance, minHedge, seed: o.seed, prefix: o.prefix, isLand: o.ok })
+  const fields = clipPlots(raw.fields, { obstacles: o.obstacles, laid: o.laid, zone: flatToPoly(o.zone), ok: o.ok, minArea: Math.min(2500, fieldSize ** 2 / 4) })
+  let hs = o.hedgeSeed || 1
+  const rnd = () => ((hs = (hs * 16807) % 2147483647) / 2147483647)
+  const land = o.landOk ?? o.ok
+  const hedges = plotHedges(fields, { seen: o.seen, rnd, ok: land, keep: Math.max(0.2, Math.min(1, hedgeChance + 0.3)), minLen: minHedge })
+  const groves = plotGroves(fields, { rnd, ok: land })
+  const tracks = o.roads?.length ? plotTracks(fields, o.roads, { ok: land }) : []
+  return { fields, hedges, groves, tracks }
+}
+
+/** countryside zones around a settlement for the random world, like zones drawn by hand on the open
+ *  land: a grid of farmable cells (smoothed by a 3x3 majority so a lone steep cell or a road does not
+ *  split it) inside the rMin..rMax ring, contoured (marching squares), simplified; pieces under
+ *  `minHa` dropped, largest first. Flat X/Z rings (outer outlines only: `ok` still filters the plots). */
+export function countrysideZones(cx: number, cz: number, rMin: number, rMax: number, ok: (x: number, z: number) => boolean, o: { cell?: number; minHa?: number; simplify?: number } = {}): number[][] {
+  const c = o.cell ?? 20, n = Math.ceil((rMax * 2) / c) + 3, x0 = cx - (n / 2) * c, z0 = cz - (n / 2) * c
+  const raw = new Uint8Array(n * n)
+  for (let j = 1; j < n - 1; j++) for (let i = 1; i < n - 1; i++) {
+    const x = x0 + i * c, z = z0 + j * c, d = Math.hypot(x - cx, z - cz)
+    if (d >= rMin && d <= rMax && ok(x, z)) raw[j * n + i] = 1
+  }
+  const pts: Feature<import('geojson').Point, { v: number }>[] = []
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    let s = 0
+    if (i > 0 && j > 0 && i < n - 1 && j < n - 1) for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) s += raw[(j + b) * n + i + a]
+    const x = x0 + i * c, z = z0 + j * c, d = Math.hypot(x - cx, z - cz)
+    pts.push(turf.point([x, z], { v: s >= 5 && d <= rMax ? 1 : 0 }))
+  }
+  const bands = turf.isobands(turf.featureCollection(pts), [0.5, 2], { zProperty: 'v' })
+  const out: { a: number; r: number[] }[] = []
+  for (const f of bands.features) for (const poly of f.geometry.coordinates) {
+    let ring: number[][] = poly[0]
+    try { ring = turf.simplify(turf.polygon([ring]), { tolerance: o.simplify ?? c * 0.75, highQuality: true }).geometry.coordinates[0] } catch { /* keep raw */ }
+    const a = ringArea(ring)
+    if (a < (o.minHa ?? 3) * 10000 || ring.length < 4) continue
+    out.push({ a, r: ring.slice(0, -1).flat() })
+  }
+  return out.sort((p, q) => q.a - p.a).map((p) => p.r)
 }

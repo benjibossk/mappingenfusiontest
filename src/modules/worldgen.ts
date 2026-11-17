@@ -21,9 +21,9 @@ import type { Placed, Square } from './settlements'
 import { routePowerLine, type PowerKind, type PowerLine } from './power'
 import type { Feature, Polygon } from 'geojson'
 import { generateForests } from './forestgen'
-import { generateCampaign, type CampaignResult } from './campaign'
+import type { CampaignResult } from './campaign'
 import { mergeForestPatches } from './forestMerge'
-import { clipPlots, plotGroves, plotHedges, plotTracks, pointObstacle, roadObstacles } from './zonefill'
+import { countrysideZones, fillFieldZone, pointObstacle, roadObstacles } from './zonefill'
 import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
@@ -53,6 +53,8 @@ export interface WorldArea extends CoverArea { id: string }
 export interface WorldResult {
   /** countryside around the villages (Tanin AgriFieldGenerator method): plots + hedges */
   campaign?: CampaignResult
+  /** countryside polygons (one per settlement) the plots were laid in, Zone-tool style */
+  countryside?: number[][]
   params: WorldParams
   island: IslandParams
   grid: Grid
@@ -546,10 +548,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const forestRings = areas.map((a) => a.pts)
   const topH = cur.heights.reduce((a, b) => Math.max(a, b), 0)
   const camp: CampaignResult = { fields: [], hedges: [], shapes: [] }
-  const seen = new Set<string>(), laid: Feature<Polygon>[] = []
+  const seen = new Set<string>(), laid: Feature<Polygon>[] = [], countryside: number[][] = []
   sites.forEach((s, k) => {
-    const R = SITE_RADIUS[s.kind], ring = R * (s.kind === 'town' ? 2.6 : 3.2), zone: number[] = []
-    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; zone.push(s.x + Math.cos(a) * ring, s.z + Math.sin(a) * ring) }
+    const R = SITE_RADIUS[s.kind], ring = R * (s.kind === 'town' ? 2.6 : 2.4) + 260
     const ok = (x: number, z: number) => {
       if (isLakeOrSea(x, z) || Math.hypot(x - s.x, z - s.z) < R * 1.05) return false
       if (discs.some((d) => Math.hypot(x - d.x, z - d.z) < d.r + 20)) return false
@@ -558,30 +559,32 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       if (Math.hypot(gx, gz) > 0.15 || hAt(x, z) > topH * 0.6) return false
       return !forestRings.some((p) => pointInPoly(p, x, z))
     }
-    const r = generateCampaign({ zone, fieldSize: s.kind === 'hamlet' ? 110 : 150, jitter: 0.5, angle: (subSeed(seed, 'field' + k) % 90), hedgeChance: 0.95, minHedge: 12, seed: subSeed(seed, 'fields' + k), isLand: ok, prefix: `FIELD_${k + 1}_` })
-    // cut the plots by the roads (+3 m verge), the houses (+14 m yard) and the plots already laid:
-    // roads then run along a plot border (where the hedge goes), never across a field (zonefill.ts)
+    // the countryside polygon follows the open farmable land around the site (like a zone drawn by hand),
+    // then exactly the Zone tool's "Champs" pipeline fills it (zonefill.ts fillFieldZone)
+    const zs = countrysideZones(s.x, s.z, R * 1.1, ring, ok)
+    if (!zs.length) return
+    countryside.push(...zs)
     const near = (x: number, z: number) => Math.hypot(x - s.x, z - s.z) < ring + 60
     const obst = [...roadObstacles(allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) })), 3, near), ...settlement.placed.filter((b) => near(b.x, b.z)).map((b) => pointObstacle(b.x, b.z, 14))]
-    const kept = clipPlots(r.fields, { obstacles: obst, laid, ok })
-    camp.fields.push(...kept)
-    let hs = subSeed(seed, 'hedges' + k) || 1
-    const rnd = () => ((hs = (hs * 16807) % 2147483647) / 2147483647)
-    for (const h of plotHedges(kept, { seen, rnd, ok })) {
-      camp.hedges.push(h)
-      camp.shapes.push({ id: `FIELD_${k + 1}_Hedge_${camp.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
-    }
-    // groves at some plot corners + dirt tracks linking the plots to the nearest road (Tanin AgriFieldGenerator)
-    plotGroves(kept, { rnd, ok }).forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${k + 1}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
-    for (const [j, pts] of plotTracks(kept, allRoads.map((rd) => rd.pts), { ok }).entries()) {
-      const tr: Road = { id: `ROAD_FIELD_${k + 1}_${j + 1}`, type: 'dirt', pts, auto: true }
-      roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too
-    }
+    zs.forEach((zone, zi) => {
+      const id = zi ? `${k + 1}_${zi + 1}` : `${k + 1}`
+      const r = fillFieldZone({ zone, seed: subSeed(seed, 'fields' + k, zi), prefix: `FIELD_${id}_`, angle: subSeed(seed, 'field' + k) % 90, ok, obstacles: obst, laid, seen, roads: allRoads.map((rd) => rd.pts), hedgeSeed: subSeed(seed, 'hedges' + k, zi) })
+      camp.fields.push(...r.fields)
+      for (const h of r.hedges) {
+        camp.hedges.push(h)
+        camp.shapes.push({ id: `FIELD_${id}_Hedge_${camp.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
+      }
+      r.groves.forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${id}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
+      for (const [j, pts] of r.tracks.entries()) {
+        const tr: Road = { id: `ROAD_FIELD_${id}_${j + 1}`, type: 'dirt', pts, auto: true }
+        roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too
+      }
+    })
   })
   // 11. surfaces (5 per block at most)
   await step('surfaces')
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, refusedGaps: [], heights: cur.heights, grid: g })
-  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp }), ...(bridgesOut.length && { bridges: bridgesOut }) }
+  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }) }
 }

@@ -14,10 +14,11 @@ import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWo
 import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
-import { generateCampaign, type CampaignResult } from './modules/campaign'
+import { type CampaignResult } from './modules/campaign'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
-import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, flatToPoly, plotGroves, plotHedges, plotTracks, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
+import { makeProdForest, type ProdLog } from './modules/prodforest'
+import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fillFieldZone, flatToPoly, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
@@ -36,7 +37,7 @@ let existing: Existing = { objects: [], shapes: [] }
 interface Removed { f: 'ROAD_' | 'WATER_' | 'ANY'; x: number; z: number }
 let removed: Removed[] = []
 /** forests and field areas brought from OpenStreetMap (realWorld.ts): forests are sent as forest generators */
-interface MapArea { id: string; kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; tall?: 'low' | 'mid' | 'high'; pts: number[] }
+interface MapArea { id: string; kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; tall?: 'low' | 'mid' | 'high'; pts: number[]; stage?: 'mature' | 'juvenile' | 'thinned' | 'clearcut'; logs?: ProdLog[] } // stage/logs: production forest (prodforest.ts)
 let areas: MapArea[] = []
 /** land cover per terrain vertex from ESA WorldCover (realWorld.ts), painted under the areas */
 let landCover: { cols: number; data: Uint8Array } | null = null
@@ -93,7 +94,7 @@ import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
-import { BIOMES, biome, type BiomeId } from './data/biomes'
+import { BIOMES, PROPS, biome, type BiomeId } from './data/biomes'
 import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
@@ -604,7 +605,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="form">
         <label>${t('lbl.zoneType')} <select id="zoneType">${ZONE_FILL_TYPES.map((k) => `<option value="${k}">${t(('zt.' + k) as K)}</option>`).join('')}</select></label>
         <label id="zoneLeafRow" hidden>${t('lbl.zoneLeaf')} <select id="zoneLeaf"><option value="mixed">${t('leaf.mixed')}</option><option value="needle">${t('leaf.needle')}</option><option value="broad">${t('leaf.broad')}</option></select></label>
-        <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="20"></label>
+        <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="8"></label>
         <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
       ${hint('hint.zoneType')}
@@ -923,6 +924,7 @@ function generate() {
   const n = ++zoneRuns
   if (type === 'fields') return zoneFields(zone, n)
   if (type === 'forest') return zoneForest(zone, n)
+  if (type === 'production') return zoneProduction(zone, n)
   if (!island) return void (logEl.textContent = t('log.genFirst'))
   if (type === 'industrial') return zoneIndustrial(zone)
   if (type === 'scattered') return zoneScattered(zone, n)
@@ -939,13 +941,10 @@ function zoneFields(zone: number[], n: number) {
   const tr = terrain
   const ok = (x: number, z: number) => (!tr || (isLand(tr, x, z) && farmable(tr, x, z))) && pointInPoly(zone, x, z) // fields outrank forests: those in the zone are cut afterwards
   const prefix = `${$<HTMLInputElement>('prefix').value || 'CAMP'}_Z${n}_`
-  const raw = generateCampaign({ zone, fieldSize: num('fieldSize'), jitter: num('jitter'), angle: num('angle'), hedgeChance: num('hedgeChance'), minHedge: num('minHedge'), seed: num('seed') + n, prefix, isLand: ok })
   const laid = (result?.fields ?? []).map((f) => flatToPoly(f.slice(0, -1).flat())).filter((p): p is Poly => !!p)
-  const kept = clipPlots(raw.fields, { obstacles: zoneObstacles('fields'), laid, zone: flatToPoly(zone), ok, minArea: Math.min(2500, num('fieldSize') ** 2 / 4) })
-  let hs = (num('seed') * 31 + n) || 1
-  const rnd = () => ((hs = (hs * 16807) % 2147483647) / 2147483647)
-  // hedges on the plot borders: roads cut the plots, so the borders along a road carry one too
-  const hedges = plotHedges(kept, { rnd, ok: (x, z) => !tr || isLand(tr, x, z), keep: Math.max(0.2, Math.min(1, num('hedgeChance') + 0.3)), minLen: num('minHedge') })
+  const landOk = (x: number, z: number) => !tr || isLand(tr, x, z)
+  // same pipeline as the random world's countryside (zonefill.ts fillFieldZone)
+  const { fields: kept, hedges, groves, tracks } = fillFieldZone({ zone, seed: num('seed') + n, prefix, fieldSize: num('fieldSize'), jitter: num('jitter'), angle: num('angle'), hedgeChance: num('hedgeChance'), minHedge: num('minHedge'), ok, landOk, obstacles: zoneObstacles('fields'), laid, roads: roads.map((rd) => rd.pts), hedgeSeed: (num('seed') * 31 + n) || 1 })
   result ??= { fields: [], hedges: [], shapes: [] }
   result.fields.push(...kept)
   for (const h of hedges) {
@@ -953,9 +952,7 @@ function zoneFields(zone: number[], n: number) {
     result.shapes.push({ id: `${prefix}Hedge_${result.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
   }
   // groves at some plot corners + dirt tracks from the plots to the nearest road (Tanin AgriFieldGenerator)
-  const landOk = (x: number, z: number) => !tr || isLand(tr, x, z)
-  plotGroves(kept, { rnd, ok: landOk }).forEach((pts, j) => areas.push({ id: `FOREST_GROVE_Z${n}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
-  const tracks = roads.length ? plotTracks(kept, roads.map((rd) => rd.pts), { ok: landOk }) : []
+  groves.forEach((pts, j) => areas.push({ id: `FOREST_GROVE_Z${n}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
   tracks.forEach((pts, j) => roads.push({ id: `ROAD_FIELD_Z${n}_${j + 1}`, type: 'dirt', pts }))
   if (tracks.length) roadInfo()
   finishZone('fields', zone, t('log.fieldsDone', { fields: kept.length, hedges: hedges.length }))
@@ -970,14 +967,45 @@ function zoneForest(zone: number[], n: number) {
   areas = [...areas.filter((a) => a.kind !== 'forest'), ...forests.map((a) => { let id = a.id; for (let k = 2; seen.has(id); k++) id = `${a.id}_${k}`; seen.add(id); return { ...a, id } })]
   finishZone('forest', zone, parts.length ? t('log.forestGen', { n: parts.length }) : t('err.forestGenNone'))
 }
+/** production forest: straight dirt tracks (fishbone), compartments with a stage each, felled logs along the tracks.
+ *  It replaces the woods already inside the zone; clear-cuts keep a stump-free open area (no forest shape). */
+function zoneProduction(zone: number[], n: number) {
+  const pf = makeProdForest(zone, { seed: num('seed') * 7 + n, roads: [...roads, ...existingRoads()].map((r) => r.pts), ground: terrain ? groundAt : undefined })
+  pf.tracks.forEach((pts, j) => roads.push({ id: `ROAD_PROD_Z${n}_${j + 1}`, type: 'dirt', pts }))
+  if (pf.tracks.length) roadInfo()
+  const zp = flatToPoly(zone)
+  if (zp) areas = areas.flatMap((a) => a.kind !== 'forest' || a.id.startsWith(`FOREST_PROD_Z${n}_`) ? [a] : cutRing(a.pts, [zp]).map((pts, k) => ({ ...a, id: k ? `${a.id}_${k}` : a.id, pts })))
+  const ob = zoneObstacles('production'), leaf = zoneLeaf()
+  let made = 0, first: MapArea | null = null
+  pf.compartments.forEach((c, j) => {
+    if (c.stage === 'clearcut') return
+    for (const [k, pts] of cutRing(c.pts, ob).entries()) {
+      const a: MapArea = { id: `FOREST_PROD_Z${n}_${j + 1}${k ? '_' + k : ''}`, kind: 'forest', leaf, tall: c.stage === 'juvenile' ? 'low' : c.stage === 'thinned' ? 'mid' : 'high', stage: c.stage, pts }
+      areas.push(a); made++; first ??= a
+    }
+  })
+  if (first) (first as MapArea).logs = pf.logs
+  const cc = pf.compartments.filter((c) => c.stage === 'clearcut').length
+  finishZone('production', zone, made ? t('log.prodForest', { n: pf.compartments.length, t: pf.tracks.length, c: cc, l: pf.logs.length }) : t('err.forestGenNone'))
+}
+/** felled-log piles of the production forests, as vanilla WoodLog props (3 logs side by side) */
+function prodLogEntities(): ProjectEntity[] {
+  const out: ProjectEntity[] = []
+  for (const a of areas) (a.logs ?? []).forEach((l, i) => {
+    const r = (l.yaw * Math.PI) / 180, px = Math.cos(r), pz = -Math.sin(r)
+    for (let k = -1; k <= 1; k++) out.push({ id: `${a.id}_LOG_${i + 1}_${k + 2}`, prefab: k ? PROPS.woodLogA : PROPS.woodLogB, x: Math.round((l.x + px * k * 0.9) * 100) / 100, z: Math.round((l.z + pz * k * 0.9) * 100) / 100, yaw: l.yaw })
+  })
+  return out
+}
 function zoneIndustrial(zone: number[]) {
   if (!island) return
   const houses = settled.map((b) => pointObstacle(b.x, b.z, 10))
   // the zone minus water and houses (habitation outranks industry): the largest piece is laid out
   const piece = cutRing(zone, [...zoneObstacles('industrial'), ...houses]).sort((a, b) => b.length - a.length)[0]
   if (!piece) return void (logEl.textContent = t('err.zoneEmpty'))
-  const sl = slopeShare(groundAt, piece, 0.06)
-  if (sl > 0.5) return void (logEl.textContent = t('err.zoneSteep', { p: Math.round(sl * 100), max: 6 }))
+  const sl = slopeShare(groundAt, piece, 0.12) // moderate slopes are levelled (flatten pad); only a mostly steep zone is refused
+  if (sl > 0.5) return void (logEl.textContent = t('err.zoneSteep', { p: Math.round(sl * 100), max: 12 }))
+  const slw = slopeShare(groundAt, piece, 0.06) // over 6 %: levelled, the user is warned
   let cx = 0, cz = 0
   for (let i = 0; i < piece.length; i += 2) { cx += piece[i]; cz += piece[i + 1] }
   cx /= piece.length / 2; cz /= piece.length / 2
@@ -985,7 +1013,7 @@ function zoneIndustrial(zone: number[]) {
   const zn = makeIndustrial(island.heights, island.grid, [...roads, ...existingRoads()], { id, type: $<HTMLSelectElement>('indType').value as IndustrialType, x: cx, z: cz, seed: num('indSeed') + zones.length, polygon: piece })
   if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.zoneEmpty'))
   zones.push(zn)
-  finishZone('industrial', zone, t('log.zoneMade', { name: t('zone.name.industrial', { n: id.replace(/\D+/g, '') }), b: zn.entities.length }) + (sl > 0.2 ? ' · ' + t('warn.zoneSlope', { p: Math.round(sl * 100) }) : ''))
+  finishZone('industrial', zone, t('log.zoneMade', { name: t('zone.name.industrial', { n: id.replace(/\D+/g, '') }), b: zn.entities.length }) + (slw > 0.2 ? ' · ' + t('warn.zoneSlope', { p: Math.round(slw * 100) }) : ''))
 }
 function zoneHabitation(zone: number[], n: number) {
   if (!island) return
@@ -1019,7 +1047,7 @@ function zoneScattered(zone: number[], n: number) {
   while (settled.some((b) => b.site === sid)) sid += 'b'
   const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
-  const res = scatterBuildings(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, haPerGroup: Math.max(2, num('zoneHa') || 20), maxSlope: ZONE_MAX_SLOPE.scattered, blocked, prefix: sid }, settled)
+  const res = scatterBuildings(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, haPerGroup: Math.max(2, num('zoneHa') || 8), maxSlope: ZONE_MAX_SLOPE.scattered, blocked, prefix: sid }, settled)
   const made = res.placed.length - settled.length
   settled = res.placed
   setLanes = [...setLanes, ...res.lanes]
@@ -3372,13 +3400,14 @@ function drawAreas() {
     ctx.beginPath()
     for (let k = 0; k < a.pts.length; k += 2) { const [sx, sy] = toScreen(a.pts[k], a.pts[k + 1]); if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
     ctx.closePath()
-    ctx.fillStyle = a.kind === 'forest' ? 'rgba(40,110,40,0.38)' : 'rgba(200,180,80,0.18)'
+    ctx.fillStyle = a.kind === 'forest' ? (a.stage === 'juvenile' ? 'rgba(110,170,60,0.4)' : a.stage === 'thinned' ? 'rgba(60,130,60,0.22)' : 'rgba(40,110,40,0.38)') : 'rgba(200,180,80,0.18)'
     ctx.fill()
     ctx.setLineDash(a.kind === 'forest' ? [] : [5, 4])
     ctx.strokeStyle = a.kind === 'forest' ? 'rgba(70,160,70,0.9)' : 'rgba(220,200,110,0.8)'
     ctx.lineWidth = 1.2
     ctx.stroke()
     ctx.setLineDash([])
+    if (a.logs?.length) { ctx.fillStyle = 'rgba(130,80,35,0.95)'; for (const l of a.logs) { const [sx, sy] = toScreen(l.x, l.z); ctx.fillRect(sx - 2, sy - 2, 4, 4) } }
   }
 }
 function hitArea(x: number, z: number): MapArea | null {
@@ -3422,7 +3451,7 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   run(t('run.l.forests'), async () => {
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
-    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a) })) })
+    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a) })), entities: prodLogEntities() })
   }),
 )
 // everything at once (roads + water, forests, buildings): one project, the log says what went
@@ -3432,7 +3461,7 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: forestGenOf(a) }))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
-    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities)]
+    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities()]
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
@@ -4108,7 +4137,7 @@ function clearZones(kinds: ZoneKind[]) {
   zoneInfo()
   refreshSteps()
 }
-$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered'; $('zoneLeafRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'forest' })
+$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered'; $('zoneLeafRow').hidden = !['forest', 'production'].includes($<HTMLSelectElement>('zoneType').value) })
 $<HTMLButtonElement>('indClear').addEventListener('click', () => clearZones(['industrial']))
 $<HTMLButtonElement>('milClear').addEventListener('click', () => clearZones(['military', 'airfield']))
 $<HTMLButtonElement>('zoneSend').addEventListener('click', () =>
@@ -4388,8 +4417,10 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
   })
   forests.forEach((a, n) => {
     const [x0, z0, x1, z1] = bb[n], p = a.pts
-    for (let z = z0 + sp / 2; z < z1; z += sp) for (let x = x0 + sp / 2; x < x1; x += sp) {
-      const px = x + (rnd() - 0.5) * sp * 0.9, pz = z + (rnd() - 0.5) * sp * 0.9
+    const young = a.stage === 'juvenile', st = young ? sp * 0.6 : sp // production forest: young plantation = dense, short
+    for (let z = z0 + st / 2; z < z1; z += st) for (let x = x0 + st / 2; x < x1; x += st) {
+      const px = x + (rnd() - 0.5) * st * 0.9, pz = z + (rnd() - 0.5) * st * 0.9
+      if (a.stage === 'thinned' && rnd() < 0.55) continue
       let inside = false, d2 = Infinity
       for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
         if ((p[i + 1] > pz) !== (p[j + 1] > pz) && px < ((p[j] - p[i]) * (pz - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) inside = !inside
@@ -4398,6 +4429,8 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
         d2 = Math.min(d2, qx * qx + qz * qz)
       }
       if (!inside || inLake(px, pz) || inField(px, pz)) continue
+      if (young) { out.push(px, pz, 0.25 + rnd() * 0.3); kind.push(a.leaf === 'broad' ? 0 : 1); continue } // 3-8 m saplings
+      if (a.stage) { out.push(px, pz, a.stage === 'thinned' ? 1 + rnd() * 0.3 : 0.9 + rnd() * 0.35); kind.push(a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < 0.85) ? 1 : 0); continue } // managed: even stand, no clearings
       const d = Math.sqrt(d2), nz = noise(px, pz), r = rnd()
       // lace edge: trees thin out over the first ~25 m, clearings where the noise is low
       if (r > Math.min(1, 0.3 + d / 30) || nz < 0.4) { // groves and bands: ~40 % of the noise field is open ground
@@ -4488,9 +4521,10 @@ btn3d.addEventListener('click', () => void (async () => {
     ]
     const lakes = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts)
     const trees = forestTrees()
+    const logBoxes = areas.flatMap((a) => (a.logs ?? []).map((l) => { const y = (l.yaw * Math.PI) / 180; return { cx: l.x, cz: l.z, w: 6, d: 3, h: 1.4, yaw: Math.atan2(Math.cos(y), Math.sin(y)) } }))
     const bridgesBoxes = worldBridges.map((b) => ({ cx: b.x, cz: b.z, w: 8, d: 16, h: 1.2, yaw: (-b.yaw * Math.PI) / 180 }))
     v3d = await mod.open3d(map.parentElement!, {
-      hm, sea: 0, buildings, trees: trees.pts, treeNeedle: trees.needle, walls: wallLines(), treeTint: treeTint(currentBiome), lakes,
+      hm, sea: 0, buildings, props: logBoxes, trees: trees.pts, treeNeedle: trees.needle, walls: wallLines(), treeTint: treeTint(currentBiome), lakes,
       bridges: bridgesBoxes, bridgeY: worldBridges.map((b) => (b.ycm !== undefined ? b.ycm / 100 : heightAt(hm, b.x, b.z))),
       target: [view.x, view.z], span: map.width * view.mpp,
     }, {

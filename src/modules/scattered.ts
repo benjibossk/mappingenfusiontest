@@ -15,7 +15,7 @@ import { nearestOn, polyGrade } from './villageStreets'
 
 export interface ScatteredOptions {
   seed: number
-  haPerGroup?: number // one group per N hectares (default 20)
+  haPerGroup?: number // one group per N hectares (default 8)
   minSpacing?: number // between two groups (m, default 150)
   maxSlope?: number // ground slope at the group (default 0.15)
   blocked?: number[][] // [x0, z0, x1, z1] boxes to avoid (existing objects, industrial zones)
@@ -29,7 +29,7 @@ export interface ScatteredResult {
   groups: number
 }
 
-const ROAD_NEAR = 40, ROAD_FAR = 150, TRACK_MAX = 400
+const ROAD_NEAR = 40, ROAD_FAR = 150, TRACK_MAX = 800
 const DROP: Partial<Record<BuildingCat, number>> = { farm: 1.5, shed: 0.8, annex: 0.8 }
 
 export function ringArea(r: number[]) {
@@ -48,7 +48,7 @@ export function scatterBuildings(polygon: number[], roads: Road[], waters: Water
   const placed = keep.slice()
   const res: ScatteredResult = { placed, lanes: [], yards: [], groups: 0 }
   const pre = o.prefix ?? 'SC'
-  const target = Math.max(1, Math.round(ringArea(polygon) / ((o.haPerGroup ?? 20) * 10000)))
+  const target = Math.max(1, Math.round(ringArea(polygon) / ((o.haPerGroup ?? 8) * 10000)))
 
   const wet = (x: number, z: number, m: number) => {
     if (at(x, z) < 0.5) return true
