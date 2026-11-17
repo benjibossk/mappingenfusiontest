@@ -77,7 +77,7 @@ const toWb = async (p: Project) => {
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
-  const msg = await sendToWorkbench({ ...p, remove: removed.filter(go).flatMap((r) => [r.x, r.z]) })
+  const msg = await sendToWorkbench({ ...p, ffBiome: ffBiomeValue(currentBiome), remove: removed.filter(go).flatMap((r) => [r.x, r.z]) })
   removed = removed.filter((r) => !go(r))
   autosave()
   return (lostPts > 0 || crumbs ? t('log.cleaned', { pts: lostPts, crumbs }) + '\n' : '') + msg
@@ -85,6 +85,7 @@ const toWb = async (p: Project) => {
 import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
 import { generateForests } from './modules/forestgen'
+import { ffBiomeName, ffBiomeValue } from './ffbiome'
 import { worldToIsland } from './modules/importWorld'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
@@ -659,6 +660,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
       <fieldset class="test">
         <legend>${t('legend.check')}</legend>
+        <p id="ffBiomeInfo" class="hint"></p>
         ${hint('hint.check')}
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <ul id="checkList" class="issues"></ul>
@@ -2685,6 +2687,8 @@ document.querySelectorAll<HTMLSelectElement>('select[data-biome]').forEach((sel)
 setBiome(currentBiome, false)
 $<HTMLButtonElement>('libBtn').addEventListener('click', () => window.open('library.html', '_blank'))
 $<HTMLButtonElement>('pSave').addEventListener('click', async () => {
+  const ffEl = document.getElementById('ffBiomeInfo')
+  if (ffEl) ffEl.textContent = t('wb.ffBiome', { name: ffBiomeName(id), value: ffBiomeValue(id) })
   const p = islandProject()
   if (!p) return void (logEl.textContent = t('log.genFirst'))
   const a = document.createElement('a')

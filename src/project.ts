@@ -58,6 +58,7 @@ export interface Project {
   shapes: ProjectShape[]
   entities?: ProjectEntity[]
   remove?: number[] // X/Z origins of objects already in the world to delete (taken over or removed in the map)
+  ffBiome?: number // Freedom Fighters JWK_EWorldBiome flag set on JWK_WorldEntity.m_iBiome (src/ffbiome.ts)
 }
 
 export const GENERATORS = {

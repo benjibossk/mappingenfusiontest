@@ -52,6 +52,7 @@ class MG_Project : JsonApiStruct
 	ref array<ref MG_ProjectShape> shapes = {};
 	ref array<ref MG_ProjectEntity> entities = {};
 	ref array<float> remove = {};	//!< X/Z pairs: origins of objects already in the world to delete (taken over or removed in the web map)
+	int ffBiome;	//!< Freedom Fighters JWK_EWorldBiome flag (1 woodland, 2 winter, 4 desert, 8 jungle), 0 = leave as is
 
 	void MG_Project()
 	{
@@ -59,6 +60,7 @@ class MG_Project : JsonApiStruct
 		RegV("shapes");
 		RegV("entities");
 		RegV("remove");
+		RegV("ffBiome");
 	}
 }
 
@@ -139,6 +141,23 @@ class MG_ProjectApplier
 			f.WriteLine(l);
 		f.Close();
 		MG_LabelsPlugin.Refresh();
+	}
+
+	//! Freedom Fighters: sets m_iBiome on the JWK_WorldEntity of the world (if FF is in the world)
+	static string SetFFBiome(WorldEditorAPI api, int value)
+	{
+		if (value <= 0)
+			return "";
+		for (int i = api.GetEditorEntityCount() - 1; i >= 0; i--)
+		{
+			IEntitySource src = api.GetEditorEntity(i);
+			if (!src || !src.GetClassName().StartsWith("JWK_World"))
+				continue;
+			if (api.SetVariableValue(src, null, "m_iBiome", value.ToString()))
+				return ", FF biome " + value.ToString();
+			return ", FF biome not set";
+		}
+		return ", no JWK_WorldEntity (FF biome skipped)";
 	}
 
 	static string Apply(string projectFile)
@@ -355,10 +374,11 @@ class MG_ProjectApplier
 
 		if (rep)
 			rep.Close();
+		string ff = SetFFBiome(api, project.ffBiome);
 		if (ownsAction)
 			api.EndEntityAction();
 
-		return string.Format("project v%1: %7 old objects removed, %2/%3 shapes, %4/%5 objects from %6", project.version, created, project.shapes.Count(), placed, project.entities.Count(), projectFile, old.Count());
+		return string.Format("project v%1: %7 old objects removed, %2/%3 shapes, %4/%5 objects from %6", project.version, created, project.shapes.Count(), placed, project.entities.Count(), projectFile, old.Count()) + ff;
 	}
 }
 

@@ -163,7 +163,7 @@ const server = createServer(async (req, res) => {
       parts.push(cur);
       for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (/^mapgen.d+.json$/.test(f)) rmSync(join(PROFILE_DIR, "MapGen", f));
       parts.forEach((p, k) => {
-        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [] } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
+        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0 } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
         writeFileSync(k === 0 ? PROJECT_FILE : join(PROFILE_DIR, "MapGen", `mapgen.${k}.json`), JSON.stringify(body), "utf-8");
       });
       console.log(`[apply] ${project.shapes.length} shapes, ${(project.entities ?? []).length} objects in ${parts.length} file(s)`);
