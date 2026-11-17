@@ -20,7 +20,8 @@
 
 import type { Grid } from './island'
 import type { ProjectEntity, ProjectShape } from '../project'
-import { buildPowerCost, routePowerLine, POWER_STYLE, type KeepOut, type PowerKind, type PowerLine, type PowerStyle } from './power'
+import { attachPoint, smoothPath } from './powersmooth'
+import { buildPowerCost, placePoles, routePowerLine, POWER_STYLE, type KeepOut, type PowerKind, type PowerLine, type PowerStyle } from './power'
 
 export type StationKind = 'plant' | 'ehv' | 'hv' | 'mvlv' | 'ind'
 
@@ -180,12 +181,6 @@ function placeStation(ctx: PlaceCtx, cx: number, cz: number, rings: number[], di
   return best
 }
 
-/** point on the station's edge facing (tx, tz): where the line attaches (busbar / portal side) */
-function port(st: Station, tx: number, tz: number): [number, number] {
-  const a = Math.atan2(tx - st.x, tz - st.z), r = Math.max(st.w, st.d) / 2 + 4
-  return [st.x + Math.sin(a) * r, st.z + Math.cos(a) * r]
-}
-
 /** Prim on a complete graph, returns edges [i, j] */
 function mst(n: number, w: (i: number, j: number) => number): [number, number][] {
   if (n < 2) return []
@@ -275,12 +270,32 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
   let lid = 0
   const route = (kind: PowerKind, a: Station, b: Station | [number, number], tag: string): GridLine | null => {
     const bx = Array.isArray(b) ? b[0] : b.x, bz = Array.isArray(b) ? b[1] : b.z
-    const [ax, az] = kind === 'ehv' && a.byGenerator ? [a.x, a.z] : port(a, bx, bz)
-    const [ex, ez] = Array.isArray(b) ? b : kind === 'ehv' && b.byGenerator ? [b.x, b.z] : port(b, ax, az)
     const spacing = POWER_STYLE[style][kind].spacing
-    const l = routePowerLine(h, g, ax, az, ex, ez, { kind, spacing, cost: cost(kind), isWater: input.isWater })
+    // ends: the station's real cable slots (powersmooth.ts STATION_ATTACH) + a lead point out of the yard;
+    // EHV ends are the generator's own stations (centre)
+    const lead = Math.max(12, Math.min(30, spacing * 0.4))
+    const A = kind === 'ehv' && a.byGenerator ? { at: [a.x, a.z] as [number, number], lead: null } : attachPoint(a, bx, bz, lead)
+    const B = Array.isArray(b) ? { at: b, lead: null } : kind === 'ehv' && b.byGenerator ? { at: [b.x, b.z] as [number, number], lead: null } : attachPoint(b, (A.lead ?? A.at)[0], (A.lead ?? A.at)[1], lead)
+    const [ax, az] = A.lead ?? A.at, [ex, ez] = B.lead ?? B.at
+    const cf = cost(kind)
+    const l = routePowerLine(h, g, ax, az, ex, ez, { kind, spacing, cost: cf, isWater: input.isWater })
     if (!l) { failed++; return null }
-    const it: GridLine = { ...l, style, id: `POWER_${kind.toUpperCase()}_${++lid}`, from: a.id, to: Array.isArray(b) ? tag : b.id }
+    // smoothing: no span under 45 % of the pole spacing, no near-straight kinks (the A* zigzag)
+    const ok = (x0: number, z0: number, x1: number, z1: number) => {
+      const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / (g.step * 0.5))
+      for (let k = 1; k < n; k++) {
+        const x = x0 + ((x1 - x0) * k) / n, z = z0 + ((z1 - z0) * k) / n
+        const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
+        if (cf[r * g.cols + c] === Infinity) return false
+      }
+      return true
+    }
+    let path = smoothPath(l.path, spacing * 0.45, ok)
+    if (A.lead) path = [...A.at, ...path]
+    if (B.lead) path = [...path, ...B.at]
+    let length = 0
+    for (let i = 0; i + 3 < path.length; i += 2) length += Math.hypot(path[i + 2] - path[i], path[i + 3] - path[i + 1])
+    const it: GridLine = { ...l, path, poles: placePoles(path, spacing), length, style, id: `POWER_${kind.toUpperCase()}_${++lid}`, from: a.id, to: Array.isArray(b) ? tag : b.id }
     lines.push(it)
     return it
   }

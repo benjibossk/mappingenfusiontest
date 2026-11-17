@@ -9,6 +9,8 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [Unreleased]
 
 ### Added
+- Random world power step: the hierarchical planner (src/modules/worldpower.ts -> powergrid.ts) with stations and access tracks; lines end on the stations' real cable slots read from the vanilla prefabs (src/modules/powersmooth.ts), poles no longer zigzag (min span 45 % of the spacing, near-straight kinks removed).
+- Fix, random world: some 8 km seeds produced no places at all — polyclip threw "Unable to complete output ring" in the campaign field clip and the whole world failed; the clip now retries snapped and drops only that cell.
 - Forests: progressive edges in the Workbench export (dense core + 1-2 bands of vanilla brushland / pioneer generators, obstacle avoidance, no edge between touching forests).
 - **Off-map terrain ring** (Relief tab, docs/OUTSIDE_TERRAIN.md): `src/modules/outside.ts` builds a 64 m ring (2-8 km wide) around the map from the edge heights, smoothed along the edge with distance, faded to the sea or a low plain with noise; exact seam, coast kept under water; 3D preview; bridge `POST /outside` writes `profile/MapGen/outside.txt` as 33x33 OTC chunks for `MG_ApplyOutside` (repo copy, not compiled yet).
 - Replayable pipeline (src/modules/replay.ts): world generations recorded in the project file (step, settings, seed, timings, output hashes); top-bar "Replay all" (deterministic, hash-checked) and "Relief in one click" with per-stage timings.

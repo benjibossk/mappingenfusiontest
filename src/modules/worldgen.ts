@@ -26,7 +26,9 @@ import { addProdForests, lotFences, makeBlocker, type FenceLot } from './worldex
 import { generateTown } from './town'
 import { makeSiteZone } from './sitezones'
 import type { Placed, Square } from './settlements'
-import { routePowerLine, type PowerKind, type PowerLine } from './power'
+import { routePowerLine, type PowerLine } from './power'
+import { worldPowerGrid } from './worldpower'
+import type { Station } from './powergrid'
 import type { Feature, Polygon } from 'geojson'
 import { generateForests } from './forestgen'
 import type { CampaignResult } from './campaign'
@@ -76,6 +78,9 @@ export interface WorldResult {
   zones: ZoneItem[]
   settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[]; tried?: number; housed?: number; parcels?: VillageParcel[]; fences?: VillageParcel[] }
   power: (PowerLine & { id: string })[]
+  /** transformer stations / plants and their access tracks (powergrid.ts), with p.power */
+  powerStations?: Station[]
+  powerAccess?: number[][]
   areas: WorldArea[]
   surfaces: SurfaceGrid[]
   issues: Issue[]
@@ -561,38 +566,10 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const fp = lotFences(builtLots, { seed: subSeed(seed, 'fences'), kindOf: (id) => kinds.get(id), blocked })
     if (fp.length) settlement.fences = fp
   }
-  // 9. power lines: HV tree between towns and villages, LV to the hamlets along the roads
+  // 9. power grid: hierarchical planner (worldpower.ts -> powergrid.ts), stations + access tracks, pads flattened
   await step('power')
-  const power: (PowerLine & { id: string })[] = []
-  if (p.power) {
-    const h = cur.heights
-    const keepOut = (except: Site[]) => sites.filter((q) => !except.includes(q)).map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] * 0.6 })).concat(zones.map(zoneDisc))
-    const pid = (kind: PowerKind) => { for (let n = 1; ; n++) if (!power.some((l) => l.id === `POWER_${kind.toUpperCase()}_${n}`)) return `POWER_${kind.toUpperCase()}_${n}` }
-    const hubs = sites.filter((s) => s.kind !== 'hamlet')
-    if (hubs.length >= 2) {
-      const inT = [hubs[0]], out = hubs.slice(1)
-      while (out.length) {
-        let bi = 0, bj = 0, bd = Infinity
-        inT.forEach((a, i) => out.forEach((b, j) => { const d = Math.hypot(a.x - b.x, a.z - b.z); if (d < bd) { bd = d; bi = i; bj = j } }))
-        const a = inT[bi], b = out.splice(bj, 1)[0]
-        inT.push(b)
-        const l = routePowerWindow(h, g, a.x, a.z, b.x, b.z, { kind: 'hv', isWater: isLakeOrSea, keepOut: keepOut([a, b]) })
-        if (l) power.push({ ...l, id: pid('hv') })
-      }
-    }
-    const roadPts = allRoads.map((r) => r.pts)
-    for (const v of sites) {
-      if (hubs.length >= 2 && hubs.includes(v)) continue
-      let bx = NaN, bz = NaN, bd = Infinity
-      for (const l of power) for (let i = 0; i + 1 < l.poles.length; i += 2) {
-        const d = Math.hypot(l.poles[i] - v.x, l.poles[i + 1] - v.z)
-        if (d < bd) { bd = d; bx = l.poles[i]; bz = l.poles[i + 1] }
-      }
-      if (!Number.isFinite(bx) || bd > WORLD.power.lvMax || bd < SITE_RADIUS[v.kind] * 0.5) continue
-      const l = routePowerWindow(h, g, bx, bz, v.x, v.z, { kind: 'lv', isWater: isLakeOrSea, roads: roadPts, keepOut: keepOut([v]) })
-      if (l) power.push({ ...l, id: pid('lv') })
-    }
-  }
+  const pw = p.power ? worldPowerGrid(cur.heights, g, sites, zones, allRoads.map((r) => r.pts), isLakeOrSea, p.size) : null
+  const power: (PowerLine & { id: string })[] = pw?.lines ?? []
   // 10. forests (none over a zone)
   await step('forests')
   const discs = zones.map(zoneDisc)
@@ -663,5 +640,5 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, refusedGaps: [], heights: cur.heights, grid: g })
-  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
+  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
 }

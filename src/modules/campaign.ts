@@ -55,6 +55,19 @@ function pairsToRing(flat: number[]): [number, number][] {
 
 const key = (p: number[]) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`
 
+/** Voronoi cell ∩ zone. polyclip-ts can throw "Unable to complete output ring" on near-degenerate input
+ *  (a cell vertex a few nm off the zone edge): that exception killed the whole random world (no places at all
+ *  on some 8 km seeds). Retry once with the cell snapped to 1 cm, then drop that one cell. */
+export function safeIntersect(cell: number[][], zone: Feature<Polygon | MultiPolygon>): Feature<Polygon | MultiPolygon> | null {
+  const run = (c: number[][]) => turf.intersect(turf.featureCollection([turf.polygon([c]), zone])) as Feature<Polygon | MultiPolygon> | null
+  try { return run(cell) } catch { /* retry snapped */ }
+  try {
+    const s = cell.map((p) => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100])
+    s[s.length - 1] = s[0].slice()
+    return run(s)
+  } catch { return null }
+}
+
 export function generateCampaign(o: CampaignOptions): CampaignResult {
   const rand = mulberry32(o.seed)
   const land = o.isLand ?? (() => true)
@@ -83,8 +96,7 @@ export function generateCampaign(o: CampaignOptions): CampaignResult {
   for (let i = 0; i < seeds.length; i++) {
     const cell = voronoi.cellPolygon(i)
     if (!cell) continue
-    const clipped = turf.intersect(turf.featureCollection([turf.polygon([cell as number[][]]), zone])) as
-      Feature<Polygon | MultiPolygon> | null
+    const clipped = safeIntersect(cell as number[][], zone)
     if (!clipped) continue
     const polys = clipped.geometry.type === 'Polygon' ? [clipped.geometry.coordinates] : clipped.geometry.coordinates
     for (const p of polys) fields.push(p[0])

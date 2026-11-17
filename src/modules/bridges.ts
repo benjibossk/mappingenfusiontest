@@ -152,3 +152,12 @@ export function planBridge(id: string, a: [number, number], b: [number, number],
   })
   return { entities, pieces: pieces.map((p) => p.prefab), length: total, from: [cx - (ux * total) / 2, cz - (uz * total) / 2], to: [cx + (ux * total) / 2, cz + (uz * total) / 2], piers, tooHigh }
 }
+
+//! Extra routing cost of stepping onto a river cell (hydro strength 0.3..1). A narrow stream (strength below
+//! STREAM.narrow, one grid cell, < 13 m) takes the short vanilla bridge (BridgeConcrete_E_01_small for tracks,
+//! a ConcreteBridge_01 Narrow 13 m deck otherwise; vanilla has no culvert prefab): crossing it is cheap, so
+//! roads stop detouring along small streams. A real river still costs a long bridge.
+export const STREAM = { narrow: 0.5, narrowCost: 30, riverCost: 400 }
+export function riverCrossCost(strength: number): number {
+  return strength < STREAM.narrow ? STREAM.narrowCost : STREAM.riverCost
+}

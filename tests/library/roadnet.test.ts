@@ -111,8 +111,10 @@ for (const seed of [7, 21, 777]) {
       assert.ok(Math.abs(best - 18) < 2.5, `carriageways ${best.toFixed(1)} m apart`)
     }
     assert.ok(A!.median && A!.median.length > 20, 'median barrier')
-    const mid = centreLine(A!.pts, 10), k = Math.round(mid.length / 2 * 0.2) // ends: tapers + coast-bound end links
-    assert.ok(minRadius(mid.slice(k * 2, mid.length - k * 2)) > 150, 'gentle curves')
+    for (const c of [A!, B!]) { // to the very ends (tapers included): a bend the sea holds tight is trimmed off
+      const r = minRadius(centreLine(c.pts, 10))
+      assert.ok(r > 200, `seed ${seed}: ${c.id} radius ${r.toFixed(0)} m`)
+    }
     assert.ok(w.roads.some((r) => r.id.startsWith('MW_RAMP')), 'slip roads')
     for (const r of w.roads) {
       if (r.id.startsWith('MW_') || r.pts.length < 4) continue

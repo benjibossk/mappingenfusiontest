@@ -5,6 +5,8 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 ## [Non publié]
 
 ### Ajouté
+- Étape électrique du monde aléatoire : planificateur hiérarchique (src/modules/worldpower.ts -> powergrid.ts) avec postes et pistes d'accès ; les lignes aboutissent sur les vrais points d'accroche des postes lus dans les prefabs vanilla (src/modules/powersmooth.ts), plus de zigzag des poteaux (portée mini 45 % de l'espacement, coudes quasi droits supprimés).
+- Correctif, monde aléatoire : certaines graines 8 km ne créaient aucun lieu — polyclip levait « Unable to complete output ring » dans la découpe des champs et tout le monde échouait ; la découpe réessaie arrondie et n'écarte que la cellule fautive.
 - Forêts : lisières progressives dans l’export Workbench (cœur dense + 1 à 2 bandes de générateurs brushland / pionniers vanilla, évitement des obstacles, pas de lisière entre forêts qui se touchent).
 - **Anneau de terrain hors carte** (onglet Relief, docs/OUTSIDE_TERRAIN.md) : `src/modules/outside.ts` construit un anneau au pas de 64 m (2 à 8 km) autour de la carte à partir des hauteurs du bord, lissées le long du bord avec la distance, éteintes vers la mer ou une plaine basse avec du bruit ; raccord exact, côte gardée sous l’eau ; aperçu 3D ; le bridge `POST /outside` écrit `profile/MapGen/outside.txt` en chunks OTC 33x33 pour `MG_ApplyOutside` (copie repo, pas encore compilée).
 - Pipeline rejouable (src/modules/replay.ts) : générations de monde enregistrées dans le projet (étape, réglages, graine, durées, empreintes) ; boutons « Rejouer tout » (déterministe, empreintes vérifiées) et « Relief en un clic » avec la durée de chaque étape.

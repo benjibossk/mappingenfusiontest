@@ -9,6 +9,7 @@ import { carveRoads, centreLine, type Road, type RoadType } from './roads'
 import { weldRoads } from './roadgraph'
 import { rMinOf } from './roadgraph-classes'
 import { smoothRoad } from './roadgeom'
+import { riverCrossCost } from './bridges'
 
 export type SiteKind = 'town' | 'village' | 'hamlet'
 export interface Site { id: string; x: number; z: number; kind: SiteKind }
@@ -252,7 +253,7 @@ function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Ui
       w += run * (side / 0.2) ** 2 * 2
       if (h[j] < 4) w += run * 2 // keep off the shoreline
       if (turn) w += 4
-      if (river && river[j] > 0 && !(river[i] > 0)) w += 400 // crossing a river = future bridge
+      if (river && river[j] > 0 && !(river[i] > 0)) w += riverCrossCost(river[j]) // future bridge: short over a stream, long over a river
       if (onRoad[j]) w *= 0.35 // share existing roads
       const sj = j * D + d
       const nc = cost[st] + w

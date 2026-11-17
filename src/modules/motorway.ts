@@ -71,6 +71,25 @@ export function minRadius(line: number[], step = 3): number {
   return best
 }
 
+//! Where the relaxation could not open a bend (the sea or a town holds it), the motorway stops before it: the
+//! axis is cut back from the nearer end to 4 points (~80 m) short of any bend tighter than `R`; the end link
+//! (an ordinary road) then joins the network from there. A tight bend in the middle is left (rare).
+export function trimTightEnds(axis: number[], R: number, step = 3): number[] {
+  const tightAt = (a: number[], i: number) => minRadius(a.slice((i - step) * 2, (i + step + 1) * 2), step) < R
+  let a = axis
+  for (let guard = 0; guard < 20; guard++) {
+    const n = a.length / 2
+    let head = -1, tail = -1
+    for (let i = step; i + step < n && i < n * 0.35; i++) if (tightAt(a, i)) head = i // last tight point near the start
+    for (let i = n - step - 1; i >= n * 0.65 && i >= step; i--) if (tightAt(a, i)) tail = i // first tight point near the end
+    if (head < 0 && tail < 0) return a
+    const cut = head >= 0 && (tail < 0 || head < n - 1 - tail) ? a.slice((head + 4) * 2) : a.slice(0, Math.max(0, tail - 4) * 2)
+    if (cut.length < 8) return a
+    a = cut
+  }
+  return a
+}
+
 //! segment intersection: parameters (t on ab, u on cd) or null
 function hit(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): [number, number] | null {
   const rx = bx - ax, rz = bz - az, sx = dx - cx, sz = dz - cz, den = rx * sz - rz * sx
@@ -169,7 +188,7 @@ export function buildMotorway(h: number[], g: Grid, river: Float32Array | undefi
     if (wetLine(t)) break
     axis = t
   }
-  axis = axis.map(r2)
+  axis = trimTightEnds(axis, MOTORWAY.minRadius * 0.9).map(r2)
   const sA = arcLength(axis), L = sA[sA.length - 1]
   if (L < 1000) return null
   // carriageways: offset ±gap, tapered to 0 at both ends (shared end points)
@@ -212,7 +231,6 @@ export function buildMotorway(h: number[], g: Grid, river: Float32Array | undefi
   cands.sort((a, b) => rank(a) - rank(b))
   const picked: typeof cands = []
   const want = L > 6000 ? 3 : 2
-  for (const c of cands) if (picked.length < want && picked.every((p) => Math.abs(p.s - c.s) > Math.min(1200, L / (want + 1.5)))) picked.push(c)
   // a carriageway vertex near arc length s (exact shared point for the slip road)
   const vertexNear = (road: Road, s: number): [number, number] => { const i = Math.max(1, Math.min(n - 2, sA.findIndex((v) => v >= s))); return [road.pts[i * 2], road.pts[i * 2 + 1]] }
   const interchanges: { x: number; z: number }[] = []
@@ -224,6 +242,9 @@ export function buildMotorway(h: number[], g: Grid, river: Float32Array | undefi
     return { x, z, r: Math.hypot(r.pts[0] - x, r.pts[1] - z) }
   })
   const ringNear = (x: number, z: number) => rings.some((g) => Math.hypot(g.x - x, g.z - z) < g.r + 30)
+  // a half interchange whose only target sits in a roundabout would give no slip road: skip it, take the next
+  const blocked = (c: (typeof cands)[number]) => { if (c.cross) return false; const [x, z] = pointAt(axis, c.s), q = nearestOn(c.road.pts, x, z); return ringNear(q[0], q[1]) }
+  for (const c of cands) if (picked.length < want && !blocked(c) && picked.every((p) => Math.abs(p.s - c.s) > Math.min(1200, L / (want + 1.5)))) picked.push(c)
   let ramp = 0
   // slip road: quadratic Bezier leaving the carriageway along its heading, ending on the road point q
   const slip = (from: [number, number], heading: number, q: [number, number], reverse: boolean): Road => {

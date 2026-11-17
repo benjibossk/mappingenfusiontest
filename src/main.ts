@@ -4471,7 +4471,7 @@ function applyWorld(w: WorldResult) {
   sites = w.sites
   roads = w.roads
   powerLines = w.power
-  powerStations = []; powerAccess = []
+  powerStations = w.powerStations ?? []; powerAccess = w.powerAccess ?? []
   areas = w.areas.map((a) => ({ id: a.id, kind: a.kind, leaf: a.leaf, pts: a.pts, ...(a.tall && { tall: a.tall }), ...(a.stage && { stage: a.stage }), ...(a.logs && { logs: a.logs }) }))
   result = w.campaign ?? null
   settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
