@@ -10,12 +10,15 @@
 import type { Grid } from './island'
 import type { ProjectShape } from '../project'
 
-export type PowerKind = 'hv' | 'mv' | 'lv'
+export type PowerKind = 'ehv' | 'hv' | 'mv' | 'lv'
+/** Pole family: Everon-like (metal / concrete / wooden) or Soviet (Arland USSR poles). */
+export type PowerStyle = 'eden' | 'ussr'
 
 /** Native power line generators (SCR_PowerlineGeneratorEntity), GUIDs checked 2026-11 against the base
  *  game data (Prefabs/WEGenerators/Powerline/*.et) and layers referencing them. A bare path would make
  *  an empty generator, so always "{GUID}path". */
 export const POWER_GENERATORS: Record<PowerKind, string> = {
+  ehv: '{89DEA69A406297CF}Prefabs/WEGenerators/Powerline/PG_PowerLine_EHV_01.et', // m_fDistance 130, start/end pole = TransformerStation110kV_E_01_double
   hv: '{6958471456266DD6}Prefabs/WEGenerators/Powerline/PG_PowerLine_HV_02_Metal.et',
   mv: '{F9CF7B0E9B97B012}Prefabs/WEGenerators/Powerline/PG_PowerLine_HV_01_Concrete.et',
   lv: '{20E4877A07D28502}Prefabs/WEGenerators/Powerline/PG_PowerLine_01_WoodenSmall.et',
@@ -24,9 +27,27 @@ export const POWER_GENERATORS: Record<PowerKind, string> = {
 /** Span between poles (m) = the prefab's own m_fDistance (HV_02 80, HV_01 50, WoodenSmall 35), the
  *  steepest slope a pole may stand on, and the cost factor along roads. */
 export const POWER_DEFAULTS: Record<PowerKind, { spacing: number; maxSlope: number; roadBonus: number }> = {
+  ehv: { spacing: 130, maxSlope: 0.5, roadBonus: 1 }, // EHV_01 lattice towers, very long straight spans
   hv: { spacing: 80, maxSlope: 0.45, roadBonus: 1 }, // pylons cross country, ignore roads
   mv: { spacing: 50, maxSlope: 0.35, roadBonus: 0.6 },
   lv: { spacing: 35, maxSlope: 0.3, roadBonus: 0.35 }, // wooden poles hug the roads
+}
+
+/** Generator per style and level, with its own m_fDistance (read from the .et, GUIDs from layers that
+ *  reference them). USSR: HV_USSR_01 (concrete, 50 m) carries HV, HV_03_Wooden (50 m) MV, LV_USSR_01 (40 m) LV. */
+export const POWER_STYLE: Record<PowerStyle, Record<PowerKind, { gen: string; spacing: number }>> = {
+  eden: {
+    ehv: { gen: POWER_GENERATORS.ehv, spacing: 130 },
+    hv: { gen: POWER_GENERATORS.hv, spacing: 80 },
+    mv: { gen: POWER_GENERATORS.mv, spacing: 50 },
+    lv: { gen: POWER_GENERATORS.lv, spacing: 35 },
+  },
+  ussr: {
+    ehv: { gen: POWER_GENERATORS.ehv, spacing: 130 },
+    hv: { gen: '{92841BA54D127343}Prefabs/WEGenerators/Powerline/PG_PowerLine_HV_USSR_01.et', spacing: 50 },
+    mv: { gen: '{B060731772C6D28D}Prefabs/WEGenerators/Powerline/PG_PowerLine_HV_03_Wooden.et', spacing: 50 },
+    lv: { gen: '{6940032A317FFFF0}Prefabs/WEGenerators/Powerline/PG_PowerLine_LV_USSR_01.et', spacing: 40 },
+  },
 }
 
 export interface KeepOut { x: number; z: number; r: number }
@@ -43,10 +64,14 @@ export interface PowerOptions {
   keepOut?: KeepOut[]
   /** road centre lines, flat x/z pairs */
   roads?: number[][]
+  /** precomputed cost field (buildPowerCost) shared by many routes of the same kind */
+  cost?: Float32Array
 }
 
 export interface PowerLine {
   kind: PowerKind
+  /** pole family (absent = eden) */
+  style?: PowerStyle
   /** pole spacing used (m_fDistance on the generator); absent = POWER_DEFAULTS */
   spacing?: number
   /** straightened path, flat x/z */
@@ -66,6 +91,8 @@ function segDist(px: number, pz: number, ax: number, az: number, bx: number, bz:
 }
 
 /** Per-cell cost (Infinity = forbidden). Built once per routing call. */
+export function buildPowerCost(h: ArrayLike<number>, g: Grid, o: PowerOptions) { return costField(h, g, o) }
+
 function costField(h: ArrayLike<number>, g: Grid, o: PowerOptions): Float32Array {
   const d = POWER_DEFAULTS[o.kind]
   const maxSlope = o.maxSlope ?? d.maxSlope
@@ -210,15 +237,16 @@ export function routePowerLine(heights: ArrayLike<number>, grid: Grid, ax: numbe
     const r = Math.min(grid.rows - 1, Math.max(0, Math.round((z - grid.minZ) / grid.step)))
     return r * grid.cols + c
   }
-  const cost = costField(heights, grid, opts)
+  const cost = opts.cost ?? costField(heights, grid, opts)
   const s = cell(ax, az), t = cell(bx, bz)
+  const ks = cost[s], kt = cost[t]
   cost[s] = Math.min(cost[s], 1) // end points are given: always allowed (substation pad)
   cost[t] = Math.min(cost[t], 1)
   const cells = astar(cost, grid, s, t)
-  if (!cells) return null
+  const corners = cells && straighten(cells, cost, grid, opts.kind === 'hv' || opts.kind === 'ehv' ? 5000 : (opts.spacing ?? POWER_DEFAULTS[opts.kind].spacing) * 6)
+  cost[s] = ks; cost[t] = kt // shared field: restore
+  if (!cells || !corners) return null
   const spacing = opts.spacing ?? POWER_DEFAULTS[opts.kind].spacing
-  // a long straight span is fine for pylons; LV lines keep closer to the winding road
-  const corners = straighten(cells, cost, grid, opts.kind === 'hv' ? 5000 : spacing * 6)
   const path: number[] = []
   for (const i of corners) path.push(grid.minX + (i % grid.cols) * grid.step, grid.minZ + ((i / grid.cols) | 0) * grid.step)
   path[0] = ax; path[1] = az; path[path.length - 2] = bx; path[path.length - 1] = bz
@@ -232,5 +260,5 @@ export function routePowerLine(heights: ArrayLike<number>, grid: Grid, ax: numbe
  *  the route and m_fDistance is set to our spacing: the preview poles match what Workbench builds. */
 export function powerLineShape(line: PowerLine, id: string): ProjectShape {
   const spacing = line.spacing ?? POWER_DEFAULTS[line.kind].spacing
-  return { id, kind: 'polyline', closed: false, points: line.path, generator: POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance'], paramValues: [String(spacing)] }
+  return { id, kind: 'polyline', closed: false, points: line.path, generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance'], paramValues: [String(spacing)] }
 }

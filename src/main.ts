@@ -7,7 +7,8 @@ import { Collab, type CollabEvents, type CollabTransport, type Op } from './coll
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
-import { POWER_DEFAULTS, powerLineShape, routePowerLine, type PowerKind, type PowerLine } from './modules/power'
+import { POWER_DEFAULTS, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
+import { accessShapes, planGrid, stationEntities, type GridSite, type Station } from './modules/powergrid'
 import { FOREST_AVOID, GENERATORS, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
@@ -512,15 +513,19 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         ${hint('hint.roadGen')}
       </details>
       <details class="adv" id="powerBox"><summary>${t('legend.power')}</summary>
-        <label class="check"><input id="powHV" type="checkbox" checked> ${t('lbl.powHV')}</label>
         <div class="form">
-          <label>${t('lbl.powHVFrom')} <select id="powHVFrom"><option value="town">${t('opt.powTowns')}</option><option value="village" selected>${t('opt.powVillages')}</option><option value="all">${t('opt.powAll')}</option></select></label>
-          <label>${t('lbl.powHVKind')} <select id="powHVKind"><option value="hv" title="HV_02">${t('opt.powHVMetal')}</option><option value="mv" title="HV_01">${t('opt.powHVConcrete')}</option></select></label>
+          <label>${t('lbl.powEHV')} <select id="powEHV"><option value="auto" selected>${t('opt.powAuto')}</option><option value="on">${t('opt.powOn')}</option><option value="off">${t('opt.powOff')}</option></select></label>
+          <label>${t('lbl.powStyle')} <select id="powStyle"><option value="eden" selected>${t('opt.powEden')}</option><option value="ussr">${t('opt.powUSSR')}</option></select></label>
+          <label>${t('lbl.powPlants')} <select id="powPlants"><option value="auto" selected>${t('opt.powAuto6')}</option><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
         </div>
-        <label class="check"><input id="powLV" type="checkbox" checked> ${t('lbl.powLV')}</label>
+        <label class="check"><input id="powHV" type="checkbox" checked> <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#ffd24a"></span> ${t('lbl.powHV')}</label>
+        <label class="check"><input id="powMV" type="checkbox" checked> <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#ff8a3a"></span> ${t('lbl.powMV')}</label>
+        <label class="check"><input id="powLV" type="checkbox" checked> <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#e8e2c8"></span> ${t('lbl.powLV')}</label>
         <div class="form">
-          <label>${t('lbl.powLVMax')} <input id="powLVMax" type="number" step="100" min="200" value="2500"></label>
+          <label>${t('lbl.powMVMax')} <input id="powMVMax" type="number" step="100" min="500" value="4000"></label>
+          <label>${t('lbl.powLVMax')} <input id="powLVMax" type="number" step="100" min="200" value="900"></label>
         </div>
+        <div class="hint"><span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#5ec8ff"></span> EHV · <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#ffd24a"></span> HV · <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#ff8a3a"></span> MV · <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#e8e2c8"></span> LV · <span style="display:inline-block;width:14px;height:4px;vertical-align:middle;background:#c050ff"></span> ${t('lbl.powStations')}</div>
         ${hint('hint.power')}
         <div class="row">
           <button id="powerGen" type="button">${t('btn.powerGen')}</button>
@@ -1299,6 +1304,7 @@ let roadDrawing = false
 let furn: { shapes: ProjectShape[]; signs: ProjectEntity[] } | null = null
 type PowerItem = PowerLine & { id: string }
 let powerLines: PowerItem[] = [] // tab Routes, Power lines
+let powerStations: Station[] = [], powerAccess: number[][] = [] // transformer stations + their access tracks (powergrid.ts)
 let sites: Site[] = []
 let settled: Placed[] = [] // settlement buildings (tab Routes, Villages)
 let setLanes: Road[] = [] // settlement lanes and footpaths, squares (tab Villages)
@@ -1428,7 +1434,7 @@ const history: Snap[] = []
 let histAt = -1, restoring = false
 function checkpoint() {
   if (restoring || !sculpt) return
-  const snap: Snap = { macro: sculpt.macro.slice(), sink: sink?.slice(), roads: JSON.stringify(roads), power: JSON.stringify(powerLines), zone: zoneEl.value, sites: JSON.stringify(sites), waters: JSON.stringify(waters), settled: setState() }
+  const snap: Snap = { macro: sculpt.macro.slice(), sink: sink?.slice(), roads: JSON.stringify(roads), power: JSON.stringify({ l: powerLines, s: powerStations, a: powerAccess }), zone: zoneEl.value, sites: JSON.stringify(sites), waters: JSON.stringify(waters), settled: setState() }
   const cur = history[histAt]
   if (cur && cur.roads === snap.roads && cur.power === snap.power && cur.sites === snap.sites && cur.waters === snap.waters && cur.settled === snap.settled && cur.zone === snap.zone && cur.sink?.length === snap.sink?.length
     && cur.macro.length === snap.macro.length && cur.macro.every((v, i) => v === snap.macro[i])
@@ -1447,7 +1453,7 @@ function restore(to: number) {
   sculpt.macro.set(s.macro)
   sink = s.sink?.slice()
   roads = JSON.parse(s.roads)
-  powerLines = JSON.parse(s.power ?? '[]')
+  { const pw = JSON.parse(s.power ?? '[]'); powerLines = Array.isArray(pw) ? pw : pw.l; powerStations = Array.isArray(pw) ? [] : pw.s ?? []; powerAccess = Array.isArray(pw) ? [] : pw.a ?? [] }
   sites = JSON.parse(s.sites ?? '[]')
   waters = JSON.parse(s.waters ?? '[]')
   loadSetState(s.settled)
@@ -2633,6 +2639,8 @@ function islandProject() {
     landCover: landCover && { cols: landCover.cols, n: landCover.data.length, rle: rle(landCover.data) },
     credits,
     power: powerLines,
+    powerStations,
+    powerAccess,
     biome: currentBiome,
   }
 }
@@ -2673,6 +2681,8 @@ function loadProject(p: any) {
   if (p.landCover && typeof p.landCover.rle === 'string') { const d = unrle(p.landCover.rle, p.landCover.n); if (d) landCover = { cols: p.landCover.cols, data: d } }
   credits = Array.isArray(p.credits) ? p.credits : []
   powerLines = Array.isArray(p.power) ? p.power.filter((x: PowerItem) => x && POWER_DEFAULTS[x.kind] && Array.isArray(x.path)) : []
+  powerStations = Array.isArray(p.powerStations) ? p.powerStations.filter((x: Station) => x && typeof x.prefab === 'string') : []
+  powerAccess = Array.isArray(p.powerAccess) ? p.powerAccess.filter((x: unknown) => Array.isArray(x)) : []
   if (typeof p.trace === 'string' && p.trace.startsWith('data:image/')) {
     const img = new Image()
     img.onload = () => { traceImg = img; void saveTrace(img); draw() }
@@ -3026,7 +3036,7 @@ $<HTMLButtonElement>('roadClear').addEventListener('click', () => { roads = []; 
 $<HTMLButtonElement>('roadSend').addEventListener('click', () =>
   run(t('run.l.routes'), async () => {
     if (!roads.length) throw new Error(t('err.noRoad'))
-    return toWb({ version: 0, shapes: [...allRoadShapes(), ...powerShapes()], entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] })
+    return toWb({ version: 0, shapes: [...allRoadShapes(), ...powerShapes()], entities: [...($<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []), ...stationEntities(powerStations)] })
   }),
 )
 roadInfo()
@@ -3540,7 +3550,7 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
-    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities()]
+    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
@@ -3860,14 +3870,24 @@ $<HTMLInputElement>('wRipa').addEventListener('change', (e) => {
 })
 // roads (and their barriers) cut where they cross water: the gap is left for a bridge
 // --- power lines (step Routes): HV between the main sites, LV from the grid into each village along roads ---
-const POWER_COLOUR: Record<PowerKind, string> = { hv: '#ffd24a', mv: '#ffa63a', lv: '#e8e2c8' }
-function powerShapes() { return powerLines.map((l) => powerLineShape(l, l.id)) }
+const POWER_COLOUR: Record<PowerKind, string> = { ehv: '#5ec8ff', hv: '#ffd24a', mv: '#ff8a3a', lv: '#e8e2c8' }
+function powerShapes() { return [...powerLines.map((l) => powerLineShape(l, l.id)), ...accessShapes(powerAccess)] }
 function powerInfo() {
   const km = powerLines.reduce((n, l) => n + l.length, 0) / 1000
   const poles = powerLines.reduce((n, l) => n + l.poles.length / 2, 0)
   $('powerInfo').textContent = powerLines.length ? t('power.info', { n: powerLines.length, km: km.toFixed(1), poles }) : ''
 }
 function drawPower() {
+  ctx.strokeStyle = '#9a7b55'; ctx.lineWidth = 2; ctx.setLineDash([3, 2])
+  for (const a of powerAccess) { ctx.beginPath(); const [x0, y0] = toScreen(a[0], a[1]), [x1, y1] = toScreen(a[2], a[3]); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke() }
+  ctx.setLineDash([])
+  for (const q of powerStations) { // footprint rectangle, gate side = +Z local
+    const c = Math.cos(q.yaw), sn = Math.sin(q.yaw)
+    ctx.beginPath()
+    for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const lx = (u * q.w) / 2, lz = (v * q.d) / 2; const [x, y] = toScreen(q.x + lx * c + lz * sn, q.z - lx * sn + lz * c); ctx.lineTo(x, y) }
+    ctx.closePath(); ctx.fillStyle = '#c050ffaa'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke()
+    const [x, y] = toScreen(q.x, q.z); ctx.fillStyle = '#c050ff'; ctx.beginPath(); ctx.arc(x, y, q.kind === 'mvlv' ? 3 : 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+  }
   for (const l of powerLines) {
     ctx.beginPath()
     for (let i = 0; i + 1 < l.path.length; i += 2) { const [x, y] = toScreen(l.path[i], l.path[i + 1]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y) }
@@ -3884,69 +3904,46 @@ function drawPower() {
     }
   }
 }
-function nextPowerId(kind: PowerKind) {
-  for (let n = 1; ; n++) if (!powerLines.some((l) => l.id === `POWER_${kind.toUpperCase()}_${n}`)) return `POWER_${kind.toUpperCase()}_${n}`
-}
 function generatePower() {
   if (!island) return void (logEl.textContent = t('log.genFirst'))
   const g = island.grid, h = island.heights
-  const from = $<HTMLSelectElement>('powHVFrom').value
-  const hvKind = $<HTMLSelectElement>('powHVKind').value as PowerKind
-  const rank: Record<string, number> = { town: 0, village: 1, hamlet: 2 }
-  const lim = from === 'town' ? 0 : from === 'village' ? 1 : 2
-  const hubs = sites.filter((q) => rank[q.kind] <= lim)
-  if (hubs.length < 2 && !sites.length) return void (logEl.textContent = t('err.powerNoSites'))
+  if (!sites.length) return void (logEl.textContent = t('err.powerNoSites'))
   const isWater = (x: number, z: number) => {
     const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
     return (h[r * g.cols + c] ?? 0) <= 0.3
   }
   const roadPts = [...roads, ...existingRoads()].map((r) => r.pts)
-  const keepOut = (except: Site[]) => sites.filter((q) => !except.includes(q)).map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] * 0.6 }))
-  const made: PowerItem[] = []
-  let failed = 0
-  const t0 = performance.now()
-  // HV: minimum spanning tree over the hubs (Prim), each edge routed cross-country
+  const gs: GridSite[] = [
+    ...sites.map((q) => ({ id: q.id, x: q.x, z: q.z, kind: q.kind, r: SITE_RADIUS[q.kind] })),
+    ...zones.filter((z) => z.kind === 'industrial').map((z) => ({ id: z.id, x: z.x, z: z.z, kind: 'industry' as const, r: 100 })),
+  ]
   const chk = (id: string) => $<HTMLInputElement>(id).checked
-  if (chk('powHV') && hubs.length >= 2) {
-    const inT = [hubs[0]], out = hubs.slice(1)
-    while (out.length) {
-      let bi = 0, bj = 0, bd = Infinity
-      inT.forEach((a, i) => out.forEach((b, j) => { const d = Math.hypot(a.x - b.x, a.z - b.z); if (d < bd) { bd = d; bi = i; bj = j } }))
-      const a = inT[bi], b = out.splice(bj, 1)[0]
-      inT.push(b)
-      const l = routePowerLine(h, g, a.x, a.z, b.x, b.z, { kind: hvKind, isWater, keepOut: keepOut([a, b]) })
-      if (l) { const it = { ...l, id: nextPowerId(hvKind) }; made.push(it); powerLines.push(it) } else failed++
-    }
-  }
-  // LV: every other settlement is fed from the nearest HV pole (or nearest hub), following the roads
-  if (chk('powLV')) {
-    const maxLen = num('powLVMax')
-    const fed = new Set(chk('powHV') && hubs.length >= 2 ? hubs : [])
-    for (const v of sites) {
-      if (fed.has(v)) continue
-      let bx = NaN, bz = NaN, bd = Infinity
-      for (const l of powerLines) for (let i = 0; i + 1 < l.poles.length; i += 2) {
-        const d = Math.hypot(l.poles[i] - v.x, l.poles[i + 1] - v.z)
-        if (d < bd) { bd = d; bx = l.poles[i]; bz = l.poles[i + 1] }
-      }
-      if (!Number.isFinite(bx)) for (const q of sites) {
-        const d = Math.hypot(q.x - v.x, q.z - v.z)
-        if (q !== v && d < bd) { bd = d; bx = q.x; bz = q.z }
-      }
-      if (!Number.isFinite(bx) || bd > maxLen || bd < SITE_RADIUS[v.kind] * 0.5) continue
-      const l = routePowerLine(h, g, bx, bz, v.x, v.z, { kind: 'lv', isWater, roads: roadPts, keepOut: keepOut([v]) })
-      if (l) { const it = { ...l, id: nextPowerId('lv') }; made.push(it); powerLines.push(it) } else failed++
-    }
-  }
-  if (!made.length) return void (logEl.textContent = t('err.powerNone'))
+  const ehv = $<HTMLSelectElement>('powEHV').value
+  const t0 = performance.now()
+  // hierarchical planner: EHV backbone, HV tree between towns, MV feeders to every village / industry, LV
+  // along the streets; stations at each level change (pads flattened in the height grid, like the zones)
+  // airfields and military bases: no line or plant across them
+  const avoid = zones.filter((z) => z.kind === 'airfield' || z.kind === 'military').map((z) => {
+    let r = 60
+    for (const b of z.boxes) for (let i = 0; i + 1 < b.corners.length; i += 2) r = Math.max(r, Math.hypot(b.corners[i] - z.x, b.corners[i + 1] - z.z))
+    return { x: z.x, z: z.z, r: r + 30 }
+  })
+  const plan = planGrid({ heights: h, grid: g, sites: gs, roads: roadPts, isWater, size: (g.cols - 1) * g.step, avoid }, {
+    style: $<HTMLSelectElement>('powStyle').value as PowerStyle,
+    ehv: ehv === 'auto' ? 'auto' : ehv === 'on', hv: chk('powHV'), mv: chk('powMV'), lv: chk('powLV'),
+    mvMax: num('powMVMax'), lvMax: num('powLVMax'),
+    plants: $<HTMLSelectElement>('powPlants').value === 'auto' ? 'auto' : Number($<HTMLSelectElement>('powPlants').value),
+  })
+  powerLines = plan.lines; powerStations = plan.stations; powerAccess = plan.access
+  if (!powerLines.length) return void (logEl.textContent = t('err.powerNone'))
   powerInfo(); draw(); checkpoint(); autosave(); refreshSteps()
-  logEl.textContent = t('log.power', { n: made.length, failed, ms: Math.round(performance.now() - t0) })
+  logEl.textContent = t('log.power', { n: powerLines.length, failed: plan.failed, ms: Math.round(performance.now() - t0) })
+    + ' · ' + t('log.powerStations', { n: powerStations.length, unfed: plan.unfed.length })
 }
 $<HTMLButtonElement>('powerGen').addEventListener('click', () => {
-  powerLines = [] // regenerate from scratch: the old lines would otherwise stay under the new ones
   generatePower()
 })
-$<HTMLButtonElement>('powerClear').addEventListener('click', () => { powerLines = []; powerInfo(); draw(); checkpoint(); autosave(); refreshSteps() })
+$<HTMLButtonElement>('powerClear').addEventListener('click', () => { powerLines = []; powerStations = []; powerAccess = []; powerInfo(); draw(); checkpoint(); autosave(); refreshSteps() })
 function allRoadShapes() {
   return splitAtWater(roadShapesWithFurniture(), waters).shapes
 }
@@ -4388,6 +4385,7 @@ function applyWorld(w: WorldResult) {
   sites = w.sites
   roads = w.roads
   powerLines = w.power
+  powerStations = []; powerAccess = []
   areas = w.areas.map((a) => ({ id: a.id, kind: a.kind, leaf: a.leaf, pts: a.pts, ...(a.tall && { tall: a.tall }), ...(a.stage && { stage: a.stage }), ...(a.logs && { logs: a.logs }) }))
   result = w.campaign ?? null
   settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
@@ -4429,7 +4427,7 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
   const params = {
     seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
     towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
-    airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome,
+    airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome, motorway: $<HTMLInputElement>('rwMotorway').checked,
   }
   // the whole pipeline runs in the generator worker: the page (busy panel, bar, Cancel) stays live.
   // Nothing is applied until it succeeds, so Cancel leaves the current map as it was.
@@ -4656,6 +4654,7 @@ btn3d.addEventListener('click', () => void (async () => {
     const mod: View3DMod = await import('./view3d')
     const buildings = [
       ...settled.map((b) => box3d(b.corners, prefabDims(b.prefab)?.h || BLD_H[b.cat] || 6)), // real height (catalogue dims) when known
+      ...powerStations.map((q) => ({ cx: q.x, cz: q.z, w: q.w, d: q.d, h: q.h, yaw: q.yaw })), // transformer stations (powergrid.ts)
       ...zones.flatMap((z) => z.boxes.filter((b) => z.kind === 'site' ? b.corners.length === 8 && (b.h ?? 0) >= 0.2 : b.corners.length >= 8).map((b) => box3d(b.corners, b.h ?? (/hangar|tower/i.test(b.role) ? 12 : 7)))),
     ]
     const lakes = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts)
@@ -4688,4 +4687,4 @@ btn3d.addEventListener('click', () => void (async () => {
   })
 })())
 // dev-only probe for the Playwright checks: read the world state, move the 2D view
-if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
+if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
