@@ -305,7 +305,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label><span class="lbl">${t('wg.seed')} ${info('info.wgSeed')}</span><span class="seedrow"><input id="rwSeed" type="number" step="1" value="1"><button id="rwDice" type="button" class="secondary icon" title="${t('wg.dice')}" aria-label="${t('wg.dice')}">${ic('dice', 16)}</button></span></label>
           <label>${t('wg.size')} <select id="rwSize"><option value="2048">2 km</option><option value="4096" selected>4 km</option><option value="8192">8 km</option><option value="16384">16 km (≈ 1-2 min)</option></select></label>
           ${biomeField('rwBiome')}
-          ${(['towns', 'villages', 'hamlets', 'industry', 'military', 'forests'] as const).map((k) => `<label class="rwslider"><span class="lbl">${t(('wg.' + k) as K)} ${info(('info.wg.' + k) as K)}</span><input id="rw_${k}" type="range" min="0" max="2" step="0.25" value="1"><output id="rw_${k}_v">×1</output></label>`).join('')}
+          ${(['towns', 'villages', 'hamlets', 'industry', 'military', 'forests', 'fieldTrees'] as const).map((k) => `<label class="rwslider"><span class="lbl">${t(('wg.' + k) as K)} ${info(('info.wg.' + k) as K)}</span><input id="rw_${k}" type="range" min="0" max="2" step="0.25" value="1"><output id="rw_${k}_v">×1</output></label>`).join('')}
         </div>
         <div class="row">
           <label class="check"><input id="rwAir" type="checkbox" checked> ${t('wg.airfield')} ${info('info.wg.airfield')}</label>
@@ -1341,7 +1341,7 @@ let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random w
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
 let zonePick: { kind: ZoneKind; sub: string } | null = null
 let zoneCands: { x: number; z: number; yaw: number }[] = []
-const ZONE_FILL: Record<string, string> = { sand: '#e6d39a99', pasture: '#9cc46a44', orchard: '#6fa04a44', grave: '#d8d8d8', lamp: '#ffe066', lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc' }
+const ZONE_FILL: Record<string, string> = { tree: '#2f6b2acc', sand: '#e6d39a99', pasture: '#9cc46a44', orchard: '#6fa04a44', grave: '#d8d8d8', lamp: '#ffe066', lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc' }
 let satQ: Quantised | null = null
 let satSurf: string[] = []
 let satCanvas: HTMLCanvasElement | null = null
@@ -4244,6 +4244,7 @@ function drawZones() {
       ctx.stroke()
       ctx.setLineDash([])
     }
+    if (zn.sub === 'fieldtrees') continue // scattered over the whole countryside: no label at its centroid
     const [sx, sy] = toScreen(zn.x, zn.z)
     ctx.font = '11px sans-serif'
     ctx.lineWidth = 3
@@ -4528,7 +4529,7 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
   const timer = stageTimer()
   const fromDlg = {
     seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
-    towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
+    towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'), fieldTrees: v('fieldTrees'),
     airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome, motorway: $<HTMLInputElement>('rwMotorway').checked, dams: $<HTMLInputElement>('rwDams').checked,
     powerDistrib: $<HTMLSelectElement>('rwPowDistrib').value as PowerDistrib,
   }

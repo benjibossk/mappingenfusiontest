@@ -25,6 +25,7 @@ import { settleVillages, type VillageParcel } from './village'
 import { addProdForests, lotFences, makeBlocker, type FenceLot } from './worldextras'
 import { generateTown } from './town'
 import { makeSiteZone } from './sitezones'
+import { fieldTrees } from './fieldtrees'
 import type { Placed, Square } from './settlements'
 import type { PowerLine } from './power'
 import { powerWorld, worldPowerGrid } from './worldpower'
@@ -52,6 +53,8 @@ export interface WorldParams {
   airfield: boolean
   power: boolean
   forests: number
+  /** isolated trees, corner clumps and hedgerow trees in the countryside (#8): 0 = none, 1 = default, 2 = dense */
+  fieldTrees?: number
   roadsV2?: boolean // road network V2 finish (docs/ROAD_NETWORK_V2.md), default true
   motorway?: boolean // dual-carriageway motorway across the map (motorway.ts), default off; needs roadsV2
   dams?: boolean // earth dam + reservoir on a river throat (dam.ts), default off
@@ -617,6 +620,26 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     points: [...sites.map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] })), ...discs.map((d) => ({ x: d.x, z: d.z, r: d.r + 10 })), ...bridgesOut.map((b) => ({ x: b.x, z: b.z, r: 20 })), ...settlement.placed.map((b) => ({ x: b.x, z: b.z, r: 12 }))],
   })
   { const cut = cutForests(areas, riparian); areas.splice(0, areas.length, ...cut) }
+  // 10d. trees of the open countryside: isolated field trees, corner clumps, hedgerow trees (fieldtrees.ts),
+  // one 'site' zone of single vanilla tree entities (drawn, saved and sent like any zone)
+  const ftd = (p.fieldTrees ?? 1) * Math.min(1, forestTuning(p.biome).coverMul)
+  if (camp.fields.length && ftd > 0 && Math.min(0.9, WORLD.vegetation.forestCover * Math.max(p.forests, 0.5)) * forestTuning(p.biome).coverMul >= 0.03) {
+    const rp = allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) + 3 }))
+    const nearRoad = (x: number, z: number) => rp.some((rd) => { for (let i = 0; i + 3 < rd.pts.length; i += 2) {
+      const ax = rd.pts[i], az = rd.pts[i + 1], dx = rd.pts[i + 2] - ax, dz = rd.pts[i + 3] - az, L = dx * dx + dz * dz
+      if (Math.abs(x - ax) > 400 && Math.abs(x - rd.pts[i + 2]) > 400) continue
+      const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+      if (Math.hypot(x - ax - dx * t, z - az - dz * t) < rd.half) return true
+    } return false })
+    const ents = fieldTrees({ fields: camp.fields, hedges: camp.hedges, seed: subSeed(seed, 'fieldtrees'), density: ftd, biome: p.biome, prefix: 'TREE_FIELD_',
+      ok: (x, z) => !isLakeOrSea(x, z) && !settlement.placed.some((b) => Math.abs(b.x - x) < 12 && Math.abs(b.z - z) < 12) && !areas.some((a) => a.kind === 'forest' && pointInPoly(a.pts, x, z)) && !nearRoad(x, z) })
+    if (ents.length) {
+      let cx = 0, cz = 0
+      for (const t of ents) { cx += t.x / ents.length; cz += t.z / ents.length }
+      zones.push({ id: 'TREES_FIELD', kind: 'site', sub: 'fieldtrees', x: cx, z: cz, yaw: 0, seed: subSeed(seed, 'fieldtrees'), shapes: [], entities: ents, flat: [], plat: [], roads: [], warnings: [],
+        boxes: ents.map((t) => ({ corners: [t.x - 2, t.z - 2, t.x + 2, t.z - 2, t.x + 2, t.z + 2, t.x - 2, t.z + 2], role: 'tree', h: 0.1 })) })
+    }
+  }
   // tracks and trails through the woods take the forest styles (and open-ground trails gravel); the late
   // tracks (fields, production forests) may not cross the motorway either: cut back there
   styleTracks(roads, (x, z) => forestRings.some((p) => pointInPoly(p, x, z)))
