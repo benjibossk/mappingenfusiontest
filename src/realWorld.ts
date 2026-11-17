@@ -14,7 +14,7 @@ import { WORLDCOVER } from './modules/cover'
 import * as turf from '@turf/turf'
 import { ADAPT_DEFAULTS, adaptForGame } from './modules/adapt'
 import { OSM_ATTRIBUTION, type OsmOptions, type OsmResult, fetchOverpass, osmToMap, overpassQuery } from './modules/osm'
-import { DEFAULT_SCHEMA, importOsm, parseOsmFile, parseSchema, type ImportExtras, type OsmEl } from './modules/osmImport'
+import { DEFAULT_SCHEMA, importOsm, parseOsmFile, parseSchema, schemaText, type ImportExtras, type OsmEl } from './modules/osmImport'
 
 export interface RealPlace {
   world: WorldExport
@@ -366,9 +366,9 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
   const schemaEl = $<HTMLTextAreaElement>('rwImpSchema')
   let savedSchema: string | null = null
   try { savedSchema = localStorage.getItem('rm.osmImportSchema') } catch { /* private window */ }
-  schemaEl.value = savedSchema ?? JSON.stringify(DEFAULT_SCHEMA, null, 1)
+  schemaEl.value = savedSchema ?? schemaText(DEFAULT_SCHEMA)
   schemaEl.addEventListener('change', () => { try { parseSchema(schemaEl.value); localStorage.setItem('rm.osmImportSchema', schemaEl.value); msg.textContent = '' } catch (e) { msg.textContent = (e as Error).message } })
-  $<HTMLButtonElement>('rwImpReset').addEventListener('click', () => { schemaEl.value = JSON.stringify(DEFAULT_SCHEMA, null, 1); try { localStorage.removeItem('rm.osmImportSchema') } catch { /* */ } })
+  $<HTMLButtonElement>('rwImpReset').addEventListener('click', () => { schemaEl.value = schemaText(DEFAULT_SCHEMA); try { localStorage.removeItem('rm.osmImportSchema') } catch { /* */ } })
   const takeOsm = async (f: File) => {
     try {
       osmFile = parseOsmFile(f.name, await f.text())

@@ -197,3 +197,8 @@ export function powerKindOf(volt: number): 'ehv' | 'hv' | 'mv' | 'lv' {
   if (volt >= 1000 || volt === 0) return 'mv'
   return 'lv'
 }
+
+/** the schema as editable text, one rule per line */
+export function schemaText(s: ImportSchema): string {
+  return '{"rules": [\n' + s.rules.map((r) => '  ' + JSON.stringify(r)).join(',\n') + '\n]}'
+}

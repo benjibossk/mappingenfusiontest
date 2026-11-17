@@ -27,7 +27,6 @@ export interface View3DData {
   props?: Box3D[] // small brown boxes on the ground (felled-log piles of production forests)
   bridges?: Box3D[] // decks (cz/cx centre, h = thickness), y from the deck height
   bridgeY?: number[]
-  outside?: HeightGrid // off-map ring (modules/outside.ts): low-res relief drawn around the block, under its own sea
   target: [number, number] // world X/Z the 2D view looks at
   span: number // metres across the 2D view
 }
@@ -167,30 +166,6 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   sea.rotation.x = -Math.PI / 2
   sea.position.set(hm.minX + sideW / 2, data.sea - 0.3, -(hm.minZ + sideH / 2))
   relief.add(sea)
-  if (data.outside) { // off-map ring: plain shaded mesh, cells wholly under the map skipped, sea plane over the whole ring
-    const og = data.outside, os = og.step, oc = og.cols, orr = og.rows
-    const op = new Float32Array(oc * orr * 3)
-    for (let r = 0; r < orr; r++) for (let c = 0; c < oc; c++) { const i = (r * oc + c) * 3; op[i] = og.minX + c * os; op[i + 1] = og.heights[r * oc + c] - 0.5; op[i + 2] = -(og.minZ + r * os) }
-    const inMap = (x: number, z: number) => x > hm.minX + 1 && z > hm.minZ + 1 && x < hm.minX + sideW - 1 && z < hm.minZ + sideH - 1
-    const oi: number[] = []
-    for (let r = 0; r < orr - 1; r++) for (let c = 0; c < oc - 1; c++) {
-      const x0 = og.minX + c * os, z0 = og.minZ + r * os
-      if (inMap(x0, z0) && inMap(x0 + os, z0 + os)) continue
-      const a = r * oc + c, b = a + 1, d = a + oc, e = d + 1
-      oi.push(a, b, d, b, e, d)
-    }
-    const og3 = new BufferGeometry()
-    og3.setAttribute('position', new BufferAttribute(op, 3)); og3.setIndex(oi); og3.computeVertexNormals()
-    const ring = new Mesh(og3, new MeshStandardMaterial({ color: 0x6f7560, roughness: 1, metalness: 0 }))
-    ring.name = 'outside'
-    relief.add(ring)
-    const ow = (oc - 1) * os, oh = (orr - 1) * os
-    const osea = new Mesh(new PlaneGeometry(ow, oh), waterMat)
-    osea.rotation.x = -Math.PI / 2
-    osea.position.set(og.minX + ow / 2, data.sea - 0.35, -(og.minZ + oh / 2))
-    relief.add(osea)
-    sea.visible = false // one water plane: two stacked transparent ones would darken the map square
-  }
   const groundAt = (x: number, z: number) => {
     const c = Math.max(0, Math.min(hm.cols - 1, Math.round((x - hm.minX) / hm.step)))
     const r = Math.max(0, Math.min(hm.rows - 1, Math.round((z - hm.minZ) / hm.step)))
