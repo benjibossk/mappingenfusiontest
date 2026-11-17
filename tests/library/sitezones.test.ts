@@ -40,7 +40,7 @@ test('every site type builds, refs carry a GUID', () => {
   const forest = [100, -300, 400, -300, 400, 300, 100, 300]
   for (const t of SITE_TYPES) {
     const poly = t === 'checkpoint' ? sq(30, 0, -80) : t === 'hunting' ? sq(250, 100, 0) : sq(t === 'cemetery' ? 30 : 60)
-    const z = makeSiteZone(t, poly, { id: 'SITE_1', seed: 3, roads: [road], ground: flat, forests: [forest] })
+    const z = makeSiteZone(t, poly, { id: 'SITE_1', seed: 3, roads: [road], ground: flat, forests: [forest], ...(t === 'beach' ? { ok: (_x: number, zz: number) => zz < 40 } : {}) })
     assert.equal(z.kind, 'site'); assert.equal(z.sub, t)
     assert.ok(z.entities.length + z.shapes.length > 0, t)
     for (const e of z.entities) assert.match(e.prefab, GUID, t)
@@ -63,7 +63,7 @@ test('cemetery: brick wall, gravestones in rows with a central aisle', () => {
   const graves = z.entities.filter((e) => (SITE_PREFABS.graves as readonly string[]).includes(e.prefab))
   assert.ok(graves.length > 100)
   assert.ok(!graves.some((g) => Math.abs(g.x) < 0.5), 'aisle')
-  assert.ok(z.shapes.some((s) => /BrickWall/.test(s.generator) && s.closed))
+  assert.ok(z.shapes.some((s) => /BrickWall/.test(s.generator) && !s.closed), 'gate on the road side')
 })
 test('hunting: stands on the forest edge, >= 150 m apart, facing out', () => {
   const forest = [100, -300, 400, -300, 400, 300, 100, 300]

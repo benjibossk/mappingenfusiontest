@@ -11,13 +11,14 @@ import { round } from './gen-common'
 import { prefabDims } from '../library/dims.ts'
 import { makeCamp, makeJunkyard, type Faction, type ModuleOut } from './modules'
 import type { FlattenRequest as Platform } from './industrial'
-import { centroid, contourFrame, distLine, fencePerimeter, frameOf, inPoly, nearestPoint, polyArea, rectAt, rowGrid, slopeAt, type RoadLine } from './rowgrid'
+import { makeBeach, makeCemetery, makeConstruction, type ExtraOut } from './sitesextra'
+import { centroid, contourFrame, fencePerimeter, frameOf, inPoly, nearestPoint, polyArea, rectAt, rowGrid, slopeAt, type RoadLine } from './rowgrid'
 
-export type SiteType = 'pasture' | 'parking' | 'cemetery' | 'hunting' | 'orchard' | 'vineyard' | 'junkyard' | 'checkpoint' | 'camp'
-export const SITE_TYPES: SiteType[] = ['pasture', 'parking', 'cemetery', 'hunting', 'orchard', 'vineyard', 'junkyard', 'checkpoint', 'camp']
-export const SITE_MAX_SLOPE: Record<SiteType, number> = { pasture: 0.15, parking: 0.08, cemetery: 0.12, hunting: 0.35, orchard: 0.35, vineyard: 0.4, junkyard: 0.15, checkpoint: 0.2, camp: 0.15 }
+export type SiteType = 'pasture' | 'parking' | 'cemetery' | 'hunting' | 'orchard' | 'vineyard' | 'junkyard' | 'checkpoint' | 'camp' | 'construction' | 'beach'
+export const SITE_TYPES: SiteType[] = ['pasture', 'parking', 'cemetery', 'hunting', 'orchard', 'vineyard', 'junkyard', 'checkpoint', 'camp', 'construction', 'beach']
+export const SITE_MAX_SLOPE: Record<SiteType, number> = { pasture: 0.15, parking: 0.08, cemetery: 0.12, hunting: 0.35, orchard: 0.35, vineyard: 0.4, junkyard: 0.15, checkpoint: 0.2, camp: 0.15, construction: 0.15, beach: 0.5 }
 /** Zone-tool priority (zonefill.ts ZONE_PRIORITY): fenced sites cut fields / forests like housing; stands and checkpoints cut nothing */
-export const SITE_PRIORITY: Record<SiteType, number> = { pasture: 2, parking: 2, cemetery: 2, hunting: 6, orchard: 2, vineyard: 2, junkyard: 2, checkpoint: 6, camp: 2 }
+export const SITE_PRIORITY: Record<SiteType, number> = { pasture: 2, parking: 2, cemetery: 2, hunting: 6, orchard: 2, vineyard: 2, junkyard: 2, checkpoint: 6, camp: 2, construction: 2, beach: 2 }
 
 export const SITE_PREFABS = {
   hayBale: '{6A8D0F8B78685E0A}Prefabs/Props/Agriculture/Farm/HayBale_01.et',
@@ -58,6 +59,7 @@ export interface SiteContext {
   vine?: boolean // orchard zone in vine mode (kept for the 'vineyard' type)
   faction?: Faction // military camp side (US / USSR / FIA)
   rivers?: number[][] // open water centre lines (module sites keep off them)
+  water?: (x: number, z: number) => boolean // sea / lake test (beach)
 }
 
 function rng(seed: number) {
@@ -142,16 +144,11 @@ export function makeSiteZone(type: SiteType, polygon: number[], c: SiteContext):
     }
     if (!lamp && bays.length) warnings.push('parking: no lamp')
     shapes.push(fencePerimeter(polygon, SITE_PREFABS.crashBarrier, `${c.id}_barrier`, { openNear: f.road ? [f.road[0], f.road[1]] : undefined }))
-  } else if (type === 'cemetery') {
-    shapes.push(fencePerimeter(polygon, FENCES.brick1, `${c.id}_wall`))
-    const f = frameOf(polygon, c.roads)
-    yawOut = (Math.atan2(f.vx, f.vz) * 180) / Math.PI
-    const g = rowGrid(polygon, { dx: 2, dz: 3, margin: 3, frame: f, ok, ground: c.ground, maxSlope: 0.12 })
-    const cols = g.map((p) => p.col), mid = Math.round((Math.min(...cols) + Math.max(...cols)) / 2)
-    for (const p of g) if (Math.abs(p.col - mid) > 0 && rand() < 0.85) prop(pick(SITE_PREFABS.graves), p.x, p.z, p.yaw + (rand() - 0.5) * 4, 1, 2, 0.9, 'grave')
-    // trees: a few limes / spruces along the wall
-    const tr = rowGrid(polygon, { dx: 14, dz: 14, margin: 1.5, frame: f, jitter: 0.3, rand })
-    for (const p of tr) if (distLine(polygon, p.x, p.z, true) < 3 && rand() < 0.5) ent(rand() < 0.5 ? VEG.lime : VEG.spruce, p.x, p.z, rand() * 360)
+  } else if (type === 'cemetery' || type === 'construction' || type === 'beach') {
+    // sitesextra.ts: terraced cemetery with gate + chapel, construction site, beach on the shore
+    const xc = { id: c.id, rand, roads: c.roads, ground: c.ground, ok, water: c.water }
+    const x: ExtraOut = type === 'cemetery' ? makeCemetery(polygon, xc, SITE_PREFABS.graves) : type === 'beach' ? makeBeach(polygon, xc) : makeConstruction(polygon, xc)
+    ents.push(...x.entities); shapes.push(...x.shapes); boxes.push(...x.boxes); plat.push(...x.plat); warnings.push(...x.warnings); yawOut = x.yaw
   } else if (type === 'hunting') {
     // deer stands on the forest edges inside the polygon, looking out over the open ground, >= 150 m apart
     const got: number[][] = []
