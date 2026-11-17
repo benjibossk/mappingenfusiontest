@@ -1,4 +1,4 @@
-#ifdef WORKBENCH
+#ifdef MG_OFF_19 // was WORKBENCH: terrain API errors on 1.9
 //! Terrain tests, part 2 (around the part-1 plateau):
 //! - a flag pole named MG_TerrainTestMarker at the centre, to find the zone quickly;
 //! - surface paint: one Rock_01 square brush on the plateau (ModifyLayers);

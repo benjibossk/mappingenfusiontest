@@ -1,4 +1,4 @@
-#ifdef WORKBENCH
+#ifdef MG_OFF_19 // was WORKBENCH: terrain API errors on 1.9
 //! Calibration of ModifyHeightMapUserShape: how an n x n array lands on terrain vertices.
 //! Stamps an EXACT ramp (weight = column / (n-1), H = 100) on a flat area, then prints the height
 //! of every vertex around it, along X (row through the centre) and along Z (column through the centre).

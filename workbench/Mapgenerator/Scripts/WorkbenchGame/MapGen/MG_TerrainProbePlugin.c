@@ -1,4 +1,4 @@
-#ifdef WORKBENCH
+#ifdef MG_OFF_19 // was WORKBENCH: terrain API errors on 1.9
 //! Read-only probe: prints the values of the terrain-brush enums (not documented in the API dump).
 [WorkbenchPluginAttribute(name: "MapGen - Terrain probe", category: "MapGen", wbModules: { "WorldEditor" }, awesomeFontCode: 0xF6FC)]
 class MG_TerrainProbePlugin : WorldEditorPlugin

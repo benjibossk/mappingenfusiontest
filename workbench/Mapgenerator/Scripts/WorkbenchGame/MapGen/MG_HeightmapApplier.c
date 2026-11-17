@@ -1,5 +1,5 @@
 #ifdef WORKBENCH
-//! Writes a whole height grid into the open terrain with ModifyHeightMapUserShape (no import dialog).
+//! Writes a whole height grid into the open terrain with SetTerrainSurfaceTile (Reforger 1.9+, no import dialog).
 //!
 //! Input file (same layout as MG_ExportHeights): header "minX minZ step cols rows", then one line per row,
 //! row 0 = minZ (south), west to east, heights in metres. The grid is sampled bilinearly at every terrain
@@ -37,66 +37,44 @@ class MG_HeightmapApplier
 		int vz = api.GetTerrainResolutionY(0);
 		if (vx < 2 || vz < 2)
 			return "error: terrain resolution unknown";
-		float cell = (maxs[0] - mins[0]) / (vx - 1);
+		int tilesX = api.GetTerrainTilesX(0);
+		int tilesZ = api.GetTerrainTilesY(0);
+		if (tilesX < 1 || tilesZ < 1)
+			return "error: terrain tiles unknown";
+		int tw = vx / tilesX;
+		int th = vz / tilesZ;
+		float cell = api.GetTerrainUnitScale(0);
+		if (cell <= 0)
+			cell = (maxs[0] - mins[0]) / (vx - 1);
 
-		float hMin = m_aH[0];
-		float hMax = m_aH[0];
-		foreach (float h : m_aH)
+		// Reforger 1.9: the brush API (TerrainToolDesc / ModifyHeightMapUserShape) is gone from scripts;
+		// heights are written per tile, world-space metres, row-major (x fastest), tw x th values.
+		int tiles;
+		array<float> tile = {};
+		api.BeginTerrainAction("MapGen heightmap");
+		for (int ty; ty < tilesZ; ty++)
 		{
-			hMin = Math.Min(hMin, h);
-			hMax = Math.Max(hMax, h);
-		}
-
-		int n = 2 * HALF + 1;
-		array<float> ones = {};
-		ones.Resize(n * n);
-		for (int i; i < n * n; i++)
-			ones[i] = 1;
-
-		TerrainToolDesc_HeightExact desc = new TerrainToolDesc_HeightExact();
-		desc.fOuterSize = HALF;
-		desc.fInnerSizePercent = 100;
-
-		int stamps;
-		api.BeginTerrainAction(TerrainToolType.HEIGHT_EXACT, "MapGen heightmap");
-		for (int cz = HALF; cz - HALF < vz - 1; cz += 2 * HALF)
-		{
-			for (int cx = HALF; cx - HALF < vx - 1; cx += 2 * HALF)
+			for (int tx; tx < tilesX; tx++)
 			{
-				float wx = mins[0] + cx * cell;
-				float wz = mins[2] + cz * cell;
-
-				// pass 1: flatten to the minimum
-				desc.fExactHeight = hMin;
-				api.ModifyHeightMapUserShape(wx, wz, FilterMorphOperation.EXACT, desc, ones, UserShapeFilter.BILINEAR);
-
-				if (hMax - hMin < 0.01)
+				if (!api.GetTerrainSurfaceTile(0, tx, ty, tile) || tile.Count() != tw * th)
 					continue;
-
-				// pass 2: weights towards the maximum
-				array<float> w = {};
-				w.Resize(n * n);
-				for (int ix; ix < n; ix++)
+				for (int iz; iz < th; iz++)
 				{
-					float px = wx + (ix - HALF) * cell;
-					for (int iz; iz < n; iz++)
-					{
-						int jz = iz;
-						if (Z_FLIP)
-							jz = n - 1 - iz;
-						float pz = wz + (jz - HALF) * cell;
-						w[ix * n + iz] = (Sample(px, pz) - hMin) / (hMax - hMin);
-					}
+					int gz = ty * th + iz;
+					if (Z_FLIP)
+						gz = vz - 1 - gz;
+					float pz = mins[2] + gz * cell;
+					for (int ix; ix < tw; ix++)
+						tile[iz * tw + ix] = Sample(mins[0] + (tx * tw + ix) * cell, pz);
 				}
-				desc.fExactHeight = hMax;
-				api.ModifyHeightMapUserShape(wx, wz, FilterMorphOperation.EXACT, desc, w, UserShapeFilter.BILINEAR);
-				stamps++;
+				if (api.SetTerrainSurfaceTile(0, tx, ty, tile))
+					tiles++;
 			}
 		}
 		api.EndTerrainAction("MapGen heightmap");
 
-		return string.Format("%1 x %2 grid (step %3 m) on %4 x %5 vertices (cell %6 m), %7 stamps, heights %8 .. %9 m",
-			m_iCols, m_iRows, m_fStep, vx, vz, cell, stamps, hMin, hMax);
+		return string.Format("%1 x %2 grid (step %3 m) on %4 x %5 vertices (cell %6 m), %7/%8 tiles written",
+			m_iCols, m_iRows, m_fStep, vx, vz, cell, tiles, tilesX * tilesZ);
 	}
 
 	//------------------------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-#ifdef WORKBENCH
+#ifdef MG_OFF_19 // was WORKBENCH: terrain API errors on 1.9
 //! Test: stamps one exact-height square brush, then samples heights around it to learn the
 //! brush semantics (is fOuterSize a radius or a width, does fInnerSizePercent=100 remove falloff).
 //! Undo with Ctrl+Z (one terrain history point).
