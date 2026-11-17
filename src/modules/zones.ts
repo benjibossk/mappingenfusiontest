@@ -9,7 +9,7 @@ import { generateIndustrial, applyFlatten as applyPlatform, type IndustrialType,
 import { generateMilitary, flattenFor, type MilitaryKind } from './military'
 import { generateAirfield, flattenAirfield, type AirfieldSize } from './airfield'
 
-export type ZoneKind = 'industrial' | 'military' | 'airfield'
+export type ZoneKind = 'industrial' | 'military' | 'airfield' | 'site' // site: structured Zone-tool fills (sitezones.ts)
 export interface ZoneItem {
   id: string // IND_1, MIL_1, AIR_1 : prefix of every shape / entity id it sends
   kind: ZoneKind
@@ -19,7 +19,7 @@ export interface ZoneItem {
   yaw: number
   seed: number
   /** footprints to draw (flat X/Z corners), role for the colour */
-  boxes: { corners: number[]; role: string }[]
+  boxes: { corners: number[]; role: string; h?: number }[] // h: 3D height (props), default by role
   shapes: ProjectShape[]
   entities: ProjectEntity[]
   flat: FlattenRequest[]
@@ -88,6 +88,6 @@ export function zoneDisc(zn: ZoneItem): { x: number; z: number; r: number } {
 }
 
 export function nextZoneId(zones: ZoneItem[], kind: ZoneKind) {
-  const p = kind === 'industrial' ? 'IND' : kind === 'military' ? 'MIL' : 'AIR'
+  const p = kind === 'industrial' ? 'IND' : kind === 'military' ? 'MIL' : kind === 'site' ? 'SITE' : 'AIR'
   for (let n = 1; ; n++) if (!zones.some((z) => z.id === `${p}_${n}`)) return `${p}_${n}`
 }

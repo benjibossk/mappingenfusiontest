@@ -5,7 +5,7 @@ import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
 import { POWER_DEFAULTS, powerLineShape, routePowerLine, type PowerKind, type PowerLine } from './modules/power'
-import { GENERATORS, type Project, type ProjectEntity, type ProjectShape } from './project'
+import { FOREST_AVOID, GENERATORS, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
@@ -17,6 +17,8 @@ import { Sculpt } from './modules/sculpt'
 import { type CampaignResult } from './modules/campaign'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
+import { generateTown } from './modules/town'
+import { makeSiteZone, SITE_TYPES, type SiteType } from './modules/sitezones'
 import { makeProdForest, type ProdLog } from './modules/prodforest'
 import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fillFieldZone, flatToPoly, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
@@ -69,7 +71,7 @@ function cleanSpline(pts: number[]): number[] {
 }
 const toWb = async (p: Project) => {
   const before = p.shapes.reduce((n, sh) => n + sh.points.length, 0), count = p.shapes.length
-  p = { ...p, shapes: p.shapes.map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).filter((sh) => sh.points.length >= 4) }
+  p = { ...p, shapes: p.shapes.map(withAvoid).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).filter((sh) => sh.points.length >= 4) }
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
@@ -879,7 +881,7 @@ function zoneObstacles(type: ZoneFillType): Poly[] {
   for (const w of waters) {
     if (WATER_TYPES[w.type].closed) { const p = flatToPoly(w.pts); if (p) ob.push(p) } else ob.push(...roadObstacles([{ pts: w.pts, half: w.width / 2 }], 3))
   }
-  if (type === 'industrial' || type === 'habitation' || type === 'scattered') return ob // they bring / follow their own streets
+  if (type === 'industrial' || type === 'habitation' || type === 'scattered' || type === 'town') return ob // they bring / follow their own streets
   const all = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   ob.push(...roadObstacles(all.map((r) => ({ pts: r.pts, half: roadHalf(r) })), 3))
   if (P > ZONE_PRIORITY.habitation) for (const b of settled) ob.push(pointObstacle(b.x, b.z, 14))
@@ -928,6 +930,8 @@ function generate() {
   if (!island) return void (logEl.textContent = t('log.genFirst'))
   if (type === 'industrial') return zoneIndustrial(zone)
   if (type === 'scattered') return zoneScattered(zone, n)
+  if (type === 'town') return zoneTown(zone, n)
+  if ((SITE_TYPES as string[]).includes(type)) return zoneSite(type as SiteType, zone)
   zoneHabitation(zone, n)
 }
 function finishZone(type: ZoneFillType, zone: number[], msg: string, rings?: number[][]) {
@@ -1041,6 +1045,17 @@ function zoneHabitation(zone: number[], n: number) {
   const made = settled.length - before
   finishZone('habitation', zone, made ? t('log.zoneHouses', { n: made, s: res.lanes.length }) : t('err.zoneNoHouse'))
 }
+/** structured sites (sitezones.ts): rows / grids of props, fence on the border, decals; one ZoneItem of kind 'site' */
+function zoneSite(type: SiteType, zone: number[]) {
+  const id = nextZoneId(zones, 'site')
+  const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)].filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) }))
+  const wet = waters.filter((w) => WATER_TYPES[w.type].closed).map((w) => w.pts)
+  const ok = (x: number, z: number) => (!terrain || isLand(terrain, x, z)) && !wet.some((p) => pointInPoly(p, x, z)) && !settled.some((b) => Math.abs(b.x - x) < 30 && Math.abs(b.z - z) < 30 && pointInPoly(b.corners, x, z))
+  const zn = makeSiteZone(type, zone, { id, seed: num('seed') * 13 + zones.length, roads: allRoads, ground: terrain ? groundAt : undefined, ok, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts) })
+  if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.siteEmpty', { w: zn.warnings.join(' · ') }))
+  zones.push(zn)
+  finishZone(type, zone, t('log.siteMade', { name: t(('zt.' + type) as K), n: zn.entities.length, s: zn.shapes.length }) + (zn.warnings.length ? ' · ' + zn.warnings.join(' · ') : ''), ['hunting', 'checkpoint'].includes(type) ? [] : [zone])
+}
 function zoneScattered(zone: number[], n: number) {
   if (!island) return
   let sid = `Z${n}`
@@ -1052,6 +1067,25 @@ function zoneScattered(zone: number[], n: number) {
   settled = res.placed
   setLanes = [...setLanes, ...res.lanes]
   finishZone('scattered', zone, res.groups ? t('log.zoneScattered', { g: res.groups, n: made, s: res.lanes.length }) : t('err.zoneNoHouse'), res.yards)
+}
+
+/** "Ville" (town.ts): Voronoi districts round a square, main streets to the entry roads, typed blocks */
+function zoneTown(zone: number[], n: number) {
+  if (!island) return
+  const sl = slopeShare(groundAt, zone, ZONE_MAX_SLOPE.town)
+  if (sl > 0.6) return void (logEl.textContent = t('err.zoneSteep', { p: Math.round(sl * 100), max: 20 }))
+  let sid = `Z${n}`
+  while (settled.some((b) => b.site === sid)) sid += 'b'
+  const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
+  const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
+  const res = generateTown(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: num('setDensity') || 1, maxSlope: ZONE_MAX_SLOPE.town, blocked, prefix: sid }, settled)
+  const made = res.placed.length - settled.length
+  settled = res.placed
+  setLanes = [...setLanes, ...res.lanes]
+  setSquares = [...setSquares, ...res.squares]
+  // farm cells keep the fields already there: only the districts cut the lower layers
+  const rings = res.blocks.filter((b) => b.type !== 'farm').map((b) => b.ring)
+  finishZone('town', zone, made ? t('log.zoneTown', { n: made, p: res.pop, s: res.lanes.length, b: rings.length }) : t('err.zoneNoHouse'), rings.length ? rings : undefined)
 }
 
 // --- map interaction ---
@@ -1248,7 +1282,7 @@ let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random w
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
 let zonePick: { kind: ZoneKind; sub: string } | null = null
 let zoneCands: { x: number; z: number; yaw: number }[] = []
-const ZONE_FILL: Record<string, string> = { lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc' }
+const ZONE_FILL: Record<string, string> = { pasture: '#9cc46a44', orchard: '#6fa04a44', grave: '#d8d8d8', lamp: '#ffe066', lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc' }
 let satQ: Quantised | null = null
 let satSurf: string[] = []
 let satCanvas: HTMLCanvasElement | null = null
@@ -3451,14 +3485,14 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   run(t('run.l.forests'), async () => {
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
-    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a) })), entities: prodLogEntities() })
+    return toWb({ version: 0, shapes: f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID })), entities: prodLogEntities() })
   }),
 )
 // everything at once (roads + water, forests, buildings): one project, the log says what went
 $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   run(t('run.l.all'), async () => {
     const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
-    const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: forestGenOf(a) }))
+    const forests = areas.filter((a) => a.kind === 'forest').map((a) => ({ id: a.id, kind: 'polyline' as const, closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
     const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities()]
@@ -4041,7 +4075,7 @@ function drawZones() {
     ctx.lineWidth = 3
     ctx.strokeStyle = '#000a'
     ctx.fillStyle = '#fff'
-    const label = t(('zone.name.' + zn.kind) as K, { n: zn.id.replace(/\D+/g, '') })
+    const label = zn.kind === 'site' ? t(('zt.' + zn.sub) as K) : t(('zone.name.' + zn.kind) as K, { n: zn.id.replace(/\D+/g, '') })
     ctx.strokeText(label, sx + 8, sy - 8)
     ctx.fillText(label, sx + 8, sy - 8)
   }
@@ -4451,7 +4485,7 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
 function wallLines(): { pts: number[]; h: number; t: number; hedge?: boolean }[] {
   const out: { pts: number[]; h: number; t: number; hedge?: boolean }[] = []
   for (const p of setParcels) for (const f of p.fences) if (f.pts.length >= 4) out.push({ pts: f.pts, h: /wall|stone|brick/i.test(f.guid) ? 1.8 : 1.3, t: 0.25 })
-  for (const z of zones) for (const s of z.shapes) if (s.kind === 'polyline' && s.generator && s.points.length >= 4) out.push({ pts: s.points, h: 2.2, t: 0.3 })
+  for (const z of zones) for (const s of z.shapes) if (s.kind === 'polyline' && /Walls\//.test(s.generator) && s.points.length >= 4) out.push({ pts: s.closed ? [...s.points, s.points[0], s.points[1]] : s.points, h: /Crash/.test(s.generator) ? 0.8 : /Rural|Wooden/.test(s.generator) ? 1.2 : /Brick/.test(s.generator) ? 2 : 2.2, t: 0.3 })
   for (const h of result?.hedges ?? []) if (h.length >= 2) out.push({ pts: h.flat(), h: 2, t: 1.4, hedge: true })
   return out
 }
@@ -4517,7 +4551,7 @@ btn3d.addEventListener('click', () => void (async () => {
     const mod: View3DMod = await import('./view3d')
     const buildings = [
       ...settled.map((b) => box3d(b.corners, BLD_H[b.cat] ?? 6)),
-      ...zones.flatMap((z) => z.boxes.filter((b) => b.corners.length >= 8).map((b) => box3d(b.corners, /hangar|tower/i.test(b.role) ? 12 : 7))),
+      ...zones.flatMap((z) => z.boxes.filter((b) => z.kind === 'site' ? b.corners.length === 8 && (b.h ?? 0) >= 0.2 : b.corners.length >= 8).map((b) => box3d(b.corners, b.h ?? (/hangar|tower/i.test(b.role) ? 12 : 7)))),
     ]
     const lakes = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts)
     const trees = forestTrees()

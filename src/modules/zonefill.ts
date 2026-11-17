@@ -5,13 +5,14 @@
 import * as turf from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { generateCampaign } from './campaign'
+import { SITE_MAX_SLOPE, SITE_PRIORITY, SITE_TYPES, type SiteType } from './sitezones'
 
-export type ZoneFillType = 'fields' | 'forest' | 'habitation' | 'scattered' | 'industrial' | 'production'
-export const ZONE_FILL_TYPES: ZoneFillType[] = ['fields', 'forest', 'habitation', 'scattered', 'industrial', 'production']
+export type ZoneFillType = 'fields' | 'forest' | 'habitation' | 'town' | 'scattered' | 'industrial' | 'production' | SiteType
+export const ZONE_FILL_TYPES: ZoneFillType[] = ['fields', 'forest', 'habitation', 'town', 'scattered', 'industrial', 'production', ...SITE_TYPES]
 /** steepest ground (rise / run) each type accepts */
-export const ZONE_MAX_SLOPE: Record<ZoneFillType, number> = { fields: 0.15, forest: 1, habitation: 0.2, scattered: 0.15, industrial: 0.12, production: 0.6 }
+export const ZONE_MAX_SLOPE: Record<ZoneFillType, number> = { fields: 0.15, forest: 1, habitation: 0.2, town: 0.2, scattered: 0.15, industrial: 0.12, production: 0.6, ...SITE_MAX_SLOPE }
 /** lower number = higher priority (wins an overlap) */
-export const ZONE_PRIORITY: Record<'water' | 'roads' | ZoneFillType, number> = { water: 0, roads: 1, habitation: 2, scattered: 2, industrial: 3, fields: 4, forest: 5, production: 5 }
+export const ZONE_PRIORITY: Record<'water' | 'roads' | ZoneFillType, number> = { water: 0, roads: 1, habitation: 2, town: 2, scattered: 2, industrial: 3, fields: 4, forest: 5, production: 5, ...SITE_PRIORITY }
 
 export interface RoadLike { pts: number[]; half: number }
 type Poly = Feature<Polygon | MultiPolygon>

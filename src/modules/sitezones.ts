@@ -4,7 +4,7 @@
 // 'site') so the map, the 3D view, the save and the Workbench export handle it like the other zones.
 // Every prefab ref below was resolved against the base game resourceDatabase.rdb (no invented GUID).
 
-import type { ProjectEntity, ProjectShape } from '../project'
+import { ZONE_AVOID, type ProjectEntity, type ProjectShape } from '../project'
 import type { ZoneItem } from './zones'
 import { FENCES, VEG } from '../data/biomes'
 import { round } from './gen-common'
@@ -73,7 +73,7 @@ export function makeSiteZone(type: SiteType, polygon: number[], c: SiteContext):
 
   if (type === 'pasture') {
     shapes.push(fencePerimeter(polygon, FENCES.wood1, `${c.id}_fence`))
-    shapes.push({ id: `${c.id}_grass`, kind: 'polyline', closed: true, points: polygon.map(round), generator: SITE_PREFABS.pastureFG })
+    shapes.push({ id: `${c.id}_grass`, kind: 'polyline', closed: true, points: polygon.map(round), generator: SITE_PREFABS.pastureFG, avoid: ZONE_AVOID })
     boxes.push({ corners: polygon.slice(), role: 'pasture' })
     // a few hay-bale clusters
     const spots = rowGrid(polygon, { dx: 45, dz: 45, margin: 10, jitter: 0.6, rand, roads: c.roads, ok, ground: c.ground, maxSlope: 0.15 })
