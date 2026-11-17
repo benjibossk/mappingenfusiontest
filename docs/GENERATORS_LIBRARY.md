@@ -71,44 +71,56 @@ Recensement (2026-11) d'outils/plugins de génération procédurale de zones, ho
 
 | Nom | URL | Type / licence | Ce qu'il génère | Règle à copier | Inspire |
 |---|---|---|---|---|---|
-| Unreal PCG Framework | dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-overview | plugin natif UE5, gratuit | scatter, splines, biomes | graphe Surface Sampler → Density Filter → Self Pruning (rejet par rayon) → Spawn ; attributs par point | tous (architecture pipeline) |
-| UE PCG "Spline fence/wall" (Electric Dreams sample) | unrealengine.com (Electric Dreams) | sample gratuit | clôtures, murets le long de splines | poteau tous les N m, panneau orienté entre poteaux, coin = poteau forcé | pâture clôturée, cimetière |
-| PCG Biome Core (UE 5.4+) | dev.epicgames.com (PCG Biome Core) | plugin natif | biomes forestiers en couches | priorité de couches + exclusion des couches supérieures, lisière | forêt, forêt de production |
-| Houdini SideFX Labs | sidefx.com/products/sidefx-labs | gratuit (Houdini Indie payant) | routes, trees, scatter, building gen | Labs Lot Subdivision (découpage parcelle façade-route), Labs Road Generator | habitat, industrie |
-| Houdini Parking Lot HDA (tutos/Orbolt) | orbolt.com | HDA, divers | parkings | bandes places 2,5×5 m + allées 6 m alternées, orientation sur bord le plus long, arbres en îlots | parking |
-| Houdini "City Builder" / Labs Building Generator | sidefx.com/tutorials | gratuit | façades, îlots | modules étage/travée répétés, coin et RDC spécifiques | habitat, industrie |
-| CityEngine CGA (rule libraries ESRI) | doc.arcgis.com/en/cityengine | payant | bâtiments, parcelles | split(x){~3: fenêtre}* ; parcelles par subdivision « offset/skeleton », setback rue | habitat, ferme |
-| MapMagic 2 (Unity) | assetstore.unity.com (Denis Pahunov) | gratuit + modules payants | terrain, objets, arbres | nœuds Scatter (grille jitter) + Stamp + masques de pente/hauteur | forêt, champ |
-| Gaia Pro / GeNa Pro (Procedural Worlds) | procedural-worlds.com | ~$70-150 | biomes, spawn le long de splines | « spawn criteria » (pente, hauteur, texture, distance) avec courbes de fitness | tous (filtres) |
-| Vegetation Studio Pro (Awesome Technologies) | assetstore.unity.com | payant | végétation | règles de biome + masques d'exclusion autour routes/bâtiments | forêt, lisière |
-| CiDy 2 (Unity) | assetstore.unity.com | payant | villes, routes, îlots | graphe routier → îlots → lots → bâtiments face rue | habitat |
-| EasyRoads3D | easyroads3d.com | gratuit/Pro | routes, carrefours | « side objects » (poteaux, glissières) à pas fixe le long du tracé | check-point, parking |
-| Road Architect (Unity, OSS) | github.com/MicroGSD/RoadArchitect | MIT | routes, intersections | terrassement automatique sous route | routes, parking |
-| Geo-Scatter / Scatter5 (Blender) | geoscatter.com | ~€100 (lite gratuit) | biomes, scatter | masques distance/pente/altitude/vertex, « clumping » par grappes | forêt, verger |
-| Buildify (Blender) | paveloliva.gumroad.com/l/buildify | pay-what-you-want | bâtiments modulaires depuis polygones | geometry nodes : façade = modules répétés, coins, toit selon emprise | habitat |
-| SceneCity (Blender) | cgchan.com/scenecity | payant | villes sur grille routière | blocs remplis de lots tirés au hasard par catégorie | habitat, industrie |
-| BlenderGIS | github.com/domlysz/BlenderGIS | GPL | terrain + OSM | import emprises OSM par tag | toutes (données réelles) |
-| Blosm (ex blender-osm) | prochitecture.gumroad.com/l/blender-osm | gratuit/premium | bâtiments, routes OSM | toit généré selon roof:shape, hauteur par levels | habitat |
-| OSM2World | osm2world.org | LGPL | 3D depuis OSM | une règle par tag (barrier=fence, amenity=parking, landuse=cemetery…) | pâture, parking, cimetière |
-| Watabou Village/City/Neighbourhood | watabou.github.io | gratuit | villages, villes, îlots | Voronoï + rues ; village = maisons le long d'une route, recul variable | habitat, ferme |
-| Watabou "One Page Dungeon"/"Perilous Shores" | watabou.itch.io | gratuit | donjons, côtes | côte par bruit + plages sur pente faible | plage, port |
-| Townscaper | townscapergame.com | ~€6 | ville sur grille irrégulière | WFC sur grille quad irrégulière, règles locales voisinage | habitat (noyau) |
-| WFC (mxgmn) | github.com/mxgmn/WaveFunctionCollapse | MIT | tuiles, patterns | contraintes d'adjacence + entropie minimale | casse, camp militaire |
-| WorldPainter custom objects | worldpainter.net | GPL | objets Minecraft | « Custom objects layer » : densité, rotation aléatoire, ancrage sol | forêt, ferme |
-| Arnis | github.com/louis-e/arnis | Apache-2 | Minecraft depuis OSM | rendu par tag OSM, clôtures autour landuse=farmland | pâture, champ |
-| Minecraft jigsaw structures | minecraft.wiki/w/Jigsaw_Block | natif | villages, avant-postes | pièces assemblées par connecteurs nommés + profondeur max | camp militaire, ferme |
-| Cities Skylines Move It / Find It | steamcommunity.com (CS1 workshop) | gratuit | placement | « align to segment », copie motif, snap à la route | parking, check-point |
-| CS "Parking Lot Roads" (Badi Dea) | steamcommunity.com | gratuit | parkings | parking = route spéciale à places latérales | parking |
-| CS2 "Line Tool" (algernon) | github.com/algernon-A/LineTool | gratuit | rangées d'objets | ligne/cercle/courbe, espacement fixe, rotation relative | verger, vigne, cimetière |
-| Farming Simulator GIANTS Editor + "Field toolbox" scripts | gdn.giants-software.com | gratuit | champs, clôtures | champ = polygone + bande de bord non cultivée, ID par parcelle | champ, ferme |
-| FS "Fence placement" tool (GIANTS Editor 9+) | gdn.giants-software.com | natif | clôtures | panneaux sur spline, adaptation à la pente (poteau vertical, panneau incliné) | pâture clôturée |
-| Arma 3 Terrain Processor | github.com/pennyworth12345/A3_TerrainProcessor | gratuit | objets depuis shapefiles | tâches : « place along line », « fill polygon random », « building in polygon facing road » | toutes |
-| Arma 3 Terrain Builder | Arma 3 Tools | gratuit | objets | templates de forêt pondérés + scatter sur polygone | forêt |
-| DayZ Editor (InclementDab) | github.com/InclementDab/DayZ-Dabs-Framework | gratuit | placement manuel | brosses d'objets à rayon et densité | casse, camp |
-| World Machine / Gaea / World Creator | world-machine.com, quadspinner.com, world-creator.com | payants (free tier) | terrain, masques | export de masques (pente, flux, sédiments) servant de densité | forêt, champ, plage |
-| Poisson disk (Bridson) | cs.ubc.ca/~rbridson/docs/bridson-siggraph07-poissondisk.pdf | algo | semis | rayon mini garanti en O(n) | forêt, ferme dispersée |
-| Procedural vineyard/orchard (Houdini/Blender tutos) | youtube / blenderartists.org | tutos | vignes, vergers | rangées suivant les courbes de niveau, inter-rang 2-3 m (vigne) / 6-8 m (verger), tournières en bout | verger, vigne |
-| Cemetery generator (Blender GN, Houdini) | blendswap / artstation | divers | cimetières | grille de tombes ±jitter 5 %, allées perpendiculaires, mur d'enceinte + portail | cimetière |
+| Unreal PCG Framework ✔︎ | dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-overview | plugin natif UE5, gratuit | scatter, splines, biomes | graphe Surface Sampler → Density Filter → Self Pruning (rejet par rayon) → Spawn ; attributs par point | tous (architecture pipeline) |
+| UE PCG fence generator (Shape Grammar tuto) + Electric Dreams PCGSplineExample ✔︎ corrigé | dev.epicgames.com/documentation/unreal-engine/creating-a-fence-generator-using-shape-grammar-in-unreal-engine | tuto Epic gratuit (UE 5.4+) ; Electric Dreams = sample gratuit Fab, UE 5.2+ | clôtures, murets le long de splines | poteau tous les N m, panneau orienté entre poteaux, coin = poteau forcé | pâture clôturée, cimetière |
+| PCG Biome Core + Biome Sample (UE 5.4+) ✔︎ | dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-pcg-biome-core-and-sample-plugins-overview-guide-in-unreal-engine | plugin natif expérimental, gratuit (inclut un générateur de champs cultivés) | biomes forestiers en couches | priorité de couches + exclusion des couches supérieures, lisière | forêt, forêt de production |
+| Houdini SideFX Labs ✔︎ | sidefx.com/products/sidefx-labs | gratuit (Houdini Indie payant) | routes, trees, scatter, building gen | Labs Lot Subdivision (découpage parcelle façade-route), Labs Road Generator | habitat, industrie |
+| Houdini Parking Lot HDA (tutos/Orbolt) — non trouvé (pas de HDA officiel identifié) | orbolt.com | à vérifier | parkings | bandes places 2,5×5 m + allées 6 m alternées, orientation sur bord le plus long, arbres en îlots | parking |
+| SideFX Labs Building Generator ✔︎ corrigé | sidefx.com/products/sidefx-labs | gratuit (dans Labs) | façades, îlots | modules étage/travée répétés, coin et RDC spécifiques | habitat, industrie |
+| CityEngine CGA (rule libraries ESRI) ✔︎ | doc.arcgis.com/en/cityengine | payant | bâtiments, parcelles | split(x){~3: fenêtre}* ; parcelles par subdivision « offset/skeleton », setback rue | habitat, ferme |
+| MapMagic 2 (Unity) ✔︎ | assetstore.unity.com (Denis Pahunov) | gratuit + modules payants | terrain, objets, arbres | nœuds Scatter (grille jitter) + Stamp + masques de pente/hauteur | forêt, champ |
+| Gaia Pro / GeNa Pro (Procedural Worlds) ✔︎ | procedural-worlds.com | ~$70-150 | biomes, spawn le long de splines | « spawn criteria » (pente, hauteur, texture, distance) avec courbes de fitness | tous (filtres) |
+| Vegetation Studio Pro (Awesome Technologies) ✔︎ | assetstore.unity.com | payant | végétation | règles de biome + masques d'exclusion autour routes/bâtiments | forêt, lisière |
+| CiDy 2 (Unity) ✔︎ | assetstore.unity.com | payant | villes, routes, îlots | graphe routier → îlots → lots → bâtiments face rue | habitat |
+| EasyRoads3D ✔︎ | easyroads3d.com | gratuit/Pro | routes, carrefours | « side objects » (poteaux, glissières) à pas fixe le long du tracé | check-point, parking |
+| Road Architect (Unity, OSS) ✔︎ (repo MicroGSD archivé → fork FritzsHero) | github.com/FritzsHero/RoadArchitect | MIT | routes, intersections | terrassement automatique sous route | routes, parking |
+| Geo-Scatter (Blender) ✔︎ | superhivemarket.com/products/scatter | payant (prix non confirmé ; Biome-Reader gratuit) | biomes, scatter | masques distance/pente/altitude/vertex, « clumping » par grappes | forêt, verger |
+| Buildify (Blender, Pavel Oliva) ✔︎ | paveloliva.gumroad.com/l/buildify | gratuit (don libre) | bâtiments modulaires depuis polygones | geometry nodes : façade = modules répétés, coins, toit selon emprise | habitat |
+| SceneCity (Blender, Arnaud Couturier) ✔︎ corrigé | couturier-arnaud.gumroad.com/l/scenecity | ~$39 | villes sur grille routière | blocs remplis de lots tirés au hasard par catégorie | habitat, industrie |
+| BlenderGIS ✔︎ | github.com/domlysz/BlenderGIS | GPL | terrain + OSM | import emprises OSM par tag | toutes (données réelles) |
+| Blosm (ex blender-osm) ✔︎ | prochitecture.gumroad.com/l/blender-osm | gratuit/premium | bâtiments, routes OSM | toit généré selon roof:shape, hauteur par levels | habitat |
+| OSM2World ✔︎ | osm2world.org | LGPL | 3D depuis OSM | une règle par tag (barrier=fence, amenity=parking, landuse=cemetery…) | pâture, parking, cimetière |
+| Watabou Village/City/Neighbourhood ✔︎ | watabou.github.io | gratuit | villages, villes, îlots | Voronoï + rues ; village = maisons le long d'une route, recul variable | habitat, ferme |
+| Watabou "One Page Dungeon"/"Perilous Shores" ✔︎ | watabou.itch.io | gratuit | donjons, côtes | côte par bruit + plages sur pente faible | plage, port |
+| Townscaper ✔︎ | townscapergame.com | ~€6 | ville sur grille irrégulière | WFC sur grille quad irrégulière, règles locales voisinage | habitat (noyau) |
+| WFC (mxgmn) ✔︎ | github.com/mxgmn/WaveFunctionCollapse | MIT | tuiles, patterns | contraintes d'adjacence + entropie minimale | casse, camp militaire |
+| WorldPainter custom objects ✔︎ | worldpainter.net | GPL | objets Minecraft | « Custom objects layer » : densité, rotation aléatoire, ancrage sol | forêt, ferme |
+| Arnis ✔︎ | github.com/louis-e/arnis | Apache-2.0 | Minecraft depuis OSM | rendu par tag OSM, clôtures autour landuse=farmland | pâture, champ |
+| Minecraft jigsaw structures ✔︎ | minecraft.wiki/w/Jigsaw_Block | natif | villages, avant-postes | pièces assemblées par connecteurs nommés + profondeur max | camp militaire, ferme |
+| Cities Skylines Move It / Find It ✔︎ | steamcommunity.com (CS1 workshop) | gratuit | placement | « align to segment », copie motif, snap à la route | parking, check-point |
+| CS1 "Parking Lot Roads" ✔︎ (auteur non confirmé) + "Parking Lot Snapping" | steamcommunity.com/sharedfiles/filedetails/?id=1285201733 | gratuit (Workshop) | parkings | parking = route spéciale à places latérales | parking |
+| CS2 "Line Tool" (algernon) ✔︎ | github.com/algernon-A/LineTool | gratuit | rangées d'objets | ligne/cercle/courbe, espacement fixe, rotation relative | verger, vigne, cimetière |
+| Farming Simulator GIANTS Editor + "Field toolbox" scripts ✔︎ | gdn.giants-software.com | gratuit | champs, clôtures | champ = polygone + bande de bord non cultivée, ID par parcelle | champ, ferme |
+| FS25 "GE10 SplineToolkit" (Place Fence) ✔︎ corrigé — pas d'outil natif GIANTS | modhoster.com/mods/ge10-script-splinetoolkit | script communautaire gratuit (GIANTS Editor 10) | clôtures | panneaux sur spline, adaptation à la pente (poteau vertical, panneau incliné) | pâture clôturée |
+| Arma 3 Terrain Processor ✔︎ corrigé (outil officiel BI, pas un repo pennyworth) | community.bistudio.com/wiki/Terrain_Processor | gratuit (Arma 3 Tools) | objets depuis shapefiles | tâches : « place along line », « fill polygon random », « building in polygon facing road » | toutes |
+| Arma 3 Terrain Builder ✔︎ | Arma 3 Tools | gratuit | objets | templates de forêt pondérés + scatter sur polygone | forêt |
+| DayZ Editor (InclementDab) ✔︎ corrigé | github.com/InclementDab/DayZ-Editor | gratuit (requiert Dabs Framework + CF) | placement manuel | brosses d'objets à rayon et densité | casse, camp |
+| World Machine / Gaea / World Creator ✔︎ | world-machine.com, quadspinner.com, world-creator.com | payants (free tier) | terrain, masques | export de masques (pente, flux, sédiments) servant de densité | forêt, champ, plage |
+| Poisson disk (Bridson) ✔︎ | cs.ubc.ca/~rbridson/docs/bridson-siggraph07-poissondisk.pdf | algo | semis | rayon mini garanti en O(n) | forêt, ferme dispersée |
+| Procedural vineyard/orchard (Houdini/Blender tutos) ✔︎ | youtube / blenderartists.org | tutos | vignes, vergers | rangées suivant les courbes de niveau, inter-rang 2-3 m (vigne) / 6-8 m (verger), tournières en bout | verger, vigne |
+| Cemetery generator (Blender GN, Houdini) ✔︎ | blendswap / artstation | divers | cimetières | grille de tombes ±jitter 5 %, allées perpendiculaires, mur d'enceinte + portail | cimetière |
+| Labs Lot Subdivision (SideFX) ➕ | sidefxlabs.artstation.com/projects/kQ3wgn | gratuit (Labs) | îlots, lots, parcelles | subdivision récursive (taille mini, itérations, irrégularité) | habitat, ferme |
+| Watabou Medieval Fantasy City Generator ➕ | watabou.github.io/city.html | gratuit (source MFCG en ligne) | ville entière (murs, quartiers, champs) | Voronoi de quartiers + rues principales vers portes | habitat |
+| ICity (Blender GN, Hothifa Smair) ➕ | 80.lv/articles/long-awaited-procedural-city-generator-for-blender-is-now-available | payant (Superhive) | ville, routes, parkings, mobilier urbain | mobilier posé par règles le long des trottoirs | habitat, parking |
+| UCG Urban City Generator (Blender) ➕ | 80.lv/articles/this-procedural-generator-lets-you-create-modern-cities-in-blender | payant | ville + parkings, lignes électriques, clôtures | parking/clôture générés par îlot | parking, clôture |
+| Procedural Traffic (Blender, Suzanne Studio) ➕ | superhivemarket.com/products/procedural-traffic | payant | véhicules + « parking lot system on points » | véhicules garés sur points de places | parking, casse |
+| UE PCG Shape Grammar ➕ | dev.epicgames.com/documentation/unreal-engine/creating-a-fence-generator-using-shape-grammar-in-unreal-engine | natif UE 5.4+ | modules le long de splines | grammaire `[Poteau][Panneau]*` sur longueur de spline | clôture, muret |
+| DeBroglie (WFC C#) ➕ | github.com/BorisTheBrave/DeBroglie | MIT | WFC avec contraintes (chemins, bordures) | contraintes de connectivité en plus de l'adjacence | camp, casse |
+| Arma3_QGIS (rossoe) ➕ | github.com/rossoe/Arma3_QGIS | open source | import données réelles vers Terrain Builder | couches SIG → objets | import OSM |
+| SCAR E2TB (ostinelli) ➕ | github.com/ostinelli/SCAR_E2TB | open source | export Eden → Terrain Builder | placement à la main puis export de masse | tous |
+| Parking Lot Snapping (CS1) ➕ | steamcommunity.com/sharedfiles/filedetails/?id=2594569657 | gratuit | places alignées sur routes-parking | places aimantées sur le segment | parking |
+
+> Vérifié le 2026-11-17 (recherche web) : ✔︎ = confirmé, « corrigé » = URL/licence/nom rectifiés, « non trouvé » = non confirmé, ➕ = ajout. Prix indicatifs.
 
 ### Idées à reprendre (classées)
 1. **Pipeline type PCG** : échantillonnage → filtres (pente, hauteur, distance route/eau) → pruning par rayon → spawn, réutilisé par tous les générateurs.
