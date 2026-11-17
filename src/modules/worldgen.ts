@@ -23,7 +23,7 @@ import type { Feature, Polygon } from 'geojson'
 import { generateForests } from './forestgen'
 import { generateCampaign, type CampaignResult } from './campaign'
 import { mergeForestPatches } from './forestMerge'
-import { clipPlots, plotHedges, pointObstacle, roadObstacles } from './zonefill'
+import { clipPlots, plotGroves, plotHedges, plotTracks, pointObstacle, roadObstacles } from './zonefill'
 import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
@@ -570,6 +570,12 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     for (const h of plotHedges(kept, { seen, rnd, ok })) {
       camp.hedges.push(h)
       camp.shapes.push({ id: `FIELD_${k + 1}_Hedge_${camp.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
+    }
+    // groves at some plot corners + dirt tracks linking the plots to the nearest road (Tanin AgriFieldGenerator)
+    plotGroves(kept, { rnd, ok }).forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${k + 1}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
+    for (const [j, pts] of plotTracks(kept, allRoads.map((rd) => rd.pts), { ok }).entries()) {
+      const tr: Road = { id: `ROAD_FIELD_${k + 1}_${j + 1}`, type: 'dirt', pts, auto: true }
+      roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too
     }
   })
   // 11. surfaces (5 per block at most)

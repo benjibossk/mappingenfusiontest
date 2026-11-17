@@ -164,3 +164,72 @@ function inRing(p: number[], x: number, z: number) {
   for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c
   return c
 }
+
+function inPlotRing(r: number[][], x: number, z: number): boolean {
+  let c = false
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const a = r[i], b = r[j]
+    if ((a[1] > z) !== (b[1] > z) && x < ((b[0] - a[0]) * (z - a[1])) / (b[1] - a[1]) + a[0]) c = !c
+  }
+  return c
+}
+/** does the segment a-b go through a plot interior? (ends excluded: they sit on plot borders) */
+function crossesPlots(plots: number[][][], ax: number, az: number, bx: number, bz: number): boolean {
+  const n = Math.max(4, Math.ceil(Math.hypot(bx - ax, bz - az) / 4))
+  for (let i = 1; i < n; i++) {
+    const x = ax + ((bx - ax) * i) / n, z = az + ((bz - az) * i) / n
+    if (plots.some((p) => inPlotRing(p, x, z))) return true
+  }
+  return false
+}
+
+/** small groves at some plot corners, in the hedge network (Tanin AgriFieldGenerator): tiny forest rings
+ * (flat X/Z, ~8-14 m) whose centre sits outside every plot; corners shared by several plots first */
+export function plotGroves(kept: number[][][], o: { rnd: () => number; ok: (x: number, z: number) => boolean; chance?: number; minGap?: number }): number[][] {
+  const chance = o.chance ?? 0.12, gap = o.minGap ?? 60, out: number[][] = [], centres: number[][] = []
+  for (const f of kept) {
+    let cx = 0, cz = 0
+    for (const q of f) { cx += q[0]; cz += q[1] }
+    cx /= f.length; cz /= f.length
+    for (let i = 0; i + 1 < f.length; i++) {
+      if (o.rnd() > chance) continue
+      const q = f[i], d = Math.hypot(q[0] - cx, q[1] - cz) || 1
+      const r = 4 + o.rnd() * 3, x = q[0] + ((q[0] - cx) / d) * (r + 2), z = q[1] + ((q[1] - cz) / d) * (r + 2) // pushed out of the plot
+      if (!o.ok(x, z) || centres.some((c) => Math.hypot(c[0] - x, c[1] - z) < gap)) continue
+      const ring: number[] = []
+      for (let k = 0; k < 7; k++) { const a = (k / 7) * Math.PI * 2, rr = r * (0.75 + o.rnd() * 0.5); ring.push(x + Math.cos(a) * rr, z + Math.sin(a) * rr) }
+      let inside = false
+      for (let k = 0; k < ring.length && !inside; k += 2) inside = kept.some((p) => inPlotRing(p, ring[k], ring[k + 1]))
+      if (inside) continue
+      centres.push([x, z]); out.push(ring)
+    }
+  }
+  return out
+}
+
+/** dirt tracks from the plots to the nearest road: from the plot corner closest to a road, straight to that
+ * road, only when the track never crosses a plot; plots already touching a road (or a track) get none */
+export function plotTracks(kept: number[][][], roads: number[][], o: { maxLen?: number; touch?: number; ok?: (x: number, z: number) => boolean } = {}): number[][] {
+  const maxLen = o.maxLen ?? 250, touch = o.touch ?? 10, out: number[][] = []
+  const near = (x: number, z: number, lines: number[][]) => {
+    let best = Infinity, bx = 0, bz = 0
+    for (const l of lines) for (let i = 0; i + 3 < l.length; i += 2) {
+      const ax = l[i], az = l[i + 1], dx = l[i + 2] - ax, dz = l[i + 3] - az, L = dx * dx + dz * dz
+      const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+      const px = ax + dx * t, pz = az + dz * t, d = Math.hypot(x - px, z - pz)
+      if (d < best) { best = d; bx = px; bz = pz }
+    }
+    return { d: best, x: bx, z: bz }
+  }
+  for (const f of kept) {
+    const lines = [...roads, ...out]
+    let best: { d: number; x: number; z: number; q: number[] } | null = null
+    for (let i = 0; i + 1 < f.length; i++) { const r = near(f[i][0], f[i][1], lines); if (!best || r.d < best.d) best = { ...r, q: f[i] } }
+    if (!best || best.d <= touch || best.d > maxLen) continue
+    const { q } = best
+    if (crossesPlots(kept, q[0], q[1], best.x, best.z)) continue
+    if (o.ok && !o.ok((q[0] + best.x) / 2, (q[1] + best.z) / 2)) continue
+    out.push([q[0], q[1], best.x, best.z].map((v) => Math.round(v * 100) / 100))
+  }
+  return out
+}

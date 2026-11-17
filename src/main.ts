@@ -17,7 +17,7 @@ import { Sculpt } from './modules/sculpt'
 import { generateCampaign, type CampaignResult } from './modules/campaign'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
-import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, flatToPoly, plotHedges, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
+import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, flatToPoly, plotGroves, plotHedges, plotTracks, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
@@ -950,6 +950,12 @@ function zoneFields(zone: number[], n: number) {
     result.hedges.push(h)
     result.shapes.push({ id: `${prefix}Hedge_${result.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
   }
+  // groves at some plot corners + dirt tracks from the plots to the nearest road (Tanin AgriFieldGenerator)
+  const landOk = (x: number, z: number) => !tr || isLand(tr, x, z)
+  plotGroves(kept, { rnd, ok: landOk }).forEach((pts, j) => areas.push({ id: `FOREST_GROVE_Z${n}_${j + 1}`, kind: 'forest', leaf: 'broad', pts }))
+  const tracks = roads.length ? plotTracks(kept, roads.map((rd) => rd.pts), { ok: landOk }) : []
+  tracks.forEach((pts, j) => roads.push({ id: `ROAD_FIELD_Z${n}_${j + 1}`, type: 'dirt', pts }))
+  if (tracks.length) roadInfo()
   finishZone('fields', zone, t('log.fieldsDone', { fields: kept.length, hedges: hedges.length }))
 }
 function zoneForest(zone: number[], n: number) {
