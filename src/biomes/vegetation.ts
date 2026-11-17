@@ -17,14 +17,21 @@ export function coniferShare(b: Biome): number {
 const get = (id?: string) => (id && id !== EVERON ? biome(id) : undefined)
 const EV = () => biome(EVERON)!
 
+/** relative altitude (0..1 of the highest point) above which no forest grows; Everon 0.9 */
+export const TREE_LINE = 0.9
+/** sparser biomes (drier / harsher) stop the woods lower down: 0.78 .. 0.9 */
+export function treeLineOf(densityRatio: number): number {
+  return 0.78 + 0.12 * Math.min(1, Math.max(0, densityRatio))
+}
 /** forest generation knobs: cover multiplier (tree density vs Everon) and the shift of the leaf thresholds */
-export function forestTuning(id?: string): { coverMul: number; needleShift: number } {
+export function forestTuning(id?: string): { coverMul: number; needleShift: number; treeLine: number } {
   const b = get(id)
-  if (!b) return { coverMul: 1, needleShift: 0 }
+  if (!b) return { coverMul: 1, needleShift: 0, treeLine: TREE_LINE }
   const ev = EV()
   return {
     coverMul: Math.min(1.4, b.vegetation.treesPerHa / ev.vegetation.treesPerHa),
     needleShift: (coniferShare(b) - coniferShare(ev)) * 0.5,
+    treeLine: treeLineOf(b.vegetation.treesPerHa / ev.vegetation.treesPerHa),
   }
 }
 /** leaf type of a generated forest from its mean relative altitude (Everon: > 0.55 needle, < 0.25 broad) */

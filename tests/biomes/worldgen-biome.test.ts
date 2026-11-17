@@ -12,7 +12,7 @@ const strip = (w: Awaited<ReturnType<typeof generateWorld>>) => ({ ...w, params:
 
 test('Everon is neutral in every helper', () => {
   for (const id of [undefined, 'temperate_everon']) {
-    assert.deepEqual(forestTuning(id), { coverMul: 1, needleShift: 0 })
+    assert.deepEqual(forestTuning(id), { coverMul: 1, needleShift: 0, treeLine: 0.9 })
     assert.equal(mixedNeedle(id), 0.4)
     assert.equal(drapeTint(id), undefined)
     assert.equal(treeTint(id), undefined)

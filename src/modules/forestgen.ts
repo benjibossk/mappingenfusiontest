@@ -30,6 +30,12 @@ function hull(p: [number, number][]): [number, number][] {
   return lo.slice(0, -1).concat(up.slice(0, -1))
 }
 
+/** placement preference of a cell: mid heights and slopes, valleys (concave cells) more than ridges.
+ *  a = relative altitude 0..1, slope = rise/run, concavity = mean corner height - centre height (m) */
+export function forestBias(a: number, slope: number, concavity: number): number {
+  return (a > 0.15 && a < 0.75 ? 0.06 : -0.06) + Math.min(slope, 0.4) * 0.15 + Math.max(-0.04, Math.min(0.04, concavity * 0.01))
+}
+
 export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions): GenForest[] {
   const C = 48 // m, forest cell
   const nc = Math.floor(((g.cols - 1) * g.step) / C), nr = Math.floor(((g.rows - 1) * g.step) / C)
@@ -55,7 +61,9 @@ export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions)
       if (o.sites.some((s) => Math.hypot(s.x - x, s.z - z) < SITE_RADIUS[s.kind] + 60)) continue
       const n = noise(x / 420, z / 420, o.seed) * 0.7 + noise(x / 130, z / 130, o.seed + 7) * 0.3
       // a bit more wood on the slopes and mid heights, less on the coast and the summits
-      const a = hs[0] / top, bias = (a > 0.15 && a < 0.75 ? 0.06 : -0.06) + Math.min(slope, 0.4) * 0.15
+      const a = hs[0] / top
+      if (a > tune.treeLine) continue // above the biome tree line: bare summits
+      const bias = forestBias(a, slope, (hs[1] + hs[2] + hs[3] + hs[4]) / 4 - hs[0])
       if (n + bias < thr) continue
       ok[r * nc + c] = 1
       alt[r * nc + c] = a

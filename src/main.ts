@@ -4396,7 +4396,8 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
         continue
       }
       const needle = a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < Math.max(0.85, mixShare)) // conifers dominate (OpsTrack ~85 %)
-      out.push(px, pz, 0.7 + rnd() * 0.5 * (0.6 + nz * 0.8)); kind.push(needle ? 1 : 0)
+      // progressive edge (Forest Featherer): younger, smaller trees over the outer ~35 m
+      out.push(px, pz, (0.7 + rnd() * 0.5 * (0.6 + nz * 0.8)) * Math.min(1, 0.6 + d / 35 * 0.4)); kind.push(needle ? 1 : 0)
       if (d < 25 && rnd() < 0.25) { out.push(px + (rnd() - 0.5) * sp, pz + (rnd() - 0.5) * sp, 0.5 + rnd()); kind.push(2) } // undergrowth
     }
   })
