@@ -17,6 +17,7 @@ import { BUILDINGS, FRONT_YAW } from '../data/buildings'
 import { boxed, footprint, hash, inside, lineDist, overlap, rng, sampler, samples, type Line, type Placed, type PlacedRole, type Settlement, type Square } from './settlements'
 import { GROW_TOWN, GROW_VILLAGE, growStreets, nearestOn, polyGrade, type GrowOptions, type StreetSeed } from './villageStreets'
 import { lotCorners, lotPoint, splitLot, streetBlocks, type Lot } from './villageLots'
+import { clipDepth, lotTarget, subdivideBlock } from './lotSubdivision'
 import { gardenParcel, type PlacedAsset, type PlacedFence } from '../biomes/parcel'
 import { defaultLibrary } from '../library/index.ts'
 import { EVERON } from '../biomes/vegetation'
@@ -343,12 +344,20 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
 
     // --- lots: street blocks split by OBB, nearest to the centre first
     const lots: { lot: Lot; f: number }[] = []
+    const backs: Lot[] = [] // Zone tool: back strips (no street frontage), shared back yards
     for (const l of local) {
       for (const side of [1, -1]) {
         for (const blk of streetBlocks(l.pts, side, l.half + ROAD_MARGIN, 0, P.chunk)) {
           const d = Math.hypot(blk.cx - site.x, blk.cz - site.z)
           if (d > reach || outZone(blk.cx, blk.cz)) continue
           const f = d / reach, k = f < 0.3 ? 0 : f < 0.6 ? 1 : 2
+          if (o.polygon) { // Zone tool: block to the back of the zone, recursive OBB lot subdivision
+            const tgt = lotTarget(k, o.density), depth = tgt.depth[1] + 30
+            const sub = subdivideBlock({ ...blk, d: depth, cx: blk.cx + blk.nx * depth / 2, cz: blk.cz + blk.nz * depth / 2 }, tgt, rand, (x, z) => !outZone(x, z))
+            for (const lot of sub.lots) lots.push({ lot, f })
+            for (const bk of sub.backs) { const c = clipDepth(bk, (x, z) => !outZone(x, z), 8); if (c) backs.push(c) }
+            continue
+          }
           const depth = P.depth[k]
           const b: Lot = { ...blk, d: depth, cx: blk.cx + blk.nx * depth / 2, cz: blk.cz + blk.nz * depth / 2 }
           for (const lot of splitLot(b, rand, P.lotMin[k], P.lotMax[k])) lots.push({ lot, f })
@@ -371,7 +380,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
         if (reserved.some((g) => Math.abs(g[0] - px) < 80 && Math.abs(g[1] - pz) < 80 && inside(g, px, pz))) continue
         if (roadDist(px, pz) < ROAD_MARGIN || wet(px, pz, 0)) continue
       }
-      const setback = P.setback[0] + rand() * (P.setback[1] - P.setback[0]) * (k === 0 ? 0.5 : 1)
+      const setback = o.polygon ? 3 + rand() * 5 : P.setback[0] + rand() * (P.setback[1] - P.setback[0]) * (k === 0 ? 0.5 : 1)
       const [fx0, fz0] = lotPoint(lot, 0, 0) // front centre
       const fx = -lot.nx, fz = -lot.nz // the house faces the street
       const garden = variant === 'town' && k === 0 ? 3 : 6
@@ -467,6 +476,14 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
           }
         }
       }
+    }
+    // Zone tool: back strips become back yards / orchards when nothing was built on them
+    for (const bk of backs) {
+      const gc = lotCorners(bk)
+      if (placed.some((q) => Math.abs(q.x - bk.cx) < 80 && Math.abs(q.z - bk.cz) < 80 && overlap(gc, q.corners, 0))) continue
+      if (reserved.some((g) => overlap(gc, g, 0))) continue
+      if (samplesWet(gc)) continue
+      res.gardens.push({ site: site.id, corners: gc }); reserved.push(gc)
     }
   }
   return res
