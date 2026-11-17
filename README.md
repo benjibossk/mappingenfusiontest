@@ -28,6 +28,27 @@ Unofficial, work-in-progress fan tool (Vite + TypeScript), MIT licensed, vanilla
 | Welcome | Help |
 |---|---|
 | <img src="docs/img/welcome-en.jpg" alt="Welcome screen"> | <img src="docs/img/help-en.jpg" alt="Help panel"> |
+
+### Examples
+
+Screenshots of the generators (Zone tool and random world), taken in the app.
+
+| | |
+|---|---|
+| <img src="docs/img/gallery/town-2d.jpg" alt="Town: Voronoi districts, central square, streets to the roads"> | <img src="docs/img/gallery/town-3d.jpg" alt="Town in 3D"> |
+| Town: Voronoi districts, central square, streets to the roads | Town in 3D |
+| <img src="docs/img/gallery/camp-2d.jpg" alt="Military camp built from modules (US / USSR / FIA)"> | <img src="docs/img/gallery/camp-3d.jpg" alt="Military camp in 3D"> |
+| Military camp built from modules (US / USSR / FIA) | Military camp in 3D |
+| <img src="docs/img/gallery/prodforest-3d.jpg" alt="Production forest: straight tracks, young / mature / clear-cut stands, log piles"> | <img src="docs/img/gallery/junkyard.jpg" alt="Junkyard: lanes, wreck rows, workshop"> |
+| Production forest: straight tracks, young / mature / clear-cut stands, log piles | Junkyard: lanes, wreck rows, workshop |
+| <img src="docs/img/gallery/parking-3d.jpg" alt="Parking with road markings"> | <img src="docs/img/gallery/orchard-3d.jpg" alt="Orchard in rows along the contour lines"> |
+| Parking with road markings | Orchard in rows along the contour lines |
+| <img src="docs/img/gallery/pasture-2d.jpg" alt="Fenced pasture"> | <img src="docs/img/gallery/cemetery-2d.jpg" alt="Cemetery"> |
+| Fenced pasture | Cemetery |
+| <img src="docs/img/gallery/hunting-3d.jpg" alt="Hunting post with wooden high seats"> | <img src="docs/img/gallery/lots-2d.jpg" alt="House lots facing the streets"> |
+| Hunting post with wooden high seats | House lots facing the streets |
+| <img src="docs/img/gallery/random-fields.jpg" alt="Random world: fields and hedges"> |  |
+| Random world: fields and hedges |  |
 | **Collaboration** | **Language selector** |
 | <img src="docs/img/collab-en.jpg" alt="Collaboration tab"> | <img src="docs/img/lang-en.jpg" alt="Language selector"> |
 
