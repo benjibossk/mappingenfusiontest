@@ -13,7 +13,7 @@ import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
-import type { ProjectEntity } from '../project'
+import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
@@ -541,6 +541,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const forestRings = areas.map((a) => a.pts)
   const topH = cur.heights.reduce((a, b) => Math.max(a, b), 0)
   const camp: CampaignResult = { fields: [], hedges: [], shapes: [] }
+  const seen = new Set<string>()
   sites.forEach((s, k) => {
     const R = SITE_RADIUS[s.kind], ring = R * (s.kind === 'town' ? 2.6 : 3.2), zone: number[] = []
     for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; zone.push(s.x + Math.cos(a) * ring, s.z + Math.sin(a) * ring) }
@@ -552,11 +553,23 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       if (Math.hypot(gx, gz) > 0.15 || hAt(x, z) > topH * 0.6) return false
       return !forestRings.some((p) => pointInPoly(p, x, z))
     }
-    const r = generateCampaign({ zone, fieldSize: s.kind === 'hamlet' ? 110 : 150, jitter: 0.5, angle: (subSeed(seed, 'field' + k) % 90), hedgeChance: 0.7, minHedge: 20, seed: subSeed(seed, 'fields' + k), isLand: ok, prefix: `FIELD_${k + 1}_` })
-    const keepH = r.hedges.map((h) => { const m = h[Math.floor(h.length / 2)]; return ok(m[0], m[1]) })
-    camp.fields.push(...r.fields.filter((f) => { let x = 0, z = 0; for (const q of f) { x += q[0]; z += q[1] } return ok(x / f.length, z / f.length) }))
-    camp.hedges.push(...r.hedges.filter((_, i) => keepH[i]))
-    camp.shapes.push(...r.shapes.filter((_, i) => keepH[i]))
+    const r = generateCampaign({ zone, fieldSize: s.kind === 'hamlet' ? 110 : 150, jitter: 0.5, angle: (subSeed(seed, 'field' + k) % 90), hedgeChance: 0.95, minHedge: 12, seed: subSeed(seed, 'fields' + k), isLand: ok, prefix: `FIELD_${k + 1}_` })
+    // hedges along the borders of the kept plots (shared edges once, outer edges too): bocage look
+    const kept = r.fields.filter((f) => { let x = 0, z = 0; for (const q of f) { x += q[0]; z += q[1] } return ok(x / f.length, z / f.length) })
+    camp.fields.push(...kept)
+    let hs = subSeed(seed, 'hedges' + k) || 1
+    const rnd = () => ((hs = (hs * 16807) % 2147483647) / 2147483647)
+    for (const f of kept) for (let i = 0; i + 1 < f.length; i++) {
+      const a = f[i], b = f[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1])
+      if (L < 12) continue
+      const id = [a, b].map((q) => `${Math.round(q[0])},${Math.round(q[1])}`).sort().join('|')
+      if (seen.has(id)) continue
+      seen.add(id)
+      if (rnd() > 0.8 || !ok((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)) continue
+      const h = [a, b]
+      camp.hedges.push(h)
+      camp.shapes.push({ id: `FIELD_${k + 1}_Hedge_${camp.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
+    }
   })
   // 11. surfaces (5 per block at most)
   await step('surfaces')
