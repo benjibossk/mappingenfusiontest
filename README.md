@@ -49,6 +49,28 @@ Screenshots of the generators (Zone tool and random world), taken in the app.
 | Hunting post with wooden high seats | House lots facing the streets |
 | <img src="docs/img/gallery/random-fields.jpg" alt="Random world: fields and hedges"> |  |
 | Random world: fields and hedges |  |
+| **Roads and water** | |
+| <img src="docs/img/gallery/roads-classes.jpg" alt="Road classes with their real widths"> | <img src="docs/img/gallery/motorway-3d.jpg" alt="Motorway with interchange"> |
+| Road classes with their real widths | Motorway with interchange |
+| <img src="docs/img/gallery/roundabout-world.jpg" alt="Roundabout: a round spline, roads touching it"> | <img src="docs/img/gallery/bridges-overpass-3d.jpg" alt="Overpass on vanilla bridge decks"> |
+| Roundabout: a round spline, roads touching it | Overpass on vanilla bridge decks |
+| <img src="docs/img/gallery/riparian-v2-3d.jpg" alt="Riverbank vegetation (reeds, willows)"> | <img src="docs/img/gallery/dam-2d.jpg" alt="Earth dam, reservoir lake, river restarting below"> |
+| Riverbank vegetation (reeds, willows) | Earth dam, reservoir lake, river restarting below |
+| **Power grid** | |
+| <img src="docs/img/gallery/power-world-overview.jpg" alt="Power grid: plant, 110 kV lines, substations"> | <img src="docs/img/gallery/power-world-village.jpg" alt="Transformer cascade down to village lines"> |
+| Power grid: plant, 110 kV lines, substations | Transformer cascade down to village lines |
+| **Towns, countryside and forests** | |
+| <img src="docs/img/gallery/habitation-dense-2d.jpg" alt="Housing zone: street loops, two rows of lots"> | <img src="docs/img/gallery/town-roads-world.jpg" alt="Through-roads become town streets"> |
+| Housing zone: street loops, two rows of lots | Through-roads become town streets |
+| <img src="docs/img/gallery/countryside-hamlet.jpg" alt="Fields around hamlets, curved farm tracks"> | <img src="docs/img/gallery/forest-edge-app.jpg" alt="Progressive forest edges"> |
+| Fields around hamlets, curved farm tracks | Progressive forest edges |
+| <img src="docs/img/gallery/rock-after.jpg" alt="Rock on crests and cliffs only"> | <img src="docs/img/gallery/outside-3d.jpg" alt="Off-map terrain ring"> |
+| Rock on crests and cliffs only | Off-map terrain ring |
+| **Special zones and tools** | |
+| <img src="docs/img/gallery/chantier-3d.jpg" alt="Construction site"> | <img src="docs/img/gallery/plage-3d.jpg" alt="Beach"> |
+| Construction site | Beach |
+| <img src="docs/img/gallery/import-map.jpg" alt="Local .osm / .geojson import"> | <img src="docs/img/gallery/replay-all.jpg" alt="Replayable pipeline"> |
+| Local .osm / .geojson import | Replayable pipeline |
 | **Collaboration** | **Language selector** |
 | <img src="docs/img/collab-en.jpg" alt="Collaboration tab"> | <img src="docs/img/lang-en.jpg" alt="Language selector"> |
 
