@@ -4262,6 +4262,19 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
     for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
     return ins
   })
+  // fields (generated plots + OSM farmland) are never wooded: same ray test as the lakes
+  const fieldRings = [...(result?.fields ?? []).map((f) => f.flat() as number[]), ...areas.filter((a) => a.kind === 'field').map((a) => a.pts)]
+    .filter((p) => p.length >= 6).map((p) => {
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+      for (let i = 0; i + 1 < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); z0 = Math.min(z0, p[i + 1]); z1 = Math.max(z1, p[i + 1]) }
+      return { p, b: [x0, z0, x1, z1] }
+    })
+  const inField = (x: number, z: number) => fieldRings.some(({ p, b }) => {
+    if (x < b[0] - 4 || x > b[2] + 4 || z < b[1] - 4 || z > b[3] + 4) return false
+    let ins = false
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
+    return ins
+  })
   forests.forEach((a, n) => {
     const [x0, z0, x1, z1] = bb[n], p = a.pts
     for (let z = z0 + sp / 2; z < z1; z += sp) for (let x = x0 + sp / 2; x < x1; x += sp) {
@@ -4273,7 +4286,7 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
         const u = Math.max(0, Math.min(1, ((px - p[j]) * ex + (pz - p[j + 1]) * ez) / l2)), qx = p[j] + u * ex - px, qz = p[j + 1] + u * ez - pz
         d2 = Math.min(d2, qx * qx + qz * qz)
       }
-      if (!inside || inLake(px, pz)) continue
+      if (!inside || inLake(px, pz) || inField(px, pz)) continue
       const d = Math.sqrt(d2), nz = noise(px, pz), r = rnd()
       // lace edge: trees thin out over the first ~25 m, clearings where the noise is low
       if (r > Math.min(1, 0.3 + d / 30) || nz < 0.4) { // groves and bands: ~40 % of the noise field is open ground
