@@ -563,6 +563,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="setFarms" type="checkbox" checked> ${t('lbl.setFarms')} ${info('info.setFarms')}</label>
           <label class="check"><input id="setChurch" type="checkbox" checked> ${t('lbl.setChurch')}</label>
           <label class="check"><input id="setPort" type="checkbox" checked> ${t('lbl.setPort')} ${info('info.setPort')}</label>
+          <label class="check"><input id="setCompositions" type="checkbox"> ${t('lbl.setCompositions')} ${info('info.setCompositions')}</label>
         </div>
         <button id="parcelLib" type="button">${t('pc.open')}</button>
         ${hint('hint.set')}
@@ -602,6 +603,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div class="tab" data-tab="camp" hidden>
       <div class="form">
         <label>${t('lbl.zoneType')} <select id="zoneType">${ZONE_FILL_TYPES.map((k) => `<option value="${k}">${t(('zt.' + k) as K)}</option>`).join('')}</select></label>
+        <label id="zoneLeafRow" hidden>${t('lbl.zoneLeaf')} <select id="zoneLeaf"><option value="mixed">${t('leaf.mixed')}</option><option value="needle">${t('leaf.needle')}</option><option value="broad">${t('leaf.broad')}</option></select></label>
         <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="20"></label>
         <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
@@ -958,10 +960,12 @@ function zoneFields(zone: number[], n: number) {
   if (tracks.length) roadInfo()
   finishZone('fields', zone, t('log.fieldsDone', { fields: kept.length, hedges: hedges.length }))
 }
+/** essence chosen for the zone tool's forest (Mixte / Conifères / Feuillus) */
+function zoneLeaf(): 'broad' | 'needle' | 'mixed' { const v = $<HTMLSelectElement>('zoneLeaf').value; return v === 'broad' || v === 'needle' ? v : 'mixed' }
 function zoneForest(zone: number[], n: number) {
   const parts = cutRing(zone, zoneObstacles('forest'))
   // overlapping woods: same species merged, else the new piece is cut by the older wood (forestMerge.ts)
-  const forests = mergeForestPatches([...areas.filter((a) => a.kind === 'forest'), ...parts.map((pts, k) => ({ id: `FOREST_ZONE_${n}_${k + 1}`, kind: 'forest' as const, leaf: 'mixed' as const, pts }))])
+  const forests = mergeForestPatches([...areas.filter((a) => a.kind === 'forest'), ...parts.map((pts, k) => ({ id: `FOREST_ZONE_${n}_${k + 1}`, kind: 'forest' as const, leaf: zoneLeaf(), pts }))])
   const seen = new Set<string>()
   areas = [...areas.filter((a) => a.kind !== 'forest'), ...forests.map((a) => { let id = a.id; for (let k = 2; seen.has(id); k++) id = `${a.id}_${k}`; seen.add(id); return { ...a, id } })]
   finishZone('forest', zone, parts.length ? t('log.forestGen', { n: parts.length }) : t('err.forestGenNone'))
@@ -3262,7 +3266,7 @@ $<HTMLButtonElement>('setGen').addEventListener('click', () => void track((async
   const res = chk('setV2')
     ? settleVillages(sites, allRoads, waters, island.heights, island.grid, {
       seed: num('setSeed'), density: num('setDensity'), variant: $<HTMLSelectElement>('setVariant').value as VillageVariant,
-      streets: chk('setStreets'), maxStreets: maxStreets === '' ? undefined : Number(maxStreets), farms: chk('setFarms'), church: chk('setChurch'), port: chk('setPort'), pool, blocked, biome: currentBiome,
+      streets: chk('setStreets'), maxStreets: maxStreets === '' ? undefined : Number(maxStreets), farms: chk('setFarms'), church: chk('setChurch'), port: chk('setPort'), compositions: chk('setCompositions'), pool, blocked, biome: currentBiome,
     })
     : settle(sites, allRoads, waters, island.heights, island.grid, { seed: num('setSeed'), density: num('setDensity') }, { square: chk('setSquare'), lanes: chk('setLanes'), paths: chk('setPaths'), pool, blocked })
   setGardens = 'gardens' in res ? (res.gardens as typeof setGardens) : []
@@ -4105,7 +4109,7 @@ function clearZones(kinds: ZoneKind[]) {
   zoneInfo()
   refreshSteps()
 }
-$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered' })
+$<HTMLSelectElement>('zoneType').addEventListener('change', () => { $('zoneHaRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'scattered'; $('zoneLeafRow').hidden = $<HTMLSelectElement>('zoneType').value !== 'forest' })
 $<HTMLButtonElement>('indClear').addEventListener('click', () => clearZones(['industrial']))
 $<HTMLButtonElement>('milClear').addEventListener('click', () => clearZones(['military', 'airfield']))
 $<HTMLButtonElement>('zoneSend').addEventListener('click', () =>
