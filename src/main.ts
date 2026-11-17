@@ -109,6 +109,8 @@ import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
+import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, stageTimer, type Pipeline } from './modules/replay'
+let pipeline: Pipeline = emptyPipeline() // recorded generation steps (src/modules/replay.ts), saved in the project; declared early: the autosave reads it at startup
 import { BIOMES, PROPS, biome, type BiomeId } from './data/biomes'
 import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint } from './biomes/vegetation'
@@ -204,6 +206,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <span id="status" class="status" role="button" tabindex="0" title="${t('wb.chip.tip')}">${t('wb.chip.off')}</span>
     <span id="collabInfo" class="hint"></span>
     <span class="grow"></span>
+    <button id="oneClick" class="hist withlbl" type="button" title="${t('replay.one.tip')}" aria-label="${t('replay.one.tip')}">${ic('dice')}<span>${t('replay.one')}</span></button>
+    <button id="replayAll" class="hist withlbl" type="button" title="${t('replay.all.tip')}" aria-label="${t('replay.all.tip')}">${ic('refresh')}<span>${t('replay.all')}</span></button>
     <button id="libBtn" class="hist withlbl" type="button" title="${t('library.tip')}" aria-label="${t('library.tip')}">${ic('book')}<span>${t('library')}</span></button>
     <button id="collab" class="hist withlbl" title="${t('collab.tip')}" aria-label="${t('collab.tip')}">${ic('users')}<span>${t('collab.short')}</span></button>
     <div class="langsel">
@@ -2634,7 +2638,7 @@ function islandProject() {
     if (el.type !== 'file' && el.id !== 'roadFlatten') inputs[el.id] = el.type === 'checkbox' ? el.checked : el.value
   })
   return {
-    kind: 'reforger-mapper-island', version: 1, inputs,
+    kind: 'reforger-mapper-island', version: 1, inputs, pipeline,
     macro: b64(new Uint8Array(sculpt.macro.buffer.slice(0))),
     sink: sink ? b64(sink) : null,
     roads,
@@ -2665,6 +2669,7 @@ function autosave() {
 }
 function loadProject(p: any) {
   if (p?.kind !== 'reforger-mapper-island') throw new Error(t('err.notIsland'))
+  pipeline = readPipeline(p.pipeline)
   for (const [id, v] of Object.entries(p.inputs ?? {})) {
     if (id === 'roadFlatten') continue // per-road choice, always starts unchecked
     const el = document.getElementById(id) as HTMLInputElement | null
@@ -4473,7 +4478,10 @@ function worldPct(s: string, f = 0) {
   for (const k of WORLD_STAGES) { if (k === s) before = tot; tot += WG_WEIGHT[k] }
   return (100 * (before + WG_WEIGHT[s] * Math.min(1, f))) / tot
 }
-$<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
+let replayParams: Record<string, unknown> | undefined // set by "Replay all": run a recorded step instead of the dialog
+let rwKeepOpen = false
+/** run the whole world pipeline (dialog settings or replayParams); records the step, returns its output hashes */
+async function worldGo(): Promise<Record<string, string> | undefined> {
   if (rwBusy) return
   rwBusy = true
   const box = rwDlg.querySelector('.rwbox') as HTMLElement
@@ -4487,16 +4495,20 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
   steps.forEach((li) => delete li.dataset.state)
   const v = (k: string) => Number($<HTMLInputElement>('rw_' + k).value)
   const t0 = performance.now()
-  $('rwSeedK').textContent = t('wg.run.k', { seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1 })
-  const params = {
+  $('rwSeedK').textContent = t('wg.run.k', { seed: Number(replayParams?.seed) || Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1 })
+  const timer = stageTimer()
+  const fromDlg = {
     seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
     towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'),
     airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome, motorway: $<HTMLInputElement>('rwMotorway').checked,
   }
+  const params = (replayParams as unknown as typeof fromDlg | undefined) ?? fromDlg
   // the whole pipeline runs in the generator worker: the page (busy panel, bar, Cancel) stays live.
   // Nothing is applied until it succeeds, so Cancel leaves the current map as it was.
   const job = runGen<WorldResult>('world', [params], {
     progress: (s, i, n, f) => {
+      timer.tick(s)
+      for (const li of steps) { const ms = timer.ms[li.dataset.st ?? '']; if (ms !== undefined && li.dataset.st !== s) li.dataset.ms = `${Math.round(ms)} ms` }
       const pct = worldPct(s, f)
       prog.max = 100; prog.value = pct
       const txt = t('wg.stage', { i: i + 1, n, s: t(('wg.st.' + s) as K) })
@@ -4515,8 +4527,12 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
     }, () => job.cancel())
     if (!w) { stage.textContent = t('wg.cancelled'); return }
     prog.value = 100
+    $('rwPct').textContent = '100 %'; $('rwEta').textContent = t('busy.elapsed', { s: Math.round((performance.now() - t0) / 1000) })
+    const stages = timer.end(), hash = hashWorld(w)
+    steps.forEach((li) => { li.dataset.state = 'done'; const ms = stages[li.dataset.st ?? '']; if (ms !== undefined) li.dataset.ms = `${ms} ms` })
     applyWorld(w)
-    rwDlg.hidden = true
+    pipeline = recordStep(pipeline, { id: 'world', params: { ...params }, seed: params.seed, inputs: [], ms: Math.round(performance.now() - t0), stages, hash })
+    if (!rwKeepOpen) rwDlg.hidden = true
     coachAfter('random')
     const c = (k: string) => w.sites.filter((q) => q.kind === k && !q.id.startsWith('FARM_')).length
     logEl.textContent = t('log.world', {
@@ -4531,6 +4547,28 @@ $<HTMLButtonElement>('rwGo').addEventListener('click', async () => {
     box.querySelectorAll('input,select,button').forEach((x) => ((x as HTMLInputElement).disabled = false))
     $<HTMLButtonElement>('rwGo').disabled = false
   }
+  return pipeline.steps[pipeline.steps.length - 1]?.hash
+}
+$<HTMLButtonElement>('rwGo').addEventListener('click', () => { rwKeepOpen = false; void worldGo() })
+// "Relief in one click": relief -> rivers -> roads -> villages -> fields -> forests -> power with the current settings
+$<HTMLButtonElement>('oneClick').addEventListener('click', () => {
+  if (rwBusy) return
+  rwKeepOpen = true; rwDlg.hidden = false
+  void worldGo()
+})
+// "Replay all": every recorded step again, in order, from scratch; the output hashes must match the recorded ones
+$<HTMLButtonElement>('replayAll').addEventListener('click', async () => {
+  if (rwBusy) return
+  if (!pipeline.steps.length) { logEl.textContent = t('replay.none'); return }
+  rwKeepOpen = true; rwDlg.hidden = false
+  const rep = await replayPipeline(pipeline, async (s) => {
+    if (s.id !== 'world') return {}
+    replayParams = { ...s.params, seed: s.seed }
+    try { return await worldGo() } finally { replayParams = undefined }
+  })
+  if (!rep) return
+  const same = rep.every((r) => r.same !== false)
+  $('rwStage').textContent = logEl.textContent = t('replay.done', { n: rep.length, ms: rep.reduce((a, r) => a + r.ms, 0) }) + ' · ' + t(same ? 'replay.same' : 'replay.diff')
 })
 
 // --- 3D view (src/view3d, loaded on demand: three.js stays out of the main bundle) ---
@@ -4753,4 +4791,4 @@ btn3d.addEventListener('click', () => void (async () => {
 })())
 // dev-only probe for the Playwright checks: read the world state, move the 2D view
 wireOutside(() => terrain, (m) => { logEl.textContent = m })
-if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
+if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get pipeline() { return pipeline }, get result() { return result }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }

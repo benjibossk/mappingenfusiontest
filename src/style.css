@@ -830,3 +830,5 @@ button.linkbtn:hover:not(:disabled) { background: none; border: 0; color: var(--
 .biomebadge[data-avail="vanilla"] { border-color: var(--green); color: var(--green-hi); }
 .biomebadge[data-avail="partial"] { border-color: var(--amber); color: var(--amber-hi); }
 .biomebadge[data-avail="mods"] { border-color: var(--red); color: #E07A6B; }
+#oneClick span, #replayAll span { white-space: nowrap; }
+.rwsteps li[data-ms]::after { content: attr(data-ms); margin-left: auto; font-variant-numeric: tabular-nums; color: var(--tx-3); }
