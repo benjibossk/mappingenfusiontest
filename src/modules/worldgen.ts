@@ -533,11 +533,26 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 10. forests (none over a zone)
   await step('forests')
   const discs = zones.map(zoneDisc)
-  const areas: WorldArea[] = p.forests > 0
+  const rawAreas: WorldArea[] = p.forests > 0
     ? generateForests(cur.heights, g, { seed: subSeed(seed, 'forests'), cover: Math.min(0.9, WORLD.vegetation.forestCover * p.forests), sites, biome: p.biome })
       .filter((f) => { for (let i = 0; i + 1 < f.pts.length; i += 2) if (discs.some((d) => Math.hypot(f.pts[i] - d.x, f.pts[i + 1] - d.z) < d.r + 30)) return false; return true })
       .map((f, k) => ({ id: `FOREST_GEN_${k + 1}`, kind: 'forest' as const, leaf: f.leaf, pts: f.pts }))
     : []
+  // overlapping forest patches: same species = merged into one wood, else the later one is cut (no criss-crossing outlines)
+  const toF = (pts: number[]) => { const r: number[][] = []; for (let i = 0; i + 1 < pts.length; i += 2) r.push([pts[i], pts[i + 1]]); r.push([pts[0], pts[1]]); return turf.polygon([r]) }
+  const woods: { f: Feature<Polygon | MultiPolygon>; leaf: WorldArea['leaf'] }[] = []
+  for (const a of rawAreas) {
+    let f: Feature<Polygon | MultiPolygon> = toF(a.pts), gone = false
+    for (let i = woods.length - 1; i >= 0; i--) {
+      try { if (turf.booleanIntersects(f, woods[i].f)) { if (woods[i].leaf === a.leaf) { const u = turf.union(turf.featureCollection([f, woods[i].f])); if (u) { f = u; woods.splice(i, 1) } } else { const d = turf.difference(turf.featureCollection([f, woods[i].f])); if (!d) { gone = true; break } f = d } } } catch { /* degenerate: keep apart */ }
+    }
+    if (!gone) woods.push({ f, leaf: a.leaf })
+  }
+  const areas: WorldArea[] = []
+  for (const w of woods) {
+    const polys = w.f.geometry.type === 'Polygon' ? [w.f.geometry.coordinates] : w.f.geometry.coordinates
+    for (const pc of polys) areas.push({ id: `FOREST_GEN_${areas.length + 1}`, kind: 'forest', leaf: w.leaf, pts: pc[0].slice(0, -1).flat() })
+  }
   // 10b. countryside: plots + hedges (campaign.ts, Tanin AgriFieldGenerator method) on the open, gentle
   // ground around each settlement; never in a forest, a lake, a zone or the settlement core
   const forestRings = areas.map((a) => a.pts)
