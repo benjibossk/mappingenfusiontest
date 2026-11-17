@@ -24,6 +24,7 @@ export interface View3DData {
   walls?: { pts: number[]; h: number; t: number; hedge?: boolean }[] // flat X/Z polylines: walls, fences, hedges (thin boxes)
   treeTint?: { needle: number[]; broad: number[]; bush: number[] } // biome multipliers on the crown colours (absent = Everon)
   lakes: number[][] // flat X/Z rings
+  props?: Box3D[] // small brown boxes on the ground (felled-log piles of production forests)
   bridges?: Box3D[] // decks (cz/cx centre, h = thickness), y from the deck height
   bridgeY?: number[]
   target: [number, number] // world X/Z the 2D view looks at
@@ -265,6 +266,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   const blds = data.buildings.length ? new InstancedMesh(boxGeo, bldMat, data.buildings.length) : null
   const bridgeMat = bldMat // OpsTrack: decks are the same grey-beige boxes
   const brg = data.bridges?.length ? new InstancedMesh(boxGeo, bridgeMat, data.bridges.length) : null
+  const prp = data.props?.length ? new InstancedMesh(boxGeo, new MeshStandardMaterial({ color: 0x7a5230, roughness: 1, metalness: 0 }), data.props.length) : null
   // walls / fences / hedges: one thin box per segment, OpsTrack object grey-beige (hedges dark green)
   const wallSeg: number[] = [] // cx, cz, len, t, h, yaw, hedge
   for (const w of data.walls ?? []) for (let i = 0; i + 3 < w.pts.length; i += 2) {
@@ -349,6 +351,14 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
       })
       blds.instanceMatrix.needsUpdate = true; blds.computeBoundingSphere()
     }
+    if (prp && data.props) {
+      data.props.forEach((b, i) => {
+        tmp.position.set(b.cx, groundAt(b.cx, b.cz) * ex - 0.2, -b.cz)
+        tmp.rotation.set(0, b.yaw, 0); tmp.scale.set(b.w, b.h + 0.2, b.d)
+        tmp.updateMatrix(); prp.setMatrixAt(i, tmp.matrix)
+      })
+      prp.instanceMatrix.needsUpdate = true; prp.computeBoundingSphere()
+    }
     if (brg && data.bridges) {
       data.bridges.forEach((b, i) => {
         tmp.position.set(b.cx, (data.bridgeY?.[i] ?? groundAt(b.cx, b.cz)) * ex - b.h, -b.cz)
@@ -393,6 +403,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   place()
   if (blds) scene.add(blds)
   if (brg) scene.add(brg)
+  if (prp) scene.add(prp)
   if (walls) scene.add(walls)
 
   // --- camera ---
