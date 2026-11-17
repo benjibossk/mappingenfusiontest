@@ -14,6 +14,7 @@ import { WORLDCOVER } from './modules/cover'
 import * as turf from '@turf/turf'
 import { ADAPT_DEFAULTS, adaptForGame } from './modules/adapt'
 import { OSM_ATTRIBUTION, type OsmOptions, type OsmResult, fetchOverpass, osmToMap, overpassQuery } from './modules/osm'
+import { DEFAULT_SCHEMA, importOsm, parseOsmFile, parseSchema, type ImportExtras, type OsmEl } from './modules/osmImport'
 
 export interface RealPlace {
   world: WorldExport
@@ -24,6 +25,7 @@ export interface RealPlace {
   cover?: Uint8Array // land-cover code per terrain vertex (cover.ts), from ESA WorldCover
   warn?: string
   trace?: HTMLCanvasElement // satellite picture of the area, north up, for the tracing layer
+  extras?: ImportExtras // local .osm / .geojson import (osmImport.ts): residential / industrial areas, power
 }
 
 let root: HTMLDivElement | null = null
@@ -89,9 +91,10 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
           </div>
           <div class="pc-row">
             <label>${L('rw.minForest')} <input id="rwMinForest" type="number" value="1" min="0" step="0.5"></label>
-            <label class="pc-file">${L('rw.osmFile')}<input id="rwOsmFile" type="file" accept=".json" hidden></label>
+            <label class="pc-file">${L('rw.osmFile')}<input id="rwOsmFile" type="file" accept=".json,.osm,.geojson" hidden></label>
             <label class="pc-file" title="${L('hint.chm')}">${L('rw.chm')}<input id="rwChm" type="file" accept=".tif,.tiff,.asc" hidden></label>
           </div>
+          <details class="adv" id="rwImpBox"><summary>${L('rw.impSchema')}</summary><div class="hint">${L('rw.impSchemaHint')}</div><textarea id="rwImpSchema" rows="10" spellcheck="false" style="width:100%;font:11px monospace"></textarea><button id="rwImpReset" type="button" class="secondary">${L('rw.impReset')}</button></details>
           <div class="hint">${L('rw.osmNote')}</div>
           <div class="pc-row"><button id="rwGo" type="button">${L('rw.apply')}</button></div>
           <progress id="rwBar" class="rw-bar" hidden></progress>
@@ -359,10 +362,27 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
     redraw()
   }, { passive: false })
 
-  $<HTMLInputElement>('rwOsmFile').addEventListener('change', async (ev) => {
-    const f = (ev.target as HTMLInputElement).files?.[0]
-    if (!f) return
-    try { osmFile = JSON.parse(await f.text()); msg.textContent = t('rw.osmFileOk', { name: f.name }) } catch (e) { msg.textContent = (e as Error).message }
+  // local OpenStreetMap file: Overpass JSON, .osm XML or .geojson, picked or dropped on the dialog (osmImport.ts)
+  const schemaEl = $<HTMLTextAreaElement>('rwImpSchema')
+  let savedSchema: string | null = null
+  try { savedSchema = localStorage.getItem('rm.osmImportSchema') } catch { /* private window */ }
+  schemaEl.value = savedSchema ?? JSON.stringify(DEFAULT_SCHEMA, null, 1)
+  schemaEl.addEventListener('change', () => { try { parseSchema(schemaEl.value); localStorage.setItem('rm.osmImportSchema', schemaEl.value); msg.textContent = '' } catch (e) { msg.textContent = (e as Error).message } })
+  $<HTMLButtonElement>('rwImpReset').addEventListener('click', () => { schemaEl.value = JSON.stringify(DEFAULT_SCHEMA, null, 1); try { localStorage.removeItem('rm.osmImportSchema') } catch { /* */ } })
+  const takeOsm = async (f: File) => {
+    try {
+      osmFile = parseOsmFile(f.name, await f.text())
+      $<HTMLInputElement>('rwOsm').checked = true
+      msg.textContent = t('rw.osmFileOk', { name: f.name }) + ' · ' + t('rw.impCount', { n: (osmFile as { elements: OsmEl[] }).elements.length })
+    } catch (e) { msg.textContent = (e as Error).message }
+  }
+  $<HTMLInputElement>('rwOsmFile').addEventListener('change', (ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; if (f) void takeOsm(f) })
+  root!.addEventListener('dragover', (e) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault() })
+  root!.addEventListener('drop', (e) => {
+    const f = e.dataTransfer?.files[0]
+    if (!f || !/\.(osm|geojson|json)$/i.test(f.name)) return
+    e.preventDefault()
+    void takeOsm(f)
   })
 
   let chm: Dem | null = null
@@ -408,6 +428,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
       if (fromCop) credits.push('Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA')
       let osm: OsmResult | null = null
       let adapted: RealPlace['adapted']
+      let extras: ImportExtras | undefined
       const ar = area
       const toLL = d.crs ? localToLonLat(d, ar) : null
       // ESA WorldCover: ground surfaces for every terrain vertex, forests outlined from the tree class
@@ -452,7 +473,9 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
         await step('rw.osmProcessing')
         // adapted: keep small woods for now, they may weld into a forest; the size limit applies after
         const adapt = ck('rwAdapt')
-        osm = osmToMap(data, lonLatToLocal(d, area), area.size, adapt || wcForests.length ? { ...o, minForest: Math.min(o.minForest, 1000) } : o)
+        const oo = adapt || wcForests.length ? { ...o, minForest: Math.min(o.minForest, 1000) } : o
+        if (osmFile) { const im = importOsm(osmFile as { elements: OsmEl[] }, parseSchema(schemaEl.value), lonLatToLocal(d, area), area.size, oo); extras = im.extras; osm = im }
+        else osm = osmToMap(data, lonLatToLocal(d, area), area.size, oo)
         // WorldCover woods join the OpenStreetMap ones, welded below
         osm.forests.push(...wcForests.map((pts) => ({ pts, leaf: 'mixed' as const })))
         if (chm) {
@@ -472,7 +495,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
         credits.push(CREDITS.esri)
       }
       await step('rw.applying')
-      onApply({ world, osm, name: d.name, credits, adapted, cover, trace, warn })
+      onApply({ world, osm, name: d.name, credits, adapted, cover, trace, warn, extras })
       root!.hidden = true
       msg.textContent = ''
     } catch (e) {

@@ -1,0 +1,7 @@
+{"type":"FeatureCollection","features":[
+{"type":"Feature","properties":{"highway":"track","tracktype":"grade1"},"geometry":{"type":"LineString","coordinates":[[5.0,45.0],[5.005,45.005]]}},
+{"type":"Feature","properties":{"landuse":"industrial"},"geometry":{"type":"Polygon","coordinates":[[[5.001,45.001],[5.004,45.001],[5.004,45.004],[5.001,45.004],[5.001,45.001]]]}},
+{"type":"Feature","properties":{"building":"house"},"geometry":{"type":"Polygon","coordinates":[[[5.002,45.002],[5.0021,45.002],[5.0021,45.0021],[5.002,45.0021],[5.002,45.002]]]}},
+{"type":"Feature","properties":{"tags":{"landuse":"meadow"}},"geometry":{"type":"Polygon","coordinates":[[[5.0,45.0],[5.003,45.0],[5.003,45.003],[5.0,45.003],[5.0,45.0]]]}},
+{"type":"Feature","properties":{"amenity":"bench"},"geometry":{"type":"Point","coordinates":[5.002,45.002]}}
+]}

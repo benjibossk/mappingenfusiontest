@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="test">
+ <node id="1" lat="45.0000" lon="5.0000"/>
+ <node id="2" lat="45.0050" lon="5.0050"/>
+ <node id="3" lat="45.0010" lon="5.0010"/>
+ <node id="4" lat="45.0010" lon="5.0040"/>
+ <node id="5" lat="45.0040" lon="5.0040"/>
+ <node id="6" lat="45.0040" lon="5.0010"/>
+ <node id="7" lat="44.9990" lon="4.9960"/>
+ <node id="8" lat="45.0060" lon="5.0060"/>
+ <node id="9" lat="45.0020" lon="5.0030"><tag k="power" v="substation"/></node>
+ <node id="10" lat="45.0025" lon="5.0025"><tag k="place" v="village"/><tag k="name" v="Saint-Test &amp; Co"/></node>
+ <way id="100"><nd ref="1"/><nd ref="2"/><tag k="highway" v="primary"/><tag k="lanes" v="2"/></way>
+ <way id="101"><nd ref="3"/><nd ref="4"/><nd ref="5"/><nd ref="6"/><nd ref="3"/><tag k="landuse" v="residential"/></way>
+ <way id="102"><nd ref="7"/><nd ref="8"/><tag k="power" v="line"/><tag k="voltage" v="63000"/></way>
+ <way id="103"><nd ref="3"/><nd ref="4"/><nd ref="5"/><nd ref="6"/><nd ref="3"/><tag k="landuse" v="forest"/></way>
+ <way id="104"><nd ref="6"/><nd ref="2"/><tag k="waterway" v="stream"/></way>
+</osm>

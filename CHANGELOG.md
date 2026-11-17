@@ -9,6 +9,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [Unreleased]
 
 ### Added
+- **Real place**: local import of .osm (XML) / .geojson files (picker or drag & drop) with an editable JSON tag -> layer schema: roads (ARTE widths), water, forests, fields, buildings, residential areas, power lines.
 - **Road widths = vanilla** (audit of every Prefabs/WEGenerators/Roads generator, docs/ROAD_NETWORK_V2.md §3.2.1): Asphalt E_01 / DashedLine 12 m (was 8), Narrow 8, cobblestone 8, USSR concrete 7.5, concrete panel 3.5, dirt 02 / forest 4.5, trails 1.75; new styles USSR concrete dashed line (11 m) and narrow (5 m), concrete path, coal road and trail.
 - **Road classes in the auto network**: town-town and village-town = main (widest asphalt, dashed line), village-village = secondary asphalt, hamlets = narrow asphalt, loops / farms = dirt; auto tracks and trails mostly inside a wood become forest road / forest trail, open trails alternate dirt / gravel.
 - **Motorway option** (src/modules/motorway.ts, off by default; Roads step and random world): dual carriageway (two 12 m asphalt splines, median crash barrier) between the biggest places, routed round towns and villages at 6 % max grade with gentle curves, slip-road interchanges (diamond on a crossing road) and links at both ends; other roads fly over it (raised bed + bridge deck) or are cut back, never a level crossing.

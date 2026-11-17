@@ -5,6 +5,7 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 ## [Non publié]
 
 ### Ajouté
+- **Lieu réel** : import local de fichiers .osm (XML) / .geojson (sélecteur ou glisser-déposer) avec un schéma JSON tag -> couche modifiable : routes (largeurs ARTE), eau, forêts, champs, bâtiments, zones résidentielles, lignes électriques.
 - **Largeurs de route = vanilla** (audit de tous les générateurs Prefabs/WEGenerators/Roads, docs/ROAD_NETWORK_V2.md §3.2.1) : asphalte E_01 / ligne pointillée 12 m (au lieu de 8), étroite 8, pavés 8, béton USSR 7,5, dalles béton 3,5, terre 02 / forêt 4,5, sentiers 1,75 ; nouveaux styles béton USSR ligne pointillée (11 m) et étroit (5 m), allée béton, route et sentier de charbon.
 - **Classes de route dans le réseau auto** : ville-ville et village-ville = principale (asphalte le plus large, ligne pointillée), village-village = secondaire, hameaux = asphalte étroit, boucles / fermes = terre ; pistes et sentiers auto surtout en forêt = route / sentier forestier, sentiers à découvert terre / gravier en alternance.
 - **Option autoroute** (src/modules/motorway.ts, décochée par défaut ; étape Routes et monde aléatoire) : 2 × 2 voies (deux splines d'asphalte 12 m, glissière centrale) entre les plus grands lieux, contournant villes et villages, pente max 6 %, courbes douces, échangeurs à bretelles (losange sur une route qui la croise) et raccords aux deux bouts ; les autres routes passent dessus (lit relevé + tablier) ou sont coupées, jamais de croisement à niveau.

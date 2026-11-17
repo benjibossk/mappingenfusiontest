@@ -7,7 +7,8 @@ import { Collab, type CollabEvents, type CollabTransport, type Op } from './coll
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
-import { POWER_DEFAULTS, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
+import { POWER_DEFAULTS, placePoles, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
+import { powerKindOf } from './modules/osmImport'
 import { accessShapes, planGrid, stationEntities, type GridSite, type Station } from './modules/powergrid'
 import { FOREST_AVOID, GENERATORS, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
@@ -3447,6 +3448,25 @@ function applyRealPlace(r: RealPlace) {
     o.fields.forEach((f, k) => areas.push({ id: `FIELD_OSM_${k + 1}`, kind: 'field', pts: f }))
     if (o.buildings.length) { const b = osmBuildings(o.buildings); settled = b.placed; bSkipped = b.skipped; setInfo() }
   }
+  const ex = r.extras // local .osm / .geojson import (osmImport.ts)
+  if (ex) {
+    // residential landuse -> a village / hamlet site at the centre of the area (the generators build on it)
+    for (const z of ex.zones) {
+      if (z.kind !== 'residential') continue
+      let x = 0, y = 0, a = 0
+      const n = z.pts.length / 2
+      for (let k = 0; k < n; k++) { x += z.pts[2 * k]; y += z.pts[2 * k + 1]; const j = (k + 1) % n; a += z.pts[2 * k] * z.pts[2 * j + 1] - z.pts[2 * j] * z.pts[2 * k + 1] }
+      const kind = Math.abs(a / 2) > 150000 ? 'village' : 'hamlet'
+      sites.push({ id: nextSiteId(kind), x: Math.round(x / n), z: Math.round(y / n), kind })
+    }
+    ex.power.forEach((l, k) => {
+      const kind = powerKindOf(l.voltage), spacing = POWER_DEFAULTS[kind].spacing
+      let length = 0
+      for (let i = 2; i < l.pts.length; i += 2) length += Math.hypot(l.pts[i] - l.pts[i - 2], l.pts[i + 1] - l.pts[i - 1])
+      powerLines.push({ id: `POWER_OSM_${k + 1}`, kind, spacing, path: l.pts, poles: placePoles(l.pts, spacing), length })
+    })
+    if (ex.power.length) powerInfo()
+  }
   credits = r.credits
   if (r.cover) landCover = { cols: r.world.cols, data: r.cover }
   if (r.trace) { traceImg = r.trace; $<HTMLDetailsElement>('layers').open = true; void saveTrace(r.trace) }
@@ -3460,7 +3480,7 @@ function applyRealPlace(r: RealPlace) {
     name: r.name, km: ((g.cols - 1) * g.step / 1000).toFixed(2), step: g.step.toFixed(2),
     roads: o?.roads.length ?? 0, waters: (o?.rivers.length ?? 0) + (o?.lakes.length ?? 0), forests: o?.forests.length ?? 0,
     fields: o?.fields.length ?? 0, sites: o?.sites.length ?? 0,
-  }) + (r.adapted ? '\n' + t('log.adapted', { f0: r.adapted.before.forests, f1: r.adapted.after.forests, r0: r.adapted.before.roads, r1: r.adapted.after.roads, b0: r.adapted.before.buildings, b1: r.adapted.after.buildings }) : '') + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (r.warn ? '\n' + r.warn : '') + String.fromCharCode(10) + t('log.realNext') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
+  }) + (r.adapted ? '\n' + t('log.adapted', { f0: r.adapted.before.forests, f1: r.adapted.after.forests, r0: r.adapted.before.roads, r1: r.adapted.after.roads, b0: r.adapted.before.buildings, b1: r.adapted.after.buildings }) : '') + (o?.buildings.length ? '\n' + t('log.realBld', { n: o.buildings.length - bSkipped, skip: bSkipped }) : '') + (ex ? '\n' + t('log.realImport', { res: ex.zones.filter((z) => z.kind === 'residential').length, ind: ex.zones.filter((z) => z.kind === 'industrial').length, pw: ex.power.length, sub: ex.substations.length }) : '') + (r.warn ? '\n' + r.warn : '') + String.fromCharCode(10) + t('log.realNext') + (credits.length ? '\n' + t('log.credits', { list: credits.join(' · ') }) : '')
   toast(t('busy.done', { label: t('welcome.real'), s: '' }).replace(/ \(\s*s\)/, ''))
   coachAfter('real')
 }
