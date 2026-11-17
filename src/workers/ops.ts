@@ -1,5 +1,6 @@
 // The pure generators the worker can run (also run on the main thread when no worker can be made).
 // Each op takes plain (cloneable) arguments and may report progress(stage, i, n, f).
+import { mergeForestPatches } from '../modules/forestMerge'
 import { generateWorld, type WorldParams } from '../modules/worldgen'
 import { generateIsland } from '../modules/island'
 import { computeRivers } from '../modules/hydro'
@@ -19,7 +20,7 @@ export const OPS = {
   network: ((a, progress) => buildNetwork(a[0], a[1], a[2], a[3], { ...a[4], progress: (f: number) => progress('roads', 0, 1, f) }, a[5])) as Fn,
   villages: ((a) => settleVillages(a[0], a[1], a[2], a[3], a[4], a[5], a[6])) as Fn,
   power: ((a) => routePowerLine(...(a as Parameters<typeof routePowerLine>))) as Fn,
-  forests: ((a) => generateForests(a[0], a[1], a[2])) as Fn,
+  forests: ((a) => mergeForestPatches(generateForests(a[0], a[1], a[2]))) as Fn,
   quantise: ((a) => quantise(a[0], a[1])) as Fn,
 }
 export type Op = keyof typeof OPS
