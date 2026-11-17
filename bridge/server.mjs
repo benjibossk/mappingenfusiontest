@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 import { prepareTerrain } from "./terrain-file.mjs";
 import { maskSide, writeMasks, writeSatellite } from "./terrain-masks.mjs";
 import { handleAtelier } from "./atelier.mjs";
+import { handleOutside } from "./outside.mjs";
 
 const PORT = Number(process.env.MAPGEN_BRIDGE_PORT ?? 5780);
 const WB_HOST = process.env.MAPGEN_WB_HOST ?? "127.0.0.1";
@@ -127,6 +128,7 @@ const server = createServer(async (req, res) => {
 
   try {
     if (await handleAtelier(req, res, send, readBody)) return; // Mode Atelier: bridge/atelier.mjs
+    if (await handleOutside(req, res, send, readBody, PROFILE_DIR, callWorkbench)) return; // off-map ring: bridge/outside.mjs
     if (req.method === "GET" && req.url === "/status") {
       const state = await callWorkbench("MG_Status", {}, 5_000).catch((e) => ({ error: e.message }));
       return send(res, 200, { bridge: "ok", projectFile: PROJECT_FILE, workbench: state });
