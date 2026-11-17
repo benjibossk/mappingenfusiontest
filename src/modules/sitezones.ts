@@ -8,6 +8,7 @@ import { ZONE_AVOID, type ProjectEntity, type ProjectShape } from '../project'
 import type { ZoneItem } from './zones'
 import { FENCES, VEG } from '../data/biomes'
 import { round } from './gen-common'
+import { prefabDims } from '../library/dims.ts'
 import { makeCamp, makeJunkyard, type Faction, type ModuleOut } from './modules'
 import type { FlattenRequest as Platform } from './industrial'
 import { centroid, contourFrame, distLine, fencePerimeter, frameOf, inPoly, nearestPoint, polyArea, rectAt, rowGrid, slopeAt, type RoadLine } from './rowgrid'
@@ -69,7 +70,10 @@ export function makeSiteZone(type: SiteType, polygon: number[], c: SiteContext):
   const pick = <T>(a: readonly T[]) => a[Math.floor(rand() * a.length)]
   const ents: ProjectEntity[] = [], shapes: ProjectShape[] = [], boxes: { corners: number[]; role: string; h?: number }[] = [], warnings: string[] = []
   const ent = (prefab: string, x: number, z: number, yaw: number) => { ents.push({ id: `${c.id}_${ents.length + 1}`, prefab, x: round(x), z: round(z), yaw: round(((yaw % 360) + 360) % 360) }) }
-  const prop = (prefab: string, x: number, z: number, yaw: number, w: number, d: number, h: number, role = 'prop') => { ent(prefab, x, z, yaw); boxes.push({ corners: rectAt(x, z, yaw, w, d), role, h }) }
+  const prop = (prefab: string, x: number, z: number, yaw: number, w: number, d: number, h: number, role = 'prop') => {
+    const r = prefabDims(prefab) // real bbox when known (catalogue dims), the estimate otherwise
+    if (r && r.w > 0 && r.dz > 0 && role !== 'grave') { w = r.w; d = r.dz; h = r.h || h }
+    ent(prefab, x, z, yaw); boxes.push({ corners: rectAt(x, z, yaw, w, d), role, h }) }
   const decal = (prefab: string, x: number, z: number, yaw: number) => ent(prefab, x, z, yaw)
   const ok = c.ok ?? (() => true)
   const [cx, cz] = centroid(polygon)
@@ -91,12 +95,13 @@ export function makeSiteZone(type: SiteType, polygon: number[], c: SiteContext):
     const f = frameOf(polygon, c.roads)
     if (f.road) {
       const sy = (Math.atan2(f.ux, f.uz) * 180) / Math.PI
-      for (let d = 14; d < 60; d += 4) {
+      const cs = prefabDims(SITE_PREFABS.cowShed), cw = cs?.w || 9, cd = cs?.dz || 18, ch = cs?.h || 5
+      for (let d = 4 + cw / 2; d < 30 + cw; d += 4) {
         const n = nearestPoint(polygon.concat(polygon.slice(0, 2)), f.road[0], f.road[1])
-        const x = n[0] + f.vx * d, z = n[1] + f.vz * d, cn = rectAt(x, z, sy, 9, 18)
+        const x = n[0] + f.vx * d, z = n[1] + f.vz * d, cn = rectAt(x, z, sy, cw, cd)
         let fit = true
         for (let i = 0; i < 8; i += 2) if (!inPoly(polygon, cn[i], cn[i + 1]) || !ok(cn[i], cn[i + 1])) fit = false
-        if (fit) { ent(SITE_PREFABS.cowShed, x, z, sy); boxes.push({ corners: cn, role: 'main', h: 5 }); break }
+        if (fit) { ent(SITE_PREFABS.cowShed, x, z, sy); boxes.push({ corners: cn, role: 'main', h: ch }); break }
       }
     }
   } else if (type === 'parking') {

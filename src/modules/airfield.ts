@@ -18,6 +18,7 @@ import {
   rng, toWorld, heightAt, bestPlane, earthwork, toEntity, roadShape, round,
   type Box, type FlattenRequest, type SitePlacement, type Disc,
 } from './gen-common'
+import { halfDims } from '../library/dims.ts'
 
 export type AirfieldSize = 'small' | 'medium' | 'large'
 
@@ -27,15 +28,17 @@ export const AIRFIELD_SIZES: Record<AirfieldSize, { length: number; width: numbe
   large: { length: 1500, width: 45, taxi: 18, apronW: 280, apronD: 100, hangars: 3 },
 }
 
-//! base-game paths (enfusion-mcp asset_search 2026-11-16); footprints are ESTIMATES (not in prefabs.txt)
+//! base-game paths (enfusion-mcp asset_search 2026-11-16); footprints = real dims (fallback: estimates)
+/** real half sizes from the catalogue dims (.xob bbox, library/dims.ts), the estimate as fallback */
+const air = (p: string, hw: number, hd: number) => ({ p, ...halfDims(p, hw, hd) })
 export const AIR_PREFABS = {
-  hangar: { p: '{CEB1F71D46592F3C}Prefabs/Structures/Airport/Hangar_01/Hangar_01.et', hw: 18, hd: 22 },
-  tower: { p: '{9CEC8BB63429FF28}Prefabs/Structures/Airport/ControlTower_01/ControlTower_01.et', hw: 6, hd: 6 },
-  fuel: { p: '{D44E66C875C41446}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_01/FuelTank_01_green.et', hw: 2, hd: 5 }, // verified in resourceDatabase.rdb, footprint est.
-  pump: { p: '{69C0826D0263EB72}Prefabs/Structures/Airport/AirfieldPipeline_01/AirfieldPipeline_01_pump.et', hw: 1.5, hd: 1.5 },
-  antenna: { p: '{53251E86B44EF4F2}Prefabs/Structures/Airport/AntennaAirport_01/AntennaAirport_01.et', hw: 1, hd: 1 },
-  light: { p: '{8746DE528BA26F02}Prefabs/Structures/Airport/LightRunway_01/LightRunway_01_white.et', hw: 0.3, hd: 0.3 },
-  lightEnd: { p: '{C1873CADC253F79B}Prefabs/Structures/Airport/LightRunway_01/LightRunway_01_green_red.et', hw: 0.3, hd: 0.3 },
+  hangar: air('{CEB1F71D46592F3C}Prefabs/Structures/Airport/Hangar_01/Hangar_01.et', 18, 22),
+  tower: air('{9CEC8BB63429FF28}Prefabs/Structures/Airport/ControlTower_01/ControlTower_01.et', 6, 6),
+  fuel: air('{D44E66C875C41446}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_01/FuelTank_01_green.et', 2, 5), // verified in resourceDatabase.rdb, footprint est.
+  pump: air('{69C0826D0263EB72}Prefabs/Structures/Airport/AirfieldPipeline_01/AirfieldPipeline_01_pump.et', 1.5, 1.5),
+  antenna: air('{53251E86B44EF4F2}Prefabs/Structures/Airport/AntennaAirport_01/AntennaAirport_01.et', 1, 1),
+  light: air('{8746DE528BA26F02}Prefabs/Structures/Airport/LightRunway_01/LightRunway_01_white.et', 0.3, 0.3),
+  lightEnd: air('{C1873CADC253F79B}Prefabs/Structures/Airport/LightRunway_01/LightRunway_01_green_red.et', 0.3, 0.3),
 }
 const GEN = { runway: '{82B82C5E2B744C86}Prefabs/WEGenerators/Roads/Concrete/RG_Road_Concrete_USSR_02.et', taxi: '{EEB3D2A6FCAADFD6}Prefabs/WEGenerators/Roads/Concrete/RG_Road_ConcretePanel_01.et' }
 
@@ -90,15 +93,15 @@ export function generateAirfield(o: AirfieldOptions): Airfield {
   }
   // control tower at one end of the apron, near the edge, clear view on the runway
   const towerZ = az + (R() < 0.5 ? 1 : -1) * (S.apronW / 2 + 16)
-  put('tower', AIR_PREFABS.tower, lbox(ax - side * (S.apronD / 2 - 8), towerZ, 6, 6, face))
-  put('antenna', AIR_PREFABS.antenna, lbox(ax + side * 6, towerZ, 1, 1))
+  put('tower', AIR_PREFABS.tower, lbox(ax - side * (S.apronD / 2 - 2 - AIR_PREFABS.tower.hw), towerZ, AIR_PREFABS.tower.hw, AIR_PREFABS.tower.hd, face))
+  put('antenna', AIR_PREFABS.antenna, lbox(ax + side * (2 + AIR_PREFABS.antenna.hw), towerZ, AIR_PREFABS.antenna.hw, AIR_PREFABS.antenna.hd))
   // fuel farm on the other end
   const fz = az - Math.sign(towerZ - az) * (S.apronW / 2 + 14)
-  for (let i = 0; i < 3; i++) put('fuel', AIR_PREFABS.fuel, lbox(ax + side * (i * 7 - 7), fz, 2, 5))
-  put('pump', AIR_PREFABS.pump, lbox(ax - side * (S.apronD / 2 - 4), fz + Math.sign(fz - az) * -9, 1.5, 1.5))
+  for (let i = 0; i < 3; i++) put('fuel', AIR_PREFABS.fuel, lbox(ax + side * (i - 1) * (AIR_PREFABS.fuel.hw * 2 + 2), fz, AIR_PREFABS.fuel.hw, AIR_PREFABS.fuel.hd))
+  put('pump', AIR_PREFABS.pump, lbox(ax - side * (S.apronD / 2 - 4), fz + Math.sign(fz - az) * -9, AIR_PREFABS.pump.hw, AIR_PREFABS.pump.hd))
   // edge lights every 60 m, threshold lights at both ends
-  for (let lz = -L; lz <= L + 0.1; lz += 60) for (const sx of [-1, 1]) put('light', AIR_PREFABS.light, lbox(sx * (S.width / 2 + 2), lz, 0.3, 0.3))
-  for (const lz of [-L - 4, L + 4]) for (let lx = -S.width / 2; lx <= S.width / 2 + 0.1; lx += 5) put('lightEnd', AIR_PREFABS.lightEnd, lbox(lx, lz, 0.3, 0.3))
+  for (let lz = -L; lz <= L + 0.1; lz += 60) for (const sx of [-1, 1]) put('light', AIR_PREFABS.light, lbox(sx * (S.width / 2 + 2), lz, AIR_PREFABS.light.hw, AIR_PREFABS.light.hd))
+  for (const lz of [-L - 4, L + 4]) for (let lx = -S.width / 2; lx <= S.width / 2 + 0.1; lx += 5) put('lightEnd', AIR_PREFABS.lightEnd, lbox(lx, lz, AIR_PREFABS.lightEnd.hw, AIR_PREFABS.lightEnd.hd))
 
   // flatten: runway strip (shoulders + 60 m overrun); platform = taxiway, apron and buildings
   const strip: FlattenRequest = { box: lbox(0, 0, S.width / 2 + 20, L + 60), h0: 0, h1: 0, falloff: 60 }

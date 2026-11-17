@@ -14,22 +14,24 @@ import {
   rng, toWorld, boxesOverlap, inBox, heightAt, bestPlane, maxSlope, toEntity, wallShape, roadShape, round,
   type Box, type FlattenRequest, type SitePlacement, type Disc,
 } from './gen-common'
+import { halfDims } from '../library/dims.ts'
 
 export type MilitaryKind = 'checkpoint' | 'outpost' | 'main'
 
 //! Prefab refs verified against base-game resourceDatabase.rdb (2026-11-16), all with {GUID}. Footprints (hw/hd = half sizes,
-//! metres) are ESTIMATES: none of these is in
-//! profile/MapGen/prefabs.txt yet — measure them with the capture plugin and update.
+//! metres) come from the catalogue dims (.xob bbox, library/dims.ts); the literals are fallbacks only.
+/** real half sizes from the catalogue dims (.xob bbox), the estimate as fallback */
+const mil = (p: string, hw: number, hd: number) => ({ p, ...halfDims(p, hw, hd) })
 export const MIL_PREFABS = {
-  tower: { p: '{FBCE1861B987EA68}Prefabs/Structures/Military/Houses/GuardTower_01/GuardTower_01.et', hw: 2.5, hd: 2.5 },
-  barracks: { p: '{56073EA03FCF2043}Prefabs/Structures/Military/Houses/Barracks_01/Barracks_01_military_white.et', hw: 5, hd: 12 }, // verified in resourceDatabase.rdb, footprint est.
-  hq: { p: '{4D62E2F38A755750}Prefabs/Structures/Military/Houses/Barracks_01/Barracks_01_military_camo.et', hw: 5, hd: 12 }, // verified, footprint est.
-  tent: { p: '{4A1E3B17DB672E35}Prefabs/Structures/Military/Camps/TentFIA_01/TentFIA_01.et', hw: 3, hd: 4.5 },
-  tentSmall: { p: '{01AE5FD77A9A4C21}Prefabs/Structures/Military/Camps/TentSmallUS_01/TentSmallUS_01.et', hw: 1.5, hd: 2 },
-  vehicleCover: { p: '{FA9066DE33E8E67D}Prefabs/Structures/Military/Camps/Canvas_Covers/US/CanvasCover_Large_US.et', hw: 5, hd: 7 },
-  helipad: { p: '{8CDB9C117669AF4A}Prefabs/Structures/Military/Camps/HelipadImprovised_01/HelipadImprovised_USSR_01.et', hw: 10, hd: 10 },
-  fuel: { p: '{D44E66C875C41446}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_01/FuelTank_01_green.et', hw: 2, hd: 5 }, // verified in resourceDatabase.rdb, footprint est.
-  flag: { p: '{1A8791C2BC2B8B75}Prefabs/Structures/Military/Flags/FlagPole_01/FlagPole_01_empty.et', hw: 0.3, hd: 0.3 }, // measured (entities.txt)
+  tower: mil('{FBCE1861B987EA68}Prefabs/Structures/Military/Houses/GuardTower_01/GuardTower_01.et', 2.5, 2.5),
+  barracks: mil('{56073EA03FCF2043}Prefabs/Structures/Military/Houses/Barracks_01/Barracks_01_military_white.et', 5, 12), // verified in resourceDatabase.rdb, footprint est.
+  hq: mil('{4D62E2F38A755750}Prefabs/Structures/Military/Houses/Barracks_01/Barracks_01_military_camo.et', 5, 12), // verified, footprint est.
+  tent: mil('{4A1E3B17DB672E35}Prefabs/Structures/Military/Camps/TentFIA_01/TentFIA_01.et', 3, 4.5),
+  tentSmall: mil('{01AE5FD77A9A4C21}Prefabs/Structures/Military/Camps/TentSmallUS_01/TentSmallUS_01.et', 1.5, 2),
+  vehicleCover: mil('{FA9066DE33E8E67D}Prefabs/Structures/Military/Camps/Canvas_Covers/US/CanvasCover_Large_US.et', 5, 7),
+  helipad: mil('{8CDB9C117669AF4A}Prefabs/Structures/Military/Camps/HelipadImprovised_01/HelipadImprovised_USSR_01.et', 10, 10),
+  fuel: mil('{D44E66C875C41446}Prefabs/Structures/Industrial/Containers/FuelTanks/FuelTank_01/FuelTank_01_green.et', 2, 5), // verified in resourceDatabase.rdb, footprint est.
+  flag: mil('{1A8791C2BC2B8B75}Prefabs/Structures/Military/Flags/FlagPole_01/FlagPole_01_empty.et', 0.3, 0.3), // measured (entities.txt)
 } as const
 
 //! wall generators (docs/GENERATORS.md, Walls/): no Hesco / sandbag generator exists in vanilla
@@ -74,21 +76,22 @@ export function generateMilitary(o: MilitaryOptions): MilitarySite {
   const put = (role: string, pf: { p: string; hw: number; hd: number }, b: Box) => placements.push({ role, prefab: pf.p, box: b })
   const free = (b: Box, m = 1.5) => inBoxFully(area, b, -1) && !placements.some((p) => boxesOverlap(b, p.box, m)) && !roads.some((r) => boxesOverlap(b, r, m))
 
+  const T = MIL_PREFABS.tower
   if (o.kind === 'checkpoint') {
     // astride the road (road along local Z): tower on one side, tents on the other, flag
-    put('tower', MIL_PREFABS.tower, lbox(-8, 0, 2.5, 2.5))
-    put('tent', MIL_PREFABS.tent, lbox(9, -2, 3, 4.5))
-    put('tentSmall', MIL_PREFABS.tentSmall, lbox(9, 6, 1.5, 2))
-    put('flag', MIL_PREFABS.flag, lbox(-8, -6, 0.3, 0.3))
+    put('tower', MIL_PREFABS.tower, lbox(-8, 0, T.hw, T.hd))
+    put('tent', MIL_PREFABS.tent, lbox(9, -2, MIL_PREFABS.tent.hw, MIL_PREFABS.tent.hd))
+    put('tentSmall', MIL_PREFABS.tentSmall, lbox(9, 6.5, MIL_PREFABS.tentSmall.hw, MIL_PREFABS.tentSmall.hd))
+    put('flag', MIL_PREFABS.flag, lbox(-8, -6, MIL_PREFABS.flag.hw, MIL_PREFABS.flag.hd))
     shapes.push(wallShape(`mil-${o.seed}-sb`, [...W(-12, -8), ...W(-5, -8)], MIL_WALLS.netLight))
   } else {
     const gw = S.gate / 2, wall = o.wall ?? S.wall!
     // perimeter: open polyline starting right of the gate, around, back to left of the gate
     const ring = [[gw, -S.hd], [S.hw, -S.hd], [S.hw, S.hd], [-S.hw, S.hd], [-S.hw, -S.hd], [-gw, -S.hd]]
     shapes.push(wallShape(`mil-${o.seed}-wall`, ring.flatMap(([a, b]) => W(a, b)), MIL_WALLS[wall]))
-    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) put('tower', MIL_PREFABS.tower, lbox(sx * (S.hw - 4), sz * (S.hd - 4), 2.5, 2.5, sx * sz > 0 ? 45 : -45))
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) put('tower', MIL_PREFABS.tower, lbox(sx * (S.hw - 3 - T.hd), sz * (S.hd - 3 - T.hd), T.hw, T.hd, sx * sz > 0 ? 45 : -45))
     // gate towers either side of the entrance (main base) / flag (outpost)
-    if (o.kind === 'main') { put('tower', MIL_PREFABS.tower, lbox(gw + 5, -S.hd + 4, 2.5, 2.5)); put('tower', MIL_PREFABS.tower, lbox(-gw - 5, -S.hd + 4, 2.5, 2.5)) }
+    if (o.kind === 'main') { put('tower', MIL_PREFABS.tower, lbox(gw + 2 + T.hw, -S.hd + 3 + T.hd, T.hw, T.hd)); put('tower', MIL_PREFABS.tower, lbox(-gw - 2 - T.hw, -S.hd + 3 + T.hd, T.hw, T.hd)) }
     // main street gate → centre, then a cross street (main base)
     const hr = S.road / 2, streetLen = o.kind === 'main' ? S.hd + 10 : S.hd
     const street = lbox(0, -S.hd + streetLen / 2, hr, streetLen / 2)
@@ -102,21 +105,22 @@ export function generateMilitary(o: MilitaryOptions): MilitarySite {
     shapes.push(roadShape(`mil-${o.seed}-st`, sp, o.kind === 'main' ? ROAD_GEN.concrete : ROAD_GEN.dirt, S.road))
     // HQ facing the street end + flag
     const endZ = -S.hd + streetLen + hr
-    if (o.kind === 'main') put('hq', MIL_PREFABS.hq, lbox(0, endZ + 9, 5, 12, 90))
-    put('flag', MIL_PREFABS.flag, lbox(o.kind === 'main' ? 8 : hr + 3, o.kind === 'main' ? endZ + 3 : -S.hd + 8, 0.3, 0.3))
+    if (o.kind === 'main') put('hq', MIL_PREFABS.hq, lbox(0, endZ + 3 + MIL_PREFABS.hq.hw, MIL_PREFABS.hq.hw, MIL_PREFABS.hq.hd, 90))
+    put('flag', MIL_PREFABS.flag, lbox(o.kind === 'main' ? 8 : hr + 3, o.kind === 'main' ? endZ + 3 : -S.hd + 8, MIL_PREFABS.flag.hw, MIL_PREFABS.flag.hd))
     // helipad: far corner, open ground
     const hs = R() < 0.5 ? 1 : -1
     if (o.kind === 'main' || R() < 0.6) {
-      const hp = lbox(hs * (S.hw - 22), S.hd - 22, 10, 10)
+      const H = MIL_PREFABS.helipad, hp = lbox(hs * (S.hw - 8 - H.hw), S.hd - 8 - H.hd, H.hw, H.hd)
       if (free(hp, 4)) put('helipad', MIL_PREFABS.helipad, hp)
     }
     // vehicle park: covers in a row beside the gate, opening on the street
+    const V = MIL_PREFABS.vehicleCover, F = MIL_PREFABS.fuel
     const nCov = o.kind === 'main' ? 4 : 2
     for (let i = 0; i < nCov; i++) {
-      const b = lbox(-hs * (hr + 8 + i * 11.5), -S.hd + 16, 5, 7)
+      const b = lbox(-hs * (hr + 3 + V.hw + i * (V.hw * 2 + 1.5)), -S.hd + 9 + V.hd, V.hw, V.hd)
       if (free(b)) put('vehicle', MIL_PREFABS.vehicleCover, b)
     }
-    if (o.kind === 'main') { const f = lbox(-hs * (S.hw - 10), -S.hd + 14, 2, 5); if (free(f)) put('fuel', MIL_PREFABS.fuel, f) }
+    if (o.kind === 'main') { const f = lbox(-hs * (S.hw - 8 - F.hw), -S.hd + 9 + F.hd, F.hw, F.hd); if (free(f)) put('fuel', MIL_PREFABS.fuel, f) }
     // accommodation: rows of barracks (main) / tents (outpost), aligned on the street, random fill
     const unit = o.kind === 'main' ? MIL_PREFABS.barracks : MIL_PREFABS.tent
     const want = o.kind === 'main' ? 8 + Math.floor(R() * 4) : 4 + Math.floor(R() * 3)
@@ -129,7 +133,7 @@ export function generateMilitary(o: MilitaryOptions): MilitarySite {
     let n = 0
     for (const b of slots) { if (n >= want) break; if (free(b, 2.5)) { put(o.kind === 'main' ? 'barracks' : 'tent', unit, b); n++ } }
     // small tents fill (outpost)
-    if (o.kind === 'outpost') for (let k = 0; k < 4; k++) { const b = lbox((R() * 2 - 1) * (S.hw - 8), (R() * 2 - 1) * (S.hd - 8), 1.5, 2); if (free(b)) put('tentSmall', MIL_PREFABS.tentSmall, b) }
+    if (o.kind === 'outpost') for (let k = 0; k < 4; k++) { const b = lbox((R() * 2 - 1) * (S.hw - 8), (R() * 2 - 1) * (S.hd - 8), MIL_PREFABS.tentSmall.hw, MIL_PREFABS.tentSmall.hd); if (free(b)) put('tentSmall', MIL_PREFABS.tentSmall, b) }
   }
   const gate = W(0, -S.hd) as [number, number]
   const flatten: FlattenRequest = { box: { ...area, hw: S.hw + 4, hd: S.hd + 4 }, h0: 0, h1: 0, falloff: o.kind === 'main' ? 30 : 15 }

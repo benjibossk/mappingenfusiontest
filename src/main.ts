@@ -1,5 +1,6 @@
 import './style.css'
 import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
+import { prefabDims } from './library/dims'
 import { Collab, type CollabEvents, type CollabTransport, type Op } from './collab'
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
@@ -1048,12 +1049,16 @@ function zoneHabitation(zone: number[], n: number) {
   finishZone('habitation', zone, made ? t('log.zoneHouses', { n: made, s: res.lanes.length }) : t('err.zoneNoHouse'))
 }
 /** structured sites (sitezones.ts): rows / grids of props, fence on the border, decals; one ZoneItem of kind 'site' */
-function zoneSite(type: SiteType, zone: number[]) {
+function buildSite(type: SiteType, zone: number[]): ZoneItem {
   const id = nextZoneId(zones, 'site')
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)].filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) }))
   const wet = waters.filter((w) => WATER_TYPES[w.type].closed).map((w) => w.pts)
   const ok = (x: number, z: number) => (!terrain || isLand(terrain, x, z)) && !wet.some((p) => pointInPoly(p, x, z)) && !settled.some((b) => Math.abs(b.x - x) < 30 && Math.abs(b.z - z) < 30 && pointInPoly(b.corners, x, z))
   const zn = makeSiteZone(type, zone, { id, seed: num('seed') * 13 + zones.length, roads: allRoads, ground: terrain ? groundAt : undefined, ok, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts), faction: $<HTMLSelectElement>('zoneFaction').value as Faction, rivers: waters.filter((w) => !WATER_TYPES[w.type].closed).map((w) => w.pts) })
+  return zn
+}
+function zoneSite(type: SiteType, zone: number[]) {
+  const zn = buildSite(type, zone)
   if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.siteEmpty', { w: zn.warnings.join(' · ') }))
   zones.push(zn)
   finishZone(type, zone, t('log.siteMade', { name: t(('zt.' + type) as K), n: zn.entities.length, s: zn.shapes.length }) + (zn.warnings.length ? ' · ' + zn.warnings.join(' · ') : ''), ['hunting', 'checkpoint'].includes(type) ? [] : [zone])
@@ -1085,6 +1090,13 @@ function zoneTown(zone: number[], n: number) {
   settled = res.placed
   setLanes = [...setLanes, ...res.lanes]
   setSquares = [...setSquares, ...res.squares]
+  // the town's parking and church blocks are dressed by the site generators (sitezones.ts): parking bays, and the
+  // cemetery round the church (graves skip the church footprint: `ok` excludes the settled buildings)
+  for (const bl of res.blocks) {
+    if (bl.type !== 'parking' && bl.type !== 'church') continue
+    const zn = buildSite(bl.type === 'church' ? 'cemetery' : 'parking', bl.inset)
+    if (zn.entities.length || zn.shapes.length) zones.push(zn)
+  }
   // farm cells keep the fields already there: only the districts cut the lower layers
   const rings = res.blocks.filter((b) => b.type !== 'farm').map((b) => b.ring)
   finishZone('town', zone, made ? t('log.zoneTown', { n: made, p: res.pop, s: res.lanes.length, b: rings.length }) : t('err.zoneNoHouse'), rings.length ? rings : undefined)
@@ -4552,7 +4564,7 @@ btn3d.addEventListener('click', () => void (async () => {
     busyStage(t('v3d.load'))
     const mod: View3DMod = await import('./view3d')
     const buildings = [
-      ...settled.map((b) => box3d(b.corners, BLD_H[b.cat] ?? 6)),
+      ...settled.map((b) => box3d(b.corners, prefabDims(b.prefab)?.h || BLD_H[b.cat] || 6)), // real height (catalogue dims) when known
       ...zones.flatMap((z) => z.boxes.filter((b) => z.kind === 'site' ? b.corners.length === 8 && (b.h ?? 0) >= 0.2 : b.corners.length >= 8).map((b) => box3d(b.corners, b.h ?? (/hangar|tower/i.test(b.role) ? 12 : 7)))),
     ]
     const lakes = waters.filter((w) => w.type !== 'river' && w.pts.length >= 6).map((w) => w.pts)

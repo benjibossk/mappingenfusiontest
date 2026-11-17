@@ -38,3 +38,9 @@ export function dimsFootprint(guidOrPath: string, fallback: Footprint): Footprin
   if (!d || !(d.w > 0 && d.dz > 0 && d.h > 0)) return fallback
   return { minX: d.cx - d.w / 2, maxX: d.cx + d.w / 2, minZ: d.cz - d.dz / 2, maxZ: d.cz + d.dz / 2, h: d.h, measured: true }
 }
+/** half sizes (hw along X, hd along Z) + height from the real dims, `fallback` half sizes when unknown */
+export function halfDims(guidOrPath: string, hw: number, hd: number, h = 0): { hw: number; hd: number; h: number; measured: boolean } {
+  const d = prefabDims(guidOrPath)
+  if (!d || !(d.w > 0 && d.dz > 0)) return { hw, hd, h, measured: false }
+  return { hw: Math.round(d.w * 50) / 100, hd: Math.round(d.dz * 50) / 100, h: d.h, measured: true }
+}

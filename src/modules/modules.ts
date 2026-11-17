@@ -4,11 +4,14 @@
 // chronological backtracking; on failure the min counts are relaxed, then a greedy fallback label is used).
 // Used by the site zones "Military camp" (US / USSR / FIA) and "Scrapyard": each label is then dressed with
 // vanilla prefabs inside its cell, so modules never overlap and stay inside the polygon.
-// Prefab refs: all checked in library/prefabs-catalogue.json (base game GUIDs). Footprints are ESTIMATES.
+// Prefab refs: all checked in library/prefabs-catalogue.json (base game GUIDs). Footprints: the real .xob bbox
+// (catalogue dims, library/dims.ts) when it fits a module cell; the literal estimate otherwise (shed 16x43 m,
+// US antenna with its guy wires, camo nets, helipad: bigger than a 12 m cell, the module layout reserves their room).
 
 import type { ProjectEntity, ProjectShape } from '../project'
 import type { FlattenRequest as Platform } from './industrial'
 import { round, wallShape } from './gen-common'
+import { prefabDims } from '../library/dims.ts'
 import { centroid, distLine, fencePosts, frameOf, inPoly, insetRing, nearestPoint, rectAt, slopeAt, type Frame, type RoadLine } from './rowgrid'
 
 // ---- solver -------------------------------------------------------------------------------------
@@ -316,7 +319,9 @@ function dresser(polygon: number[], g: CellGrid, c: ModuleCtx) {
   /** world point of cell-local (lu along U, lv along V) */
   const L = (cell: ModuleCell, lu: number, lv: number): [number, number] => [cell.x + f.ux * lu + f.vx * lv, cell.z + f.uz * lu + f.vz * lv]
   /** solid prop: skipped when it would leave the polygon or overlap another solid prop */
-  const prop = (prefab: string, x: number, z: number, yaw: number, w: number, d: number, h: number, role = 'prop') => {
+  const prop = (prefab: string, x: number, z: number, yaw: number, w: number, d: number, h: number, role = 'prop', real = true) => {
+    const r = real ? prefabDims(prefab) : null
+    if (r && r.w > 0 && r.dz > 0 && Math.max(r.w, r.dz) <= g.size + 2) { w = r.w; d = r.dz; h = r.h || h }
     const cn = rectAt(x, z, yaw, w, d)
     for (let i = 0; i < 8; i += 2) if (!inPoly(polygon, cn[i], cn[i + 1])) return false
     if (solid.some((s) => sat(s, cn))) return false
@@ -337,11 +342,14 @@ function lanes(g: CellGrid, every = 0): Set<number> {
   const s = new Set<number>()
   if (g.gate < 0) return s
   const gc = g.cells[g.gate], at = new Map(g.cells.map((q, k) => [`${q.i},${q.j}`, k]))
-  for (let j = gc.j; at.has(`${gc.i},${j}`); j++) s.add(at.get(`${gc.i},${j}`)!)
+  // the whole gate column, across holes (a cell dropped for slope / water / a road must not cut the lane short)
+  const jMax = Math.max(...g.cells.filter((q) => q.i === gc.i).map((q) => q.j))
+  for (let j = gc.j; j <= jMax; j++) { const k = at.get(`${gc.i},${j}`); if (k !== undefined) s.add(k) }
   const js = [...s].map((k) => g.cells[k].j)
   // cross lanes: the middle row, or every `every` rows from the gate
   const rows = every ? js.filter((j) => j > gc.j && (j - gc.j) % every === every - 1) : js.length >= 3 ? [js[Math.floor(js.length / 2)]] : []
-  for (const r of rows) for (const dir of [-1, 1]) for (let i = gc.i + dir; at.has(`${i},${r}`); i += dir) s.add(at.get(`${i},${r}`)!)
+  const iMin = Math.min(...g.cells.map((q) => q.i)), iMax = Math.max(...g.cells.map((q) => q.i))
+  for (const r of rows) for (let i = iMin; i <= iMax; i++) { const k = at.get(`${i},${r}`); if (k !== undefined) s.add(k) }
   return s
 }
 const cheb = (a: ModuleCell, b: ModuleCell) => Math.max(Math.abs(a.i - b.i), Math.abs(a.j - b.j))
@@ -366,6 +374,11 @@ function drawLanes(g: CellGrid, lane: Set<number>, o: ModuleOut, id: string, roa
     if (pts.length >= 4) o.shapes.push({ id: `${id}_cross${j}`, kind: 'spline', closed: false, points: pts.map(round), generator: MOD_PREFABS.dirtTracks })
   }
   for (const q of col) o.boxes.push({ corners: rectAt(q.x, q.z, g.yaw, g.size * 0.5, g.size), role: 'pave', h: 0.05 })
+  // holes in the gate column (dropped cell): the lane runs on through them
+  for (let k = 1; k < col.length; k++) {
+    const a = col[k - 1], b = col[k], n = b.j - a.j
+    for (let t = 1; t < n; t++) o.boxes.push({ corners: rectAt(a.x + ((b.x - a.x) * t) / n, a.z + ((b.z - a.z) * t) / n, g.yaw, g.size * 0.5, g.size), role: 'pave', h: 0.05 })
+  }
   for (const q of row) o.boxes.push({ corners: rectAt(q.x, q.z, g.yaw, g.size, g.size * 0.5), role: 'pave', h: 0.05 })
   void f
 }
@@ -428,16 +441,18 @@ export function makeCamp(polygon: number[], c: ModuleCtx): ModuleOut {
   cells.forEach((q, k) => {
     const lab = Lb[sol.label[k]], Y = g.yaw
     if (lab === 'tent') {
-      const per = F.tents, cols = per === 4 ? 2 : 2, rows = per === 4 ? 2 : 1
+      // real tent size when known: as many as fit the cell (2x2 small US tents, 1-2 big ones)
+      const td = prefabDims(F.tent), tw = td?.w || F.tentW, tdd = td?.dz || F.tentD
+      const cols = Math.max(1, Math.min(2, Math.floor((g.size + 1.5) / (tw + 2.5)))), rows = F.tents === 4 && 2 * tdd + 1.5 <= g.size ? 2 : 1
       for (let a = 0; a < cols; a++) for (let b = 0; b < rows; b++) {
-        const lu = (a - (cols - 1) / 2) * (F.tentW + 2.5), lv = rows > 1 ? (b - 0.5) * (F.tentD + 1.5) : 0
+        const lu = (a - (cols - 1) / 2) * (tw + 2.5), lv = rows > 1 ? (b - 0.5) * (tdd + 1.5) : 0
         const [x, z] = L(q, lu, lv)
         prop(F.tent, x, z, Y, F.tentW, F.tentD, 3, 'barracks')
       }
     } else if (lab === 'hq') {
       level(q, 14, 14)
       const [x, z] = L(q, 0, 1.5); prop(F.hq, x, z, Y, 8, 10, 4, 'main')
-      const [ax, az] = L(q, -5.8, -6); prop(F.antenna, ax, az, Y, 1, 1, 8, 'tower')
+      const [ax, az] = L(q, -5.8, -6); prop(F.antenna, ax, az, Y, 1, 1, 8, 'tower', false) // bbox = guy wires: keep the mast
       const [fx, fz] = L(q, 5.8, -6); prop(MOD_PREFABS.flag, fx, fz, Y, 0.6, 0.6, 8, 'lamp')
     } else if (lab === 'motor') {
       level(q, 15, 15)
@@ -453,7 +468,8 @@ export function makeCamp(polygon: number[], c: ModuleCtx): ModuleOut {
       // outer corner of the cell: the side(s) with no neighbour
       const has = (di: number, dj: number) => cells.some((o) => o.i === q.i + di && o.j === q.j + dj)
       const su = has(-1, 0) ? 1 : -1, sv = has(0, -1) ? 1 : -1
-      const [x, z] = L(q, su * 4.5, sv * 4.5); prop(F.tower, x, z, Y + (su < 0 ? -45 : 45) + (sv < 0 ? 180 : 0), 5, 5, 8, 'tower')
+      const td = prefabDims(F.tower), off = td ? Math.max(0, g.size / 2 - 0.5 - (td.w + td.dz) / (2 * Math.SQRT2)) : 4.5 // 45 deg: keep the real bbox in the cell
+      const [x, z] = L(q, su * off, sv * off); prop(F.tower, x, z, Y + (su < 0 ? -45 : 45) + (sv < 0 ? 180 : 0), 5, 5, 8, 'tower')
     } else if (lab === 'heli' && !heliDone) {
       heliDone = true
       const hx = heli.reduce((a, h) => a + cells[h].x, 0) / 4, hz = heli.reduce((a, h) => a + cells[h].z, 0) / 4

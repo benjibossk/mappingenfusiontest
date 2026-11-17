@@ -18,6 +18,7 @@ import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, 
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
 import { generateTown } from './town'
+import { makeSiteZone } from './sitezones'
 import type { Placed, Square } from './settlements'
 import { routePowerLine, type PowerKind, type PowerLine } from './power'
 import type { Feature, Polygon } from 'geojson'
@@ -504,6 +505,15 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         if (tr.placed.length - settlement.placed.length < 30) { left.push(s); continue }
         settlement.placed = tr.placed
         settlement.lanes.push(...tr.lanes); settlement.squares.push(...tr.squares)
+        // parking / church blocks dressed by the site generators (same as the Town zone tool): bays, cemetery round the church
+        const lines = [...allRoads, ...tr.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) }))
+        const ground = (x: number, z: number) => hAt(x, z)
+        const okAt = (x: number, z: number) => !isWater(x, z) && !tr.placed.some((q) => Math.abs(q.x - x) < 30 && Math.abs(q.z - z) < 30 && pointInPoly(q.corners, x, z))
+        tr.blocks.forEach((bl, bi) => {
+          if (bl.type !== 'parking' && bl.type !== 'church') return
+          const zn = makeSiteZone(bl.type === 'church' ? 'cemetery' : 'parking', bl.inset, { id: `${s.id}_SITE_${bi + 1}`, seed: subSeed(seed, 'townsite-' + s.id, bi), roads: lines, ground, ok: okAt })
+          if (zn.entities.length || zn.shapes.length) zones.push(zn)
+        })
       }
       ks.push(...left)
       if (!ks.length) continue
