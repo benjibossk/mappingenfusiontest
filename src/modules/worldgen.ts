@@ -26,7 +26,7 @@ import { addProdForests, lotFences, makeBlocker, type FenceLot } from './worldex
 import { generateTown } from './town'
 import { makeSiteZone } from './sitezones'
 import type { Placed, Square } from './settlements'
-import { routePowerLine, type PowerLine } from './power'
+import type { PowerLine } from './power'
 import { worldPowerGrid } from './worldpower'
 import type { Station } from './powergrid'
 import type { Feature, Polygon } from 'geojson'
@@ -134,22 +134,6 @@ function roadIdMaker() {
     const slug = fr[('road.type.' + type) as keyof typeof fr].normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')
     for (let n = 1; ; n++) { const id = `ROAD_${slug}_${n}`; if (!used.has(id)) { used.add(id); return id } }
   }
-}
-
-/** routePowerLine on a window of the grid around both ends (cost fields are per line: the full 512² grid
- *  made the power step the slowest one at 8 km). Same result as long as the route stays inside the window. */
-function routePowerWindow(h: ArrayLike<number>, g: Grid, ax: number, az: number, bx: number, bz: number, o: Parameters<typeof routePowerLine>[6]) {
-  const m = Math.max(400, Math.hypot(bx - ax, bz - az) * 0.5)
-  const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - m - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((Math.max(ax, bx) + m - g.minX) / g.step))
-  const r0 = Math.max(0, Math.floor((Math.min(az, bz) - m - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((Math.max(az, bz) + m - g.minZ) / g.step))
-  const cols = c1 - c0 + 1, rows = r1 - r0 + 1
-  const sub = new Float32Array(cols * rows)
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sub[r * cols + c] = h[(r + r0) * g.cols + c + c0]
-  const w: Grid = { ...g, minX: g.minX + c0 * g.step, minZ: g.minZ + r0 * g.step, cols, rows }
-  const x0 = w.minX - 200, z0 = w.minZ - 200, x1 = w.minX + cols * g.step + 200, z1 = w.minZ + rows * g.step + 200
-  const inBox = (p: number[]) => { for (let i = 0; i + 1 < p.length; i += 2) if (p[i] > x0 && p[i] < x1 && p[i + 1] > z0 && p[i + 1] < z1) return true; return false }
-  const roads = o.roads?.filter(inBox), keepOut = o.keepOut?.filter((q) => q.x + q.r > x0 && q.x - q.r < x1 && q.z + q.r > z0 && q.z - q.r < z1)
-  return routePowerLine(sub, w, ax, az, bx, bz, { ...o, roads, keepOut })
 }
 
 /** lake shore margin (m): nothing is built or routed closer to a lake outline than this */
