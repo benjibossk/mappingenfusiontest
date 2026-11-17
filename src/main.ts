@@ -4350,7 +4350,7 @@ function applyWorld(w: WorldResult) {
   result = w.campaign ?? null
   settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
   setGardens = []
-  setParcels = w.settlement.parcels ?? []
+  setParcels = [...(w.settlement.parcels ?? []), ...(w.settlement.fences ?? [])]
   zones = w.zones
   worldBridges = w.bridges ?? []
   pendingAct = 'rwGo'

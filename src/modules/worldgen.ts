@@ -17,6 +17,7 @@ import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
+import { addProdForests, lotFences, makeBlocker, type FenceLot } from './worldextras'
 import { generateTown } from './town'
 import { makeSiteZone } from './sitezones'
 import type { Placed, Square } from './settlements'
@@ -51,7 +52,7 @@ export const WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { size: 4096, towns: 1,
 export const WORLD_STAGES = ['relief', 'water', 'sites', 'airfield', 'military', 'roads', 'industry', 'villages', 'power', 'forests', 'surfaces'] as const
 export type WorldStage = (typeof WORLD_STAGES)[number]
 
-export interface WorldArea extends CoverArea { id: string }
+export interface WorldArea extends CoverArea { id: string; tall?: 'low' | 'mid' | 'high'; stage?: 'mature' | 'juvenile' | 'thinned' | 'clearcut'; logs?: { x: number; z: number; yaw: number }[] } // stage/logs: production forest (worldextras.ts)
 export interface WorldResult {
   /** countryside around the villages (Tanin AgriFieldGenerator method): plots + hedges */
   campaign?: CampaignResult
@@ -65,7 +66,7 @@ export interface WorldResult {
   sites: Site[]
   roads: Road[]
   zones: ZoneItem[]
-  settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[]; tried?: number; housed?: number; parcels?: VillageParcel[] }
+  settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[]; tried?: number; housed?: number; parcels?: VillageParcel[]; fences?: VillageParcel[] }
   power: (PowerLine & { id: string })[]
   areas: WorldArea[]
   surfaces: SurfaceGrid[]
@@ -493,6 +494,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const allRoads = [...roads, ...zones.flatMap((z) => z.roads)]
   // one pass per kind (towns first: they get the room), each with its own street count / fill ([M] sizes per class)
   const settlement: WorldResult['settlement'] = { placed: [], lanes: [], paths: [], squares: [] }
+  const builtLots: FenceLot[] = []
   for (const kind of ['town', 'village', 'hamlet', 'farm'] as const) {
     const ks = sites.filter((s) => (kind === 'farm' ? s.id.startsWith('FARM_') : s.kind === kind && !s.id.startsWith('FARM_')))
     if (kind === 'town') {
@@ -525,6 +527,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     settlement.tried = (settlement.tried ?? 0) + (vr.tried ?? 0); settlement.housed = (settlement.housed ?? 0) + (vr.housed ?? 0)
     settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)
     if (vr.parcels) (settlement.parcels ??= []).push(...vr.parcels)
+    builtLots.push(...vr.lots)
+  }
+  // fences / low walls along the built village and hamlet plots (biome worlds already have their parcels' fences)
+  if ((!p.biome || p.biome === 'temperate_everon') && builtLots.length) {
+    const kinds = new Map(sites.map((s) => [s.id, s.kind]))
+    const blocked = makeBlocker(settlement.placed.map((q) => q.corners), [...allRoads, ...settlement.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) })))
+    const fp = lotFences(builtLots, { seed: subSeed(seed, 'fences'), kindOf: (id) => kinds.get(id), blocked })
+    if (fp.length) settlement.fences = fp
   }
   // 9. power lines: HV tree between towns and villages, LV to the hamlets along the roads
   await step('power')
@@ -570,7 +580,10 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const areas: WorldArea[] = mergeForestPatches(rawAreas).map((a, k) => ({ ...a, id: `FOREST_GEN_${k + 1}` }))
   // 10b. countryside: plots + hedges (campaign.ts, Tanin AgriFieldGenerator method) on the open, gentle
   // ground around each settlement; never in a forest, a lake, a zone or the settlement core
-  const forestRings = areas.map((a) => a.pts)
+  // 10a. production forests on part of the large conifer / mixed woods, tracks linked to the road network
+  const prod = addProdForests(areas, { seed: subSeed(seed, 'prodforest'), roads: allRoads.map((r) => r.pts), ground: (x, z) => hAt(x, z) })
+  if (prod.count) { areas.splice(0, areas.length, ...(prod.areas as WorldArea[])); roads.push(...prod.tracks); allRoads.push(...prod.tracks) }
+  const forestRings = [...areas.map((a) => a.pts), ...prod.outlines]
   const topH = cur.heights.reduce((a, b) => Math.max(a, b), 0)
   const camp: CampaignResult = { fields: [], hedges: [], shapes: [] }
   const seen = new Set<string>(), laid: Feature<Polygon>[] = [], countryside: number[][] = []
