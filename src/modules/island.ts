@@ -1,5 +1,6 @@
 // Procedural island: height grid (bridge POST /heightmap) + surface weights and colours (POST /masks).
 // Grids are row 0 = south, west to east, like the bridge expects.
+import { groundWeights, terrainShape } from './groundMasks'
 
 export interface IslandParams {
   size: number // terrain size in metres (X = Z)
@@ -44,6 +45,7 @@ const COLOURS: Record<string, [number, number, number]> = {
   Grass_03_coastal: [104, 108, 70],
   Debris_Rock_01: [118, 112, 102],
   Dirt_02: [150, 125, 95],
+  Grass_02: [70, 88, 50],
 }
 // ground under real forests and fields (land cover, cover.ts): only used when a cover grid is given
 const COVER: Record<string, [number, number, number]> = {
@@ -151,7 +153,11 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   const weights: Record<string, number[]> = Object.fromEntries(names.map((k) => [k, []]))
   // bare patches in the seabed: the algae surface everywhere looks like a carpet
   const patches = noise2(7331, 3)
+  // P2 #10/#11: ridges -> rock/gravel, hollows -> moist grass, low-frequency grass variants
+  const shape = terrainShape(heights, cols, rows, step)
+  const variants = noise2(9157, 2)
   const at = (c: number, r: number) => heights[Math.min(Math.max(r, 0), rows - 1) * cols + Math.min(Math.max(c, 0), cols - 1)]
+  const covered0 = (i: number, h: number) => !!(cover && cover[i] && h > 1)
   for (let i = 0; i < heights.length; i++) {
     const c = i % cols, r = (i - c) / cols
     const h = heights[i]
@@ -167,15 +173,21 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const steep = band(slope, 0.2, 0.4)
     const nearWater = 1 - band(h, 10, 20)
     const cliff = steep * (h > -2 ? 1 : 0) * (1 - bed)
-    const scree = cliff * nearWater * (1 - band(slope, 0.3, 0.5)) // foot of coastal cliffs
-    const rock = cliff - scree
+    let scree = cliff * nearWater * (1 - band(slope, 0.3, 0.5)) // foot of coastal cliffs
+    let rock = cliff - scree
     let free = clamp01(1 - deepAll - bed - cliff)
     const take = (w: number) => { const t = Math.min(free, Math.max(w, 0)); free -= t; return t }
     const shore = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)))
     const beach = take(1 - band(h, 3.5, 5))
     const coastal = take(1 - band(h, 9, 12))
     const high = band(h, maxHeight * 0.45, maxHeight * 0.7)
-    const rest = free
+    const inland = band(h, 10, 16)
+    const gw = groundWeights(slope, shape.tpi[i], shape.curv[i], variants((c * step) / 300, (r * step) / 300))
+    rock += free * inland * gw.rock
+    scree += free * inland * gw.gravel
+    const moist = covered0(i, h) ? 0 : free * inland * gw.moist
+    free -= free * inland * (gw.rock + gw.gravel) + moist
+    const rest = Math.max(free, 0)
     weights.SeaBed_01.push(deep)
     weights.Pebbles_01.push(bed)
     weights.Pebbles_02.push(shore)
@@ -187,8 +199,10 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     // real land cover takes the free ground (grass), never the coast, rock or river bed
     const covered = cover && cover[i] && h > 1 ? COVER_OF[cover[i]] : ''
     if (cover) for (const k of Object.keys(COVER)) weights[k].push(k === covered ? rest : 0)
-    weights.MountainGrass_01.push(covered ? 0 : rest * high)
-    weights.Grass_01.push(covered ? 0 : rest * (1 - high))
+    weights.Grass_02.push(moist)
+    const mountain = Math.min(1, high + (1 - high) * 0.5 * gw.variant * inland)
+    weights.MountainGrass_01.push(covered ? 0 : rest * mountain)
+    weights.Grass_01.push(covered ? 0 : rest * (1 - mountain))
   }
   for (const k of names) weights[k] = weights[k].map((w) => (w < 1 / 255 ? 0 : w))
   const out = names.map((name) => ({ ...grid, name, weights: weights[name] }))

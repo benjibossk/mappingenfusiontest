@@ -51,3 +51,18 @@ test('town: no road -> gates of its own; tiny zone -> nothing', () => {
   assert.ok(r.placed.length >= 40)
   assert.equal(generateTown([0, 0, 100, 0, 100, 100, 0, 100], [], [], flat, grid, { seed: 1 }).placed.length, 0)
 })
+
+test('town: a through-road becomes a main street (graph on it, houses face it, no lane on top)', () => {
+  const r = generateTown(zone, roads, [pond], flat, grid, { seed: 3, prefix: 'T1' })
+  const { v, e } = r.graph
+  const onRoad = e.filter(([a, b]) => lineDist(roads[0].pts, (v[a * 2] + v[b * 2]) / 2, (v[a * 2 + 1] + v[b * 2 + 1]) / 2) < 3)
+  const len = onRoad.reduce((s, [a, b]) => s + Math.hypot(v[b * 2] - v[a * 2], v[b * 2 + 1] - v[a * 2 + 1]), 0)
+  assert.ok(len > 200, `road length in the street graph ${len}`)
+  for (const l of r.lanes) for (let i = 0; i + 3 < l.pts.length; i += 2) {
+    const mx = (l.pts[i] + l.pts[i + 2]) / 2, mz = (l.pts[i + 1] + l.pts[i + 3]) / 2
+    assert.ok(lineDist(roads[0].pts, mx, mz) > 2, `lane ${l.id} drawn on the road`)
+  }
+  const fronting = r.placed.filter((b) => { const d = lineDist(roads[0].pts, b.x, b.z); return d > 6 && d < 25 })
+  assert.ok(fronting.length >= 8, `houses along the road ${fronting.length}`)
+  for (const b of r.placed) for (let i = 0; i < 8; i += 2) assert.ok(lineDist(roads[0].pts, b.corners[i], b.corners[i + 1]) > 5, 'house on the road')
+})

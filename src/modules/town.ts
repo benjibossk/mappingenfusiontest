@@ -17,6 +17,7 @@ import type { Building, BuildingCat } from '../data/buildings'
 import { BUILDINGS, FRONT_YAW, INDUSTRIAL } from '../data/buildings'
 import { boxed, footprint, hash, inside, lineDist, minSegments, overlap, rng, sampler, samples, type Line, type Placed, type PlacedRole, type Square } from './settlements'
 import { nearestOn } from './villageStreets'
+import { ROAD_SEED_OFF, roadEdge, roadSeeds, snapToRoads } from './townRoads'
 
 export type TownBlockType = 'square' | 'centre' | 'residential' | 'industry' | 'park' | 'parking' | 'church' | 'farm'
 export const TOWN_BLOCK_TYPES: TownBlockType[] = ['square', 'centre', 'residential', 'industry', 'park', 'parking', 'church', 'farm']
@@ -111,16 +112,20 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     }
   }
   const R = Math.sqrt(area / Math.PI)
+  // existing roads: through-roads become streets (seed pairs mirrored across them, vertices snapped on them)
+  const roadLines: Line[] = roads.filter((r) => r.pts.length >= 4).map((r) => boxed(centreLine(r.pts, 4), roadHalf(r)))
   const n = Math.max(14, Math.min(70, Math.round(area / CELL_AREA)))
   const seeds: number[][] = [[cx, cz]]
   const rot0 = rand() * Math.PI
   for (let k = 0; k < 6; k++) { const a = rot0 + (k * Math.PI) / 3; seeds.push([cx + Math.cos(a) * 46, cz + Math.sin(a) * 46]) }
+  seeds.push(...roadSeeds(roadLines, (x, z) => inZone(x, z) && !wet(x, z, 5) && Math.hypot(x - cx, z - cz) > 50, seeds))
   const FIXED = seeds.length
+  const offRoad = (x: number, z: number) => roadLines.every((l) => lineDist(l.pts, x, z) > l.half + ROAD_SEED_OFF * 0.6)
   const golden = Math.PI * (3 - Math.sqrt(5))
   for (let i = 0, tries = 0; seeds.length < n && tries < n * 6; tries++, i++) {
     const r = 80 + (R * 1.15 - 80) * Math.sqrt((i + 0.5) / n), a = rot0 + i * golden
     const x = cx + Math.cos(a) * r + (rand() - 0.5) * 14, z = cz + Math.sin(a) * r + (rand() - 0.5) * 14
-    if (inZone(x, z) && !wet(x, z, 5)) seeds.push([x, z])
+    if (inZone(x, z) && !wet(x, z, 5) && offRoad(x, z)) seeds.push([x, z])
   }
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity
   for (let i = 0; i < polygon.length; i += 2) { minX = Math.min(minX, polygon[i]); maxX = Math.max(maxX, polygon[i]); minZ = Math.min(minZ, polygon[i + 1]); maxZ = Math.max(maxZ, polygon[i + 1]) }
@@ -144,6 +149,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     for (let i = 0; i < c.length; i += 2) { const k = vid(c[i], c[i + 1]); if (ids[ids.length - 1] !== k && ids[0] !== k) ids.push(k) }
     return ids
   })
+  const onRoad = snapToRoads(V, roadLines)
   const ekey = (a: number, b: number) => (a < b ? a * 100000 + b : b * 100000 + a)
   const edges = new Map<number, { a: number; b: number; cells: number[] }>()
   cellV.forEach((ids, ci) => ids.forEach((a, k) => {
@@ -154,6 +160,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   }))
   const vx = (i: number) => V[i * 2], vz = (i: number) => V[i * 2 + 1]
   const vIn = (i: number) => inZone(vx(i), vz(i))
+  const roadOf = (a: number, b: number) => roadEdge(onRoad, roadLines, vx(a), vz(a), vx(b), vz(b), a, b) // >= 0: the edge IS an existing road
 
   // --- 4. districts: whole cells inside the zone, near the centre; the rest of the zone = farms
   const ringOf = (ci: number) => cellV[ci].flatMap((k) => [vx(k), vz(k)])
@@ -186,14 +193,13 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     for (let s = 0; s < m; s++) g = Math.max(g, grade(vx(a) + ((vx(b) - vx(a)) * s) / m, vz(a) + ((vz(b) - vz(a)) * s) / m, vx(a) + ((vx(b) - vx(a)) * (s + 1)) / m, vz(a) + ((vz(b) - vz(a)) * (s + 1)) / m))
     return g
   }
-  const cand = [...edges.values()].filter((e) => e.cells.some(district) && vIn(e.a) && vIn(e.b) && dry(e.a, e.b) && egrade(e.a, e.b) <= MAIN_GRADE)
+  const cand = [...edges.values()].filter((e) => e.cells.some(district) && vIn(e.a) && vIn(e.b) && (roadOf(e.a, e.b) >= 0 || (dry(e.a, e.b) && egrade(e.a, e.b) <= MAIN_GRADE)))
   const adj = new Map<number, { to: number; e: typeof cand[number] }[]>()
   for (const e of cand) for (const [p, q] of [[e.a, e.b], [e.b, e.a]]) { const l = adj.get(p) ?? []; l.push({ to: q, e }); adj.set(p, l) }
   const plazaV = cellV[0].filter((k) => adj.has(k))
   if (!plazaV.length) { warnings.push('noSquare'); return res }
 
   // --- 6. main streets: square -> each entry (existing road reaching the zone, else 3 compass gates)
-  const roadLines: Line[] = roads.filter((r) => r.pts.length >= 4).map((r) => boxed(centreLine(r.pts, 4), roadHalf(r)))
   const outerV = [...adj.keys()].filter((k) => [...edges.values()].some((e) => (e.a === k || e.b === k) && e.cells.some((c) => !district(c))))
   const gates: { v: number; link?: number[] }[] = []
   const farEnough = (k: number) => gates.every((g) => { const a1 = Math.atan2(vz(g.v) - cz, vx(g.v) - cx), a2 = Math.atan2(vz(k) - cz, vx(k) - cx); const d = Math.abs(((a1 - a2 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI); return d > Math.PI / 3 })
@@ -224,7 +230,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
       if (u === g.v) break
       for (const { to, e } of adj.get(u) ?? []) {
         if (e.cells.includes(0)) continue // around the square, not across it
-        const w = Math.hypot(vx(to) - vx(u), vz(to) - vz(u)) * (1 + egrade(e.a, e.b) * 8) * (mainE.has(ekey(e.a, e.b)) ? 0.6 : 1)
+        const w = Math.hypot(vx(to) - vx(u), vz(to) - vz(u)) * (1 + egrade(e.a, e.b) * 8) * (mainE.has(ekey(e.a, e.b)) ? 0.6 : 1) * (roadOf(e.a, e.b) >= 0 ? 0.35 : 1)
         if (du + w < (dist.get(to) ?? Infinity)) { dist.set(to, du + w); prev.set(to, u); open.add(to) }
       }
     }
@@ -238,7 +244,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
 
   // --- 7. secondary streets: district edges not too steep; then prune dead ends (no maze)
   const keepE = new Map<number, typeof cand[number]>()
-  for (const e of cand) if (mainE.has(ekey(e.a, e.b)) || e.cells.includes(0) || egrade(e.a, e.b) <= STREET_GRADE) keepE.set(ekey(e.a, e.b), e)
+  for (const e of cand) if (mainE.has(ekey(e.a, e.b)) || e.cells.includes(0) || roadOf(e.a, e.b) >= 0 || egrade(e.a, e.b) <= STREET_GRADE) keepE.set(ekey(e.a, e.b), e)
   const gateV = new Set(gates.map((g) => g.v))
   for (let changed = true; changed; ) {
     changed = false
@@ -266,6 +272,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     for (let i = 0; i + 1 < p.length; i++) {
       const k = ekey(p[i], p[i + 1])
       if (used.has(k) || !keepE.has(k)) { flush(); continue }
+      if (roadOf(p[i], p[i + 1]) >= 0) { used.add(k); flush(); continue } // already a road: no lane on top
       used.add(k)
       if (!run.length) run.push(p[i])
       run.push(p[i + 1])
@@ -273,7 +280,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     flush()
   })
   const left = new Map<number, number[]>()
-  for (const [k, e] of keepE) if (!used.has(k)) for (const [p, q] of [[e.a, e.b], [e.b, e.a]]) { const l = left.get(p) ?? []; l.push(q); left.set(p, l) }
+  for (const [k, e] of keepE) if (!used.has(k) && roadOf(e.a, e.b) < 0) for (const [p, q] of [[e.a, e.b], [e.b, e.a]]) { const l = left.get(p) ?? []; l.push(q); left.set(p, l) }
   const take = (a: number, b: number) => { used.add(ekey(a, b)); left.set(a, left.get(a)!.filter((x) => x !== b)); left.set(b, left.get(b)!.filter((x) => x !== a)) }
   const isSquareEdge = (a: number, b: number) => edges.get(ekey(a, b))?.cells.includes(0) ?? false
   for (let pass = 0; pass < 2; pass++)
@@ -295,7 +302,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   const vmap = new Map(vlist.map((k, i) => [k, i]))
   res.graph = { v: vlist.flatMap((k) => [vx(k), vz(k)]), e: [...keepE.values()].map((e) => [vmap.get(e.a)!, vmap.get(e.b)!] as [number, number]) }
   const streetLines: Line[] = res.lanes.map((l) => boxed(l.pts, roadHalf(l)))
-  const halfOf = (a: number, b: number) => (isSquareEdge(a, b) ? 3 : mainE.has(ekey(a, b)) ? 3 : 2)
+  const halfOf = (a: number, b: number) => (roadOf(a, b) >= 0 ? roadLines[roadOf(a, b)].half + 1.5 : isSquareEdge(a, b) ? 3 : mainE.has(ekey(a, b)) ? 3 : 2)
 
   // --- 9. block types (UCG): centre round the square, one church, a park, a parking, a small industry
   const sq = ringOf(0)
