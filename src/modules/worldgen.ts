@@ -19,10 +19,11 @@ import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
 import type { Placed, Square } from './settlements'
 import { routePowerLine, type PowerKind, type PowerLine } from './power'
-import * as turf from '@turf/turf'
-import type { Feature, MultiPolygon, Polygon } from 'geojson'
+import type { Feature, Polygon } from 'geojson'
 import { generateForests } from './forestgen'
 import { generateCampaign, type CampaignResult } from './campaign'
+import { mergeForestPatches } from './forestMerge'
+import { clipPlots, plotHedges, pointObstacle, roadObstacles } from './zonefill'
 import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
@@ -539,20 +540,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       .map((f, k) => ({ id: `FOREST_GEN_${k + 1}`, kind: 'forest' as const, leaf: f.leaf, pts: f.pts }))
     : []
   // overlapping forest patches: same species = merged into one wood, else the later one is cut (no criss-crossing outlines)
-  const toF = (pts: number[]) => { const r: number[][] = []; for (let i = 0; i + 1 < pts.length; i += 2) r.push([pts[i], pts[i + 1]]); r.push([pts[0], pts[1]]); return turf.polygon([r]) }
-  const woods: { f: Feature<Polygon | MultiPolygon>; leaf: WorldArea['leaf'] }[] = []
-  for (const a of rawAreas) {
-    let f: Feature<Polygon | MultiPolygon> = toF(a.pts), gone = false
-    for (let i = woods.length - 1; i >= 0; i--) {
-      try { if (turf.booleanIntersects(f, woods[i].f)) { if (woods[i].leaf === a.leaf) { const u = turf.union(turf.featureCollection([f, woods[i].f])); if (u) { f = u; woods.splice(i, 1) } } else { const d = turf.difference(turf.featureCollection([f, woods[i].f])); if (!d) { gone = true; break } f = d } } } catch { /* degenerate: keep apart */ }
-    }
-    if (!gone) woods.push({ f, leaf: a.leaf })
-  }
-  const areas: WorldArea[] = []
-  for (const w of woods) {
-    const polys = w.f.geometry.type === 'Polygon' ? [w.f.geometry.coordinates] : w.f.geometry.coordinates
-    for (const pc of polys) areas.push({ id: `FOREST_GEN_${areas.length + 1}`, kind: 'forest', leaf: w.leaf, pts: pc[0].slice(0, -1).flat() })
-  }
+  const areas: WorldArea[] = mergeForestPatches(rawAreas).map((a, k) => ({ ...a, id: `FOREST_GEN_${k + 1}` }))
   // 10b. countryside: plots + hedges (campaign.ts, Tanin AgriFieldGenerator method) on the open, gentle
   // ground around each settlement; never in a forest, a lake, a zone or the settlement core
   const forestRings = areas.map((a) => a.pts)
@@ -571,54 +559,15 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       return !forestRings.some((p) => pointInPoly(p, x, z))
     }
     const r = generateCampaign({ zone, fieldSize: s.kind === 'hamlet' ? 110 : 150, jitter: 0.5, angle: (subSeed(seed, 'field' + k) % 90), hedgeChance: 0.95, minHedge: 12, seed: subSeed(seed, 'fields' + k), isLand: ok, prefix: `FIELD_${k + 1}_` })
-    // cut the plots by the roads (+3 m verge), the houses (+12 m yard) and the plots already laid:
-    // roads then run along a plot border (where the hedge goes), never across a field
-    const rect = (x0: number, z0: number, x1: number, z1: number, w: number) => {
-      const L = Math.hypot(x1 - x0, z1 - z0) || 1, nx = (-(z1 - z0) / L) * w, nz = ((x1 - x0) / L) * w, ex = ((x1 - x0) / L) * w, ez = ((z1 - z0) / L) * w
-      return turf.polygon([[[x0 - nx - ex, z0 - nz - ez], [x1 - nx + ex, z1 - nz + ez], [x1 + nx + ex, z1 + nz + ez], [x0 + nx - ex, z0 + nz - ez], [x0 - nx - ex, z0 - nz - ez]]])
-    }
+    // cut the plots by the roads (+3 m verge), the houses (+14 m yard) and the plots already laid:
+    // roads then run along a plot border (where the hedge goes), never across a field (zonefill.ts)
     const near = (x: number, z: number) => Math.hypot(x - s.x, z - s.z) < ring + 60
-    const obst: Feature<Polygon>[] = []
-    for (const rd of allRoads) { const w = roadHalf(rd) + 3; for (let i = 0; i + 3 < rd.pts.length; i += 2) if (near(rd.pts[i], rd.pts[i + 1]) || near(rd.pts[i + 2], rd.pts[i + 3])) obst.push(rect(rd.pts[i], rd.pts[i + 1], rd.pts[i + 2], rd.pts[i + 3], w)) }
-    for (const b of settlement.placed) if (near(b.x, b.z)) obst.push(rect(b.x - 0.01, b.z, b.x + 0.01, b.z, 14))
-    const kept: number[][][] = []
-    for (const f of r.fields) {
-      let shape: Feature<Polygon | MultiPolygon> | null = turf.polygon([f.map((q) => [q[0], q[1]])])
-      const fb = turf.bbox(shape)
-      for (const o of [...obst, ...laid]) {
-        if (!shape) break
-        const ob = turf.bbox(o)
-        if (ob[0] > fb[2] || ob[2] < fb[0] || ob[1] > fb[3] || ob[3] < fb[1]) continue
-        try { shape = turf.difference(turf.featureCollection([shape, o])) } catch { /* degenerate clip: keep as is */ }
-      }
-      if (!shape) continue
-      const polys = shape.geometry.type === 'Polygon' ? [shape.geometry.coordinates] : shape.geometry.coordinates
-      for (const pc of polys) {
-        if (pc.length > 1) continue // an isolated house left a hole: farmyard, not a field
-        const ring0 = pc[0]
-        let ar = 0, cx = 0, cz = 0
-        for (let i = 0, j = ring0.length - 1; i < ring0.length; j = i++) ar += (ring0[j][0] - ring0[i][0]) * (ring0[j][1] + ring0[i][1])
-        if (Math.abs(ar) / 2 < 2500) continue // slivers between two roads: left as verge
-        for (const q of ring0) { cx += q[0]; cz += q[1] }
-        // most of the plot must be farmable (not just its centre): lakes, slopes and woods stay outside
-        let good = 0, n = 0
-        for (let t = 0; t < ring0.length - 1; t++) { const q = ring0[t], mx = (q[0] * 3 + cx / ring0.length) / 4, mz = (q[1] * 3 + cz / ring0.length) / 4; n++; if (ok(mx, mz)) good++ }
-        if (!ok(cx / ring0.length, cz / ring0.length) || good < n * 0.75) continue
-        kept.push(ring0)
-        laid.push(turf.polygon([ring0]))
-      }
-    }
+    const obst = [...roadObstacles(allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) })), 3, near), ...settlement.placed.filter((b) => near(b.x, b.z)).map((b) => pointObstacle(b.x, b.z, 14))]
+    const kept = clipPlots(r.fields, { obstacles: obst, laid, ok })
     camp.fields.push(...kept)
     let hs = subSeed(seed, 'hedges' + k) || 1
     const rnd = () => ((hs = (hs * 16807) % 2147483647) / 2147483647)
-    for (const f of kept) for (let i = 0; i + 1 < f.length; i++) {
-      const a = f[i], b = f[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1])
-      if (L < 12) continue
-      const id = [a, b].map((q) => `${Math.round(q[0])},${Math.round(q[1])}`).sort().join('|')
-      if (seen.has(id)) continue
-      seen.add(id)
-      if (rnd() > 0.8 || !ok((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)) continue
-      const h = [a, b]
+    for (const h of plotHedges(kept, { seen, rnd, ok })) {
       camp.hedges.push(h)
       camp.shapes.push({ id: `FIELD_${k + 1}_Hedge_${camp.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
     }

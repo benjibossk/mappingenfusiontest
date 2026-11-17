@@ -15,6 +15,8 @@ import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type 
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { generateCampaign, type CampaignResult } from './modules/campaign'
+import { mergeForestPatches } from './modules/forestMerge'
+import { ZONE_FILL_TYPES, ZONE_PRIORITY, clipPlots, cutRing, flatToPoly, plotHedges, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
@@ -84,7 +86,7 @@ import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 import { settleVillages, type VillageParcel, type VillageVariant } from './modules/village'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
-import { suggestIndustrialSites, INDUSTRIAL_TYPES, type IndustrialType } from './modules/industrial'
+import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly, type IndustrialType } from './modules/industrial'
 import { suggestMilitary, type MilitaryKind } from './modules/military'
 import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
@@ -598,8 +600,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
     <div class="tab" data-tab="camp" hidden>
       <div class="form">
+        <label>${t('lbl.zoneType')} <select id="zoneType">${ZONE_FILL_TYPES.map((k) => `<option value="${k}">${t(('zt.' + k) as K)}</option>`).join('')}</select></label>
         <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
+      ${hint('hint.zoneType')}
       ${hint('hint.zone')}
       <div class="row">
         <button id="generate" type="button">${t('btn.generate')}</button>
@@ -861,6 +865,39 @@ function drawBrush() {
   ctx.stroke()
 }
 
+// --- Zone tool: one drawn polygon, filled with fields / forest / habitation / industry (zonefill.ts).
+// Nothing leaves the polygon; priority water > roads > habitation > industrial > fields > forest
+type Poly = NonNullable<ReturnType<typeof flatToPoly>>
+/** everything that outranks `type`, as obstacles to cut it by */
+function zoneObstacles(type: ZoneFillType): Poly[] {
+  const P = ZONE_PRIORITY[type], ob: Poly[] = []
+  for (const w of waters) {
+    if (WATER_TYPES[w.type].closed) { const p = flatToPoly(w.pts); if (p) ob.push(p) } else ob.push(...roadObstacles([{ pts: w.pts, half: w.width / 2 }], 3))
+  }
+  if (type === 'industrial' || type === 'habitation') return ob // they bring / follow their own streets
+  const all = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
+  ob.push(...roadObstacles(all.map((r) => ({ pts: r.pts, half: roadHalf(r) })), 3))
+  if (P > ZONE_PRIORITY.habitation) for (const b of settled) ob.push(pointObstacle(b.x, b.z, 14))
+  if (P > ZONE_PRIORITY.industrial) for (const z of zones) for (const bx of z.boxes) { const p = flatToPoly(bx.corners); if (p) ob.push(p) }
+  if (P > ZONE_PRIORITY.fields) for (const f of result?.fields ?? []) { const p = flatToPoly(f.slice(0, -1).flat()); if (p) ob.push(p) }
+  return ob
+}
+/** the new zone wins over lower-priority content already there: fields / hedges / forests cut by it */
+function cutLower(type: ZoneFillType, zone: number[]) {
+  const P = ZONE_PRIORITY[type], zp = flatToPoly(zone)
+  if (!zp) return
+  if (P < ZONE_PRIORITY.fields && result) {
+    result.fields = clipPlots(result.fields, { obstacles: [zp], ok: () => true, minArea: 1500, okShare: 0 })
+    const keep = result.hedges.map((h) => { const m = h[0], n = h[h.length - 1]; return !pointInPoly(zone, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2) })
+    result.hedges = result.hedges.filter((_, i) => keep[i])
+    result.shapes = result.shapes.filter((_, i) => keep[i])
+  }
+  if (P < ZONE_PRIORITY.forest) areas = areas.flatMap((a) => {
+    if (a.kind !== 'forest') return [a]
+    const parts = cutRing(a.pts, [zp])
+    return parts.map((pts, k) => ({ ...a, id: k ? `${a.id}_${k}` : a.id, pts }))
+  })
+}
 const FIELD_MAX_SLOPE = 0.15 // 15 %: steeper ground is left to pasture / forest
 /** gentle and low enough for a ploughed field: slope under 15 %, below 60 % of the highest ground */
 function farmable(tr: Heightmap, x: number, z: number) {
@@ -871,48 +908,97 @@ function farmable(tr: Heightmap, x: number, z: number) {
   return Math.hypot(gx, gz) <= FIELD_MAX_SLOPE && heightAt(tr, x, z) - tr.ocean <= (topCache.top - tr.ocean) * 0.6
 }
 let topCache: { h: ArrayLike<number>; top: number } | null = null
-const centroid = (ring: number[][]): [number, number] => {
-  let x = 0, z = 0
-  for (const p of ring) { x += p[0]; z += p[1] }
-  return [x / ring.length, z / ring.length]
-}
+let zoneRuns = 0 // per-session counter: unique ids for each filled zone
 function generate() {
   const zone = zonePoints()
   if (zone.length < 6) {
     logEl.textContent = t('zone.min')
     return
   }
-  const tr = terrain
-  result = generateCampaign({
-    zone,
-    fieldSize: num('fieldSize'),
-    jitter: num('jitter'),
-    angle: num('angle'),
-    hedgeChance: num('hedgeChance'),
-    minHedge: num('minHedge'),
-    seed: num('seed'),
-    prefix: $<HTMLInputElement>('prefix').value,
-    isLand: tr ? (x, zz) => isLand(tr, x, zz) && farmable(tr, x, zz) : undefined,
-  })
-  // fields only on gentle, low ground: a plot (or hedge) whose centre is steep or near the summits is dropped
-  let dropped = 0
-  if (tr) {
-    const before = result.fields.length
-    result.fields = result.fields.filter((f) => { const [x, z] = centroid(f); return farmable(tr, x, z) })
-    dropped = before - result.fields.length
-    const keep = result.hedges.map((h) => { const m = h[Math.floor(h.length / 2)]; return farmable(tr, m[0], m[1]) })
-    result.hedges = result.hedges.filter((_, i) => keep[i])
-    result.shapes = result.shapes.filter((_, i) => keep[i])
-  }
+  const type = $<HTMLSelectElement>('zoneType').value as ZoneFillType
+  const n = ++zoneRuns
+  if (type === 'fields') return zoneFields(zone, n)
+  if (type === 'forest') return zoneForest(zone, n)
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  if (type === 'industrial') return zoneIndustrial(zone)
+  zoneHabitation(zone, n)
+}
+function finishZone(type: ZoneFillType, zone: number[], msg: string) {
+  cutLower(type, zone)
   autosave()
-
-  const project: Project = { version: 0, shapes: result.shapes }
-  projectEl.value = JSON.stringify(project, null, 1)
-  logEl.textContent =
-    t('log.fieldsDone', { fields: result.fields.length, hedges: result.hedges.length }) +
-    (dropped ? ' ' + t('log.fieldsSteep', { n: dropped }) : '') +
-    (tr ? '' : t('log.noTerrain'))
-  draw()
+  if (result) projectEl.value = JSON.stringify({ version: 0, shapes: result.shapes } satisfies Project, null, 1)
+  logEl.textContent = msg + (terrain ? '' : t('log.noTerrain'))
+  recompose(true); setInfo(); zoneInfo(); refreshSteps(); draw()
+}
+function zoneFields(zone: number[], n: number) {
+  const tr = terrain
+  const ok = (x: number, z: number) => (!tr || (isLand(tr, x, z) && farmable(tr, x, z))) && pointInPoly(zone, x, z) // fields outrank forests: those in the zone are cut afterwards
+  const prefix = `${$<HTMLInputElement>('prefix').value || 'CAMP'}_Z${n}_`
+  const raw = generateCampaign({ zone, fieldSize: num('fieldSize'), jitter: num('jitter'), angle: num('angle'), hedgeChance: num('hedgeChance'), minHedge: num('minHedge'), seed: num('seed') + n, prefix, isLand: ok })
+  const laid = (result?.fields ?? []).map((f) => flatToPoly(f.slice(0, -1).flat())).filter((p): p is Poly => !!p)
+  const kept = clipPlots(raw.fields, { obstacles: zoneObstacles('fields'), laid, zone: flatToPoly(zone), ok, minArea: Math.min(2500, num('fieldSize') ** 2 / 4) })
+  let hs = (num('seed') * 31 + n) || 1
+  const rnd = () => ((hs = (hs * 16807) % 2147483647) / 2147483647)
+  // hedges on the plot borders: roads cut the plots, so the borders along a road carry one too
+  const hedges = plotHedges(kept, { rnd, ok: (x, z) => !tr || isLand(tr, x, z), keep: Math.max(0.2, Math.min(1, num('hedgeChance') + 0.3)), minLen: num('minHedge') })
+  result ??= { fields: [], hedges: [], shapes: [] }
+  result.fields.push(...kept)
+  for (const h of hedges) {
+    result.hedges.push(h)
+    result.shapes.push({ id: `${prefix}Hedge_${result.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
+  }
+  finishZone('fields', zone, t('log.fieldsDone', { fields: kept.length, hedges: hedges.length }))
+}
+function zoneForest(zone: number[], n: number) {
+  const parts = cutRing(zone, zoneObstacles('forest'))
+  // overlapping woods: same species merged, else the new piece is cut by the older wood (forestMerge.ts)
+  const forests = mergeForestPatches([...areas.filter((a) => a.kind === 'forest'), ...parts.map((pts, k) => ({ id: `FOREST_ZONE_${n}_${k + 1}`, kind: 'forest' as const, leaf: 'mixed' as const, pts }))])
+  const seen = new Set<string>()
+  areas = [...areas.filter((a) => a.kind !== 'forest'), ...forests.map((a) => { let id = a.id; for (let k = 2; seen.has(id); k++) id = `${a.id}_${k}`; seen.add(id); return { ...a, id } })]
+  finishZone('forest', zone, parts.length ? t('log.forestGen', { n: parts.length }) : t('err.forestGenNone'))
+}
+function zoneIndustrial(zone: number[]) {
+  if (!island) return
+  const houses = settled.map((b) => pointObstacle(b.x, b.z, 10))
+  // the zone minus water and houses (habitation outranks industry): the largest piece is laid out
+  const piece = cutRing(zone, [...zoneObstacles('industrial'), ...houses]).sort((a, b) => b.length - a.length)[0]
+  if (!piece) return void (logEl.textContent = t('err.zoneEmpty'))
+  const sl = slopeShare(groundAt, piece, 0.06)
+  if (sl > 0.5) return void (logEl.textContent = t('err.zoneSteep', { p: Math.round(sl * 100), max: 6 }))
+  let cx = 0, cz = 0
+  for (let i = 0; i < piece.length; i += 2) { cx += piece[i]; cz += piece[i + 1] }
+  cx /= piece.length / 2; cz /= piece.length / 2
+  const id = nextZoneId(zones, 'industrial')
+  const zn = makeIndustrial(island.heights, island.grid, [...roads, ...existingRoads()], { id, type: $<HTMLSelectElement>('indType').value as IndustrialType, x: cx, z: cz, seed: num('indSeed') + zones.length, polygon: piece })
+  if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.zoneEmpty'))
+  zones.push(zn)
+  finishZone('industrial', zone, t('log.zoneMade', { name: t('zone.name.industrial', { n: id.replace(/\D+/g, '') }), b: zn.entities.length }) + (sl > 0.2 ? ' · ' + t('warn.zoneSlope', { p: Math.round(sl * 100) }) : ''))
+}
+function zoneHabitation(zone: number[], n: number) {
+  if (!island) return
+  let cx = 0, cz = 0, area = 0
+  for (let i = 0; i < zone.length; i += 2) { cx += zone[i]; cz += zone[i + 1] }
+  cx /= zone.length / 2; cz /= zone.length / 2
+  for (let i = 0, j = zone.length - 2; i < zone.length; j = i, i += 2) area += (zone[j] - zone[i]) * (zone[j + 1] + zone[i + 1])
+  area = Math.abs(area) / 2
+  let reach = 0
+  for (let i = 0; i < zone.length; i += 2) reach = Math.max(reach, Math.hypot(zone[i] - cx, zone[i + 1] - cz))
+  const sl = slopeShare(groundAt, zone, 0.2)
+  if (sl > 0.6) return void (logEl.textContent = t('err.zoneSteep', { p: Math.round(sl * 100), max: 20 }))
+  let sid = `Z${n}`
+  while (settled.some((b) => b.site === sid)) sid += 'b'
+  const site: Site = { id: sid, x: cx, z: cz, kind: area > 250000 ? 'town' : area > 40000 ? 'village' : 'hamlet' }
+  const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
+  const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
+  const before = settled.length
+  const res = settleVillages([site], allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: num('setDensity'), variant: 'auto', maxSlope: 0.2, polygon: zone, reach, blocked, biome: currentBiome }, settled)
+  settled = res.placed
+  setLanes = [...setLanes, ...res.lanes]
+  setSquares = [...setSquares, ...res.squares]
+  setGardens = [...setGardens, ...res.gardens]
+  setParcels = [...setParcels, ...(res.parcels ?? [])]
+  const made = settled.length - before
+  finishZone('habitation', zone, made ? t('log.zoneHouses', { n: made, s: res.lanes.length }) : t('err.zoneNoHouse'))
 }
 
 // --- map interaction ---

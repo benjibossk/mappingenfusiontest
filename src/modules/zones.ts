@@ -51,12 +51,12 @@ export function makeMilitary(heights: number[], g: Grid, o: { id: string; kind: 
   return { id: o.id, kind: 'military', sub: o.kind, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes, ...prefixed(o.id, m.shapes, m.entities), flat: [m.flatten], plat: [], roads: [], warnings: [], access: [m.gate[0], m.gate[1]] }
 }
 
-export function makeIndustrial(heights: number[], g: Grid, roads: Road[], o: { id: string; type: IndustrialType; x: number; z: number; seed: number; size?: { w: number; d: number } }): ZoneItem {
+export function makeIndustrial(heights: number[], g: Grid, roads: Road[], o: { id: string; type: IndustrialType; x: number; z: number; seed: number; size?: { w: number; d: number }; polygon?: number[] }): ZoneItem {
   const at = (x: number, z: number) => {
     const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
     return heights[r * g.cols + c]
   }
-  const z = generateIndustrial(at, roads, { type: o.type, seed: o.seed, center: { x: o.x, z: o.z }, size: o.size, idPrefix: o.id.toLowerCase() })
+  const z = generateIndustrial(at, roads, { type: o.type, seed: o.seed, ...(o.polygon ? { polygon: o.polygon } : { center: { x: o.x, z: o.z }, size: o.size }), idPrefix: o.id.toLowerCase() })
   const boxes = [...z.lots.map((l) => ({ corners: l.corners, role: 'lot' })), ...z.placed.map((p) => ({ corners: p.corners, role: p.role }))]
   const yaw = Math.round((Math.atan2(z.frame.vx, z.frame.vz) * 180) / Math.PI)
   return { id: o.id, kind: 'industrial', sub: o.type, x: o.x, z: o.z, yaw, seed: o.seed, boxes, ...prefixed(o.id, z.shapes, z.entities), flat: [], plat: [z.flatten], roads: z.roads, warnings: z.warnings }

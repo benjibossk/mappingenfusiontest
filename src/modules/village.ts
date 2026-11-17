@@ -38,6 +38,8 @@ export interface VillageOptions {
   biome?: string // BiomeId: back gardens dressed with the biome's lot template (biomes/parcel.ts); Everon / unset = none (unchanged)
   library?: import('../library/index.ts').Library // packs to draw from (default: vanilla seed + vanilla compositions)
   compositions?: boolean // gardens also get real composition prefabs from the library (library/*.json packs); with it, Everon gardens are dressed too
+  polygon?: number[] // Zone tool: flat X/Z ring every street, lot, building and garden must stay inside
+  reach?: number // overrides the site reach (m), Zone tool: the polygon size
 }
 export interface VillageSite { site: string; variant: 'village' | 'town' | 'hamlet'; coastal: boolean; church?: string; streets: number; lots: number }
 export interface VillageResult extends Settlement {
@@ -102,6 +104,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     for (const l of lakes) if (near(l, x, z, m) && (inside(l.pts, x, z) || lineDist(l.pts, x, z, true) < m)) return true
     return false
   }
+  const outZone = (x: number, z: number) => !!o.polygon && !inside(o.polygon, x, z)
   const inSquare = (x: number, z: number, m: number) => res.squares.some((s) => Math.hypot(x - s.x, z - s.z) < s.r + m)
   const fits = (b: Building, c: number[], wm = WATER_MARGIN, soft = true, drop = MAX_DROP[b.cat] * (o.dropScale ?? 1)) => {
     for (const q of placed) if (Math.abs(q.x - c[0]) < 80 && Math.abs(q.z - c[1]) < 80 && overlap(c, q.corners, GAP)) return false
@@ -112,7 +115,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     for (let i = 0; i < pts.length; i += 2) {
       const x = pts[i], z = pts[i + 1]
       for (const l of roadLines) if (near(l, x, z, l.half + ROAD_MARGIN) && lineDist(l.pts, x, z) < l.half + ROAD_MARGIN) return false
-      if (wet(x, z, wm) || inSquare(x, z, 1)) return false
+      if (wet(x, z, wm) || inSquare(x, z, 1) || outZone(x, z)) return false
       const h = at(x, z)
       lo = Math.min(lo, h); hi = Math.max(hi, h)
     }
@@ -145,7 +148,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     const rand = rng(hash(site.id, o.seed))
     const variant: 'village' | 'town' | 'hamlet' = site.kind === 'hamlet' ? 'hamlet' : o.variant === 'town' || (o.variant !== 'village' && site.kind === 'town') ? 'town' : 'village'
     const P = VARIANT[variant]
-    const reach = Math.max(REACH[site.kind], SITE_RADIUS[site.kind]) * (variant === 'town' && site.kind !== 'town' ? 1.3 : 1)
+    const reach = o.reach ?? Math.max(REACH[site.kind], SITE_RADIUS[site.kind]) * (variant === 'town' && site.kind !== 'town' ? 1.3 : 1)
     const pre = `SET_${site.id}_`
     const info: VillageSite = { site: site.id, variant, coastal: false, streets: 0, lots: 0 }
     res.sites.push(info)
@@ -329,7 +332,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       cands.sort((a, b) => Math.hypot(a.x - site.x, a.z - site.z) - Math.hypot(b.x - site.x, b.z - site.z) + (rand() - 0.5) * 40)
       for (const c of cands) if (!seeds.some((s) => Math.hypot(s.x - c.x, s.z - c.z) < 50)) seeds.push(c)
       if (harbourSeed) { seeds.unshift(harbourSeed, { ...harbourSeed, hx: -harbourSeed.hx, hz: -harbourSeed.hz }) }
-      const grown = growStreets({ at, wet, blocked: (x, z) => inSquare(x, z, 6) || placed.some((q) => inside(q.corners, x, z) || lineDist(q.corners, x, z, true) < 4), lines: roadLines, cx: site.x, cz: site.z, reach, rand }, seeds, g)
+      const grown = growStreets({ at, wet, blocked: (x, z) => outZone(x, z) || inSquare(x, z, 6) || placed.some((q) => inside(q.corners, x, z) || lineDist(q.corners, x, z, true) < 4), lines: roadLines, cx: site.x, cz: site.z, reach, rand }, seeds, g)
       for (const pts of grown) {
         const road: Road = { id: `${pre}LANE_${++info.streets}`, type: variant === 'town' ? 'asphaltNarrow' : 'dirt', pts: pts.map((v) => Math.round(v * 100) / 100), auto: true }
         res.lanes.push(road)
@@ -344,7 +347,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       for (const side of [1, -1]) {
         for (const blk of streetBlocks(l.pts, side, l.half + ROAD_MARGIN, 0, P.chunk)) {
           const d = Math.hypot(blk.cx - site.x, blk.cz - site.z)
-          if (d > reach) continue
+          if (d > reach || outZone(blk.cx, blk.cz)) continue
           const f = d / reach, k = f < 0.3 ? 0 : f < 0.6 ? 1 : 2
           const depth = P.depth[k]
           const b: Lot = { ...blk, d: depth, cx: blk.cx + blk.nx * depth / 2, cz: blk.cz + blk.nz * depth / 2 }
@@ -444,7 +447,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       if (lot.d - back >= 4) {
         const g: Lot = { ...lot, d: lot.d - back, cx: lot.cx + lot.nx * back / 2, cz: lot.cz + lot.nz * back / 2 }
         const gc = lotCorners(g)
-        const free = !placed.some((p2) => p2 !== q && overlap(gc, p2.corners, 0)) && !samplesWet(gc)
+        const free = !placed.some((p2) => p2 !== q && overlap(gc, p2.corners, 0)) && !samplesWet(gc) && !samples(gc).some((v, i, a) => i % 2 === 0 && outZone(v, a[i + 1]))
         // annex at the back of the garden
         if (free && rand() < (k === 0 ? 0.15 : k === 1 ? 0.4 : 0.55)) {
           const ac = pool(rand() < 0.5 ? ['annex'] : ['shed'])
