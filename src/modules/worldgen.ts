@@ -20,6 +20,7 @@ import { settleVillages, type VillageParcel } from './village'
 import type { Placed, Square } from './settlements'
 import { routePowerLine, type PowerKind, type PowerLine } from './power'
 import { generateForests } from './forestgen'
+import { generateCampaign, type CampaignResult } from './campaign'
 import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
@@ -47,6 +48,8 @@ export type WorldStage = (typeof WORLD_STAGES)[number]
 
 export interface WorldArea extends CoverArea { id: string }
 export interface WorldResult {
+  /** countryside around the villages (Tanin AgriFieldGenerator method): plots + hedges */
+  campaign?: CampaignResult
   params: WorldParams
   island: IslandParams
   grid: Grid
@@ -533,10 +536,32 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       .filter((f) => { for (let i = 0; i + 1 < f.pts.length; i += 2) if (discs.some((d) => Math.hypot(f.pts[i] - d.x, f.pts[i + 1] - d.z) < d.r + 30)) return false; return true })
       .map((f, k) => ({ id: `FOREST_GEN_${k + 1}`, kind: 'forest' as const, leaf: f.leaf, pts: f.pts }))
     : []
+  // 10b. countryside: plots + hedges (campaign.ts, Tanin AgriFieldGenerator method) on the open, gentle
+  // ground around each settlement; never in a forest, a lake, a zone or the settlement core
+  const forestRings = areas.map((a) => a.pts)
+  const topH = cur.heights.reduce((a, b) => Math.max(a, b), 0)
+  const camp: CampaignResult = { fields: [], hedges: [], shapes: [] }
+  sites.forEach((s, k) => {
+    const R = SITE_RADIUS[s.kind], ring = R * (s.kind === 'town' ? 2.6 : 3.2), zone: number[] = []
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; zone.push(s.x + Math.cos(a) * ring, s.z + Math.sin(a) * ring) }
+    const ok = (x: number, z: number) => {
+      if (isLakeOrSea(x, z) || Math.hypot(x - s.x, z - s.z) < R * 1.05) return false
+      if (discs.some((d) => Math.hypot(x - d.x, z - d.z) < d.r + 20)) return false
+      if (sites.some((q) => q !== s && Math.hypot(x - q.x, z - q.z) < SITE_RADIUS[q.kind] * 1.05)) return false
+      const d = g.step * 2, gx = (hAt(x + d, z) - hAt(x - d, z)) / (2 * d), gz = (hAt(x, z + d) - hAt(x, z - d)) / (2 * d)
+      if (Math.hypot(gx, gz) > 0.15 || hAt(x, z) > topH * 0.6) return false
+      return !forestRings.some((p) => pointInPoly(p, x, z))
+    }
+    const r = generateCampaign({ zone, fieldSize: s.kind === 'hamlet' ? 110 : 150, jitter: 0.5, angle: (subSeed(seed, 'field' + k) % 90), hedgeChance: 0.7, minHedge: 20, seed: subSeed(seed, 'fields' + k), isLand: ok, prefix: `FIELD_${k + 1}_` })
+    const keepH = r.hedges.map((h) => { const m = h[Math.floor(h.length / 2)]; return ok(m[0], m[1]) })
+    camp.fields.push(...r.fields.filter((f) => { let x = 0, z = 0; for (const q of f) { x += q[0]; z += q[1] } return ok(x / f.length, z / f.length) }))
+    camp.hedges.push(...r.hedges.filter((_, i) => keepH[i]))
+    camp.shapes.push(...r.shapes.filter((_, i) => keepH[i]))
+  })
   // 11. surfaces (5 per block at most)
   await step('surfaces')
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, refusedGaps: [], heights: cur.heights, grid: g })
-  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(bridgesOut.length && { bridges: bridgesOut }) }
+  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp }), ...(bridgesOut.length && { bridges: bridgesOut }) }
 }
