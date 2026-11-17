@@ -6,6 +6,7 @@
 import { BUILDINGS, INDUSTRIAL, FENCE_NET, type BuildingCat } from '../data/buildings.ts'
 import { MIL_PREFABS, MIL_WALLS } from '../modules/military.ts'
 import { BIOMES, FENCES, PROPS, VEG, type BiomeId } from '../data/biomes.ts'
+import { dimsFootprint, prefabDims } from './dims.ts'
 import { nameOf, type Asset, type AssetKind, type AssetPack, type Footprint } from './schema.ts'
 
 const WESTERN: BiomeId[] = ['temperate_everon', 'woodland_arland', 'mediterranean_dry']
@@ -31,7 +32,14 @@ const CAT: Record<BuildingCat, [AssetKind, string[]]> = {
 }
 
 const base = { source: 'vanilla' as const, author: 'Bohemia Interactive', licence: 'Bohemia-EULA' }
-const mk = (guid: string, kind: AssetKind, f: Footprint, biomes: BiomeId[], tags: string[]): Asset => ({ guid, name: nameOf(guid), kind, footprint: f, biomes, tags, ...base })
+// real .xob dims (library/prefabs-catalogue.json `d`): measured XZ bounds are kept, only the estimated height is
+// replaced; unmeasured footprints take the real box. Trees / bushes keep their small trunk-like box (parcel collision).
+const real = (guid: string, kind: AssetKind, f: Footprint): Footprint => {
+  if (kind === 'tree' || kind === 'bush') return f
+  if (f.measured) { const d = prefabDims(guid); return d && d.h > 0 ? { ...f, h: d.h } : f }
+  return dimsFootprint(guid, f)
+}
+const mk = (guid: string, kind: AssetKind, f: Footprint, biomes: BiomeId[], tags: string[]): Asset => ({ guid, name: nameOf(guid), kind, footprint: real(guid, kind, f), biomes, tags, ...base })
 
 function buildSeed(): Asset[] {
   const out: Asset[] = []

@@ -28,8 +28,8 @@ const ROWS: [string, BuildingCat, number, number, number, number][] = [
   ['{DC1CA32A90006916}Prefabs/Structures/Houses/Village/HouseAddon_Workshop_E_01/HouseAddon_Workshop_E_01.et', 'annex', -4, -4.2, 4.1, 2.8],
   ['{1B68F3EE279C97A1}Prefabs/Structures/Commercial/Pubs/PubVillage_E_2L01/PubVillage_E_2L01_V1.et', 'civic', -9.5, -9.7, 8.4, 7.3],
   ['{C7B11EF2ABFDF49F}Prefabs/Structures/Commercial/Pubs/PubVillage_E_2L01/PubVillage_E_2L01_V2.et', 'civic', -9.5, -9.7, 8.4, 7.3],
-  ['{5378B50CC2AC5F2A}Prefabs/Structures/Cultural/Chapels/Chapel_01/Chapel_01_white.et', 'civic', -4, -6, 4, 6], // est. (not measured yet)
-  ['{40BE566C8F18D8B3}Prefabs/Structures/Cultural/Churches/Church_01/Church_01_white.et', 'civic', -9, -18, 9, 18], // est. (not measured yet)
+  ['{5378B50CC2AC5F2A}Prefabs/Structures/Cultural/Chapels/Chapel_01/Chapel_01_white.et', 'civic', -2.32, -2.4, 2.34, 2.26], // .xob bbox (library/dims.ts)
+  ['{40BE566C8F18D8B3}Prefabs/Structures/Cultural/Churches/Church_01/Church_01_white.et', 'civic', -8.14, -15.08, 11.86, 18.68], // .xob bbox (library/dims.ts)
   ['{DD6953233EB10B88}Prefabs/Structures/Commercial/Pubs/PubVillage_E_1L01/PubVillage_E_1L01.et', 'civic', -8.2, -6.9, 8.2, 6.9],
   ['{18B2439FBF6CADFD}Prefabs/Structures/Houses/Farm/FarmHouse_E_1L01/FarmHouse_E_1L01_Wood.et', 'farm', -10.3, -9.5, 5.9, 11.7],
   ['{2A0DFE1E88D6D508}Prefabs/Structures/Houses/Village/House_Village_E_1L03/House_Village_E_1L03t_yellow.et', 'farm', -12.7, -5.3, 13.2, 20.3],

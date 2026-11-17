@@ -4,6 +4,9 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+### Ajouté
+- **Vraies dimensions des prefabs** : 4 576 / 4 947 prefabs du catalogue ont `d:[w,dz,h,cx,cz]` lu dans la boîte englobante des maillages .xob du jeu (identique à la mesure Workbench) ; `prefabDims()` (src/library/dims.ts) alimente les emprises et vraies hauteurs de la bibliothèque.
+
 ## [0.6.0] - 2026-11-16
 
 ### Ajouté

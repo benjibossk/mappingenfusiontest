@@ -8,6 +8,9 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+### Added
+- **Real prefab dimensions**: 4 576 / 4 947 catalogue prefabs carry `d:[w,dz,h,cx,cz]` read from the game .xob mesh bounding boxes (identical to the Workbench measure); `prefabDims()` (src/library/dims.ts) feeds the library footprints and real heights.
+
 ## [0.6.0] - 2026-11-16
 
 ### Added
