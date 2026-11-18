@@ -1534,7 +1534,7 @@ const shareDlg = $('shareDlg')
 const openShare = () => { $<HTMLInputElement>('shareName').value = collabName.value; $('shareStatus').textContent = ''; shareDlg.hidden = false; $<HTMLButtonElement>('shareCreate').focus() }
 const closeShare = () => { shareDlg.hidden = true }
 $<HTMLButtonElement>('collab').addEventListener('click', () => {
-  if (!collab && !collabView.classList.contains('on')) { openShare(); return }
+  if (!collab && !collabRoom.value.trim() && !collabView.classList.contains('on')) { openShare(); return }
   showCollabView(!collabView.classList.contains('on'))
 })
 const shareNameIn = () => { const v = $<HTMLInputElement>('shareName').value.trim(); if (v) { collabName.value = v; collabName.dispatchEvent(new Event('change')) } }
