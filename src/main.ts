@@ -11,7 +11,7 @@ import { Collab, type CollabEvents, type CollabTransport, type Op } from './coll
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
-import { POWER_DEFAULTS, placePoles, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
+import { POWER_DEFAULTS, mergePowerLines, placePoles, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
 import { accessShapes, planGrid, stationEntities, type PowerDistrib, type GridSite, type Station } from './modules/powergrid'
@@ -3986,7 +3986,7 @@ $<HTMLInputElement>('wRipa').addEventListener('change', (e) => {
 // roads (and their barriers) cut where they cross water: the gap is left for a bridge
 // --- power lines (step Routes): HV between the main sites, LV from the grid into each village along roads ---
 const POWER_COLOUR: Record<PowerKind, string> = { ehv: '#5ec8ff', hv: '#ffd24a', mv: '#ff8a3a', lv: '#e8e2c8' }
-function powerShapes() { return [...powerLines.map((l) => powerLineShape(l, l.id)), ...accessShapes(powerAccess)] }
+function powerShapes() { return [...mergePowerLines(powerLines).map((l) => powerLineShape(l, l.id)), ...accessShapes(powerAccess)] }
 function powerInfo() {
   const km = powerLines.reduce((n, l) => n + l.length, 0) / 1000
   const poles = powerLines.reduce((n, l) => n + l.poles.length / 2, 0)

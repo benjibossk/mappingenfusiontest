@@ -257,13 +257,15 @@ export function followRoads(ob: PowerObstacles, ax: number, az: number, bx: numb
     const n = Math.max(1, Math.ceil(L / 5))
     for (let k = i ? 1 : 0; k <= n; k++) C.push(p.x + ((q.x - p.x) * k) / n, p.z + ((q.z - p.z) * k) / n, nx, nz, Math.max(p.half, q.half))
   }
-  // the station side of the road; beside a house the pole moves onto the verge, and as a last resort to
-  // the other side
+  // the station side of the road; beside a house the pole moves a little closer to the carriageway
+
   const s0 = (ax - C[0]) * C[2] + (az - C[1]) * C[3] >= 0 ? 1 : -1
   const D: number[] = [], bad: boolean[] = []
   for (let i = 0; i < C.length; i += 5) {
     let px = NaN, pz = NaN
-    for (const [sd, gap] of [[s0, POLE_GAP], [s0, 3], [s0, 2], [-s0, POLE_GAP], [-s0, 3]]) {
+    // one side only, near-constant offset: hopping to the other side or far onto the verge made the line
+    // wander off the road (a blocked sample is skipped, the span jumps over it)
+    for (const [sd, gap] of [[s0, POLE_GAP], [s0, 3], [s0, 2]]) {
       const x = C[i] + C[i + 2] * (C[i + 4] + gap) * sd, z = C[i + 1] + C[i + 3] * (C[i + 4] + gap) * sd
       if (ob.poleOk(x, z)) { px = x; pz = z; break }
     }

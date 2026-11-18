@@ -8,6 +8,7 @@
 // a native PG_PowerLine_* generator ("Generate per point": one pole per point).
 
 import type { Grid } from './island'
+import { dedupeLines } from './fenceDedupe.ts'
 import type { ProjectShape } from '../project'
 
 export type PowerKind = 'ehv' | 'hv' | 'mv' | 'lv'
@@ -264,4 +265,48 @@ export function routePowerLine(heights: ArrayLike<number>, grid: Grid, ax: numbe
 export function powerLineShape(line: PowerLine, id: string): ProjectShape {
   const spacing = line.spacing ?? POWER_DEFAULTS[line.kind].spacing
   return { id, kind: 'polyline', closed: false, points: line.path, generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance'], paramValues: [String(spacing)] }
+}
+
+const KIND_RANK: Record<PowerKind, number> = { ehv: 0, hv: 1, mv: 2, lv: 3 }
+
+/** Several lines routed on the same corridor (e.g. two LV feeders leaving one station along the same road)
+ *  each got their own poles: two or three pole rows side by side in the Workbench. Same-kind lines are
+ *  merged like fences (dedupeLines): the parts of a line within `tol` m of an already kept one are dropped,
+ *  and each remaining piece is tied to the kept line where it branches off. Higher voltages are kept first. */
+export function mergePowerLines<T extends PowerLine & { id: string }>(lines: T[], tol = 15): T[] {
+  const order = lines.map((_, i) => i).sort((a, b) => KIND_RANK[lines[a].kind] - KIND_RANK[lines[b].kind] || a - b)
+  const out: T[] = []
+  for (const kind of Object.keys(KIND_RANK) as PowerKind[]) {
+    const idx = order.filter((i) => lines[i].kind === kind)
+    if (!idx.length) continue
+    const pieces = dedupeLines(idx.map((i) => lines[i].path), tol, 2)
+    const kept: number[][] = []
+    idx.forEach((li, n) => {
+      const src = lines[li], ps = pieces[n]
+      const whole = ps.length === 1 && ps[0][0] === src.path[0] && ps[0][1] === src.path[1] && ps[0][ps[0].length - 2] === src.path[src.path.length - 2] && ps[0][ps[0].length - 1] === src.path[src.path.length - 1]
+      ps.forEach((p, k) => {
+        let path = p
+        if (!whole) {
+          // tie the piece back onto the kept line it leaves / joins (its cut ends sit ~tol from it)
+          const snap = (x: number, z: number) => {
+            let bd = tol * 1.5, bx = NaN, bz = NaN
+            for (const q of kept) for (let i = 0; i + 3 < q.length; i += 2) {
+              const ax = q[i], az = q[i + 1], dx = q[i + 2] - ax, dz = q[i + 3] - az, l2 = dx * dx + dz * dz
+              const t = l2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)) : 0
+              const d = Math.hypot(ax + t * dx - x, az + t * dz - z)
+              if (d < bd && d > 0.5) { bd = d; bx = ax + t * dx; bz = az + t * dz }
+            }
+            return Number.isNaN(bx) ? null : [bx, bz]
+          }
+          const a = snap(p[0], p[1]), b = snap(p[p.length - 2], p[p.length - 1])
+          path = [...(a ?? []), ...p, ...(b ?? [])]
+        }
+        let length = 0
+        for (let i = 0; i + 3 < path.length; i += 2) length += Math.hypot(path[i + 2] - path[i], path[i + 3] - path[i + 1])
+        out.push({ ...src, id: k ? `${src.id}_m${k + 1}` : src.id, path, poles: whole ? src.poles : placePoles(path, src.spacing ?? POWER_DEFAULTS[src.kind].spacing), length })
+        kept.push(path)
+      })
+    })
+  }
+  return out
 }
