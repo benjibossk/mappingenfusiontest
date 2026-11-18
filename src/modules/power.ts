@@ -30,8 +30,8 @@ export const POWER_GENERATORS: Record<PowerKind, string> = {
 export const POWER_DEFAULTS: Record<PowerKind, { spacing: number; maxSlope: number; roadBonus: number }> = {
   ehv: { spacing: 130, maxSlope: 0.5, roadBonus: 1 }, // EHV_01 lattice towers, very long straight spans
   hv: { spacing: 80, maxSlope: 0.45, roadBonus: 1 }, // pylons cross country, ignore roads
-  mv: { spacing: 50, maxSlope: 0.35, roadBonus: 0.6 },
-  lv: { spacing: 35, maxSlope: 0.3, roadBonus: 0.35 }, // wooden poles hug the roads
+  mv: { spacing: 60, maxSlope: 0.35, roadBonus: 0.6 },
+  lv: { spacing: 45, maxSlope: 0.3, roadBonus: 0.35 }, // wooden poles hug the roads
 }
 
 /** Generator per style and level, with its own m_fDistance (read from the .et, GUIDs from layers that
@@ -40,8 +40,8 @@ export const POWER_STYLE: Record<PowerStyle, Record<PowerKind, { gen: string; sp
   eden: {
     ehv: { gen: POWER_GENERATORS.ehv, spacing: 130 },
     hv: { gen: POWER_GENERATORS.hv, spacing: 80 },
-    mv: { gen: POWER_GENERATORS.mv, spacing: 50 },
-    lv: { gen: POWER_GENERATORS.lv, spacing: 35 },
+    mv: { gen: POWER_GENERATORS.mv, spacing: 60 },
+    lv: { gen: POWER_GENERATORS.lv, spacing: 45 },
   },
   ussr: {
     ehv: { gen: POWER_GENERATORS.ehv, spacing: 130 },
@@ -264,7 +264,7 @@ export function routePowerLine(heights: ArrayLike<number>, grid: Grid, ax: numbe
  *  the route and m_fDistance is set to our spacing: the preview poles match what Workbench builds. */
 export function powerLineShape(line: PowerLine, id: string): ProjectShape {
   const spacing = line.spacing ?? POWER_DEFAULTS[line.kind].spacing
-  return { id, kind: 'polyline', closed: false, points: line.path, generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance'], paramValues: [String(spacing)] }
+  return { id, kind: 'polyline', closed: false, points: simplifyPath(line.path, 1), generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance', 'm_bNextPointMeasurementXZ'], paramValues: [String(spacing), '1'] }
 }
 
 const KIND_RANK: Record<PowerKind, number> = { ehv: 0, hv: 1, mv: 2, lv: 3 }
@@ -309,4 +309,28 @@ export function mergePowerLines<T extends PowerLine & { id: string }>(lines: T[]
     })
   }
   return out
+}
+
+/** Douglas-Peucker on a flat x/z list. SCR_PowerlineGeneratorEntity walks the polyline every m_fDistance
+ *  and puts no pole on interior anchors, so the shape only needs the corners of the route: the generator's
+ *  own spacing then sets the poles (no point-per-pole list that it re-spaces into odd short spans). */
+export function simplifyPath(p: number[], tol: number): number[] {
+  const n = p.length / 2
+  if (n <= 2) return p
+  const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1
+  const st: [number, number][] = [[0, n - 1]]
+  while (st.length) {
+    const [a, b] = st.pop()!
+    const ax = p[2 * a], az = p[2 * a + 1], dx = p[2 * b] - ax, dz = p[2 * b + 1] - az, l2 = dx * dx + dz * dz
+    let bi = -1, bd = tol
+    for (let i = a + 1; i < b; i++) {
+      const t = l2 ? Math.max(0, Math.min(1, ((p[2 * i] - ax) * dx + (p[2 * i + 1] - az) * dz) / l2)) : 0
+      const d = Math.hypot(ax + t * dx - p[2 * i], az + t * dz - p[2 * i + 1])
+      if (d > bd) { bd = d; bi = i }
+    }
+    if (bi > 0) { keep[bi] = 1; st.push([a, bi], [bi, b]) }
+  }
+  const o: number[] = []
+  for (let i = 0; i < n; i++) if (keep[i]) o.push(p[2 * i], p[2 * i + 1])
+  return o
 }

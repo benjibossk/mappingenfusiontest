@@ -8,7 +8,7 @@
 //        generator itself places the big station at both ends, so EHV-end stations are not exported again.
 //   HV   PG_PowerLine_HV_02_Metal (80 m) | USSR: PG_PowerLine_HV_USSR_01 (50 m)
 //   MV   PG_PowerLine_HV_01_Concrete (50 m) | USSR: PG_PowerLine_HV_03_Wooden (50 m)
-//   LV   PG_PowerLine_01_WoodenSmall (35 m) | USSR: PG_PowerLine_LV_USSR_01 (40 m)
+//   LV   PG_PowerLine_01_WoodenSmall (prefab 35 m, sent 45 m) | USSR: PG_PowerLine_LV_USSR_01 (40 m)
 //   HV->MV  TransformerStation110kV_E_01_simple_v1 (13 x 21.5 m, 17.6 m high: fenced yard with gate)
 //   MV->LV  TransformerSubstation_01 (4.1 x 4.6 m pole kiosk) | USSR: TransformerStation_USSR_02 (14.2 x 12.9 m)
 //   industry  TransformerStation_E_02 (14.2 x 12.9 m) | USSR: TransformerStation_USSR_02
