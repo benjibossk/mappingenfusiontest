@@ -65,3 +65,18 @@ export function dedupeLines(lines: number[][], tol = 1.5, step = 1): number[][][
   }
   return out
 }
+
+/**
+ * Adds points so no leg is longer than `max` metres. The Workbench snaps each point to the ground,
+ * so a long leg over a bump or a hollow left the fence floating or buried between its two ends.
+ */
+export function densify(p: number[], max = 4): number[] {
+  if (p.length < 4) return p
+  const o = [p[0], p[1]]
+  for (let i = 0; i + 3 < p.length; i += 2) {
+    const ax = p[i], az = p[i + 1], bx = p[i + 2], bz = p[i + 3]
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / max))
+    for (let k = 1; k <= n; k++) o.push(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n)
+  }
+  return o
+}

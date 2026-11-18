@@ -1,4 +1,4 @@
-import { dedupeLines } from './modules/fenceDedupe'
+import { dedupeLines, densify } from './modules/fenceDedupe'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
@@ -3466,7 +3466,7 @@ function parcelShapes(): ProjectShape[] {
   // neighbouring parcels share a boundary: one fence on it, not two (fenceDedupe.ts)
   const all = setParcels.flatMap((p, i) => p.fences.filter((f) => f.pts.length >= 4).map((f, k) => ({ id: `PARCEL_FENCE_${i + 1}_${k + 1}`, f })))
   const kept = dedupeLines(all.map((a) => a.f.pts))
-  return all.flatMap((a, j) => kept[j].map((pts, n) => ({ id: kept[j].length > 1 ? `${a.id}_${n + 1}` : a.id, kind: 'polyline' as const, closed: false, points: pts.map((v) => Math.round(v * 100) / 100), generator: a.f.guid })))
+  return all.flatMap((a, j) => kept[j].map((pts, n) => ({ id: kept[j].length > 1 ? `${a.id}_${n + 1}` : a.id, kind: 'polyline' as const, closed: false, points: densify(pts).map((v) => Math.round(v * 100) / 100), generator: a.f.guid })))
 }
 function applyRealPlace(r: RealPlace) {
   let bSkipped = 0
