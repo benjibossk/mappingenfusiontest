@@ -59,7 +59,8 @@ export function damTarget(d: Dam, o: Pick<DamOptions, 'crestHalf' | 'slope'>, x:
   const tx = d.bx - d.ax, tz = d.bz - d.az, L = Math.hypot(tx, tz) || 1
   const u = ((x - d.cx) * tx + (z - d.cz) * tz) / L, v = (x - d.cx) * d.nx + (z - d.cz) * d.nz
   const ue = Math.max(0, Math.abs(u) - L / 2), ve = Math.max(0, Math.abs(v) - o.crestHalf)
-  return d.crest - ve / o.slope - ue // into the hillsides beyond the ends at 1:1
+  // same side slope all round: beyond the crest ends the embankment rounds off into the hillsides (no 1:1 cliff)
+  return d.crest - Math.hypot(ue, ve) / o.slope
 }
 
 /** raises the ground to the embankment (never lowers it) */
@@ -88,7 +89,7 @@ export function floodReservoir(h: ArrayLike<number>, g: Grid, seed: number, leve
 }
 
 /** outer outline of a cell mask (cell corners), simplified; X/Z flat */
-export function maskOutline(m: Uint8Array, g: Grid, tol = g.step / 2): number[] {
+export function maskOutline(m: Uint8Array, g: Grid, tol = g.step * 0.75): number[] {
   const W = g.cols + 1, next = new Map<number, number>()
   const on = (c: number, r: number) => c >= 0 && r >= 0 && c < g.cols && r < g.rows && m[r * g.cols + c] === 1
   for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
@@ -108,8 +109,21 @@ export function maskOutline(m: Uint8Array, g: Grid, tol = g.step / 2): number[] 
     while (!seen.has(v) && next.has(v)) { seen.add(v); loop.push(v); v = next.get(v)! }
     if (loop.length > best.length) best = loop
   }
-  const pts = best.flatMap((v) => [g.minX + ((v % W) - 0.5) * g.step, g.minZ + (Math.floor(v / W) - 0.5) * g.step])
-  return simplifyRing(pts, tol)
+  let pts = best.flatMap((v) => [g.minX + ((v % W) - 0.5) * g.step, g.minZ + (Math.floor(v / W) - 0.5) * g.step])
+  // the corner loop stair-steps along the grid (a 45 deg step sits step/sqrt2 off the slant): simplify past
+  // that, then Chaikin corner cutting rounds the remaining polygon corners
+  pts = simplifyRing(pts, tol)
+  for (let it = 0; it < 2; it++) pts = chaikin(pts)
+  return pts
+}
+
+function chaikin(p: number[]): number[] {
+  const n = p.length / 2, out: number[] = []
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, ax = p[i * 2], az = p[i * 2 + 1], bx = p[j * 2], bz = p[j * 2 + 1]
+    out.push(0.75 * ax + 0.25 * bx, 0.75 * az + 0.25 * bz, 0.25 * ax + 0.75 * bx, 0.25 * az + 0.75 * bz)
+  }
+  return out
 }
 
 function simplifyRing(p: number[], tol: number): number[] {
@@ -219,6 +233,12 @@ function placeDamsAt(h: number[] | Float32Array, g: Grid, rivers: Omit<Water, 'i
     for (let k = 0; k < h.length; k++) h[k] = trial[k]
     d.id = `DAM_${res.dams.length + 1}`
     d.foot = [p[sd * 2], p[sd * 2 + 1]]
+    // keep the shore off the embankment: water stops where the upstream face is 2 m under the level, so the
+    // lake carving (water.ts) never bites into the dam body (thin ridge with teeth on the water side)
+    for (let k = 0; k < m.length; k++) if (m[k]) {
+      const c = k % g.cols, r = (k - c) / g.cols
+      if (damTarget(d, O, g.minX + c * g.step, g.minZ + r * g.step) > d.level - 2) m[k] = 0
+    }
     const outline = maskOutline(m, g)
     res.dams.push(d); res.masks.push(m)
     res.lakes.push({ type: 'lake', pts: outline, width: 0, depth: 1, auto: true, level: d.level })
