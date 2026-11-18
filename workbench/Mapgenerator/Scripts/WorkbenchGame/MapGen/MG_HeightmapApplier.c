@@ -49,32 +49,61 @@ class MG_HeightmapApplier
 
 		// Reforger 1.9: the brush API (TerrainToolDesc / ModifyHeightMapUserShape) is gone from scripts;
 		// heights are written per tile, world-space metres, row-major (x fastest), tw x th values.
+		// a tile is usually (step + 1)^2 values: neighbours share their edge vertices (2049 = 16 * 128 + 1)
+		int stepX = (vx - 1) / tilesX;
+		int stepZ = (vz - 1) / tilesZ;
 		int tiles;
+		int firstCount = -1;
+		bool firstGet;
 		array<float> tile = {};
-		api.BeginTerrainAction("MapGen heightmap");
+		array<float> wr = {};
+		int tilesFull;
+		bool began = api.BeginTerrainAction();
 		for (int ty; ty < tilesZ; ty++)
 		{
 			for (int tx; tx < tilesX; tx++)
 			{
-				if (!api.GetTerrainSurfaceTile(0, tx, ty, tile) || tile.Count() != tw * th)
-					continue;
-				for (int iz; iz < th; iz++)
+				bool got = api.GetTerrainSurfaceTile(0, tx, ty, tile);
+				if (firstCount < 0)
 				{
-					int gz = ty * th + iz;
+					firstCount = tile.Count();
+					firstGet = got;
+				}
+				if (!got)
+					continue;
+				int n = tile.Count();
+				int w = Math.Round(Math.Sqrt(n));
+				if (w * w != n || w < 2)
+					continue;
+				for (int iz; iz < w; iz++)
+				{
+					int gz = ty * stepZ + iz;
 					if (Z_FLIP)
 						gz = vz - 1 - gz;
 					float pz = mins[2] + gz * cell;
-					for (int ix; ix < tw; ix++)
-						tile[iz * tw + ix] = Sample(mins[0] + (tx * tw + ix) * cell, pz);
+					for (int ix; ix < w; ix++)
+						tile[iz * w + ix] = Sample(mins[0] + (tx * stepX + ix) * cell, pz);
 				}
-				if (api.SetTerrainSurfaceTile(0, tx, ty, tile))
+				// Set wants exactly (ResX / TilesX) * (ResY / TilesY) values (128 x 128), Get returns the shared edge too (129 x 129)
+				wr.Clear();
+				wr.Reserve(tw * th);
+				for (int oz; oz < th; oz++)
+				{
+					for (int ox; ox < tw; ox++)
+						wr.Insert(tile[oz * w + ox]);
+				}
+				if (api.SetTerrainSurfaceTile(0, tx, ty, wr))
 					tiles++;
+				else if (api.SetTerrainSurfaceTile(0, tx, ty, tile))
+					tilesFull++;
 			}
 		}
-		api.EndTerrainAction("MapGen heightmap");
+		api.EndTerrainAction();
+		float cx = (mins[0] + maxs[0]) * 0.5;
+		float cz = (mins[2] + maxs[2]) * 0.5;
 
-		return string.Format("%1 x %2 grid (step %3 m) on %4 x %5 vertices (cell %6 m), %7/%8 tiles written",
-			m_iCols, m_iRows, m_fStep, vx, vz, cell, tiles, tilesX * tilesZ);
+		return string.Format("%1 x %2 grid (step %3 m) on %4 x %5 vertices (cell %6 m), %7/%8 tiles written", m_iCols, m_iRows, m_fStep, vx, vz, cell, tiles, tilesX * tilesZ)
+			+ string.Format(" (first tile: get %1, %2 values; begin %3; centre now %4, wanted %5)", firstGet, firstCount, began, api.GetTerrainSurfaceY(cx, cz), Sample(cx, cz)) + string.Format(" (129-wide writes %1)", tilesFull);
 	}
 
 	//------------------------------------------------------------------------------------------------

@@ -3648,7 +3648,9 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
     const deps = modDepsText(entities.map((e) => e.prefab)), depsEl = $<HTMLPreElement>('modDeps')
     depsEl.textContent = deps; depsEl.hidden = !deps
-    const msg = await toWb({ version: 0, shapes, entities }) + (deps ? '\n' + deps : '')
+    // relief first: objects are dropped on the ground that is there when they are created
+    const relief = island ? (await applyHeightmap({ ...island.grid, heights: island.heights })).message + '\n' : ''
+    const msg = relief + await toWb({ version: 0, shapes, entities }) + (deps ? '\n' + deps : '')
     sentSig = stepSigs().slice(0, 6).join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()
