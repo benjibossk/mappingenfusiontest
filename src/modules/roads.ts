@@ -151,6 +151,7 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
   }
   const target = new Float32Array(heights.length).fill(NaN)
   const weight = new Float32Array(heights.length)
+  const open = water ? Uint8Array.from(water.wet) : undefined // wet cells left open (bridged)
   for (const road of roads) {
     if (!road.flatten || road.bridge) continue
     const T = ROAD_TYPES[road.type]
@@ -169,6 +170,8 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
     const flat = roadHalf(road) * widthMul + T.edge + step
     const reach = flat + 3 * step
     const sl = road.spans?.length ? arcLength(line) : null
+    const decks = water ? waterDecks(road, water.wet, grid) : []
+    const underDeck = (x: number, z: number) => decks.some((d) => nearLine(d, x, z) < reach)
     for (let i = 0; i < m - 1; i++) {
       if (sl && road.spans!.some((sp) => sl[i + 1] > sp.from && sl[i] < sp.to)) continue // under a bridge deck
       const ax = line[i * 2], az = line[i * 2 + 1], bx = line[i * 2 + 2], bz = line[i * 2 + 3]
@@ -184,7 +187,12 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
           const u = d <= flat ? 1 : 1 - (d - flat) / (reach - flat)
           const w = 0.5 - 0.5 * Math.cos(Math.PI * u) // cosine ramp
           const k = r * cols + c
-          if (water && water.wet[k]) continue // open water: left to the bridge generator
+          // open water under a bridge deck: left to the bridge generator. Wet with no deck over it (a stream
+          // the export split misses): the bed is filled across it (culvert), else the embankment gets a notch
+          if (water && water.wet[k]) {
+            if (underDeck(x, z)) continue
+            open![k] = 0
+          }
           if (w > weight[k]) {
             weight[k] = w
             let v = prof[i] + (prof[i + 1] - prof[i]) * t
@@ -195,8 +203,43 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
     }
   }
   layBeds(heights, { target, weight })
-  if (!opts.legacyProfile) embankRoads(heights, grid, { target, weight }, water?.wet) // fill shoulders 1:2
+  if (!opts.legacyProfile) embankRoads(heights, grid, { target, weight }, open) // fill shoulders 1:2
   return { target, weight }
+}
+const nearLine = (p: number[], x: number, z: number) => {
+  let best = Infinity
+  for (let i = 0; i + 3 < p.length; i += 2) {
+    const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az, L2 = dx * dx + dz * dz || 1
+    const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
+    best = Math.min(best, Math.hypot(x - ax - t * dx, z - az - t * dz))
+  }
+  return best
+}
+//! Where the export (water.ts splitAtWater on roadShapes = centreLine(pts, 10)) will cut this road for a
+//! bridge: its 10 m points that fall within the split margin (4 m) of a wet cell. Each wet run, with the dry
+//! point on each side, is a deck polyline. A narrow stream slipping between two points gets no deck.
+//! Errs towards "bridged" (radius + half a cell), i.e. the old open behaviour, never a fill under a deck.
+export function waterDecks(road: Road, wet: Uint8Array, grid: Grid, margin = 4): number[][] {
+  const { cols, rows, step } = grid
+  const p = centreLine(road.pts, 10).map((v) => Math.round(v * 100) / 100), n = p.length / 2
+  const rad = margin + step / 2, rc = Math.ceil(rad / step)
+  const isWet = (x: number, z: number) => {
+    const c0 = Math.round(x / step), r0 = Math.round(z / step)
+    for (let r = Math.max(0, r0 - rc); r <= Math.min(rows - 1, r0 + rc); r++)
+      for (let c = Math.max(0, c0 - rc); c <= Math.min(cols - 1, c0 + rc); c++)
+        if (wet[r * cols + c] && Math.hypot(c * step - x, r * step - z) <= rad) return true
+    return false
+  }
+  const w = Array.from({ length: n }, (_, i) => isWet(p[i * 2], p[i * 2 + 1]))
+  const out: number[][] = []
+  for (let i = 0; i < n; i++) {
+    if (!w[i]) continue
+    let j = i
+    while (j + 1 < n && w[j + 1]) j++
+    out.push(p.slice(Math.max(0, i - 1) * 2, (Math.min(n - 1, j + 1) + 1) * 2))
+    i = j
+  }
+  return out
 }
 //! Height profile of a road bed along `line` (= centreLine(road.pts, step / 2)), the one carveRoads lays:
 //! terrain averaged over ~80 m and kept above the sea; V2 (default) then holds the grade under the class design
