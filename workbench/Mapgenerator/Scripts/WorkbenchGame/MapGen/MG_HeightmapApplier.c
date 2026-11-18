@@ -61,6 +61,7 @@ class MG_HeightmapApplier
 		bool began = api.BeginTerrainAction();
 		for (int ty; ty < tilesZ; ty++)
 		{
+			Print(string.Format("[MapGen] progress: relief row %1/%2", ty + 1, tilesZ), LogLevel.NORMAL);
 			for (int tx; tx < tilesX; tx++)
 			{
 				bool got = api.GetTerrainSurfaceTile(0, tx, ty, tile);

@@ -255,8 +255,13 @@ class MG_ProjectApplier
 		FileHandle rep = FileIO.OpenFile("$profile:MapGen/built.txt", FileMode.WRITE);
 		int created;
 		s_aLabels.Clear();
+		int nShapes = project.shapes.Count();
+		int done;
 		foreach (MG_ProjectShape shape : project.shapes)
 		{
+			done++;
+			if (done % 50 == 0)
+				Print(string.Format("[MapGen] progress: shapes %1/%2", done, nShapes), LogLevel.NORMAL);
 			IEntitySource shapeMade = MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, Layer(api, LayerFor(shape.id, shape.generator)), shape.lift);
 			if (shapeMade)
 				created++;
@@ -283,8 +288,13 @@ class MG_ProjectApplier
 		int layer = -1;
 		if (project.entities.Count() > 0)
 			layer = Layer(api, "MG_RoadSigns");
+		int nEnts = project.entities.Count();
+		int doneE;
 		foreach (MG_ProjectEntity ent : project.entities)
 		{
+			doneE++;
+			if (doneE % 200 == 0)
+				Print(string.Format("[MapGen] progress: objects %1/%2", doneE, nEnts), LogLevel.NORMAL);
 			string prefab = ent.prefab;
 			if (!prefab.StartsWith("{"))
 				prefab = Workbench.GetResourceName(prefab);
