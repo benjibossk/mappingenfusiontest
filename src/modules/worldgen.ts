@@ -11,7 +11,7 @@ import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Gr
 import { addRoundabouts, dropOrphanRings } from './roundabouts'
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
-import { damZone, placeDams } from './dam'
+import { damFootprint, damZone, placeDams } from './dam'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
@@ -350,6 +350,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   await step('sites')
   // one water mask for every placement: sea, carved wet cells (rivers, lake middles), lake outlines + shore margin
   const lakes0 = lakeMask(g, waters)
+  if (dm) damFootprint(base, g, dm.dams).forEach((v, k) => { if (v) lakes0[k] = 1 }) // the embankment is an obstacle for roads and placement (crest ends left open)
   const wetAt = (i: number) => lakes0[i] === 1 || (cur.wet?.[i] ?? 0) === 1 || cur.heights[i] <= 0.5
   let sites = placeWorldSites(lakeAsSea(cur.heights, lakes0), g, cur.sim.river, p, p.layerSeeds?.settlements ?? seed, cur.wet)
   // a zone whose objects or footprint corners fall in the lake mask is refused

@@ -302,3 +302,25 @@ export function damZone(d: Dam, o: Partial<DamOptions> = {}, mods?: string[]): Z
     access: [d.bx + ux * ends, d.bz + uz * ends],
   }
 }
+
+/** cells covered by the embankment (raised above the natural ground `base`), for the road router to treat as
+ *  water: roads go round the dam instead of running into its face. Cells within `keepR` m of a crest end stay
+ *  open so the network can still reach the crest track (damZone access). */
+export function damFootprint(base: ArrayLike<number>, g: Grid, dams: Dam[], o: Partial<DamOptions> = {}, keepR = 16): Uint8Array {
+  const O = { ...DAM_DEFAULTS, ...o }
+  const m = new Uint8Array(g.cols * g.rows)
+  for (const d of dams) {
+    const tx = d.bx - d.ax, tz = d.bz - d.az, L = Math.hypot(tx, tz) || 1, ux = tx / L, uz = tz / L
+    const ends = [[d.ax - ux * 12, d.az - uz * 12], [d.bx + ux * 12, d.bz + uz * 12]]
+    const R = L / 2 + O.crestHalf + (d.crest - d.bed) * O.slope + g.step
+    const c0 = Math.max(0, Math.floor((d.cx - R - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((d.cx + R - g.minX) / g.step))
+    const r0 = Math.max(0, Math.floor((d.cz - R - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((d.cz + R - g.minZ) / g.step))
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const x = g.minX + c * g.step, z = g.minZ + r * g.step, k = r * g.cols + c
+      if (damTarget(d, O, x, z) <= base[k] + 0.25) continue
+      if (ends.some(([ex, ez]) => Math.hypot(x - ex, z - ez) < keepR)) continue
+      m[k] = 1
+    }
+  }
+  return m
+}
