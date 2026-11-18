@@ -27,23 +27,23 @@ function chunk(type, data) {
   return Buffer.concat([len, body, crc]);
 }
 
-//! pixel(col, row) returns a byte (channels 1) or [r, g, b] (channels 3)
-function png(side, pixel, channels = 1) {
+//! pixel(col, row) returns a byte (channels 1) or [r, g, b(, a)] (channels 3 / 4). height defaults to side (square).
+export function png(side, pixel, channels = 1, height = side) {
   const stride = side * channels + 1;
-  const raw = Buffer.alloc(side * stride);
-  for (let row = 0; row < side; row++) {
+  const raw = Buffer.alloc(height * stride);
+  for (let row = 0; row < height; row++) {
     const o = row * stride + 1; // filter byte 0 = none
     for (let col = 0; col < side; col++) {
       const v = pixel(col, row);
       if (channels === 1) raw[o + col] = v;
-      else for (let c = 0; c < 3; c++) raw[o + col * 3 + c] = v[c];
+      else for (let c = 0; c < channels; c++) raw[o + col * channels + c] = v[c];
     }
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(side, 0);
-  ihdr.writeUInt32BE(side, 4);
+  ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8; // bit depth
-  ihdr[9] = channels === 1 ? 0 : 2; // greyscale / RGB
+  ihdr[9] = channels === 1 ? 0 : channels === 4 ? 6 : 2; // greyscale / RGBA / RGB
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", ihdr),

@@ -79,3 +79,22 @@ export const applyHeightmap = (grid: object) => post<{ message: string }>('/heig
 /** writes one mask PNG per surface + <world>_satellite.png, to import by hand in the Workbench */
 export const writeMasks = (body: object) =>
   post<{ dir: string; written: string[]; satellite?: { file: string } }>('/masks', body)
+
+/** writes profile/MapGen/ingamemap.png from an RGBA buffer (renderIngameMap in modules/ingameMap.ts) */
+export function writeIngameMap(img: { width: number; height: number; data: Uint8ClampedArray }) {
+  let bin = ''
+  for (let i = 0; i < img.data.length; i += 0x8000) bin += String.fromCharCode(...img.data.subarray(i, i + 0x8000))
+  return post<{ file: string; message: string }>('/ingamemap', { width: img.width, height: img.height, rgba: btoa(bin) })
+}
+
+/** collects "[MGBench] t=.. fps=.. mem=.." lines of the newest console.log into profile/MapGen/bench/ */
+export const collectBench = (gameLogs?: string) =>
+  post<{ logs: string[]; samples: number; dir: string; stamp: string }>('/bench', { gameLogs })
+
+/** surface materials declared in the open world's .terr (coverage: null, not readable from the API) */
+export async function getMaterials(): Promise<{ terr: string; declared: string[]; coverage: null; coverageNote: string }> {
+  const res = await fetch(`${BRIDGE_URL}/materials`)
+  const out = await res.json()
+  if (!res.ok) throw new Error(out.error ?? `HTTP ${res.status}`)
+  return out
+}

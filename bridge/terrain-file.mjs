@@ -125,3 +125,9 @@ export function prepareTerrain(terrPath, surfaces, surfaceBits = 8) {
 
   return { surfaces: names.length + added.length, added: added.length, surfaceMapInitialised: !wasInit, normalsWritten, metaChanged };
 }
+
+//! surface materials declared in a .terr (MATS chunk), read-only: ["{GUID}path.emat", ...]
+export function listTerrainMaterials(terrPath) {
+  const mats = readChunks(readFileSync(terrPath)).find((c) => c.name === "MATS");
+  return mats ? parseMats(mats.body).names : [];
+}

@@ -22,12 +22,12 @@
 
 import { createServer } from "node:http";
 import { Socket } from "node:net";
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { prepareTerrain } from "./terrain-file.mjs";
-import { maskSide, writeMasks, writeSatellite } from "./terrain-masks.mjs";
+import { listTerrainMaterials, prepareTerrain } from "./terrain-file.mjs";
+import { maskSide, png, writeMasks, writeSatellite } from "./terrain-masks.mjs";
 import { handleAtelier } from "./atelier.mjs";
 import { handleOutside } from "./outside.mjs";
 
@@ -129,6 +129,57 @@ const server = createServer(async (req, res) => {
   try {
     if (await handleAtelier(req, res, send, readBody)) return; // Mode Atelier: bridge/atelier.mjs
     if (await handleOutside(req, res, send, readBody, PROFILE_DIR, callWorkbench)) return; // off-map ring: bridge/outside.mjs
+    if (req.method === "POST" && req.url === "/ingamemap") {
+      const { width, height, rgba } = JSON.parse(await readBody(req));
+      const W = Number(width), H = Number(height), px = Buffer.from(String(rgba ?? ""), "base64");
+      if (!(W > 0 && H > 0) || px.length !== W * H * 4) return send(res, 400, { error: "width/height/rgba mismatch" });
+      const file = join(PROFILE_DIR, "MapGen", "ingamemap.png");
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, png(W, (c, r) => px.subarray((r * W + c) * 4, (r * W + c) * 4 + 4), 4, H));
+      return send(res, 200, { file, message: `ingamemap.png ${W}x${H}` });
+    }
+    if (req.method === "POST" && req.url === "/bench") {
+      const opts = JSON.parse((await readBody(req)) || "{}");
+      const newestLog = (dir) => {
+        if (!dir || !existsSync(dir)) return null;
+        const subs = readdirSync(dir).map((d) => join(dir, d, "console.log")).filter((f) => existsSync(f));
+        subs.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+        return subs[0] ?? null;
+      };
+      const logs = [newestLog(join(PROFILE_DIR, "..", "logs"))];
+      if (opts.gameLogs) logs.push(newestLog(String(opts.gameLogs)));
+      const rows = [];
+      for (const log of logs.filter(Boolean)) {
+        for (const l of readFileSync(log, "utf-8").split(/\r?\n/)) {
+          const i = l.indexOf("[MGBench]");
+          if (i < 0) continue;
+          const row = { source: log };
+          for (const m of l.slice(i + 9).matchAll(/(\w+)=(\S+)/g)) row[m[1]] = isNaN(Number(m[2])) ? m[2] : Number(m[2]);
+          rows.push(row);
+        }
+      }
+      const dir = join(PROFILE_DIR, "MapGen", "bench");
+      mkdirSync(dir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+      const csv = [cols.join(","), ...rows.map((r) => cols.map((c) => JSON.stringify(r[c] ?? "")).join(","))].join("\n");
+      writeFileSync(join(dir, `bench-${stamp}.json`), JSON.stringify(rows, null, 1), "utf-8");
+      writeFileSync(join(dir, `bench-${stamp}.csv`), csv, "utf-8");
+      return send(res, 200, { logs: logs.filter(Boolean), samples: rows.length, dir, stamp });
+    }
+    if (req.method === "GET" && req.url.startsWith("/materials")) {
+      // declared = MATS chunk of the open world's .terr; painted coverage is not readable from the script API
+      const wb = await callWorkbench("MG_ListMaterials", {});
+      const q = new URL(req.url, "http://x").searchParams;
+      let terr = null;
+      if (q.get("addon") && q.get("world")) terr = join(ADDONS_DIR, q.get("addon"), q.get("world"), basename(q.get("world")) + ".terr");
+      else if (wb?.world) {
+        const rel = String(wb.world).replace(/^\{[0-9A-F]+\}/i, "").replace(/\.ent$/i, ".terr");
+        for (const a of readdirSync(ADDONS_DIR)) { const f = join(ADDONS_DIR, a, rel); if (existsSync(f)) { terr = f; break; } }
+      }
+      if (!terr || terr.includes("..") || !existsSync(terr)) return send(res, 404, { error: "terrain .terr not found", workbench: wb });
+      return send(res, 200, { terr, declared: listTerrainMaterials(terr), coverage: null, coverageNote: wb?.note ?? "painted coverage not exposed by the script API", workbench: wb });
+    }
     if (req.method === "GET" && req.url === "/status") {
       const state = await callWorkbench("MG_Status", {}, 5_000).catch((e) => ({ error: e.message }));
       return send(res, 200, { bridge: "ok", projectFile: PROJECT_FILE, workbench: state });
@@ -153,11 +204,13 @@ const server = createServer(async (req, res) => {
       mkdirSync(join(PROFILE_DIR, "MapGen"), { recursive: true });
       // the Workbench JSON reader gives up silently on big files (4.7 MB: 0 shapes read), so the project is
       // cut into parts of ~300 KB: mapgen.json (version, remove, first part), then mapgen.1.json, mapgen.2.json...
+      // part size: body field partSize > env MG_PART_SIZE > 300 KB (lower it if the Workbench runs out of memory)
+      const partSize = Math.max(10_000, Number(project.partSize) || Number(process.env.MG_PART_SIZE) || 300_000);
       const parts = [];
       let cur = { shapes: [], entities: [] }, size = 0;
       const add = (key, item) => {
         const n = JSON.stringify(item).length;
-        if (size + n > 300_000 && (cur.shapes.length || cur.entities.length)) { parts.push(cur); cur = { shapes: [], entities: [] }; size = 0; }
+        if (size + n > partSize && (cur.shapes.length || cur.entities.length)) { parts.push(cur); cur = { shapes: [], entities: [] }; size = 0; }
         cur[key].push(item); size += n;
       };
       for (const s of project.shapes) add("shapes", s);
