@@ -1,0 +1,14 @@
+{
+  "_doc": "Zones de vegetation potentielle par biome. generator = generateur natif (forest/bushline/meadow). Memes plages que materials.json. Jamais de prefabs a l'unite.",
+  "biomes": {
+    "default": [
+      { "generator": "forest", "slope": [null, 28], "altitude": [8, 350], "moisture": [0.3, null] },
+      { "generator": "meadow", "slope": [null, 12], "altitude": [3, null], "moisture": [null, 0.3] },
+      { "generator": "bushline", "slope": [null, 20], "waterDist": [null, 30], "altitude": [1, null] }
+    ],
+    "mediterranean_dry": [
+      { "generator": "bushline", "slope": [null, 25], "altitude": [5, null] },
+      { "generator": "meadow", "slope": [null, 10], "altitude": [3, null] }
+    ]
+  }
+}

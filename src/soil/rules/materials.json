@@ -1,0 +1,33 @@
+{
+  "_doc": "Biome -> materiaux. Chaque regle: slope/altitude/moisture/curvature/waterDist = [min, max] (null = sans borne), weight = force. Les poids sont normalises par cellule. 'default' sert aux biomes absents.",
+  "biomes": {
+    "default": [
+      { "name": "Grass", "weight": 1, "slope": [null, 25], "altitude": [2, null] },
+      { "name": "Dirt", "weight": 0.6, "slope": [15, 35] },
+      { "name": "Rock", "weight": 1.5, "slope": [30, null] },
+      { "name": "Sand", "weight": 1.2, "altitude": [null, 2], "slope": [null, 15] },
+      { "name": "Mud", "weight": 0.8, "moisture": [0.7, null], "slope": [null, 10], "altitude": [1, null] }
+    ],
+    "temperate_everon": [
+      { "name": "Grass", "weight": 1, "slope": [null, 25], "altitude": [2, 400] },
+      { "name": "Forest_Floor", "weight": 0.7, "slope": [null, 30], "moisture": [0.35, null], "altitude": [5, 350] },
+      { "name": "Dirt", "weight": 0.6, "slope": [18, 35] },
+      { "name": "Rock", "weight": 1.5, "slope": [32, null] },
+      { "name": "Sand", "weight": 1.2, "altitude": [null, 2], "slope": [null, 15] },
+      { "name": "Mud", "weight": 0.8, "waterDist": [null, 25], "slope": [null, 8], "altitude": [1, null] },
+      { "name": "Alpine_Grass", "weight": 1, "altitude": [380, null], "slope": [null, 30] }
+    ],
+    "mediterranean_dry": [
+      { "name": "Dry_Grass", "weight": 1, "slope": [null, 25], "altitude": [2, null] },
+      { "name": "Dirt", "weight": 0.9, "slope": [12, 35] },
+      { "name": "Rock", "weight": 1.5, "slope": [28, null] },
+      { "name": "Sand", "weight": 1.2, "altitude": [null, 3], "slope": [null, 15] }
+    ],
+    "nordic_kolguyev": [
+      { "name": "Tundra_Grass", "weight": 1, "slope": [null, 25], "altitude": [2, null] },
+      { "name": "Moss", "weight": 0.8, "moisture": [0.5, null], "slope": [null, 15] },
+      { "name": "Rock", "weight": 1.5, "slope": [28, null] },
+      { "name": "Gravel", "weight": 1.1, "altitude": [null, 3] }
+    ]
+  }
+}

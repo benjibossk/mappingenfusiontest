@@ -1,0 +1,12 @@
+{
+  "_doc": "Seuils globaux du moteur de sol. Pente en degres, altitude en m au-dessus du niveau de la mer, humidite 0..1, distances en m.",
+  "feather": 0.15,
+  "blockCells": 32,
+  "lakeMaxPoints": 60,
+  "lakeSimplifyTolerance": 2,
+  "curvatureRadiusCells": 2,
+  "riverMoistureBoost": 0.5,
+  "waterMoistureFalloff": 60,
+  "vegetation": { "threshold": 0.5, "simplifyTolerance": 4, "minAreaM2": 2000 },
+  "compare": { "minSameDominantPct": 70, "maxMeanWeightError": 0.2, "maxOverBlocks": 0 }
+}
