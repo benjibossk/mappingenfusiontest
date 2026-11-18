@@ -1,3 +1,4 @@
+import { dedupeLines } from './modules/fenceDedupe'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
@@ -3462,7 +3463,10 @@ function parcelEntities(): ProjectEntity[] {
   return setParcels.flatMap((p, i) => p.items.map((it, k) => ({ id: `PARCEL_${i + 1}_${k + 1}`, prefab: it.guid, x: r2(it.x), z: r2(it.z), yaw: Math.round(it.yaw) })))
 }
 function parcelShapes(): ProjectShape[] {
-  return setParcels.flatMap((p, i) => p.fences.filter((f) => f.pts.length >= 4).map((f, k) => ({ id: `PARCEL_FENCE_${i + 1}_${k + 1}`, kind: 'polyline' as const, closed: false, points: f.pts.map((v) => Math.round(v * 100) / 100), generator: f.guid })))
+  // neighbouring parcels share a boundary: one fence on it, not two (fenceDedupe.ts)
+  const all = setParcels.flatMap((p, i) => p.fences.filter((f) => f.pts.length >= 4).map((f, k) => ({ id: `PARCEL_FENCE_${i + 1}_${k + 1}`, f })))
+  const kept = dedupeLines(all.map((a) => a.f.pts))
+  return all.flatMap((a, j) => kept[j].map((pts, n) => ({ id: kept[j].length > 1 ? `${a.id}_${n + 1}` : a.id, kind: 'polyline' as const, closed: false, points: pts.map((v) => Math.round(v * 100) / 100), generator: a.f.guid })))
 }
 function applyRealPlace(r: RealPlace) {
   let bSkipped = 0
