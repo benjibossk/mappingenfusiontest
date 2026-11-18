@@ -37,6 +37,7 @@ import { makeProdForest, type ProdLog } from './modules/prodforest'
 import { addRoundabouts, dropOrphanRings, villageWalls } from './modules/roundabouts'
 import { buildMotorway, overpassDecks } from './modules/motorway'
 import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fillFieldZone, flatToPoly, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
+import { cutAtRoads } from './modules/roadGaps'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
@@ -4076,7 +4077,9 @@ function roadShapesWithFurniture() {
   // P3 #17: low stone walls where a paved road crosses a village (none in front of houses)
   const near = (x: number, z: number, r: number) => settled.reduce((c, b) => c + (Math.abs(b.x - x) < r && Math.abs(b.z - z) < r ? 1 : 0), 0)
   const walls = villageWalls(roads, (x, z) => near(x, z, 45) >= 3, (x, z) => near(x, z, 9) > 0)
-  return [...shapes, ...roadFurniture(roads, heightAt, num('furnDrop'), num('furnPost')), ...walls]
+  // roadside lines stop at the mouth of every joining / crossing road (half width + 2 m each side)
+  const gapRoads = roads.filter((r) => r.pts.length >= 4).map((r) => ({ id: r.id, line: centreLine(r.pts, 5), half: roadHalf(r) }))
+  return [...shapes, ...cutAtRoads([...roadFurniture(roads, heightAt, num('furnDrop'), num('furnPost')), ...walls], gapRoads)]
 }
 
 document.querySelectorAll<HTMLInputElement>('#layers [data-layer]').forEach((el) => el.addEventListener('change', () => {
