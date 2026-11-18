@@ -51,6 +51,8 @@ export interface ProjectEntity {
   z: number
   yaw: number
   ycm?: number // absolute height in cm (bridges); absent = on the terrain
+  /** essential (gameplay/cover) / pc (PC-only detail) / clutter (decoration); absent = roleOf() default (src/modules/roles.ts) */
+  role?: 'essential' | 'pc' | 'clutter'
 }
 
 export interface Project {

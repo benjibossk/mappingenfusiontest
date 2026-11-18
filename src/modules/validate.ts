@@ -6,9 +6,11 @@ import { SITE_RADIUS, maxGrade, worstGrade, type Site } from './network'
 import type { Road } from './roads'
 import type { Placed } from './settlements'
 import { segRingDist } from './powerroads'
+import { roleOf, type Role } from './roles'
+import type { ProjectEntity } from '../project'
 import { overBudgetCells, type DensityGrid, type Platform } from './platformBudget'
 
-export type IssueKind = 'noBridge' | 'steepRoad' | 'isolated' | 'buildingWet' | 'overlap' | 'overfull' | 'outside' | 'buildingField' | 'roadField' | 'overBudget' | 'powerOverBuilding'
+export type IssueKind = 'noBridge' | 'steepRoad' | 'isolated' | 'buildingWet' | 'overlap' | 'overfull' | 'outside' | 'buildingField' | 'roadField' | 'overBudget' | 'powerOverBuilding' | 'duplicate'
 export interface Issue { kind: IssueKind; x: number; z: number; id: string; value?: number }
 
 // grade limits per road type: maxGrade() in network.ts, the same the auto network routes with
@@ -29,6 +31,8 @@ export function validate(o: {
   budget?: { platform: Platform; grid: DensityGrid }
   /** power lines (pole polylines): a span over a house is an issue */
   power?: { id: string; path: number[] }[]
+  /** all placed prefabs: same prefab within 0.5 m of another = 'duplicate' */
+  entities?: ProjectEntity[]
 }): Issue[] {
   const { cols, rows, step } = o.grid
   const at = (x: number, z: number) => {
@@ -108,7 +112,29 @@ export function validate(o: {
   // more than 5 surfaces per terrain block
   if (o.surfaces) for (const b of overfullBlockList(o.surfaces)) out.push({ kind: 'overfull', id: `${Math.round(b.x)},${Math.round(b.z)}`, x: b.x, z: b.z, value: b.used })
   if (o.budget) for (const c of overBudgetCells(o.budget.grid, o.budget.platform)) out.push({ kind: 'overBudget', id: `${Math.round(c.x)},${Math.round(c.z)}`, x: c.x, z: c.z, value: c.count })
+  if (o.entities) for (const d of duplicateEntities(o.entities)) out.push({ kind: 'duplicate', id: d.id, x: d.x, z: d.z })
   return out
+}
+
+/** entities whose prefab already stands within `tol` m (the later copy is reported) */
+export function duplicateEntities(es: ProjectEntity[], tol = 0.5): ProjectEntity[] {
+  const cell = new Map<string, ProjectEntity[]>(), out: ProjectEntity[] = []
+  for (const e of es) {
+    const cx = Math.floor(e.x / tol), cz = Math.floor(e.z / tol)
+    let dup = false
+    for (let dx = -1; dx <= 1 && !dup; dx++) for (let dz = -1; dz <= 1 && !dup; dz++)
+      for (const f of cell.get(`${cx + dx},${cz + dz}`) ?? []) if (f.prefab === e.prefab && Math.hypot(f.x - e.x, f.z - e.z) <= tol) { dup = true; break }
+    if (dup) { out.push(e); continue }
+    const k = `${cx},${cz}`; const l = cell.get(k); if (l) l.push(e); else cell.set(k, [e])
+  }
+  return out
+}
+
+/** entity counts by role (explicit role, else roleOf default) */
+export function roleCounts(es: ProjectEntity[]): Record<Role, number> {
+  const c: Record<Role, number> = { essential: 0, pc: 0, clutter: 0 }
+  for (const e of es) c[e.role ?? roleOf(e.prefab, e.id)]++
+  return c
 }
 
 const clamp = (v: number, m: number) => Math.min(m, Math.max(0, v))
