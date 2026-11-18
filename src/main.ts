@@ -3646,7 +3646,7 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const forests = forestShapesOut(areas.filter((a) => a.kind === 'forest'))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
-    const shapes = [...wr.shapes, ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
+    const shapes = [...wr.shapes, ...(result?.shapes ?? []), ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
