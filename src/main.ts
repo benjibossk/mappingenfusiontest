@@ -113,9 +113,11 @@ import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly, type IndustrialT
 import { suggestMilitary, type MilitaryKind } from './modules/military'
 import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
+import { LAYERS as GEN_LAYERS, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
 import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
 import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, stageTimer, type Pipeline } from './modules/replay'
+let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modules/layers.ts), saved in the project
 let pipeline: Pipeline = emptyPipeline() // recorded generation steps (src/modules/replay.ts), saved in the project; declared early: the autosave reads it at startup
 import { BIOMES, PROPS, biome, type BiomeId } from './data/biomes'
 import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
@@ -305,6 +307,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <p class="hint">${t('wg.lead')}</p>
         <div class="form">
           <label><span class="lbl">${t('wg.seed')} ${info('info.wgSeed')}</span><span class="seedrow"><input id="rwSeed" type="number" step="1" value="1"><button id="rwDice" type="button" class="secondary icon" title="${t('wg.dice')}" aria-label="${t('wg.dice')}">${ic('dice', 16)}</button></span></label>
+          <details id="rwLayers" class="rwlayers"><summary>${t('wg.layers')}</summary><p class="hint">${t('wg.layers.hint')}</p>${GEN_LAYERS.map((l) => `<label><span class="lbl">${t(('layer.' + l) as K)} <span class="badge" data-stale="${l}" hidden>${t('wg.layers.stale')}</span></span><input id="rwL_${l}" data-layer="${l}" type="number" step="1" min="1" placeholder="${t('wg.layers.derived')}"></label>`).join('')}</details>
           <label>${t('wg.size')} <select id="rwSize"><option value="2048">2 km</option><option value="4096" selected>4 km</option><option value="8192">8 km</option><option value="16384">16 km (≈ 1-2 min)</option></select></label>
           ${biomeField('rwBiome')}
           ${(['towns', 'villages', 'hamlets', 'industry', 'military', 'forests', 'fieldTrees'] as const).map((k) => `<label class="rwslider"><span class="lbl">${t(('wg.' + k) as K)} ${info(('info.wg.' + k) as K)}</span><input id="rw_${k}" type="range" min="0" max="2" step="0.25" value="1"><output id="rw_${k}_v">×1</output></label>`).join('')}
@@ -2681,7 +2684,16 @@ function islandProject() {
     powerStations,
     powerAccess,
     biome: currentBiome,
+    layers: layerMap,
   }
+}
+function layersUi() {
+  for (const l of GEN_LAYERS) {
+    const el = document.getElementById('rwL_' + l) as HTMLInputElement | null
+    if (el) el.value = layerMap[l]?.seed ? String(layerMap[l]!.seed) : ''
+  }
+  const st = new Set(staleLayers(layerMap))
+  document.querySelectorAll<HTMLElement>('#rwLayers [data-stale]').forEach((b) => { b.hidden = !st.has(b.dataset.stale as LayerId) })
 }
 function autosave() {
   clearTimeout(saveTimer)
@@ -2694,6 +2706,8 @@ function autosave() {
 function loadProject(p: any) {
   if (p?.kind !== 'reforger-mapper-island') throw new Error(t('err.notIsland'))
   pipeline = readPipeline(p.pipeline)
+  layerMap = p.layers && typeof p.layers === 'object' ? p.layers : {}
+  layersUi()
   for (const [id, v] of Object.entries(p.inputs ?? {})) {
     if (id === 'roadFlatten') continue // per-road choice, always starts unchecked
     const el = document.getElementById(id) as HTMLInputElement | null
@@ -4482,7 +4496,18 @@ for (const k of RW_SLIDERS) {
   out.textContent = '×1'
 }
 const rollSeed = () => { $<HTMLInputElement>('rwSeed').value = String(1 + Math.floor(Math.random() * 999999)) }
-$<HTMLButtonElement>('rwDice').addEventListener('click', rollSeed)
+$<HTMLButtonElement>('rwDice').addEventListener('click', () => { rollSeed(); layerMap = setGlobalSeed(layerMap); layersUi(); autosave() })
+$<HTMLInputElement>('rwSeed').addEventListener('change', () => { layerMap = setGlobalSeed(layerMap); layersUi(); autosave() })
+for (const l of GEN_LAYERS) $<HTMLInputElement>('rwL_' + l).addEventListener('change', (e) => {
+  const v = Math.floor(Number((e.target as HTMLInputElement).value))
+  layerMap = setLayerSeed(layerMap, l, v > 0 ? v : undefined); layersUi(); autosave()
+})
+/** per-layer seed table for the generator: only the overridden layers (absent = derived from the global seed) */
+function layerSeedTable(): Partial<Record<LayerId, number>> | undefined {
+  const out: Partial<Record<LayerId, number>> = {}
+  for (const l of GEN_LAYERS) { const s = layerMap[l]?.seed; if (typeof s === 'number' && s > 0) out[l] = s }
+  return Object.keys(out).length ? out : undefined
+}
 $<HTMLButtonElement>('tRandom').addEventListener('click', () => {
   if (rwBusy) return
   rollSeed()
@@ -4553,6 +4578,7 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
     towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'), fieldTrees: v('fieldTrees'),
     airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome, motorway: $<HTMLInputElement>('rwMotorway').checked, dams: $<HTMLInputElement>('rwDams').checked,
     powerDistrib: $<HTMLSelectElement>('rwPowDistrib').value as PowerDistrib,
+    layerSeeds: layerSeedTable(),
   }
   const params = (replayParams as unknown as typeof fromDlg | undefined) ?? fromDlg
   // the whole pipeline runs in the generator worker: the page (busy panel, bar, Cancel) stays live.
@@ -4578,6 +4604,8 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
       try { return await job.promise } catch (e) { if (e instanceof Cancelled) return undefined; throw e }
     }, () => job.cancel())
     if (!w) { stage.textContent = t('wg.cancelled'); return }
+    for (const l of GEN_LAYERS) layerMap = markBuilt(layerMap, l)
+    layersUi()
     prog.value = 100
     $('rwPct').textContent = '100 %'; $('rwEta').textContent = t('busy.elapsed', { s: Math.round((performance.now() - t0) / 1000) })
     const stages = timer.end(), hash = hashWorld(w)
