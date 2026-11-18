@@ -52,6 +52,7 @@ class MG_Project : JsonApiStruct
 	ref array<ref MG_ProjectShape> shapes = {};
 	ref array<ref MG_ProjectEntity> entities = {};
 	ref array<float> remove = {};	//!< X/Z pairs: origins of objects already in the world to delete (taken over or removed in the web map)
+	ref array<string> locked = {};	//!< names never removed; an entry ending with * is a name prefix (bridge: profile/MapGen/locked.json)
 	int ffBiome;	//!< Freedom Fighters JWK_EWorldBiome flag (1 woodland, 2 winter, 4 desert, 8 jungle), 0 = leave as is
 
 	void MG_Project()
@@ -60,6 +61,7 @@ class MG_Project : JsonApiStruct
 		RegV("shapes");
 		RegV("entities");
 		RegV("remove");
+		RegV("locked");
 		RegV("ffBiome");
 	}
 }
@@ -160,6 +162,24 @@ class MG_ProjectApplier
 		return ", no JWK_WorldEntity (FF biome skipped)";
 	}
 
+	//! true when the name is in the lock list (exact, or an entry "PREFIX*")
+	static bool IsLocked(array<string> locked, string name)
+	{
+		if (!locked)
+			return false;
+		foreach (string l : locked)
+		{
+			if (l.EndsWith("*"))
+			{
+				if (name.StartsWith(l.Substring(0, l.Length() - 1)))
+					return true;
+			}
+			else if (l == name)
+				return true;
+		}
+		return false;
+	}
+
 	static string Apply(string projectFile)
 	{
 		WorldEditor worldEditor = Workbench.GetModule(WorldEditor);
@@ -215,6 +235,8 @@ class MG_ProjectApplier
 		{
 			IEntitySource src = api.GetEditorEntity(i);
 			if (!src || src.GetParent())
+				continue;
+			if (IsLocked(project.locked, src.GetName()))
 				continue;
 			foreach (string fam : families)
 			{
