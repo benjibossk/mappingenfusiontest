@@ -239,10 +239,12 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
           for (let i = 0; i < ring.length; i += 2) d = Math.min(d, Math.hypot(ring[i] - x, ring[i + 1] - z))
           if (inside(w.pts, x, z)) {
             const u = Math.min(1, d / ramp)
-            lower(r * cols + c, L - 0.2 - w.depth * u * u * (3 - 2 * u))
+            // height proportional to the distance to the outline near the shore: the bilinear water line
+            // then follows the drawn outline instead of stair-stepping along the grid cells
+            lower(r * cols + c, L - Math.min(0.15 * d, 0.2) - w.depth * u * u * (3 - 2 * u))
             levels.level[r * cols + c] = L; levels.wet[r * cols + c] = 1
           } else if (d < 3 * bank) {
-            if (d < bank) lower(r * cols + c, L + 0.3 + 1.5 * (d / bank))
+            if (d < bank) lower(r * cols + c, L + Math.min(0.15 * d, 0.3) + 1.5 * (d / bank))
             if (Number.isNaN(levels.level[r * cols + c])) levels.level[r * cols + c] = L
           }
         }
