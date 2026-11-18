@@ -163,9 +163,14 @@ const server = createServer(async (req, res) => {
       for (const s of project.shapes) add("shapes", s);
       for (const e of project.entities ?? []) add("entities", e);
       parts.push(cur);
+      // hand-made work to keep: profile/MapGen/locked.json = ["NAME", "PREFIX*", ...]. Honoured only once
+      // MG_ApplyProjectPlugin.c reads the "locked" field (TODO addon side); unknown JSON fields are ignored until then.
+      let locked = [];
+      try { const l = JSON.parse(readFileSync(join(PROFILE_DIR, "MapGen", "locked.json"), "utf-8")); if (Array.isArray(l)) locked = l.filter((x) => typeof x === "string" && x); } catch {}
+      if (locked.length) console.log(`[apply] ${locked.length} locked name(s)/prefix(es) passed to the Workbench`);
       for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (/^mapgen\.\d+\.json$/.test(f)) rmSync(join(PROFILE_DIR, "MapGen", f));
       parts.forEach((p, k) => {
-        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0 } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
+        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0, ...(locked.length ? { locked } : {}) } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
         writeFileSync(k === 0 ? PROJECT_FILE : join(PROFILE_DIR, "MapGen", `mapgen.${k}.json`), JSON.stringify(body), "utf-8");
       });
       console.log(`[apply] ${project.shapes.length} shapes, ${(project.entities ?? []).length} objects in ${parts.length} file(s)`);
