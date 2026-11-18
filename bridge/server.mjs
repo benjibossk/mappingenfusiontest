@@ -173,7 +173,7 @@ const server = createServer(async (req, res) => {
       const sent = sentReport(project);
       writeFileSync(join(PROFILE_DIR, "MapGen", "sent.txt"), sent.lines.join("\n"), "utf-8");
       rmSync(join(PROFILE_DIR, "MapGen", "built.txt"), { force: true });
-      const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" });
+      const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" }, 600_000); // big worlds take minutes
       const diff = compareBuilt(project, sent.warnings);
       writeFileSync(join(PROFILE_DIR, "MapGen", "report.txt"), diff.lines.join("\n"), "utf-8");
       console.log("[apply] " + diff.summary);

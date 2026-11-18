@@ -9,8 +9,37 @@ class MG_ShapeBuilder
 	//! spline: SplineShapeEntity (road generators refuse polylines), else PolylineShapeEntity.
 	static IEntitySource Create(WorldEditorAPI api, string name, array<float> pointsXZ, bool closed, string generator, bool spline = false, array<string> paramKeys = null, array<string> paramValues = null, int layer = -1, array<float> lift = null)
 	{
+		// drop points closer than 0.5 m to the previous kept one (and a closing point on top of the first):
+		// zero-length segments make ForestGeneratorEntity divide by zero (BadFloat assertion, 1.9)
+		array<float> cleanXZ = {};
+		array<float> cleanLift = {};
+		bool hasLift = lift && lift.Count() == pointsXZ.Count() / 2;
+		for (int q; q < pointsXZ.Count() / 2; q++)
+		{
+			float qx = pointsXZ[q * 2];
+			float qz = pointsXZ[q * 2 + 1];
+			int n = cleanXZ.Count();
+			if (n >= 2 && Math.AbsFloat(qx - cleanXZ[n - 2]) + Math.AbsFloat(qz - cleanXZ[n - 1]) < 0.5)
+				continue;
+			cleanXZ.Insert(qx);
+			cleanXZ.Insert(qz);
+			if (hasLift)
+				cleanLift.Insert(lift[q]);
+		}
+		int cn = cleanXZ.Count();
+		if (closed && cn >= 6 && Math.AbsFloat(cleanXZ[0] - cleanXZ[cn - 2]) + Math.AbsFloat(cleanXZ[1] - cleanXZ[cn - 1]) < 0.5)
+		{
+			cleanXZ.Remove(cn - 1);
+			cleanXZ.Remove(cn - 2);
+			if (hasLift)
+				cleanLift.Remove(cleanLift.Count() - 1);
+		}
+		pointsXZ = cleanXZ;
+		if (hasLift)
+			lift = cleanLift;
+
 		int count = pointsXZ.Count() / 2;
-		if (count < 2)
+		if (count < 2 || (closed && count < 3))
 		{
 			Print("[MapGen] " + name + ": needs at least 2 points", LogLevel.ERROR);
 			return null;
