@@ -912,7 +912,7 @@ function draw() {
   drapeLater()
 }
 
-// --- Workbench camera: live marker + view cone (bridge /camera -> MG_GetCamera), opt-in toggle next to the status chip
+// --- Workbench camera: live marker + view cone (bridge /camera -> MG_GetCamera), on by default, toggle next to the status chip
 let wbCam: WbCamera | null = null
 let camTimer = 0
 const camBtn = document.createElement('button')
@@ -933,19 +933,25 @@ function stopCam() {
 async function pollCam() {
   const c = await getCamera()
   if (!camTimer) return
-  if (!c.ok) { if (c.error && !/no world/.test(c.error)) stopCam(); return } // bridge / Workbench off: stop polling
+  if (!c.ok) { // bridge / Workbench off: hide, keep polling so it comes back by itself
+    if (wbCam || !camInfo.hidden) { wbCam = null; camInfo.hidden = true; draw() }
+    return
+  }
   wbCam = c
   camInfo.hidden = false
   camInfo.textContent = t('cam.readout', { x: Math.round(c.x), z: Math.round(c.z), yaw: Math.round(c.yaw) })
   draw()
 }
-camBtn.addEventListener('click', () => {
-  if (camTimer) return stopCam()
+function startCam() {
   camTimer = window.setInterval(() => void pollCam(), 1000)
   camLabel()
   void pollCam()
+}
+camBtn.addEventListener('click', () => {
+  if (camTimer) return stopCam()
+  startCam()
 })
-camLabel()
+startCam() // on by default (Benji, 2026-11-19); the button turns it off
 statusEl.after(camBtn, camInfo)
 
 function drawWbCamera() {
