@@ -275,14 +275,22 @@ export function layBeds(heights: number[], b: RoadBeds) {
     if (b.weight[k] > 0) heights[k] = heights[k] + (b.target[k] - heights[k]) * b.weight[k]
 }
 
+//! closed ring (first point = last): goes on over its first two segments so the road surface overlaps at the seam
+export function ringOverlap(p: number[]): number[] {
+  const n = p.length
+  if (n < 10 || Math.hypot(p[0] - p[n - 2], p[1] - p[n - 1]) >= 0.5) return p
+  return [...p, p[2], p[3], p[4], p[5]]
+}
+
 //! spline shapes for the Workbench (points every ~25 m: few, regular points as the wiki advises)
 export function roadShapes(roads: Road[]): ProjectShape[] {
   return roads.filter((r) => r.pts.length >= 4).map((r) => ({
     id: r.id,
     kind: 'spline',
-    // a ring (first point = last, e.g. a roundabout) is sent closed: an open spline leaves a gap at the seam
-    closed: Math.hypot(r.pts[0] - r.pts[r.pts.length - 2], r.pts[1] - r.pts[r.pts.length - 1]) < 0.5,
-    points: centreLine(r.pts, 10).map((v) => Math.round(v * 100) / 100),
+    // a ring (first point = last, e.g. a roundabout): the road generator ignores IsClosed and leaves a gap at
+    // the seam (seen in the Workbench), so the open spline runs on past its start over two more points
+    closed: false,
+    points: ringOverlap(centreLine(r.pts, 10)).map((v) => Math.round(v * 100) / 100),
     generator: ROAD_TYPES[r.type].generator,
     // the site already shapes the relief: the generator must not reshape it again
     // width always sent: the generated road and the painted surface stay the same width
