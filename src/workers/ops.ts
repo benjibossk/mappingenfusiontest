@@ -9,6 +9,7 @@ import { settleVillages } from '../modules/village'
 import { routePowerLine } from '../modules/power'
 import { generateForests } from '../modules/forestgen'
 import { quantise } from '../modules/satmask'
+import { seedSummary } from './seedSummary'
 
 export type Progress = (stage: string, i: number, n: number, f?: number) => void
 type Fn = (args: any[], progress: Progress) => unknown // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -22,5 +23,6 @@ export const OPS = {
   power: ((a) => routePowerLine(...(a as Parameters<typeof routePowerLine>))) as Fn,
   forests: ((a) => mergeForestPatches(generateForests(a[0], a[1], a[2]))) as Fn,
   quantise: ((a) => quantise(a[0], a[1])) as Fn,
+  seedSummary: ((a, progress) => seedSummary(a[0], progress)) as Fn,
 }
 export type Op = keyof typeof OPS

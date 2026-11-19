@@ -121,6 +121,7 @@ import { LAYERS as GEN_LAYERS, markBuilt, setGlobalSeed, setLayerSeed, staleLaye
 import { applyPads, layPads } from './modules/pads'
 import { buildingFootprints, Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
+import { mountSeedBrowser } from './ui/seedBrowser'
 import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, stageTimer, type Pipeline } from './modules/replay'
 let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modules/layers.ts), saved in the project
 let pipeline: Pipeline = emptyPipeline() // recorded generation steps (src/modules/replay.ts), saved in the project; declared early: the autosave reads it at startup
@@ -4891,6 +4892,16 @@ $<HTMLButtonElement>('oneClick').addEventListener('click', () => {
   if (rwBusy) return
   rwKeepOpen = true; rwDlg.hidden = false
   void worldGo()
+})
+// seed explorer (ui/seedBrowser.ts): a card click runs the world pipeline with that seed's exact params
+mountSeedBrowser({
+  settings: () => ({ size: Number($<HTMLSelectElement>('rwSize').value), biome: currentBiome }),
+  load: (p) => {
+    if (rwBusy) return
+    $<HTMLInputElement>('rwSeed').value = String(p.seed)
+    rwKeepOpen = false; rwDlg.hidden = false; replayParams = p as unknown as Record<string, unknown>
+    void worldGo().finally(() => { replayParams = undefined })
+  },
 })
 // "Replay all": every recorded step again, in order, from scratch; the output hashes must match the recorded ones
 $<HTMLButtonElement>('replayAll').addEventListener('click', async () => {
