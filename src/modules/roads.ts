@@ -280,7 +280,8 @@ export function roadShapes(roads: Road[]): ProjectShape[] {
   return roads.filter((r) => r.pts.length >= 4).map((r) => ({
     id: r.id,
     kind: 'spline',
-    closed: false,
+    // a ring (first point = last, e.g. a roundabout) is sent closed: an open spline leaves a gap at the seam
+    closed: Math.hypot(r.pts[0] - r.pts[r.pts.length - 2], r.pts[1] - r.pts[r.pts.length - 1]) < 0.5,
     points: centreLine(r.pts, 10).map((v) => Math.round(v * 100) / 100),
     generator: ROAD_TYPES[r.type].generator,
     // the site already shapes the relief: the generator must not reshape it again
