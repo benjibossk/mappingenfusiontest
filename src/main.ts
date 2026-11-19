@@ -2,6 +2,7 @@ import { dedupeLines, densify } from './modules/fenceDedupe'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
+import './ui/kit.css'
 import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
 import { prefabDims } from './library/dims'
 import { bridgeParts } from './modules/bridges3d'
@@ -124,6 +125,7 @@ import { applyPads, layPads } from './modules/pads'
 import { buildingFootprints, Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
 import { mountSeedBrowser } from './ui/seedBrowser'
+import { mountConsole, journal } from './ui/console'
 import { mountLifeEconomy, drawLifeRoute } from './ui/lifeEconomyTab'
 import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, stageTimer, type Pipeline } from './modules/replay'
 let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modules/layers.ts), saved in the project
@@ -159,6 +161,12 @@ function biomeField(id: string) {
   const opts = BIOMES.map((b) => `<option value="${b.id}">${fr ? b.label.fr : b.label.en} · ${t(('biomeAvailability.' + b.availability) as K)}</option>`).join('')
   return `<label class="biomesel"><span class="lbl">${t('biome')}</span><span class="biomeline"><select id="${id}" data-biome>${opts}</select><span class="biomebadge" data-avail="vanilla"></span></span></label>`
 }
+/** a long list: the usual choices first, everything else in a second group (audit A10 / A11) */
+function groupedOptions(all: [string, string][], common: string[]) {
+  const o = ([k, l]: [string, string]) => `<option value="${k}">${l}</option>`
+  return `<optgroup label="${t('opt.common')}">${common.map((k) => all.find((x) => x[0] === k)).filter((x): x is [string, string] => !!x).map(o).join('')}</optgroup>`
+    + `<optgroup label="${t('opt.allTypes')}">${all.filter((x) => !common.includes(x[0])).map(o).join('')}</optgroup>`
+}
 const ICON: Record<string, string> = {
   book: '<path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z"/>',
   lock: '<rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -179,6 +187,7 @@ const ICON: Record<string, string> = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7"/><path d="M12 17h.01"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7h.01"/>',
   search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+  cam: '<path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/>',
 }
 const ic = (n: string, size = 18) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICON[n]}</svg>`
 const info = (k: Key) => `<i class="info" title="${t(k)}" aria-label="${t(k)}" role="img">${ic('info', 13)}</i>`
@@ -243,7 +252,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
       </div>
     </div>
-    <button id="helpFab" type="button" class="hist helpbtn" title="${t('help.tip')} (F1)" aria-label="${t('help.tip')}" aria-haspopup="dialog" aria-keyshortcuts="F1">?</button>
+    <button id="helpFab" type="button" class="hist withlbl helpbtn" title="${t('help.tip')} (F1)" aria-label="${t('help.tip')}" aria-haspopup="dialog" aria-keyshortcuts="F1">${ic('help')}<span>${t('help.short')}</span></button>
   </header>
   <div id="collabBox" class="ctxmenu collabbox" hidden>
     <div class="title">${t('collab.title')}</div>
@@ -351,6 +360,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <span class="kicker">${t('welcome.kicker')}</span>
         <h2>${t('welcome.title2')}</h2>
         <p>${t('welcome.lead')}</p>
+        <button type="button" id="welcomeTour" class="rm-link wtour">${ic('help', 16)}<span>${t('welcome.tour')}</span></button>
       </div>
       <div class="wgroup">
         <span class="wglabel">${t('welcome.g.create')}</span>
@@ -427,12 +437,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
   </section>
 
-  <aside class="side">
+  <button id="sideCollapse" type="button" class="sidecollapse" aria-controls="sidePanel" aria-expanded="true" title="${t('side.hide')}" aria-label="${t('side.hide')}">${ic('caret', 16)}</button>
+  <aside class="side" id="sidePanel">
     <button id="sideToggle" type="button" class="secondary sidetog" aria-expanded="true" aria-controls="tabs">${ic('caret', 14)}<span>${t('side.toggle')}</span></button>
     <ol class="tabs stepper" id="tabs">
       ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.tab === 'camp' ? 'step.fields.short' : s.label)}</span><i class="badge"></i></button></li>`).join('')}
     </ol>
-    <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p></div>
+    <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p><button id="stepHelp" type="button" class="rm-link stephelp">${ic('help', 16)}<span>${t('step.howto')}</span></button></div>
 
     <div class="tab" data-tab="island">
       <div class="row biomerow">${biomeField('pBiome')}</div>
@@ -440,6 +451,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="tGen" type="button">${t('btn.tGen')}</button>
         <button id="tReroll" type="button" class="secondary">${t('btn.tReroll')}</button>
       </div>
+      <details class="adv more"><summary>${t('ui.more')}</summary>
       <div class="row">
         <button id="tRandom" type="button" class="secondary" title="${t('wg.tip')}">${ic('dice', 16)} ${t('btn.tRandom')}</button>
       </div>
@@ -471,6 +483,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="pOpen" type="button" class="secondary">${t('btn.pOpen')}</button>
         <input id="pFile" type="file" accept=".json,application/json" hidden>
       </div>
+      </details>
       ${hint('hint.island')}
     </div>
 
@@ -484,7 +497,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <div class="tab" data-tab="water" hidden>
       <div class="form">
-        <label>${t('lbl.waterType')} <select id="wType">${Object.entries(WATER_TYPES).map(([k, wt]) => `<option value="${k}">${wt.label}</option>`).join('')}</select></label>
+        <label>${t('lbl.waterType')} <select id="wType">${groupedOptions(Object.entries(WATER_TYPES).map(([k, wt]) => [k, wt.label]), ['river', 'lake'])}</select></label>
         <label>${t('lbl.waterWidth')} <input id="wWidth" type="number" step="1" min="2" value="12"></label>
         <label>${t('lbl.waterDepth')} <input id="wDepth" type="number" step="0.5" min="0.5" value="1.5"></label>
       </div>
@@ -497,10 +510,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="row">
         <button id="wGen" type="button" class="secondary">${t('btn.waterGen')}</button>
       </div>
+      <details class="adv"><summary>${t('lbl.waterRipa')}</summary>
       <div class="row">
-        <label class="check"><input id="wRipa" type="checkbox"> ${t('lbl.waterRipa')}</label>
+        <label class="check"><input id="wRipa" type="checkbox"> ${t('ripa.show')}</label>
         <button id="wRipaGen" type="button" class="secondary">${t('btn.waterRipa')}</button>
       </div>
+      </details>
       <details class="adv"><summary>${t('ui.tests')}</summary>
         <button id="wTest" type="button" class="secondary">${t('btn.waterTest')}</button>
       </details>
@@ -526,7 +541,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <div class="tab" data-tab="roads" hidden>
       <div class="form">
-        <label>${t('lbl.roadType')} <select id="roadType">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}">${rt.label}</option>`).join('')}</select></label>
+        <label>${t('lbl.roadType')} <select id="roadType">${groupedOptions(Object.entries(ROAD_TYPES).map(([k, rt]) => [k, rt.label]), ['asphalt', 'asphaltNarrow', 'dirt', 'trailDirt', 'motorway'])}</select></label>
       </div>
       <div class="row">
         <button id="roadNew" type="button">${t('btn.roadNew')}</button>
@@ -607,17 +622,19 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
 
     <div class="tab" data-tab="villages" hidden>
+      <div id="setNeedRoads" class="needprev" hidden><b>${t('need.roads.t')}</b><p>${t('need.roads.p')}</p><button type="button" class="secondary" data-goto-step="roads">${t('need.roads.btn')}</button></div>
       <fieldset class="test">
         <legend>${t('legend.set')}</legend>
+        <details class="adv"><summary>${t('set.options')}</summary>
         <div class="form">
-          <label>${t('lbl.setDensity')} <input id="setDensity" type="number" step="0.1" min="0.1" max="2" value="1"></label>
+          <label class="wide">${t('lbl.setDensity')} <span class="rangeline"><input id="setDensity" type="range" step="0.1" min="0.3" max="2" value="1"><span id="setDensityOut" class="rangeval"></span></span></label>
           <label>${t('lbl.setSeed')} <input id="setSeed" type="number" step="1" value="1"></label>
           <label class="check"><input id="setSquare" type="checkbox" checked> ${t('lbl.setSquare')}</label>
           <label class="check"><input id="setLanes" type="checkbox" checked> ${t('lbl.setLanes')}</label>
           <label class="check"><input id="setPaths" type="checkbox" checked> ${t('lbl.setPaths')}</label>
           <label class="check"><input id="setParcels" type="checkbox"> ${t('lbl.setParcels')}</label>
         </div>
-        <label class="check"><input id="setV2" type="checkbox" checked> ${t('lbl.setV2')} ${info('info.setV2')}</label>
+        <label class="check devonly"><input id="setV2" type="checkbox" checked> ${t('lbl.setV2')} ${info('info.setV2')}</label>
         <div class="form" id="setV2Box">
           <label>${t('lbl.setVariant')} ${info('info.setVariant')} <select id="setVariant"><option value="auto">${t('opt.var.auto')}</option><option value="village">${t('opt.var.village')}</option><option value="town">${t('opt.var.town')}</option></select></label>
           <label>${t('lbl.setMaxStreets')} ${info('info.setMaxStreets')} <input id="setMaxStreets" type="number" min="0" max="10" step="1" value="" placeholder="${t('opt.var.auto')}"></label>
@@ -627,7 +644,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="setPort" type="checkbox" checked> ${t('lbl.setPort')} ${info('info.setPort')}</label>
           <label class="check"><input id="setCompositions" type="checkbox"> ${t('lbl.setCompositions')} ${info('info.setCompositions')}</label>
         </div>
-        <button id="parcelLib" type="button">${t('pc.open')}</button>
+        <button id="parcelLib" type="button" class="secondary">${t('pc.open')}</button>
+        </details>
         ${hint('hint.set')}
         <div class="row">
           <button id="setGen" type="button">${t('btn.setGen')}</button>
@@ -669,9 +687,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label id="zoneLeafRow" hidden>${t('lbl.zoneLeaf')} <select id="zoneLeaf"><option value="auto">${t('leaf.auto')}</option><option value="mixed">${t('leaf.mixed')}</option><option value="needle">${t('leaf.needle')}</option><option value="broad">${t('leaf.broad')}</option></select></label>
         <label id="zoneFactionRow" hidden>${t('lbl.zoneFaction')} <select id="zoneFaction"><option value="US">US</option><option value="USSR">USSR</option><option value="FIA">FIA</option></select></label>
         <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="8"></label>
-        <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
-      ${hint('hint.zoneType')}
       ${hint('hint.zone')}
       <div class="row">
         <button id="generate" type="button">${t('btn.generate')}</button>
@@ -687,15 +703,17 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.minHedge')} <input id="minHedge" type="number" value="15"></label>
         <label>${t('lbl.seed')} <input id="seed" type="number" value="1"></label>
         <label>${t('lbl.prefix')} <input id="prefix" value="CAMP"></label>
+        <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
+      ${hint('hint.zoneType')}
+      <label class="check" title="${t('tip.forestEdge')}"><input id="forestEdge" type="checkbox" checked> ${t('lbl.forestEdge')}</label>
+      ${hint('hint.areas')}
       </details>
       <div class="row">
-        <button id="forestGen" type="button">${t('btn.forestGen')}</button>
+        <button id="forestGen" type="button" class="secondary">${t('btn.forestGen')}</button>
         <button id="forestSend" type="button" class="secondary">${t('btn.forestSend')}</button>
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
-      <label class="inline" title="${t('tip.forestEdge')}"><input id="forestEdge" type="checkbox" checked> ${t('lbl.forestEdge')}</label>
-      ${hint('hint.areas')}
       <details class="adv" id="satBox"><summary>${t('legend.sat')} ${info('info.sat')}</summary>
         <p id="satNone" class="hint">${t('sat.none')}</p>
         <div id="satBody">
@@ -713,27 +731,28 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
 
     <div class="tab" data-tab="wb" hidden>
-      <div class="form">
-        <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
-        <label>${t('lbl.tWorld')} <input id="tWorld" value="Worlds/MG_Test"></label>
-        <p id="ffBiomeInfo" class="hint"></p>
+      <div id="wbGuide" class="wbguide" hidden>
+        <strong>${t('wb.guide.title')}</strong>
+        ${connectSteps()}
+        <div class="row"><button type="button" class="wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button><button id="wbDownload" type="button" class="secondary" title="${t('wb.download.tip')}">${ic('folder', 14)} ${t('wb.download')}</button></div>
       </div>
-      <fieldset class="test">
-        <legend>${t('legend.check')}</legend>
+      <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
+      <details class="adv" id="checkBox"><summary>${t('legend.check')}</summary>
         ${hint('hint.check')}
         <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <p id="checkDensity" class="hint"></p>
         <button id="checkFixAll" type="button" class="secondary" hidden></button>
         <ul id="checkList" class="issues"></ul>
-      </fieldset>
-      <div id="wbGuide" class="wbguide" hidden>
-        <strong>${t('wb.guide.title')}</strong>
-        ${connectSteps()}
-        <div class="row"><button type="button" class="wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button><button id="wbDownload" type="button" class="secondary" title="${t('wb.download.tip')}">${ic('folder', 14)} ${t('wb.download')}</button></div>
+      </details>
+      <details class="adv" id="wbProject"><summary>${t('wb.project')}</summary>
+      <div class="form">
+        <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
+        <label>${t('lbl.tWorld')} <input id="tWorld" value="Worlds/MG_Test"></label>
+        <p id="ffBiomeInfo" class="hint"></p>
       </div>
       <div id="modsBox"></div><pre id="modDeps" class="hint" hidden></pre>
-      <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
+      </details>
       <details class="adv"><summary>${t('ui.manual')}</summary>
         <ol class="steps">
           <li><button id="tSurf" type="button" class="secondary">${t('btn.tSurf')}</button><span class="hint">${t('wb.closed')}</span></li>
@@ -945,10 +964,15 @@ let camTimer = 0
 const camBtn = document.createElement('button')
 const camInfo = document.createElement('span')
 camBtn.type = 'button'
+camBtn.id = 'camBtn'
+camBtn.className = 'hist withlbl camtog'
 camInfo.className = 'cam-readout'
-camInfo.style.marginLeft = '6px'
 camInfo.hidden = true
-function camLabel() { camBtn.textContent = (camTimer ? '◉ ' : '○ ') + t('cam.toggle'); camBtn.title = t('cam.tip') }
+function camLabel() {
+  camBtn.innerHTML = `${ic('cam')}<span>${t('cam.toggle')}</span>`
+  camBtn.classList.toggle('active', !!camTimer); camBtn.setAttribute('aria-pressed', String(!!camTimer))
+  camBtn.title = t('cam.tip'); camBtn.setAttribute('aria-label', t('cam.toggle'))
+}
 function stopCam() {
   if (camTimer) clearInterval(camTimer)
   camTimer = 0
@@ -979,7 +1003,9 @@ camBtn.addEventListener('click', () => {
   startCam()
 })
 startCam() // on by default (Benji, 2026-11-19); the button turns it off
-statusEl.after(camBtn, camInfo)
+statusEl.after(camBtn)
+// the live readout goes to the status bar (mono line at the bottom), not the header
+document.querySelector('.statusbar #cursor')?.after(camInfo)
 
 function drawWbCamera() {
   if (!wbCam) return
@@ -1525,6 +1551,8 @@ setTool('zone')
 
 /** heights before the current stroke, to tell how much it changed (feedback once released) */
 let strokeBefore: number[] | null = null
+/** strokes that changed the ground (step 2 "Sculpter" is done once there is at least one) */
+let sculptStrokes = 0
 function strokeFeedback() {
   const before = strokeBefore
   strokeBefore = null
@@ -1533,6 +1561,7 @@ function strokeFeedback() {
   const h = island.heights
   for (let i = 0; i < h.length; i++) { const d = h[i] - before[i]; if (d > up) up = d; if (-d > down) down = -d }
   const v = { up: up.toFixed(1), down: down.toFixed(1) }
+  if (up >= 0.05 || down >= 0.05) { sculptStrokes++; refreshSteps() }
   logEl.textContent = up < 0.05 && down < 0.05 ? t('brush.none')
     : tool() === 'raise' ? t('brush.up', v) : tool() === 'lower' || tool() === 'sea' ? t('brush.down', v) : t('brush.done', v)
 }
@@ -2454,7 +2483,7 @@ function stepSigs(): string[] {
   const relief = terrain || island ? `${oid(terrainImg)}` : ''
   return [
     relief,
-    relief,
+    relief && sculptStrokes ? `${sculptStrokes}` : '',
     waters.length || rivers ? `${waters.length}:${ptsSum(waters)}:${oid(rivers)}` : '',
     roads.length || powerLines.length ? `${roads.length}:${ptsSum(roads)}:${powerLines.length}:${ptsSum(powerLines.map((l) => ({ pts: l.path })))}` : '',
     settled.length || zones.length ? `${settled.length}:${oid(settled)}:${zones.map((z) => z.id).join(',')}` : '',
@@ -2463,7 +2492,7 @@ function stepSigs(): string[] {
   ]
 }
 // which steps each step is built on
-const UP: number[][] = [[], [], [0], [0, 2], [0, 3], [0, 3, 4], []]
+const UP: number[][] = [[], [0], [0], [0, 2], [0, 3], [0, 3, 4], []]
 const doneSnap: (string | null)[] = STEPS.map(() => null)
 const ownSnap: string[] = STEPS.map(() => '')
 function refreshSteps() {
@@ -2484,8 +2513,13 @@ function refreshSteps() {
     } else { ownSnap[i] = ''; doneSnap[i] = null }
     const b = btns[i]
     b.dataset.state = state
+    // a step whose base is missing: greyed, the tooltip says what to do first (it stays clickable)
+    const miss: number = i === 4 && !sig[3] ? 3 : i > 0 && i < 6 && !sig[0] ? 0 : -1
+    const missLabel = miss >= 0 ? t((STEPS as readonly { label: K }[])[miss].label) : ''
+    if (missLabel) b.dataset.blocked = missLabel; else delete b.dataset.blocked
+    if (i === 4) { const need = document.getElementById('setNeedRoads'); if (need) need.hidden = !!sig[3] }
     b.title = `${t(s.lead)}
-${t(`step.state.${state}`)}`
+${missLabel ? t('step.blocked', { s: missLabel }) : t(`step.state.${state}`)}`
   })
 }
 // step header (title + one-line explanation) and Previous / Next
@@ -2499,6 +2533,8 @@ function showStep(tab: string) {
   $<HTMLButtonElement>('stepPrev').disabled = i === 0
   $<HTMLButtonElement>('stepNext').hidden = i === STEPS.length - 1
   $<HTMLButtonElement>('stepRegen').hidden = !REGEN[tab]
+  document.querySelector<HTMLElement>('.app')!.dataset.step = tab
+  if (tab === 'villages') document.getElementById('setDensity')?.dispatchEvent(new Event('input')) // value may come from a loaded project
   try { localStorage.setItem('reforger-mapper.step', tab) } catch { /* private window */ }
 }
 const goStep = (d: number) => {
@@ -2515,6 +2551,18 @@ $<HTMLButtonElement>('sideToggle').addEventListener('click', (e) => {
   const min = document.querySelector('.app')!.classList.toggle('side-min')
   ;(e.currentTarget as HTMLButtonElement).setAttribute('aria-expanded', String(!min))
 })
+// desktop: the side panel folds away completely (map full width), remembered between sessions
+{
+  const K = 'reforger-mapper.sideClosed', app = document.querySelector<HTMLElement>('.app')!, b = $<HTMLButtonElement>('sideCollapse')
+  const set = (closed: boolean) => {
+    app.classList.toggle('side-closed', closed)
+    const lbl = t(closed ? 'side.show' : 'side.hide')
+    b.title = lbl; b.setAttribute('aria-label', lbl); b.setAttribute('aria-expanded', String(!closed))
+    try { localStorage.setItem(K, closed ? '1' : '0') } catch { /* private window */ }
+  }
+  try { if (localStorage.getItem(K) === '1') set(true) } catch { /* */ }
+  b.addEventListener('click', () => set(!app.classList.contains('side-closed')))
+}
 // map hint (bottom centre): can be hidden for good
 {
   const K = 'reforger-mapper.mapHint'
@@ -2604,6 +2652,7 @@ let busyT0 = 0, busyTick = 0, busyName = ''
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)))
 /** toasts: bottom centre of the map, newest at the bottom, 3 at most; success/info fade after 4 s, errors stay until closed */
 function toast(msg: string, kind: 'ok' | 'err' | 'info' = 'ok', action?: { label: string; run: () => void }, ms = 4000) {
+  journal(msg, kind)
   const box = $('toast')
   const it = document.createElement('div')
   it.className = 'toastitem'; it.dataset.kind = kind
@@ -2698,6 +2747,7 @@ const MINI: Record<Entry, [string, Key][]> = {
   open: [['#tabs', 'mt.steps'], ['#tabs [data-tab="wb"]', 'mt.send']],
   join: [['#collabBox', 'mt.collab'], ['#tabs', 'mt.steps']],
 }
+let autoTour = false
 function coachAfter(kind: Entry) {
   if (entry !== kind) return
   entry = null
@@ -2721,12 +2771,44 @@ function coachAfter(kind: Entry) {
     next.textContent = t('coach.next', { s: t(STEPS[at].label) })
     next.onclick = () => { el.hidden = true; btns[at]?.click() }
     $<HTMLButtonElement>('coachTour').onclick = () => { el.hidden = true; runTour(MINI[kind]) }
+    if (autoTour) { autoTour = false; runTour(MINI[kind]); return }
     el.hidden = false
     if (kind !== 'join') next.focus()
   }
   setTimeout(render, 0)
 }
 $<HTMLButtonElement>('coachClose').addEventListener('click', () => { $('coach').hidden = true })
+$<HTMLButtonElement>('welcomeTour').addEventListener('click', () => { autoTour = true; document.querySelector<HTMLButtonElement>('#welcome [data-go="tGen"]')?.click() })
+$<HTMLButtonElement>('stepHelp').addEventListener('click', () => openHelp())
+document.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((b) => b.addEventListener('click', () => document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${b.dataset.gotoStep}"]`)?.click()))
+{
+  // audit A8: one send, at step 7; a step's own send stays reachable under "Partial send" at the bottom of the step
+  // the off-map terrain ring belongs to sending: step 7, folded
+  { const row = document.getElementById('outsideRow'), wb = document.querySelector('.tab[data-tab="wb"]'), proj = document.getElementById('wbProject')
+    if (row && wb) { const d = document.createElement('details'); d.className = 'adv'; d.innerHTML = `<summary>${t('outside.title')}</summary>`; d.appendChild(row); wb.insertBefore(d, proj) } }
+  for (const id of ['wSend', 'roadSend', 'setSend', 'zoneSend', 'forestSend']) {
+    const btn = document.getElementById(id); const tab = btn?.closest<HTMLElement>('.tab'); if (!btn || !tab) continue
+    let box = tab.querySelector<HTMLDetailsElement>(':scope > details.partial')
+    if (!box) { box = document.createElement('details'); box.className = 'adv partial'; box.innerHTML = `<summary>${t('send.partial')}</summary><p class="hint">${t('send.partial.p')}</p>`; tab.appendChild(box) }
+    const row = btn.parentElement?.classList.contains('row') && btn.parentElement.children.length === 1 ? btn.parentElement : null
+    btn.classList.add('secondary'); box.appendChild(row ?? btn)
+  }
+  // audit A10 / A11: "Test tools" only for developers (localStorage reforger-mapper.dev = 1)
+  let dev = false; try { dev = localStorage.getItem('reforger-mapper.dev') === '1' } catch { /* */ }
+  document.documentElement.classList.toggle('rm-dev', dev)
+  // form labels written "Label (i) <input>": label text and its (i) on one line, the field below
+  document.querySelectorAll<HTMLLabelElement>('.form > label:not(.check)').forEach((lb) => {
+    const field = lb.querySelector(':scope > input, :scope > select, :scope > .rangeline'); if (!field || !lb.querySelector(':scope > .info')) return
+    const head = document.createElement('span'); head.className = 'lblhead'
+    while (lb.firstChild && lb.firstChild !== field) head.appendChild(lb.firstChild)
+    lb.insertBefore(head, field)
+  })
+  // village density as a slider with words: few / normal / many
+  const dens = $<HTMLInputElement>('setDensity'), densOut = $('setDensityOut')
+  const densTxt = () => { const v = Number(dens.value); densOut.textContent = `${v < 0.75 ? t('dens.sparse') : v <= 1.25 ? t('dens.normal') : t('dens.dense')} · ×${v.toFixed(1)}` }
+  dens.addEventListener('input', densTxt); densTxt()
+  if (!dev) document.querySelectorAll<HTMLElement>('.side details.adv > summary').forEach((sm) => { if (sm.textContent?.trim() === t('ui.tests')) sm.parentElement!.hidden = true })
+}
 $('coach').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('coach').hidden = true })
 $<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { entry = 'join'; coachAfter('join'); if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
 // Mode Atelier (src/atelier/): own full-screen layout, loaded on demand; reopened after a language switch
@@ -2819,6 +2901,7 @@ function islandProject() {
     powerAccess,
     biome: currentBiome,
     layers: layerMap,
+    sculptStrokes,
   }
 }
 function layersUi() {
@@ -2856,6 +2939,8 @@ function loadProject(p: any) {
   const macro = new Float32Array(unb64(p.macro).buffer)
   if (macro.length !== sculpt.macro.length) throw new Error(t('err.gridMismatch'))
   sculpt.macro.set(macro)
+  // step 2 state survives a reload; older projects: a macro grid that is not flat means it was sculpted
+  sculptStrokes = typeof p.sculptStrokes === 'number' ? p.sculptStrokes : macro.some((v) => Math.abs(v) > 1e-3) ? 1 : 0
   sink = p.sink ? unb64(p.sink) : undefined
   roads = Array.isArray(p.roads) ? p.roads : []
   sites = Array.isArray(p.sites) ? p.sites.filter((x: Site) => x && x.kind) : []
@@ -4934,6 +5019,7 @@ $<HTMLButtonElement>('oneClick').addEventListener('click', () => {
 })
 // seed explorer (ui/seedBrowser.ts): a card click runs the world pipeline with that seed's exact params
 // "Économie Life" (ui/lifeEconomyTab.ts): RP chains over the road graph, read-only unless "Appliquer" is clicked
+mountConsole({ stepName: () => document.getElementById('stepTitle')?.textContent ?? '' })
 mountLifeEconomy({
   world: () => ({ roads, zones, sites, fields: result?.fields, crops: result?.crops }),
   redraw: () => draw(),

@@ -125,3 +125,31 @@
 #atJournal { color: var(--tx-2); }
 @media (max-width: 760px) { .at-proj, .at-brand { display: none; } .at-wb { font-size: 0; gap: 0; padding: 0 12px; } }
 .at-top > *, .at-nav > * { align-self: center; }
+
+/* ---------- Style Reforger (même règles que src/ui/kit.css) ---------- */
+.atelier, .atelier :is(button, h3, h4, label, summary, th, span, b, em, small, .at-brand, .at-proj, .at-wb) { text-transform: none !important; letter-spacing: .01em !important; }
+.atelier :is(.at-proj, .at-wb, .at-steps button b) { font-family: var(--f-body); }
+.atelier .at-brand { font-weight: 700; font-size: 18px; color: var(--tx-1); text-transform: uppercase !important; letter-spacing: .06em !important; }
+.atelier button { border-radius: 0; font-size: 14px; font-family: var(--f-body); font-weight: 500; white-space: nowrap; }
+.atelier button.secondary { background: #2A2C2E; border-color: #2A2C2E; color: var(--tx-1); }
+.atelier button.secondary:hover:not(:disabled) { border-color: var(--amber); }
+/* onglets A0–A6 : actif plein ambre, texte sombre (comme le générateur) */
+.at-steps button { font-size: 13px; }
+.at-steps button.active { background: var(--amber) !important; border-color: var(--amber) !important; color: #111 !important; }
+.at-steps button.active b { color: #111; }
+/* barre du haut : une ligne qui ne déborde jamais (le nom du projet se coupe) */
+.at-top { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+.at-top > * { flex: none; }
+.at-top .at-proj { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-top .at-sp { flex: 1 1 0; min-width: 0; }
+/* téléphone : onglets en bande défilante, panneau pleine largeur, pas de défilement horizontal de la page */
+@media (max-width: 760px) {
+  .atelier { overflow-x: hidden; }
+  .at-steps { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .at-steps > li { flex: none; }
+  .at-steps button { padding: 6px 10px; }
+  .at-main, .at-side { min-width: 0; max-width: 100vw; }
+  .at-top .at-langsel { display: none; }
+}
+.atelier { grid-template-columns: minmax(0, 1fr); }
+.at-left button { white-space: normal; text-align: left; line-height: 1.25; }

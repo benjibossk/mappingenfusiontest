@@ -23,6 +23,8 @@ const repoPacks: AssetPack[] = []
 const loadErrors: string[] = []
 for (const [path, raw] of Object.entries(import.meta.glob('/library/*.json', { eager: true, query: '?raw', import: 'default' }))) {
   if (path.endsWith('/compositions-vanilla.json')) continue // already built in (COMPOSITIONS_PACK)
+  // other data files live in /library too (prefabs-catalogue, prefabs-captions): only files that declare a pack format are packs
+  try { const j = JSON.parse(raw as string) as { format?: unknown }; if (typeof j !== 'object' || j === null || !('format' in j)) continue } catch { /* not JSON: let importPack report it */ }
   try { repoPacks.push(importPack(raw as string)) } catch (e) { loadErrors.push(`${path}: ${(e as Error).message.split('\n')[0]}`) }
 }
 // Workshop mod registries (library/mods), browsable whether or not they are ticked for the generators

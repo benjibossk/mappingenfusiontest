@@ -49,3 +49,12 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 var(--
 #f-compo-sel { max-width: 200px; }
 .lb-tabs .lb-check { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .lb-dl { display: block; margin-top: 6px; cursor: pointer; text-decoration: underline; }
+
+/* ---------- Style Reforger (même règles que src/ui/kit.css) ---------- */
+:root { --f-head: 'Roboto Condensed', 'Arial Narrow', sans-serif; --f-body: 'Roboto Condensed', 'Arial Narrow', sans-serif; --f-mono: 'Roboto Condensed', 'Arial Narrow', sans-serif; --r: 0; --bg: #141516; --panel: #232527; --panel-2: #1C1D1E; --acc: #E1A12E; }
+:is(h1, h2, h3, button, label, .lb-back, .k, summary) { text-transform: none !important; letter-spacing: .01em !important; }
+.lb-head h1 { font-weight: 700; }
+.lb-tabs button.on, .lb-tabs button[aria-selected="true"], .lb-tabs button.active { background: var(--acc); border-color: var(--acc); color: #111; }
+.lb-list .n { font-family: ui-monospace, monospace; }
+label.lb-import { white-space: normal; height: auto; min-height: 32px; line-height: 1.25; }
+label.lb-import input[type=file] { max-width: 100%; }

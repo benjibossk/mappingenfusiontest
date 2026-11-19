@@ -1,0 +1,411 @@
+/* =====================================================================
+   Kit UI v2 — chargé APRÈS style.css (main.ts). Une seule source pour :
+   tokens d'espacement / taille, barre du haut, boutons, champs, tableaux,
+   badges, tiroirs (panneaux d'outils), panneau latéral.
+   Règle : pas de couleur en dur ici, seulement les tokens MILSPEC de style.css.
+   ===================================================================== */
+:root {
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
+  --h-sm: 28px; --h-md: 34px; --h-lg: 40px;
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 14px; --fs-lg: 16px;
+  --side-w: 360px;
+  --scrim: rgba(6, 7, 8, .72);
+  --shadow-raised: inset 0 1px 0 rgba(234, 237, 239, .05), 0 8px 24px rgba(0, 0, 0, .55);
+}
+
+/* ---------- boutons : jamais de texte qui sort du cadre ---------- */
+button { min-width: 0; }
+button .ic { flex: none; }
+:is(.top, .rm-drawer, #seedBrowser, .stepnav) button { white-space: nowrap; }
+:is(.top, .rm-drawer) button > span { overflow: hidden; text-overflow: ellipsis; }
+/* bouton texte (action secondaire discrète) */
+button.rm-link { background: transparent; border-color: transparent; color: var(--tx-3); height: var(--h-sm); padding: 0 var(--sp-2); }
+button.rm-link:hover:not(:disabled) { background: transparent; border-color: transparent; color: var(--amber-hi); text-decoration: underline; text-underline-offset: 3px; }
+/* bouton icône seule */
+button.rm-icon { width: var(--h-md); height: var(--h-md); padding: 0; background: transparent; border-color: transparent; color: var(--tx-3); }
+button.rm-icon:hover:not(:disabled) { background: var(--ink-4); border-color: var(--line-2); color: var(--tx-1); }
+
+/* ---------- barre du haut : une seule ligne, se replie par paliers ---------- */
+.app > .top { container: top / inline-size; min-width: 0; flex-wrap: nowrap; gap: var(--sp-2); }
+.top > * { flex: none; }
+.top > .grow { flex: 1 1 0; min-width: var(--sp-2); }
+.top #collabInfo { flex: 0 1 auto; }
+.top .hist.withlbl { width: auto; height: var(--h-md); padding: 0 10px; gap: 6px; display: inline-flex; align-items: center; }
+.top .hist.withlbl > span { font: 500 var(--fs-sm) var(--f-head); letter-spacing: .08em; text-transform: uppercase; }
+.top .status { flex: 0 1 auto; min-width: 34px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* bouton caméra Workbench : même famille que les autres, plus de gros bouton ambre sur 2 lignes */
+.top .camtog { color: var(--tx-3); }
+.top .camtog.active { color: var(--amber-hi); border-color: transparent; box-shadow: none; }
+.top .camtog.active .ic { filter: drop-shadow(0 0 4px rgba(224, 162, 51, .5)); }
+/* séparateur visuel entre le groupe "projet" (gauche) et "actions" (droite) */
+.top #oneClick { margin-left: var(--sp-1); }
+.top .langsel { margin-left: var(--sp-1); }
+
+/* palier 1 : les actions secondaires passent en icône seule (le libellé reste dans le title / aria-label),
+   « Relief en un clic » et « Partager » gardent leur libellé */
+@container top (max-width: 1800px) {
+  .langbtn .lname, .langbtn .lpct { display: none; }
+  .top :is(#camBtn, #replayAll, #seedBrowserBtn, #lifeEcoBtn, #libBtn).withlbl { width: var(--h-md); padding: 0; justify-content: center; }
+  .top :is(#camBtn, #replayAll, #seedBrowserBtn, #lifeEcoBtn, #libBtn).withlbl > span { display: none; }
+}
+/* palier 2 : toutes les actions en icône */
+@container top (max-width: 1200px) {
+  .top .hist.withlbl { width: var(--h-md); padding: 0; justify-content: center; }
+  .top .hist.withlbl > span { display: none; }
+}
+/* palier 3 : badge de version et nom de l'app masqués, puce Workbench réduite au point */
+@container top (max-width: 940px) {
+  .top .verbadge, .top .brand span, .top #collabInfo { display: none; }
+  .top .status { box-sizing: border-box; width: 30px; min-width: 30px; max-width: 30px; padding: 0; justify-content: center; font-size: 0; gap: 0; }
+}
+/* palier 4 (téléphone) : les outils avancés (puce Workbench, caméra, rejouer, graines, économie) sortent de la barre */
+@container top (max-width: 600px) {
+  .top :is(#camBtn, #replayAll, #seedBrowserBtn, #lifeEcoBtn, .status) { display: none; }
+  .top .hist, .top .hist.withlbl { width: 32px; }
+  .langbtn > svg:last-child { display: none; }
+}
+
+/* calques : le champ fichier de l'image à décalquer ne déborde plus */
+label.check:has(#traceFile) { display: flex; flex-wrap: wrap; gap: 4px; }
+#traceFile { width: 100%; min-width: 0; font-size: var(--fs-sm); }
+
+/* lecture de la caméra : dans la barre d'état du bas */
+.statusbar .cam-readout { color: var(--tx-3); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ---------- panneau latéral ---------- */
+.side .row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.side .row > button { flex: 1 1 0; min-width: 0; min-height: var(--h-lg); padding: 6px 10px; white-space: normal; text-wrap: balance; text-align: center; letter-spacing: .06em; }
+.side .row > select { flex: 1 1 100%; min-height: var(--h-md); }
+/* tableau de comparaison de carte de référence */
+.ref-stats { width: 100%; border-collapse: collapse; font: var(--fs-sm)/1.35 var(--f-body); color: var(--tx-2); font-variant-numeric: tabular-nums; }
+.ref-stats th { font: 500 var(--fs-xs) var(--f-head); letter-spacing: .1em; text-transform: uppercase; color: var(--tx-4); text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line-2); }
+.ref-stats td { padding: 3px 6px; border-bottom: 1px solid var(--line-1); text-align: right; white-space: nowrap; }
+.ref-stats td:first-child { text-align: left; color: var(--tx-3); white-space: normal; }
+#refStats small { display: block; margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--tx-4); }
+
+/* ---------- champs ---------- */
+.rm-field { display: inline-flex; align-items: center; gap: var(--sp-2); font: 500 var(--fs-xs) var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--tx-4); }
+.rm-range { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--tx-4); }
+.rm-range input { width: 56px; }
+input[type=number] { height: var(--h-sm); box-sizing: border-box; padding: 0 6px; font-variant-numeric: tabular-nums; }
+select { height: var(--h-sm); box-sizing: border-box; }
+
+/* ---------- tableau de données ---------- */
+.rm-table { width: 100%; border-collapse: collapse; font: var(--fs-md)/1.3 var(--f-body); color: var(--tx-2); font-variant-numeric: tabular-nums; }
+.rm-table th { position: sticky; top: 0; z-index: 1; background: var(--ink-2); font: 500 var(--fs-xs) var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--tx-4); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.rm-table td { padding: 6px 10px; border-bottom: 1px solid var(--line-1); vertical-align: middle; }
+.rm-table .num { text-align: right; white-space: nowrap; }
+.rm-table .strong { color: var(--tx-1); font-weight: 600; }
+.rm-table td.name b { display: block; white-space: nowrap; color: var(--tx-1); font-weight: 500; }
+.rm-table td.name small { display: block; font: var(--fs-xs) var(--f-mono); color: var(--tx-4); letter-spacing: .02em; }
+.rm-table tbody tr[data-i] { cursor: pointer; }
+.rm-table tbody tr[data-i]:hover { background: var(--ink-3); }
+.rm-table tbody tr.sel { background: var(--ink-4); box-shadow: inset 2px 0 0 var(--amber); }
+.rm-table tbody tr.off { color: var(--tx-4); }
+.rm-table tbody tr.off td.name b { color: var(--tx-4); }
+.rm-table input[type=number] { width: 68px; text-align: right; }
+.rm-table select { min-width: 96px; }
+.rm-table.compact td { padding: 4px 10px; }
+.rm-table.compact input[type=number] { width: 60px; }
+.rm-table tr.det td { background: var(--ink-3); padding: 8px 10px 10px 12px; box-shadow: inset 2px 0 0 var(--amber); }
+.rm-table tr.det dl { display: flex; flex-wrap: wrap; gap: var(--sp-5); margin: 0; }
+.rm-table tr.det dt { font: 500 var(--fs-xs) var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--tx-4); }
+.rm-table tr.det dd { margin: 2px 0 0; color: var(--tx-1); }
+
+/* ---------- badges d'état (couleur + texte, jamais la couleur seule) ---------- */
+.rm-badge { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+  padding: 2px 8px; border: 1px solid var(--line-2); border-radius: var(--r); font: var(--fs-xs) var(--f-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--tx-3); }
+.rm-badge[data-tone="ok"] { border-color: var(--green); color: var(--green-hi); }
+.rm-badge[data-tone="warn"] { border-color: var(--amber-lo); color: var(--amber-hi); }
+.rm-badge[data-tone="bad"] { border-color: var(--red); color: var(--red-hi, #E58A80); }
+.rm-badge[data-tone="off"] { border-style: dashed; color: var(--tx-4); text-transform: none; }
+
+/* ---------- tiroir : panneau d'outil ancré en bas de la carte (la carte reste visible) ---------- */
+.rm-drawer { position: fixed; z-index: 40; left: var(--sp-2); right: calc(var(--side-w) + var(--sp-2)); bottom: 34px; max-height: min(62vh, 640px);
+  display: flex; flex-direction: column; background: var(--ink-2); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--shadow-raised); color: var(--tx-2); }
+.rm-drawer[hidden] { display: none; }
+.rm-drawer-head { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line-1); }
+.rm-drawer-head h2 { margin: 0; font: 600 var(--fs-lg) var(--f-head); letter-spacing: .08em; text-transform: uppercase; color: var(--tx-1); white-space: nowrap; }
+.rm-drawer-head > button:not(.rm-icon) { height: var(--h-md); padding: 0 var(--sp-4); }
+.rm-meta { font: var(--fs-xs) var(--f-mono); color: var(--tx-4); letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line-1); }
+.rm-toolbar .check { font-size: var(--fs-md); }
+.rm-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.rm-sec { border-top: 1px solid var(--line-1); }
+.rm-sec > summary { cursor: pointer; padding: var(--sp-2) var(--sp-4); font: 500 var(--fs-xs) var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--tx-3); list-style: none; display: flex; align-items: center; gap: var(--sp-2); }
+.rm-sec > summary::-webkit-details-marker { display: none; }
+.rm-sec > summary::before { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform var(--dur-fast, 90ms); }
+.rm-sec[open] > summary::before { transform: rotate(45deg); }
+.rm-sec[open] > summary { color: var(--tx-1); }
+.rm-sec > :not(summary) { margin: 0 var(--sp-4) var(--sp-3); }
+.rm-sec > .rm-table { width: calc(100% - 2 * var(--sp-4)); }
+.rm-sec p.rm-meta { white-space: normal; }
+#lifeEco { max-width: 1100px; }
+@media (max-width: 1100px) { .rm-drawer { right: calc(320px + var(--sp-2)); } }
+@media (max-width: 760px) { .rm-drawer { left: 0; right: 0; bottom: 26px; max-height: 70vh; } .rm-table td.name small { display: none; } }
+
+/* le toast passe en haut de la carte quand un tiroir est ouvert (sinon il le recouvre) */
+body:has(.rm-drawer:not([hidden])) .toast { top: 72px; bottom: auto; }
+
+/* ---------- explorateur de graines : mêmes tokens que le reste ---------- */
+#seedBrowser { background: var(--ink-2); color: var(--tx-2); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--shadow-raised); font: var(--fs-md) var(--f-body); }
+#seedBrowser header { border-bottom-color: var(--line-1); }
+#seedBrowser header h2 { font: 600 var(--fs-lg) var(--f-head); letter-spacing: .08em; text-transform: uppercase; color: var(--tx-1); }
+#seedBrowser header > button, #seedBrowser .sbf button { height: var(--h-md); padding: 0 var(--sp-4); }
+#seedBrowser .sbf { border-bottom-color: var(--line-1); }
+#seedBrowser .sbc { border: 1px solid var(--line-1); border-radius: var(--r); background: var(--ink-3); }
+#seedBrowser .sbc:hover { border-color: var(--amber); }
+#seedBrowser .sbc img { border-radius: 0; }
+#seedBrowser .sbc b { font: 500 var(--fs-md) var(--f-head); letter-spacing: .06em; color: var(--tx-1); }
+#seedBrowser .tags span { background: transparent; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--tx-3); font: var(--fs-xs) var(--f-mono); }
+
+/* =====================================================================
+   Thème « Reforger » — calqué sur les menus du jeu (menu principal, Admin Menu,
+   Paramètres) : police condensée en casse normale, panneaux anthracite
+   translucides, angles droits, ambre pour l'onglet actif / la ligne
+   sélectionnée / les touches, liste à lignes alternées.
+   Hypothèse : la police du jeu n'est pas publique, Roboto Condensed est l'équivalent
+   le plus proche disponible sur Google Fonts.
+   ===================================================================== */
+:root {
+  --f-head: 'Roboto Condensed', 'Arial Narrow', sans-serif;
+  --f-body: 'Roboto Condensed', 'Arial Narrow', sans-serif;
+  --amber: #E1A12E; --amber-hi: #F2B84B; --amber-lo: #A87316;
+  --panel: rgba(28, 29, 30, .92);
+  --panel-solid: #1C1D1E;
+  --row-alt: rgba(255, 255, 255, .025);
+  --row-hover: rgba(225, 161, 46, .10);
+  --line-1: #2C2E30; --line-2: #3B3E41;
+  --tx-1: #F2F2F2; --tx-2: #D4D6D8; --tx-3: #A9ADB1; --tx-4: #82878C;
+  font-family: var(--f-body);
+}
+/* casse normale partout, comme dans le jeu (seul le logo reste en capitales) */
+.app :is(button, h1, h2, h3, h4, label, summary, th, legend, .kicker, .lbl, .wglabel, em, small, .statusbar, .rm-field, .rm-badge, dt),
+.rm-drawer :is(button, h2, th, summary, label, dt), #seedBrowser :is(button, h2),
+.statusbar { text-transform: none !important; letter-spacing: .01em !important; }
+.top .brand, .top .brand span { text-transform: uppercase !important; letter-spacing: .06em !important; font-weight: 700; }
+button { font-weight: 500; font-size: 14px; }
+h1, h2, h3, .stephead h2, .welcome .whead h2 { font-weight: 700; }
+
+/* panneaux : anthracite translucide, angles droits, bord fin */
+.app > .top, .app > .side, .rm-drawer, #seedBrowser, .langmenu, .helppanel, .newspanel, .mapdock, .layers, .dlg, dialog {
+  border-radius: 0; }
+.app > .top { background: var(--panel); border-color: var(--line-1); }
+.app > .side { background: var(--panel-solid); }
+.rm-drawer, #seedBrowser { background: var(--panel); backdrop-filter: blur(6px); }
+
+/* boutons : secondaire = gris plein, principal = ambre plein, survol = liseré ambre */
+button.secondary, .side button.secondary { background: #2A2C2E; border-color: #2A2C2E; color: var(--tx-1); }
+button.secondary:hover:not(:disabled), .side button.secondary:hover:not(:disabled) { background: #33363A; border-color: var(--amber); color: var(--tx-1); }
+button:not(.secondary):not(.hist):not(.rm-link):not(.rm-icon):not(.brand):not(.langbtn):not(.verbadge) { border-radius: 0; }
+
+/* onglets / étapes : onglet actif plein ambre, texte sombre (Admin Menu / Paramètres) */
+.stepper button { background: #232527; border-color: transparent; color: var(--tx-3); font-size: 12px; }
+.stepper button:hover:not(:disabled) { background: #2C2F31; border-color: transparent; color: var(--tx-1); }
+.stepper button.active, .stepper button.active:hover { background: var(--amber); border-color: var(--amber); color: #111; }
+.stepper button.active b { border-color: #111; color: #111; background: transparent; }
+.stepper button.active[data-state="done"] b { background: #111; border-color: #111; color: transparent; }
+.stepper button.active[data-state="done"] b::after { color: var(--amber); }
+
+/* tableaux / listes : lignes alternées, ligne choisie liserée d'ambre */
+.rm-table tbody tr[data-i]:nth-child(odd), .ref-stats tr:nth-child(even) { background: var(--row-alt); }
+.rm-table tbody tr[data-i]:hover { background: var(--row-hover); }
+.rm-table tbody tr.sel { background: rgba(225, 161, 46, .14); box-shadow: inset 0 0 0 1px var(--amber); }
+.rm-table th { background: var(--panel-solid); color: var(--tx-3); font-size: var(--fs-sm); }
+.rm-sec > summary, .rm-field, .rm-table tr.det dt { font-size: var(--fs-sm); color: var(--tx-3); }
+
+/* champs : fond noir, bord fin, focus ambre */
+input, select, textarea { border-radius: 0; background: #121314; border-color: var(--line-2); }
+
+/* étiquettes de section du panneau (« Biome », kicker d'étape) : gris clair, pas de mono */
+.kicker { font-family: var(--f-body); color: var(--amber); font-size: 13px; font-weight: 500; }
+.form label, .side .row > label, .biomesel .lbl { font-size: 13px !important; color: var(--tx-3) !important; }
+
+/* barre d'état = barre des touches du jeu : libellés clairs */
+.statusbar { font-family: var(--f-body); font-size: 12px; color: var(--tx-3); }
+
+/* cartes d'accueil = tuiles du menu principal : titre en bas à gauche, liseré ambre au survol */
+.welcome .choices button { border-radius: 0; }
+.welcome .choices button:hover:not(:disabled), .welcome .choices button.rec { border-color: var(--amber); }
+.welcome .choices strong { font-weight: 700; font-size: 22px; }
+.welcome .choices strong, .top .hist.withlbl > span { text-transform: none !important; letter-spacing: .01em !important; }
+.top .hist.withlbl > span { font-size: 14px; }
+.top .status, .rm-badge, .rm-meta, .welcome .choices em, .biomebadge { font-family: var(--f-body) !important; letter-spacing: .01em !important; }
+.rm-badge, .biomebadge { font-size: 12px; text-transform: none !important; }
+
+/* ---------- panneau latéral rétractable (bureau) ---------- */
+.app { --side-w: 360px; }
+@media (max-width: 1100px) { .app { --side-w: 320px; } }
+.sidecollapse { position: fixed; z-index: 30; top: 50%; right: var(--side-w); transform: translateY(-50%);
+  width: 18px; height: 64px; padding: 0; background: var(--panel-solid); border: 1px solid var(--line-2); border-right: 0; border-radius: 0; color: var(--tx-3); }
+.sidecollapse:hover:not(:disabled) { background: #2A2C2E; border-color: var(--amber); color: var(--amber-hi); }
+.sidecollapse .ic { transform: rotate(-90deg); }
+.app.side-closed .sidecollapse { right: 0; }
+.app.side-closed .sidecollapse .ic { transform: rotate(90deg); }
+.app.side-closed, .app.norail.side-closed { grid-template-columns: minmax(0, 1fr) 0; }
+.app.side-closed > .side { display: none; }
+body:has(.app.side-closed) .rm-drawer { right: calc(18px + var(--sp-2)); }
+body:has(.app.side-closed) .toast { left: 50vw; }
+.app:has(#welcome:not([hidden])) .sidecollapse { display: none; }
+@media (max-width: 760px) { .sidecollapse { display: none; } .app.side-closed > .side { display: flex; } .app.side-closed { grid-template-columns: 1fr; } }
+
+/* pas de monospace façon « terminal » : le jeu n'en a pas. Le mono reste pour le code et les textes bruts */
+:root { --f-mono: 'Roboto Condensed', 'Arial Narrow', sans-serif; }
+textarea, pre, code, #trace, .log { font-family: ui-monospace, 'Share Tech Mono', monospace; }
+/* casse normale aussi hors de .app (coach, dialogues, 3D, toasts) */
+:is(#coach, #tour, .toast, .v3d-bar, #shareDlg, #rwDlg, #helpPanel, #newsPanel, #busy, .mapdock, #mapHint) :is(button, h1, h2, h3, h4, label, summary, th, strong, em, small, span, .kicker) {
+  text-transform: none !important; letter-spacing: .01em !important; }
+/* « Réglages avancés » : libellé, (i) collé, flèche à droite, hauteur de bouton */
+.side details.adv > summary { display: flex; justify-content: flex-start; align-items: center; gap: 6px; min-height: var(--h-md); padding: 0 var(--sp-2); font-size: 14px; color: var(--tx-2); }
+.side details.adv > summary::after { margin-left: auto; }
+#coachTitle, #coach h3, #coach b { text-transform: none !important; letter-spacing: .01em !important; }
+.toast { bottom: 76px; }
+
+/* barre du haut : tout centré sur la même ligne, une seule hauteur (34 px) pour chaque élément */
+.top > * { align-self: center !important; margin-top: 0; margin-bottom: 0; }
+.top > :is(button, .status, .langsel), .top .langbtn { box-sizing: border-box; height: var(--h-md); }
+.top .verbadge, .top .status { height: 28px; }
+.top .langbtn { display: inline-flex; align-items: center; }
+.top .helpbtn { width: var(--h-md); }
+
+/* =====================================================================
+   Audit débutant (docs/UI_AUDIT_DEBUTANT.md) : A1, A2, A5, A6, A7
+   ===================================================================== */
+/* A1 · accueil : seulement le logo, la langue et l'aide tant qu'aucune carte n'est ouverte */
+.app:has(#welcome:not([hidden])) .top > :not(.brand):not(.langsel):not(#helpFab):not(.grow) { display: none !important; }
+/* A2 · après la première île : un seul message (la bulle), pas de toast / aide souris / ligne technique en même temps */
+body:has(#coach:not([hidden])) :is(.toast, #mapHint, #log, #brushInfo) { display: none !important; }
+/* A5 · bouton Aide avec libellé (reste visible à tous les paliers sauf téléphone) */
+.top .helpbtn.withlbl { width: auto !important; padding: 0 12px !important; gap: 6px; background: #2A2C2E; border: 1px solid var(--line-2); color: var(--tx-1); }
+.top .helpbtn.withlbl > span { display: inline !important; font-size: 14px; }
+.top .helpbtn.withlbl:hover:not(:disabled) { border-color: var(--amber); color: var(--amber-hi); }
+@container top (max-width: 600px) { .top .helpbtn.withlbl { width: 34px !important; padding: 0 !important; } .top .helpbtn.withlbl > span { display: none !important; } }
+/* lien « Comment faire ? » sous la phrase de l'étape */
+.stephead .stephelp { margin: 6px 0 0 -8px; gap: 6px; display: inline-flex; align-items: center; color: var(--amber-hi); font-size: 14px; }
+/* A6 · « Première fois ? » sur l'accueil */
+.welcome .wtour { margin-top: 10px; align-self: center; display: inline-flex; align-items: center; gap: 6px; color: var(--amber-hi); font-size: 15px; height: 32px; }
+/* A7 · puce et caméra Workbench : seulement à l'étape Envoyer, ou une fois connecté */
+.app:not([data-step="wb"]) .top .status:not([data-ok="true"]),
+.app:not([data-step="wb"]):not(:has(.top .status[data-ok="true"])) .top #camBtn { display: none; }
+/* A4 · « Plus d'options » de l'étape 1 : même allure que « Réglages avancés » */
+.side details.adv.more > .row { margin-top: 8px; }
+/* A7 · étape Envoyer : encart « Connecte le Workbench » tant qu'il n'est pas connecté */
+.wbconnect { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; margin-bottom: 8px; background: rgba(225, 161, 46, .08); border-left: 3px solid var(--amber); }
+.wbconnect b { color: var(--tx-1); font-size: 15px; }
+.wbconnect p { margin: 0; color: var(--tx-2); font-size: 14px; line-height: 1.4; }
+.wbconnect button { align-self: flex-start; margin-top: 4px; }
+.app:has(.top .status[data-ok="true"]) .wbconnect { display: none; }
+
+/* =====================================================================
+   Audit débutant A8–A14
+   ===================================================================== */
+/* A9 · encart « fais d'abord » (même allure que l'encart Workbench) */
+.needprev { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; margin-bottom: 8px; background: rgba(225, 161, 46, .08); border-left: 3px solid var(--amber); }
+.needprev[hidden] { display: none; }
+.needprev b { color: var(--tx-1); font-size: 15px; }
+.needprev p { margin: 0; color: var(--tx-2); font-size: 14px; line-height: 1.4; }
+.needprev button { align-self: flex-start; margin-top: 4px; }
+/* A9 · cases à cocher : case à gauche du libellé, alignées à gauche (plus de case centrée au-dessus du texte) */
+.form label.check, .side .form label.check { display: flex !important; flex-direction: row !important; align-items: center; justify-content: flex-start; gap: 8px; text-align: left; grid-column: auto; }
+.form label.check input[type=checkbox] { margin: 0; flex: none; }
+.side fieldset.test { border-color: var(--line-1); }
+/* A8 · envoi partiel en bas de chaque étape */
+.side details.adv.partial > .hint { margin: 8px 0; font-size: 13px; }
+.side details.adv.partial > button, .side details.adv.partial > .row { margin-top: 6px; width: 100%; }
+/* A12 · bas de la carte : l'aide souris passe dans la barre d'état ; infos pinceau seulement à l'étape Sculpter */
+#mapHint { display: none !important; }
+.app:not([data-step="brush"]) #brushInfo { display: none !important; }
+/* A14 · étapes : libellés lisibles, étape sans base grisée (reste cliquable) */
+.stepper button { font-size: 12px; }
+.stepper button[data-blocked]:not(.active) { opacity: .5; }
+
+/* =====================================================================
+   Bugs UI relevés au passage (chasse du 19/11)
+   ===================================================================== */
+/* casse normale aussi dans les dialogues hors .app (lieu réel, bibliothèque de parcelles, graines, 3D) */
+:is(.parcels, .rwdlg, #seedBrowser, .v3d-bar, .v3d-help, .v3d-stats, .newspanel, .helppanel) :is(button, h1, h2, h3, h4, label, legend, summary, th, span, small, em, b, strong, .kicker) {
+  text-transform: none !important; letter-spacing: .01em !important; }
+/* dialogue « Lieu réel » / bibliothèque : 9 boutons ambre → un seul principal (Construire le terrain), le reste en gris */
+.parcels button:not(.secondary):not(#rwGo):not(.rm-icon) { background: #2A2C2E; border-color: #2A2C2E; color: var(--tx-1); }
+.parcels button:not(.secondary):not(#rwGo):not(.rm-icon):hover:not(:disabled) { background: #33363A; border-color: var(--amber); }
+.parcels input[type=search] { min-width: 180px; flex: 1 1 180px; }
+/* panneau Collaboration : « Rejoindre un salon… » ne passe plus sur 3 lignes */
+.cvconn { flex-wrap: wrap; }
+.cvconn #cvJoin { white-space: nowrap; flex: none; padding: 6px 12px; }
+.cvconn #cvConn { flex: 1 1 160px; min-width: 0; }
+/* explorateur de graines : vraie fenêtre modale (fond assombri), au-dessus du panneau latéral */
+#seedBrowser { z-index: 9500; box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-raised); }
+#seedBrowser header { flex-wrap: wrap; row-gap: 8px; }
+/* vue 3D : la ligne d'aide ne passe plus sous « Calques » ni hors de l'écran */
+.v3d-help { max-width: calc(100% - 520px); white-space: normal; text-align: center; line-height: 1.4; font-family: var(--f-body) !important; }
+@media (max-width: 1100px) { .v3d-help { display: none; } }
+.v3d-bar { flex-wrap: wrap; row-gap: 6px; }
+.v3d-help { text-transform: none !important; letter-spacing: .01em !important; }
+/* boutons-fichiers (label) du dialogue Lieu réel : gris comme les autres actions secondaires */
+.parcels label.pc-file, .parcels label:has(> input[type=file]) { background: #2A2C2E !important; border-color: #2A2C2E !important; color: var(--tx-1) !important; text-transform: none !important; letter-spacing: .01em !important; }
+/* explorateur de graines : un seul bouton ambre (Générer) */
+#seedBrowser header button:not(#sbGo) { background: #2A2C2E; border-color: #2A2C2E; color: var(--tx-1); }
+/* dialogue Lieu réel / bibliothèque : titre sur une ligne, l'explication passe dessous (plus de titre en colonne sur téléphone) */
+.pc-head { flex-wrap: wrap; row-gap: 4px; }
+.pc-head > b { white-space: nowrap; font-size: 18px; }
+.pc-head > .hint { flex: 1 1 260px; min-width: 0; }
+@media (max-width: 720px) { .pc-head > .hint { order: 3; flex-basis: 100%; } }
+
+/* =====================================================================
+   Volets plus calmes (19/11) : un seul bouton ambre par étape, le reste replié
+   ===================================================================== */
+html:not(.rm-dev) .devonly { display: none !important; }
+.rangeline { display: flex; align-items: center; gap: 10px; }
+.rangeline input[type=range] { flex: 1 1 auto; min-width: 0; }
+.rangeval { flex: none; min-width: 110px; text-align: right; color: var(--tx-1); font-size: 13px; }
+/* étape 7 : le guide de connexion puis le gros bouton Envoyer tout, juste sous le titre */
+.tab[data-tab="wb"] > .wbguide { margin-bottom: 12px; }
+.tab[data-tab="wb"] > #sendAll { width: 100%; min-height: 48px; margin-bottom: 12px; font-size: 16px; }
+/* les replis d'une étape forment une seule liste serrée au lieu de cartes espacées */
+.side .tab > details.adv { margin-top: 0; }
+.side .tab > details.adv + details.adv { margin-top: -1px; }
+/* un texte d'aide par bloc, plus discret */
+.side .tab > p.hint, .side .tab > .hint { font-size: 13px; line-height: 1.4; color: var(--tx-4); margin: 2px 0 6px; }
+/* options des villages : une case par ligne (plus de libellés sur 4 lignes) */
+.tab[data-tab="villages"] .form label.check { grid-column: 1 / -1; }
+/* libellé + (i) sur une ligne au-dessus du champ */
+.lblhead { display: inline-flex; align-items: center; gap: 6px; }
+.lblhead .info { flex: none; }
+
+/* =====================================================================
+   Console « Journal » : bouton dans la barre d'état, panneau semi-opaque au-dessus
+   ===================================================================== */
+.statusbar { overflow: visible; }
+.statusbar .jbtn { height: 22px; padding: 0 8px; gap: 6px; background: transparent; border: 1px solid var(--line-2); border-radius: 0; color: var(--tx-2); font: 500 12px var(--f-body); text-transform: none; letter-spacing: .01em; flex: none; }
+.statusbar .jbtn:hover:not(:disabled), .statusbar .jbtn.active { border-color: var(--amber); color: var(--amber-hi); background: transparent; }
+.statusbar .jbtn .jcount:not(:empty) { min-width: 16px; padding: 0 4px; background: var(--amber); color: #111; font-size: 11px; line-height: 16px; text-align: center; }
+.statusbar .jbtn[data-err="1"] .jcount:not(:empty) { background: var(--red); color: #fff; }
+.jpanel { position: fixed; z-index: 60; left: 8px; right: calc(var(--side-w) + 8px); bottom: 30px; height: min(34vh, 320px);
+  display: flex; flex-direction: column; background: rgba(20, 21, 22, .86); backdrop-filter: blur(4px); border: 1px solid var(--line-2); color: var(--tx-2); font: 13px/1.4 var(--f-body); }
+.jpanel[hidden] { display: none; }
+body:has(.app.side-closed) .jpanel { right: 26px; }
+@media (max-width: 1100px) { .jpanel { right: calc(320px + 8px); } }
+@media (max-width: 760px) { .jpanel { left: 0; right: 0; bottom: 26px; height: 45vh; } }
+.jpanel header { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line-1); }
+.jpanel header b { color: var(--tx-1); font-size: 14px; }
+.jpanel header button { height: 26px; padding: 0 10px; background: #2A2C2E; border: 1px solid #2A2C2E; border-radius: 0; color: var(--tx-1); font: 500 13px var(--f-body); text-transform: none; letter-spacing: .01em; }
+.jpanel header button:hover:not(:disabled) { border-color: var(--amber); background: #33363A; }
+.jpanel header .jx { width: 26px; padding: 0; background: transparent; border-color: transparent; }
+.jpanel .jfilter { display: inline-flex; margin-left: 8px; }
+.jpanel .jfilter button { background: transparent; border-color: var(--line-2); }
+.jpanel .jfilter button.on { background: var(--amber); border-color: var(--amber); color: #111; }
+.jpanel ol { list-style: none; margin: 0; padding: 4px 0; overflow: auto; flex: 1 1 auto; }
+.jpanel li { display: flex; gap: 10px; padding: 3px 12px; align-items: baseline; }
+.jpanel li:nth-child(odd) { background: rgba(255, 255, 255, .025); }
+.jpanel li time { flex: none; color: var(--tx-4); font-variant-numeric: tabular-nums; }
+.jpanel li .jsrc { flex: none; color: var(--tx-3); min-width: 70px; }
+.jpanel li .jtext { white-space: pre-wrap; overflow-wrap: anywhere; }
+.jpanel li[data-kind="ok"] .jtext { color: var(--green-hi); }
+.jpanel li[data-kind="err"] { box-shadow: inset 3px 0 0 var(--red); }
+.jpanel li[data-kind="err"] .jtext { color: var(--red-hi, #E58A80); }
+.jpanel li.jempty { color: var(--tx-4); background: none; }
+/* le tiroir Économie remonte quand le journal est ouvert */
+body:has(.jpanel:not([hidden])) .rm-drawer { bottom: calc(min(34vh, 320px) + 38px); max-height: calc(100vh - min(34vh, 320px) - 120px); }
+/* journal ouvert : les toasts n'apparaissent pas par-dessus (ils sont déjà dans le journal), « Calques » remonte */
+body:has(.jpanel:not([hidden])) .toast { display: none !important; }
+body:has(.jpanel:not([hidden])) .mapdock { bottom: calc(min(34vh, 320px) + 40px); }

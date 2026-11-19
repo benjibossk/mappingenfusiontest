@@ -1,5 +1,7 @@
 # Plan de finition de l'interface (UI polish)
 
+> **Clos le 19/11/2026.** Points appliqués ou dépassés par le style Reforger (`src/ui/kit.css`). Suite : [UI_AUDIT_DEBUTANT.md](UI_AUDIT_DEBUTANT.md).
+
 Audit du 16/11/2026 sur v0.5.0 (Chrome 1440×900 et 390 px). Captures : `scratchpad/pw/ui-audit-*.png` (session Claude, temporaires).
 
 Maquettes cibles : canevas Claude Design « Refonte reforger-mapper » — https://claude.ai/artifact/AogcaPts9BvCMcicnRji31 (privé). Chaque point renvoie à un board.
