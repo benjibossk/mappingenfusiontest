@@ -155,7 +155,17 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
   const target = new Float32Array(heights.length).fill(NaN)
   const weight = new Float32Array(heights.length)
   const open = water ? Uint8Array.from(water.wet) : undefined // wet cells left open (bridged)
-  for (const road of roads) {
+  // main roads first: at a crossing only the higher class dictates the bed (Hexfrogger: two roads of the same
+  // heightmap priority = a bump); the lower roads are graded onto the beds already laid (junctionGrade)
+  const ordered = roads.map((r, i) => ({ r, i })).sort((a, b) => rankOf(b.r) - rankOf(a.r) || roadHalf(b.r) - roadHalf(a.r) || a.i - b.i).map((o) => o.r)
+  const laid = new Map<number, number[]>() // 16 m buckets of laid centre points: x, z, height, half
+  const JB = 16, jkey = (x: number, z: number) => Math.floor(x / JB) * 100003 + Math.floor(z / JB)
+  // same weight from two segments of one road (a cell inside the flat band of several): the nearest segment
+  // gives the height, else the first one would tilt the bed across by grade x offset. Never across two roads
+  const dist = new Float32Array(heights.length), owner = new Int32Array(heights.length).fill(-1)
+  let ri = -1
+  for (const road of ordered) {
+    ri++
     if (!road.flatten || road.bridge) continue
     const T = ROAD_TYPES[road.type]
     const line = centreLine(road.pts, step / 2)
@@ -169,6 +179,16 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
       if (!(weight[k] >= 0.99)) continue
       const d = target[k] - prof[e]
       for (let s = 0; s < Math.min(ramp, m); s++) prof[e + dir * s] += d * (1 - s / ramp)
+    }
+    junctionGrade(line, prof, laid, JB, jkey)
+    const sl0 = road.spans?.length || road.lift?.length ? arcLength(line) : null
+    for (let i = 0; i < m; i++) {
+      // a deck or an overpass approach is not a junction: a road passing under it keeps its own height
+      if (sl0 && (road.spans?.some((sp) => sl0[i] > sp.from - 20 && sl0[i] < sp.to + 20) || road.lift?.some((l) => Math.abs(sl0[i] - l.at) < l.flat + l.len))) continue
+      const kk = jkey(line[i * 2], line[i * 2 + 1])
+      let b = laid.get(kk)
+      if (!b) laid.set(kk, (b = []))
+      b.push(line[i * 2], line[i * 2 + 1], prof[i], roadHalf(road))
     }
     const flat = roadHalf(road) * widthMul + T.edge + step
     const reach = flat + 3 * step
@@ -196,8 +216,8 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
             if (underDeck(x, z)) continue
             open![k] = 0
           }
-          if (w > weight[k]) {
-            weight[k] = w
+          if (w > weight[k] || (w === weight[k] && owner[k] === ri && d < dist[k])) {
+            weight[k] = w; dist[k] = d; owner[k] = ri
             let v = prof[i] + (prof[i + 1] - prof[i]) * t
             if (water && !Number.isNaN(water.level[k])) v = Math.max(v, water.level[k] + 0.05)
             target[k] = v
@@ -208,6 +228,31 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
   layBeds(heights, { target, weight })
   if (!opts.legacyProfile) embankRoads(heights, grid, { target, weight }, open) // fill shoulders 1:2
   return { target, weight }
+}
+const rankOf = (r: Road) => ROAD_CLASSES[classOf(r.type)]?.rank ?? 0
+const smooth01 = (u: number) => { const v = Math.min(1, Math.max(0, u)); return v * v * (3 - 2 * v) }
+//! Grades a road's profile onto the beds already laid (higher classes) near a junction or crossing: full
+//! height of the other road within its half width + 2 m, smoothstep back to the own profile 15 m further.
+//! The profile points are moved in place; the other road keeps its height (only one dictates the crossing).
+export function junctionGrade(line: number[], prof: number[], laid: Map<number, number[]>, JB: number, jkey: (x: number, z: number) => number) {
+  if (!laid.size) return
+  const m = prof.length, R = 15
+  for (let i = 0; i < m; i++) {
+    const x = line[i * 2], z = line[i * 2 + 1]
+    let bd = Infinity, bh = 0, bhalf = 0
+    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      const b = laid.get(jkey(x + dx * JB, z + dz * JB))
+      if (!b) continue
+      for (let k = 0; k < b.length; k += 4) {
+        const d = Math.hypot(b[k] - x, b[k + 1] - z)
+        if (d < bd) { bd = d; bh = b[k + 2]; bhalf = b[k + 3] }
+      }
+    }
+    if (bd === Infinity) continue
+    const core = bhalf + 2
+    const a = bd <= core ? 1 : 1 - smooth01((bd - core) / R)
+    if (a > 0) prof[i] = prof[i] + (bh - prof[i]) * a
+  }
 }
 const nearLine = (p: number[], x: number, z: number) => {
   let best = Infinity
@@ -297,8 +342,10 @@ export function roadShapes(roads: Road[]): ProjectShape[] {
     generator: ROAD_TYPES[r.type].generator,
     // the site already shapes the relief: the generator must not reshape it again
     // width always sent: the generated road and the painted surface stay the same width
-    paramKeys: ['AdjustHeightMap', 'RoadWidth'],
-    paramValues: ['0', String(roadHalf(r) * 2)],
+    // heightmap priority by class (main 30 ... trail 5): if Adjust heightmap is ever switched on, only the
+    // higher road shapes a crossing (Hexfrogger: same priority = a bump at the junction)
+    paramKeys: ['AdjustHeightMap', 'RoadWidth', 'AdjustHeightMapPriority'],
+    paramValues: ['0', String(roadHalf(r) * 2), String((rankOf(r) + 1) * 5)],
   }))
 }
 

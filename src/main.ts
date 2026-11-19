@@ -117,7 +117,8 @@ import { suggestMilitary, type MilitaryKind } from './modules/military'
 import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { LAYERS as GEN_LAYERS, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
-import { Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
+import { applyPads, layPads } from './modules/pads'
+import { buildingFootprints, Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
 import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, stageTimer, type Pipeline } from './modules/replay'
 let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modules/layers.ts), saved in the project
@@ -1558,7 +1559,10 @@ function recompose(final: boolean) {
   preWater = island.heights.slice()
   const wl = waters.length ? carveWater(island.heights, g, waters) : undefined
   if (zones.length) applyZones(island.heights, g, zones) // platforms / runway planes, before the road beds
+  const padFoot = buildingFootprints(settled, zones)
+  const pads = padFoot.length ? applyPads(island.heights, g, padFoot) : null // building pads
   const beds = roads.length ? carveRoads(island.heights, g, roads, { water: wl }) : null
+  if (pads) layPads(island.heights, pads, beds?.weight)
   rivers = undefined
   riverSim = undefined
   if ($<HTMLInputElement>('rLive').checked) {
@@ -1571,7 +1575,7 @@ function recompose(final: boolean) {
     riverSim = sim
     // the runoff carved its beds into the relief, road beds included: lay the roads again on top (a culvert
     // under the road; real rivers, traced in the Water step, keep their bridges)
-    if (beds && !waters.some((w) => w.auto) && num('rDepth') > 0) layBeds(island.heights, beds)
+    if (beds && !waters.some((w) => w.auto) && num('rDepth') > 0) { layBeds(island.heights, beds); if (pads) layPads(island.heights, pads, beds.weight) }
   }
   if (final) {
     island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined)

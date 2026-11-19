@@ -5,6 +5,7 @@
 // -> industrial zones (they hook onto the main roads, so after the network) -> villages v2 -> power
 // lines -> forests -> surfaces. The result is loaded into the normal steps (main.ts) to be tweaked.
 
+import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
 import { DENSITY, scaledCount, worldCounts } from '../data/densities'
 import { featheredBelt, scatterLayers } from './vegLayers'
@@ -128,15 +129,28 @@ function mulberry(seed: number) {
 
 export class Cancelled extends Error { constructor() { super('cancelled') } }
 
+/** footprints (4 corners) that get a building pad: the placed houses + the buildings of the industrial and
+ *  military zones (lots, areas and paved boxes excluded; the vanilla sites are already levelled as a whole) */
+export function buildingFootprints(placed: { corners: number[] }[], zones: ZoneItem[]): number[][] {
+  const out = placed.filter((q) => q.corners.length === 8).map((q) => q.corners)
+  for (const z of zones) {
+    if (z.kind !== 'industrial' && z.kind !== 'military') continue
+    for (const b of z.boxes) if (b.corners.length === 8 && !/^(area|lot|pave)$/.test(b.role)) out.push(b.corners)
+  }
+  return out
+}
+
 /** same chain as main.ts recompose(): water carving, zone platforms, road beds, then the runoff */
-export function composeHeights(base: number[], g: Grid, waters: Water[], zones: ZoneItem[], roads: Road[]) {
+export function composeHeights(base: number[], g: Grid, waters: Water[], zones: ZoneItem[], roads: Road[], pads?: number[][]) {
   const h = base.slice()
   const wl = waters.length ? carveWater(h, g, waters) : undefined
   applyZones(h, g, zones)
+  const pf = pads?.length ? applyPads(h, g, pads) : null // building pads (pads.ts)
   const beds = roads.length ? carveRoads(h, g, roads, { water: wl }) : null
+  if (pf) layPads(h, pf, beds?.weight) // again over the bed ramps and embankments: only the carriageway keeps the road
   const auto = waters.some((w) => w.auto)
   const sim = computeRivers(h, g.cols, g.rows, g.step, { rain: WORLD.water.rain, windAngle: 0, threshold: auto ? riverThreshold(g.step) : WORLD.water.threshold, depth: auto ? 0 : 4 })
-  if (beds && !auto) layBeds(h, beds)
+  if (beds && !auto) { layBeds(h, beds); if (pf) layPads(h, pf, beds.weight) }
   return { heights: h, sim, wet: wl?.wet }
 }
 
@@ -562,6 +576,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         }
         const zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x: sx, z: sz, yaw: syaw, seed: ss('settlements', 'vanilla-' + type, k), template: tpl })
         if (!zn || (type !== 'port' && zoneWet(zn))) continue
+        if (type === 'port') { // harbour around the template core (harbour.ts): basin, apron, arms, jetties, buoys, quay street
+          const near = sites.reduce<Site | null>((b, s) => (!b || Math.hypot(s.x - sx, s.z - sz) < Math.hypot(b.x - sx, b.z - sz) ? s : b), null)
+          const tier = harbourTier(near && Math.hypot(near.x - sx, near.z - sz) < 1500 ? near.kind : undefined)
+          const hb = buildHarbour({ id: zn.id, tier, x: sx, z: sz, seed: ss('settlements', 'harbour', k), hAt, core: zn.entities, isSea: (q) => PORT_SEA_RX.test(q), roads: allRoadLines() })
+          if (!hb) continue
+          zn.harbour = hb.plan; zn.entities.push(...hb.entities); zn.roads.push(...hb.roads); zn.boxes.push(...hb.boxes)
+          zn.warnings.push(`harbour ${tier}${fit0 && !fit0.deep ? ' (template heads shallow before dredging)' : ''}`)
+        }
         zn.sub = `vanilla:${type}:${zn.sub?.slice(8) ?? ''}`
         zones.push(zn)
         k++
@@ -578,14 +600,6 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     put('port', nPorts, anyRoad, 80, 350, 20, coastal)
   }
   // 7b. vanilla sites (option): fuel depots, gas stations, bus stops, ports stamped from the Bohemia templates
-        if (type === 'port') { // harbour around the template core (harbour.ts): basin, apron, arms, jetties, buoys, quay street
-          const near = sites.reduce<Site | null>((b, s) => (!b || Math.hypot(s.x - sx, s.z - sz) < Math.hypot(b.x - sx, b.z - sz) ? s : b), null)
-          const tier = harbourTier(near && Math.hypot(near.x - sx, near.z - sz) < 1500 ? near.kind : undefined)
-          const hb = buildHarbour({ id: zn.id, tier, x: sx, z: sz, seed: ss('settlements', 'harbour', k), hAt, core: zn.entities, isSea: (q) => PORT_SEA_RX.test(q), roads: allRoadLines() })
-          if (!hb) continue
-          zn.harbour = hb.plan; zn.entities.push(...hb.entities); zn.roads.push(...hb.roads); zn.boxes.push(...hb.boxes)
-          zn.warnings.push(`harbour ${tier}${fit0 && !fit0.deep ? ' (template heads shallow before dredging)' : ''}`)
-        }
   // at the measured densities (data/densities.ts), beside a road at the measured setback, +Z facing the road
   if (p.vanillaSites) placeVanillaWorldSites()
   cur = composeHeights(base, g, waters, zones, roads)
@@ -644,6 +658,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const fp = lotFences(builtLots, { seed: ss('settlements', 'fences'), kindOf: (id) => kinds.get(id), blocked })
     if (fp.length) settlement.fences = fp
   }
+  // building pads: ground flattened under every house and industrial / military building (pads.ts)
+  const padFoot = buildingFootprints(settlement.placed, zones)
+  if (padFoot.length) cur = composeHeights(base, g, waters, zones, roads, padFoot)
   // 9. power grid: hierarchical planner (worldpower.ts -> powergrid.ts), stations + access tracks, pads flattened
   await step('power')
   const pw = p.power ? worldPowerGrid(cur.heights, g, sites, zones, allRoads.map((r) => r.pts), isLakeOrSea, p.size, 'eden', powerWorld([...allRoads, ...settlement.lanes], settlement.placed.map((q) => q.corners), builtLots.filter((l) => l.used).map((l) => l.corners), zones), p.powerDistrib ?? 'auto') : null
