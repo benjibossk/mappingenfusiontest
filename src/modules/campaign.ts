@@ -15,6 +15,9 @@ export interface CampaignOptions {
   fieldSize: number
   /** 0..1: random offset of the seeds within their cell */
   jitter: number
+  /** long / short side of a plot (seed spacing fieldSize*sqrt(aspect) along the grid angle, fieldSize/sqrt(aspect)
+   *  across); default 1 = square cells. Everon's crop fields measure 1.7 (FIELDS_SURFACES_VANILLA.md) */
+  aspect?: number
   /** grid angle, degrees */
   angle: number
   /** probability that a border between two plots carries a hedge */
@@ -79,10 +82,11 @@ export function generateCampaign(o: CampaignOptions): CampaignResult {
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2
   const r = Math.hypot(maxX - minX, maxZ - minZ) / 2
   const a = (o.angle * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a)
-  for (let u = -r; u <= r; u += o.fieldSize) {
-    for (let v = -r; v <= r; v += o.fieldSize) {
-      const du = u + (rand() - 0.5) * o.jitter * o.fieldSize
-      const dv = v + (rand() - 0.5) * o.jitter * o.fieldSize
+  const k = Math.sqrt(Math.max(1, o.aspect ?? 1)), su = o.fieldSize * k, sv = o.fieldSize / k
+  for (let u = -r; u <= r; u += su) {
+    for (let v = -r; v <= r; v += sv) {
+      const du = u + (rand() - 0.5) * o.jitter * su
+      const dv = v + (rand() - 0.5) * o.jitter * sv
       const p: [number, number] = [cx + du * cos - dv * sin, cz + du * sin + dv * cos]
       if (turf.booleanPointInPolygon(p, zone) && land(p[0], p[1])) seeds.push(p)
     }

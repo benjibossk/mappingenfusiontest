@@ -237,13 +237,15 @@ export function plotTracks(kept: number[][][], roads: number[][], o: { maxLen?: 
   return out
 }
 
-/** Zone tool "Champs" defaults (main.ts form): the random world uses the same, so both look alike */
-export const FIELD_ZONE_DEFAULTS = { fieldSize: 90, jitter: 0.6, angle: 15, hedgeChance: 0.5, minHedge: 15 }
+/** Zone tool "Champs" defaults (main.ts form): the random world uses the same, so both look alike.
+ *  fieldSize 110 m + aspect 1.5: Voronoi cells of ~135 x 90 m (~1.2 ha, after clipping ~1 ha), Everon's crop fields: median
+ *  1.6 ha, 219 x 134 m, long/short 1.7 (tools/PakTools/analyses/FIELDS_SURFACES_VANILLA.md) */
+export const FIELD_ZONE_DEFAULTS = { fieldSize: 110, aspect: 1.5, jitter: 0.6, angle: 15, hedgeChance: 0.5, minHedge: 15 }
 export interface FieldZoneOptions {
   zone: number[] // flat X/Z ring
   seed: number
   prefix: string
-  fieldSize?: number; jitter?: number; angle?: number; hedgeChance?: number; minHedge?: number
+  fieldSize?: number; aspect?: number; jitter?: number; angle?: number; hedgeChance?: number; minHedge?: number
   /** farmable (land, slope, forest...): plots */
   ok: (x: number, z: number) => boolean
   /** land: hedges, groves, tracks (default ok) */
@@ -261,7 +263,7 @@ export interface FieldZoneResult { fields: number[][][]; hedges: number[][][]; g
 export function fillFieldZone(o: FieldZoneOptions): FieldZoneResult {
   const d = FIELD_ZONE_DEFAULTS
   const fieldSize = o.fieldSize ?? d.fieldSize, hedgeChance = o.hedgeChance ?? d.hedgeChance, minHedge = o.minHedge ?? d.minHedge
-  const raw = generateCampaign({ zone: o.zone, fieldSize, jitter: o.jitter ?? d.jitter, angle: o.angle ?? d.angle, hedgeChance, minHedge, seed: o.seed, prefix: o.prefix, isLand: o.ok })
+  const raw = generateCampaign({ zone: o.zone, fieldSize, aspect: o.aspect ?? d.aspect, jitter: o.jitter ?? d.jitter, angle: o.angle ?? d.angle, hedgeChance, minHedge, seed: o.seed, prefix: o.prefix, isLand: o.ok })
   const fields = clipPlots(raw.fields, { obstacles: o.obstacles, laid: o.laid, zone: flatToPoly(o.zone), ok: o.ok, minArea: Math.min(2500, fieldSize ** 2 / 4) })
   let hs = o.hedgeSeed || 1
   const rnd = () => ((hs = (hs * 16807) % 2147483647) / 2147483647)
