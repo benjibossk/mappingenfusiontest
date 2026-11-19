@@ -176,13 +176,9 @@ export function addRoundabouts(roads: Road[], o: { minBranches?: number; radius?
   }
   let id = roads.filter((r) => /^RB_\d+$/.test(r.id)).reduce((m, r) => Math.max(m, +r.id.slice(3)), 0)
   for (const g of rings) {
-    // the road ends lying on this ring become ring control points (exactly the same point)
-    const ends: [number, number][] = []
-    for (const r of out) for (const e of [0, r.pts.length - 2]) {
-      const x = r.pts[e], z = r.pts[e + 1]
-      if (Math.abs(Math.hypot(x - g.x, z - g.z) - g.r) < 0.05 && !ends.some(([a, b]) => a === x && b === z)) ends.push([x, z])
-    }
-    out.push({ id: `RB_${++id}`, type: g.type, pts: ringWith(g.x, g.z, g.r, ends), auto: true, width: g.r >= 14 ? 8 : 6.5 })
+    // the road ends lying on this ring are snapped onto its evenly spaced control points (exactly the same point)
+    const pts = snapEndsToRing(out, g.x, g.z, g.r, Math.max(16, Math.round((2 * Math.PI * g.r) / 4)))
+    out.push({ id: `RB_${++id}`, type: g.type, pts, auto: true, width: g.r >= 14 ? 8 : 6.5 })
   }
   return { roads: out, rings: rings.map(({ x, z, r }) => ({ x, z, r })) }
 }
@@ -229,4 +225,67 @@ export function villageWalls(roads: Road[], inVillage: (x: number, z: number) =>
     }
   }
   return shapes
+}
+
+//! closed ring of k evenly spaced points; every road end lying on the ring is snapped to its nearest ring vertex
+//! (so ends and ring share the exact point and the circle stays perfectly round)
+function snapEndsToRing(roads: Road[], cx: number, cz: number, R: number, k: number): number[] {
+  const ring = ringPoints(cx, cz, R, k)
+  for (const r of roads) for (const e of [0, r.pts.length - 2]) {
+    const x = r.pts[e], z = r.pts[e + 1]
+    if (Math.abs(Math.hypot(x - cx, z - cz) - R) > 0.05) continue
+    let a = Math.atan2(z - cz, x - cx); if (a < 0) a += Math.PI * 2
+    const i = Math.round((a / (Math.PI * 2)) * k) % k
+    r.pts[e] = ring[i * 2]; r.pts[e + 1] = ring[i * 2 + 1]
+  }
+  return ring
+}
+
+//! Town square crossed by a road -> a real roundabout: one closed round spline at (cx, cz) with the generator of the
+//! most important road meeting it (asphalt > cobble > dirt), the roads and the village lanes clipped at its outer
+//! edge (nothing crosses the island), the square perimeter lanes (`_LANE_Q`) replaced by the ring.
+//! `reach`: square radius (roads / lanes closer than this to the centre meet the junction). Returns null when no
+//! paved road reaches the square.
+export function squareRoundabout(roads: Road[], lanes: Road[], cx: number, cz: number, reach: number, id = 'RB_SQ'): { roads: Road[]; lanes: Road[]; ring: Road } | null {
+  const near = (r: Road) => r.pts.length >= 4 && nearestOnLine(r.pts, cx, cz).d < reach
+  const meet = roads.filter((r) => near(r) && !r.id.startsWith('RB_') && !r.id.startsWith('MW_'))
+  if (!meet.some((r) => isPaved(r.type) && classOf(r.type) !== 'street')) return null
+  const rank = (t: RoadType) => RANK[classOf(t)] ?? 0
+  const type = [...meet, ...lanes.filter(near)].map((r) => r.type).reduce((a, b) => (rank(b) > rank(a) ? b : a))
+  const width = Math.max(...meet.map((r) => roadHalf(r) * 2))
+  const R = Math.max(RING_RADIUS[classOf(type)] ?? 9, width * 1.5)
+  const clip = (list: Road[]) => list.flatMap((r) => {
+    if (!near(r) && nearestOnLine(r.pts, cx, cz).d > R) return [r]
+    return clipCircle(r.pts, cx, cz, R).map((p, k) => ({ ...r, id: k ? `${r.id}_${k}` : r.id, pts: p.map((v) => Math.round(v * 100) / 100), spans: undefined }))
+  })
+  const outRoads = clip(roads)
+  // the square loop is the duplicate: dropped, the ring replaces it
+  const outLanes = clip(lanes.filter((l) => !(/_LANE_Q\d+$/.test(l.id) && near(l))))
+  const k = Math.max(16, Math.round((2 * Math.PI * R) / 4))
+  const pts = snapEndsToRing([...outRoads, ...outLanes], cx, cz, R, k)
+  return { roads: outRoads, lanes: outLanes, ring: { id, type, pts, auto: true, width: R >= 14 ? 8 : 6.5 } }
+}
+
+//! Every road end lying on another road (a ring, a junction, a T) gets one more point `ext` m further along its own
+//! direction, into the other carriageway (the shared junction point stays a control point), so the road meshes overlap and leave no hole. `targets`: roads ends may land on
+//! (default: the same list). Run once, at the very end (later steps match ends to ring points exactly).
+export function overlapJunctions(roads: Road[], targets: Road[] = roads, ext = 1.75, tol = 0.5): void {
+  for (const r of roads) {
+    if (r.pts.length < 4) continue
+    const n = r.pts.length
+    if (Math.hypot(r.pts[0] - r.pts[n - 2], r.pts[1] - r.pts[n - 1]) < 0.01) continue // closed ring
+    if (/^MW_[AB]$/.test(r.id)) continue // motorway carriageways: their ends are the tapers, not junctions
+    const moves: [number, number, number][] = []
+    for (const [e, p] of [[0, 2], [n - 2, n - 4]]) {
+      const x = r.pts[e], z = r.pts[e + 1]
+      const hit = targets.filter((o) => o !== r && !/^MW_[AB]$/.test(o.id) && o.pts.length >= 4 && nearestOnLine(o.pts, x, z).d < tol)
+      if (!hit.length) continue
+      // two roads joined end to end (a continuation, the motorway taper): nothing to overlap
+      const endOf = (o: Road) => [0, o.pts.length - 2].some((k) => Math.hypot(o.pts[k] - x, o.pts[k + 1] - z) < tol)
+      if (hit.length === 1 && endOf(hit[0]) && !hit[0].id.startsWith('RB_')) continue
+      const dx = x - r.pts[p], dz = z - r.pts[p + 1], l = Math.hypot(dx, dz) || 1
+      moves.push([e, Math.round((x + (dx / l) * ext) * 100) / 100, Math.round((z + (dz / l) * ext) * 100) / 100])
+    }
+    for (const [e, x, z] of moves.sort((a, b) => b[0] - a[0])) { if (e) r.pts.push(x, z); else r.pts.unshift(x, z) }
+  }
 }

@@ -8,7 +8,7 @@
 import { WORLD } from '../data/worldParams'
 import { fr } from '../i18n'
 import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
-import { addRoundabouts, dropOrphanRings } from './roundabouts'
+import { addRoundabouts, dropOrphanRings, overlapJunctions, squareRoundabout } from './roundabouts'
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
 import { damFootprint, damZone, placeDams, snapRoadsToCrest } from './dam'
@@ -531,6 +531,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         const tr = generateTown(ring, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'town-' + s.id), density: WORLD.villages.town.density, blocked: zoneBlocked(zones), prefix: s.id }, settlement.placed)
         if (tr.placed.length - settlement.placed.length < 30) { left.push(s); continue }
         settlement.placed = tr.placed
+        // a road crossing the town square: the square becomes a real roundabout (one round ring, roads and lanes clipped)
+        for (const sq of tr.squares) {
+          const rb = squareRoundabout(roads, tr.lanes, sq.x, sq.z, sq.r + 4, `RB_${s.id}`)
+          if (!rb) continue
+          roads = [...rb.roads, rb.ring]
+          allRoads.splice(0, allRoads.length, ...roads, ...zones.flatMap((z) => z.roads))
+          tr.lanes = rb.lanes
+        }
         settlement.lanes.push(...tr.lanes); settlement.squares.push(...tr.squares)
         // parking / church blocks dressed by the site generators (same as the Town zone tool): bays, cemetery round the church
         const lines = [...allRoads, ...tr.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) }))
@@ -652,6 +660,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   styleTracks(roads, (x, z) => forestRings.some((p) => pointInPoly(p, x, z)))
   if (p.motorway && roads.some((r) => r.id === 'MW_A')) resolveCrossings(roads, roads.filter((r) => r.id.startsWith('MW_')), { cutOnly: true })
   { const keep = new Set(dropOrphanRings(roads)); for (let k = roads.length - 1; k >= 0; k--) if (!keep.has(roads[k])) roads.splice(k, 1) }
+  // every road / lane end on another road runs 1.75 m into it: overlapping meshes, no hole at the junction
+  { const all = [...roads, ...settlement.lanes]; overlapJunctions(roads, all); overlapJunctions(settlement.lanes, all) }
   // 11. surfaces (5 per block at most)
   await step('surfaces')
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))

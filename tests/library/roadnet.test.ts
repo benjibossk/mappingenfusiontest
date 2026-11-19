@@ -57,7 +57,10 @@ function ringEndsShared(roads: Road[]) {
     let touching = 0
     for (const r of roads) {
       if (r === ring) continue
-      for (const e of [0, r.pts.length - 2]) {
+      for (const e0 of [0, r.pts.length - 2]) {
+        // an end may run 1.5-2 m past the junction (overlap): then the point before it is the shared one
+        const inner = r.pts.length >= 6 && Math.abs(Math.hypot(r.pts[e0] - cx, r.pts[e0 + 1] - cz) - R) > 0.05
+        const e = inner ? (e0 ? e0 - 2 : 2) : e0
         const d = Math.hypot(r.pts[e] - cx, r.pts[e + 1] - cz)
         if (Math.abs(d - R) > 1) continue
         touching++
