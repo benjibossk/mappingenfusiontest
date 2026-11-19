@@ -181,7 +181,8 @@ const server = createServer(async (req, res) => {
       // moves the World Editor camera (MG_SetCamera): /camera/set?x=&y=&z=&yaw=&pitch= (degrees, yaw 0 = north, clockwise)
       const q = new URL(req.url, "http://x").searchParams;
       const body = {};
-      for (const k of ["x", "y", "z", "yaw", "pitch"]) body[k] = Number(q.get(k) ?? 0);
+      // Enforce JSON parsing leaves a float field at 0 when the value is written as an integer ("3290"): nudge integers
+      for (const k of ["x", "y", "z", "yaw", "pitch"]) { const n = Number(q.get(k) ?? 0); body[k] = Number.isInteger(n) ? n + 0.001 : n; }
       try {
         const c = await callWorkbench("MG_SetCamera", body, 3_000);
         return send(res, 200, { ok: !!c?.ok, ...body });
