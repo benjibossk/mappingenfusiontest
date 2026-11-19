@@ -177,6 +177,18 @@ const server = createServer(async (req, res) => {
         return send(res, 503, { ok: false, error: e.message });
       }
     }
+    if (req.method === "GET" && req.url.startsWith("/camera/set")) {
+      // moves the World Editor camera (MG_SetCamera): /camera/set?x=&y=&z=&yaw=&pitch= (degrees, yaw 0 = north, clockwise)
+      const q = new URL(req.url, "http://x").searchParams;
+      const body = {};
+      for (const k of ["x", "y", "z", "yaw", "pitch"]) body[k] = Number(q.get(k) ?? 0);
+      try {
+        const c = await callWorkbench("MG_SetCamera", body, 3_000);
+        return send(res, 200, { ok: !!c?.ok, ...body });
+      } catch (e) {
+        return send(res, 503, { ok: false, error: e.message });
+      }
+    }
     if (req.method === "GET" && req.url.startsWith("/materials")) {
       // declared = MATS chunk of the open world's .terr; painted coverage is not readable from the script API
       const wb = await callWorkbench("MG_ListMaterials", {});
