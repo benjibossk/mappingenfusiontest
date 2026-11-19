@@ -17,6 +17,7 @@ import { BUILDINGS, FRONT_YAW } from '../data/buildings'
 import { boxed, footprint, hash, inside, lineDist, overlap, rng, sampler, samples, type Line, type Placed, type PlacedRole, type Settlement, type Square } from './settlements'
 import { GROW_TOWN, GROW_VILLAGE, growStreets, nearestOn, polyGrade, type GrowOptions, type StreetSeed } from './villageStreets'
 import { lotCorners, lotPoint, splitLot, streetBlocks, type Lot } from './villageLots'
+import { pickTemplate, stampTemplate } from './villageTemplates'
 import { clipDepth, lotTarget, subdivideBlock } from './lotSubdivision'
 import { zoneGridSpacing, zoneStreetGrid } from './zoneStreets'
 import { gardenParcel, type PlacedAsset, type PlacedFence } from '../biomes/parcel'
@@ -42,8 +43,16 @@ export interface VillageOptions {
   compositions?: boolean // gardens also get real composition prefabs from the library (library/*.json packs); with it, Everon gardens are dressed too
   polygon?: number[] // Zone tool: flat X/Z ring every street, lot, building and garden must stay inside
   reach?: number // overrides the site reach (m), Zone tool: the polygon size
+  organic?: boolean // Bohemia-measured orientation / outbuilding rules (default true; false = the old strict street-facing grid)
+  template?: boolean // stamp a real Bohemia village row (data/villageTemplates.json) along the main road before the lots
 }
-export interface VillageSite { site: string; variant: 'village' | 'town' | 'hamlet'; coastal: boolean; church?: string; streets: number; lots: number }
+export interface VillageSite { site: string; variant: 'village' | 'town' | 'hamlet'; coastal: boolean; church?: string; streets: number; lots: number; archetype?: VillageArchetype; template?: string }
+/** measured on Everon (17 villages >= 8 houses): 12 nucleated, 3 crossroads, 2 street (VILLAGES_VANILLA.md) */
+export type VillageArchetype = 'street' | 'crossroads' | 'nucleated'
+const ARCHETYPE_STREETS: Record<VillageArchetype, number> = { street: 0, crossroads: 2, nucleated: 4 }
+export function pickArchetype(r: number): VillageArchetype { return r < 0.15 ? 'street' : r < 0.35 ? 'crossroads' : 'nucleated' }
+/** house yaw off the street grid (deg), added to the lot normal; Bohemia |house - road tangent| off 90: median 2.6, p90 ~15 (the curve of the road already gives ~2.4) */
+export function yawJitter(r: number, r2: number): number { const u = (r2 * 2) % 1, a = r < 0.75 ? u * 1.5 : r < 0.93 ? 2 + u * 4 : 7 + u * 8; return (r2 < 0.5 ? 1 : -1) * a }
 export interface VillageResult extends Settlement {
   lots: { site: string; corners: number[]; used: boolean; row?: 2 }[] // row 2: Zone tool second-row lot behind a street lot
   gardens: { site: string; corners: number[] }[] // back gardens (fence / hedge polylines for the wall generator)
@@ -127,8 +136,8 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
   const pool = (cats: BuildingCat[]) => (o.pool ?? BUILDINGS).filter((b) => cats.includes(b.cat))
   const yawOf = (fx: number, fz: number) => Math.round((Math.atan2(fx, fz) * 180) / Math.PI + FRONT_YAW) // front (+Z) towards (fx, fz)
   //! building b with its front towards (fx,fz); its footprint's front edge at (px,pz) + f*(dir away from front), centred
-  const putFacing = (b: Building, px: number, pz: number, fx: number, fz: number, f: number, shift = 0) => {
-    const yaw = yawOf(fx, fz)
+  const putFacing = (b: Building, px: number, pz: number, fx: number, fz: number, f: number, shift = 0, rot = 0) => {
+    const yaw = yawOf(fx, fz) + Math.round(rot)
     const c0 = footprint(b, 0, 0, yaw)
     const nx = -fx, nz = -fz // away from the front
     let nmin = Infinity, nmax = -Infinity, tmin = Infinity, tmax = -Infinity
@@ -154,6 +163,10 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     const reach = o.reach ?? Math.max(REACH[site.kind], SITE_RADIUS[site.kind]) * (variant === 'town' && site.kind !== 'town' ? 1.3 : 1)
     const pre = `SET_${site.id}_`
     const info: VillageSite = { site: site.id, variant, coastal: false, streets: 0, lots: 0 }
+    // own streams: the archetype / orientation draws do not shift the layout rng
+    const orand = rng(hash(`${site.id}/organic`, o.seed))
+    const organic = o.organic !== false
+    if (variant === 'village' && organic) info.archetype = pickArchetype(orand())
     res.sites.push(info)
     const main = roadLines.filter((l) => near(l, site.x, site.z, reach))
     if (!main.length) continue
@@ -338,7 +351,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     }
     // --- organic streets grown from the main road (and along the shore)
     else if (o.streets !== false && P.grow.maxStreets > 0) {
-      const g: GrowOptions = { ...P.grow, maxGrade: maxSlope, maxStreets: o.maxStreets ?? P.grow.maxStreets + Math.floor(rand() * 2) }
+      const g: GrowOptions = { ...P.grow, maxGrade: maxSlope, maxStreets: o.maxStreets ?? (info.archetype ? ARCHETYPE_STREETS[info.archetype] : P.grow.maxStreets) + Math.floor(rand() * 2) }
       const seeds: StreetSeed[] = []
       const cands: StreetSeed[] = []
       for (const l of main) {
@@ -413,6 +426,32 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     lots.sort((a, b) => a.f - b.f)
     info.lots = lots.length
 
+    // template mode: a real Bohemia row stamped along the longest main road; the lots fill around it
+    if (o.template && variant !== 'town' && main.length) {
+      const road = main.reduce((a, b) => (b.pts.length > a.pts.length ? b : a))
+      const tpl = pickTemplate(variant === 'hamlet' ? 'hamlet-roadside' : info.archetype ?? 'nucleated', orand())
+      // start where the road passes closest to the site centre, minus half the template
+      let bd = Infinity, acc = 0, sAt = 0
+      for (let i = 0; i < road.pts.length / 2 - 1; i++) {
+        const d = Math.hypot(road.pts[i * 2] - site.x, road.pts[i * 2 + 1] - site.z)
+        if (d < bd) { bd = d; sAt = acc }
+        acc += Math.hypot(road.pts[i * 2 + 2] - road.pts[i * 2], road.pts[i * 2 + 3] - road.pts[i * 2 + 1])
+      }
+      const scale = 0.9 + orand() * 0.2
+      const st = stampTemplate(tpl, road.pts, { start: Math.max(0, sAt - (tpl.length * scale) / 2), mirror: orand() < 0.5, scale })
+      let n = 0
+      for (const h of st) {
+        const cs = pool([h.cat]).sort(() => orand() - 0.5)
+        for (const b of cs.slice(0, 4)) {
+          const yaw = h.yaw + Math.round(yawJitter(orand(), orand()) / 2)
+          const corners = footprint(b, h.x, h.z, yaw)
+          if (!fits(b, corners)) continue
+          add(id('T'), site.id, b, { x: h.x, z: h.z, yaw, corners }, 'house'); n++
+          break
+        }
+      }
+      if (n) info.template = tpl.id
+    }
     for (const { lot, f, row } of lots) {
       const k = f < 0.3 ? 0 : f < 0.6 ? 1 : 2
       const rec: VillageResult['lots'][number] = { site: site.id, corners: lotCorners(lot), used: false }
@@ -488,11 +527,22 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
         const cs = pool(t < 5 ? [cats[Math.floor(rand() * cats.length)]] : t < 9 ? cats : ['houseS', 'houseM']).filter((b) => sized(b, t < 9 ? garden : 1))
         if (!cs.length) continue
         const b = cs[Math.floor(rand() * cs.length)]
-        let r = putFacing(b, fx0, fz0, fx, fz, setback)
+        // Bohemia: long facade along the street (63 % within 10 deg), the rest gable-on; ~20 % back to the road;
+        // a few degrees off the grid. A deep model is turned side-on when the lot is wide enough.
+        let rot = 0
+        if (organic) {
+          const deep = b.maxZ - b.minZ > (b.maxX - b.minX) * 1.1
+          if (orand() < (deep ? 0.8 : 0.15)) rot = orand() < 0.5 ? 90 : -90
+          else if (orand() < 0.15) rot = 180
+          rot += yawJitter(orand(), orand())
+          const rr = putFacing(b, fx0, fz0, fx, fz, setback, 0, rot)
+          if (rr.width > lot.w + (k === 0 ? 2 : 0) || setback + rr.depth + 1 > lot.d) rot = yawJitter(orand(), orand()) // turned model does not fit: street-facing, jitter only
+        }
+        let r = putFacing(b, fx0, fz0, fx, fz, setback, 0, rot)
         // later tries slide the house across the lot / a little deeper (off a road edge, a wet corner, a bump)
         if (t >= 2) {
           const sh = (rand() - 0.5) * Math.max(0, lot.w - r.width), deep = setback + rand() * Math.max(0, lot.d - garden - setback - r.depth)
-          r = putFacing(b, fx0, fz0, fx, fz, deep, sh)
+          r = putFacing(b, fx0, fz0, fx, fz, deep, sh, rot)
         }
         if (fits(b, r.corners)) house = { b, r }
       }
@@ -507,11 +557,16 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
         const gc = lotCorners(g)
         const free = !placed.some((p2) => p2 !== q && overlap(gc, p2.corners, 0)) && !samplesWet(gc) && !samples(gc).some((v, i, a) => i % 2 === 0 && outZone(v, a[i + 1]))
         // annex at the back of the garden
-        if (free && rand() < (k === 0 ? 0.15 : k === 1 ? 0.4 : 0.55)) {
+        // Bohemia: 1.6 outbuildings per house on Everon, 76 % behind the house (median 9 m behind, 11 m to the side,
+        // 18 m centre to centre), 80 % aligned with it within 5 deg, the rest mostly square to it
+        if (free && rand() < (organic ? (k === 0 ? 0.5 : k === 1 ? 0.75 : 0.9) : (k === 0 ? 0.15 : k === 1 ? 0.4 : 0.55))) {
           const ac = pool(rand() < 0.5 ? ['annex'] : ['shed'])
           const a = ac[Math.floor(rand() * ac.length)]
           if (a) {
-            const ra = putFacing(a, fx0, fz0, fx, fz, back + 2 + rand() * 3, (rand() - 0.5) * Math.max(0, lot.w - 8))
+            const side = orand() < 0.5 ? -1 : 1, half = Math.max(0, lot.w - 8) / 2
+            const lat = organic ? side * half * (0.4 + 0.6 * orand()) : (rand() - 0.5) * Math.max(0, lot.w - 8)
+            const arot = organic ? (orand() < 0.8 ? (orand() - 0.5) * 8 : orand() < 0.5 ? 90 : -90) : 0
+            const ra = putFacing(a, fx0, fz0, fx, fz, back + 2 + rand() * 3, lat, arot)
             if ((ra.x - fx0) * lot.nx + (ra.z - fz0) * lot.nz + ra.depth / 2 <= lot.d && fits(a, ra.corners)) add(id('A'), site.id, a, ra, 'annex')
           }
         }
