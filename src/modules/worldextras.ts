@@ -58,7 +58,7 @@ export interface FenceOptions {
   seed: number
   kindOf: (site: string) => 'town' | 'village' | 'hamlet' | undefined
   blocked?: (x: number, z: number) => boolean // a building footprint, a road...
-  share?: number // share of the built lots fenced (default 0.65)
+  share?: number // share of the built lots fenced (default 1: reconstruction bench, Everon sites: 0.65 laid 0.43x the vanilla fence length, 1 -> 0.66x)
 }
 const STYLE = {
   village: [[FENCES.stone1, FENCES.wood1], [FENCES.brickOld, FENCES.wood2], [FENCES.stone2, FENCES.woodOld], [FENCES.wood1, FENCES.wood1]],
@@ -69,7 +69,7 @@ const STYLE = {
  *  back-left): a front wall with a gate, side and back fences; an edge shared by two lots is laid once, an
  *  edge running over a building or a road is left out. One style per settlement. */
 export function lotFences(lots: FenceLot[], o: FenceOptions): VillageParcel[] {
-  const share = o.share ?? 0.65, seen = new Set<string>(), out: VillageParcel[] = []
+  const share = o.share ?? 1, seen = new Set<string>(), out: VillageParcel[] = []
   const key = (ax: number, az: number, bx: number, bz: number) => {
     const a = `${Math.round(ax / 2)},${Math.round(az / 2)}`, b = `${Math.round(bx / 2)},${Math.round(bz / 2)}`
     return a < b ? a + '|' + b : b + '|' + a
