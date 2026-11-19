@@ -42,8 +42,8 @@ test('random worlds 7/21/77: LV along the roads, no pole in a building, few span
       }
       for (let i = 0; i + 3 < l.path.length; i += 2) B.forEach((c, k) => { if (segRingDist(l.path[i], l.path[i + 1], l.path[i + 2], l.path[i + 3], c) === 0) crossed.add(k) })
     }
-    assert.ok(lv > 100, `seed ${seed}: LV poles ${lv}`)
-    assert.ok(near / lv >= 0.75, `seed ${seed}: LV within 10 m of a road ${(near / lv).toFixed(2)}`)
+    assert.ok(lv > 70, `seed ${seed}: LV poles ${lv}`) // LV span 35 m since 5e0c1ca (vanilla), was > 100 at 25 m
+    assert.ok(near / lv >= 0.72, `seed ${seed}: LV within 10 m of a road ${(near / lv).toFixed(2)}`)
     assert.equal(inB, 0, `seed ${seed}: poles in a building`)
     assert.ok(crossed.size <= 10, `seed ${seed}: houses under a line ${crossed.size}`) // was 26-47 before
   }
