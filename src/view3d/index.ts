@@ -35,7 +35,7 @@ export interface View3DData {
 }
 export interface View3DText {
   back: string; exag: string; reset: string; top: string; trees: string; help: string; grid: string
-  quality?: string; qLow?: string; qMed?: string; qHigh?: string; visTrees?: string
+  quality?: string; qLow?: string; qMed?: string; qHigh?: string; visTrees?: string; objs?: string
   drape: string; real: string; map: string; sat: string; genMs: (s: string) => string
   stage: (k: 'mesh' | 'drape' | 'real' | 'objects') => string
 }
@@ -621,9 +621,10 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   if (savedQ) setQuality(savedQ)
   qSel.addEventListener('change', () => { const v = qSel.value as Quality; saveQuality(v); setQuality(v) })
   const statsEl = q('stats')
+  const nObjs = data.buildings.length + (data.props?.length ?? 0) + (data.bridges?.length ?? 0) + nPole + nWall
   const statsTimer = window.setInterval(() => {
     const t = performance.now(), fps = (fpsN * 1000) / Math.max(1, t - fpsT), fpsN0 = fpsN; fpsN = 0; fpsT = t
-    statsEl.textContent = `${T.visTrees ?? 'Trees'} ${treesOn ? visTrees.toLocaleString() : 0} │ ${fpsN0 ? fps.toFixed(0) : '–'} FPS`
+    statsEl.textContent = `${T.visTrees ?? 'Trees'} ${treesOn ? visTrees.toLocaleString() : 0} │ ${T.objs ?? 'Objects'} ${nObjs.toLocaleString()} │ ${fpsN0 ? fps.toFixed(0) : '–'} FPS`
   }, 500)
   resize()
   loop()

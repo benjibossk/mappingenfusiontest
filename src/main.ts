@@ -51,7 +51,7 @@ let collab: CollabTransport | null = null // shared room: direct (src/p2p.ts) or
 let quietUntil = 0 // a project just received from the room is not sent back
 let remoteApply = false // a room project being loaded: its checkpoints are not logged as our changes
 let saveTimer = 0 // declared early: handlers registered above autosave() may fire first
-let issues: Issue[] = [] // read by draw(), which runs during start-up
+let issues: (Issue | PreIssue)[] = [] // read by draw(), which runs during start-up
 /** what already stands in the imported world: shown locked, kept clear by the generators */
 let existing: Existing = { objects: [], shapes: [] }
 /** origins of existing objects taken over or deleted in the map, deleted in the Workbench on the next send */
@@ -103,6 +103,7 @@ const toWb = async (p: Project) => {
 import { ffBiomeName, ffBiomeValue } from './ffbiome'
 import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
+import { applyFixes, preSendChecks, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
 import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
@@ -721,6 +722,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <p id="checkDensity" class="hint"></p>
+        <button id="checkFixAll" type="button" class="secondary" hidden></button>
         <ul id="checkList" class="issues"></ul>
       </fieldset>
       <div id="wbGuide" class="wbguide" hidden>
@@ -4345,18 +4347,45 @@ function runChecks() {
     refusedGaps: roadGaps().filter((g) => ids.has(g.id) && noBridge.has(gapKey(g))),
     budget: { platform: budgetPlatform(), grid: (density = contentDensity()) },
   })
+  // #1: building overlaps, objects on a road, zone objects off the map (logic of scripts/mg-audit.mjs)
+  const g0 = island.grid
+  issues = [...issues, ...preSendChecks({
+    width: (g0.cols - 1) * g0.step, height: (g0.rows - 1) * g0.step, settled, zones,
+    roads: [...roads.map((r) => ({ r, zone: undefined as number | undefined })), ...zones.flatMap((zn, k) => zn.roads.map((r) => ({ r, zone: k })))]
+      .filter(({ r }) => r.pts.length >= 4).map(({ r, zone }) => ({ id: r.id, half: roadHalf(r), line: centreLine(r.pts, 4), zone })),
+  })]
   $('checkDensity').textContent = t('check.density', { n: Math.round(density.total), max: PLATFORM_BUDGETS[budgetPlatform()].total })
   const list = $<HTMLUListElement>('checkList')
   list.innerHTML = ''
   for (const it of issues) {
     const li = document.createElement('li')
     li.textContent = t(('check.' + it.kind) as Parameters<typeof t>[0], { id: it.id, v: it.value ?? '' })
-    li.addEventListener('click', () => { view.x = it.x; view.z = it.z; view.mpp = Math.min(view.mpp, 1.5); draw() })
+    li.addEventListener('click', () => { view.x = it.x; view.z = it.z; view.mpp = Math.min(view.mpp, 0.6); draw() })
+    const fix = 'fix' in it ? it.fix : undefined
+    if (fix) {
+      const b = document.createElement('button')
+      b.type = 'button'; b.className = 'secondary fixone'
+      b.textContent = t(fix.op === 'drop' ? 'check.fixDrop' : 'check.fixMove')
+      b.addEventListener('click', (e) => { e.stopPropagation(); fixIssues([fix]) })
+      li.append(' ', b)
+    }
     list.append(li)
   }
+  const fixes = issues.flatMap((it) => ('fix' in it && it.fix ? [it.fix] : []))
+  const all = $<HTMLButtonElement>('checkFixAll')
+  all.hidden = !fixes.length
+  all.textContent = t('check.fixAll', { n: fixes.length })
+  all.onclick = () => fixIssues(fixes)
   if (!issues.length) list.innerHTML = `<li class="ok">${t('check.none')}</li>`
   draw()
   return issues
+}
+/** #1 auto-fix: drop / nudge the objects, then check again */
+function fixIssues(fixes: NonNullable<PreIssue['fix']>[]) {
+  const n = applyFixes(fixes, settled, zones)
+  autosave()
+  runChecks()
+  logEl.textContent = t('check.fixed', { n })
 }
 /** road shapes of the imported world, as roads the villages can line up on (never sent back) */
 function existingRoads(): Road[] {
@@ -5103,7 +5132,7 @@ btn3d.addEventListener('click', () => void (async () => {
     }, {
       text: {
         back: t('v3d.back'), exag: t('v3d.exag'), reset: t('v3d.reset'), top: t('v3d.top'), trees: t('v3d.trees'), help: t('v3d.help'),
-        grid: t('v3d.grid'), quality: t('v3d.quality'), qLow: t('v3d.qLow'), qMed: t('v3d.qMed'), qHigh: t('v3d.qHigh'), visTrees: t('v3d.visTrees'), drape: t('v3d.drape'), real: t('v3d.real'), map: t('v3d.map'), sat: t('v3d.sat'), genMs: (s) => t('v3d.genMs', { s }),
+        grid: t('v3d.grid'), quality: t('v3d.quality'), qLow: t('v3d.qLow'), qMed: t('v3d.qMed'), qHigh: t('v3d.qHigh'), visTrees: t('v3d.visTrees'), objs: t('v3d.objs'), drape: t('v3d.drape'), real: t('v3d.real'), map: t('v3d.map'), sat: t('v3d.sat'), genMs: (s) => t('v3d.genMs', { s }),
         stage: (k) => t(('v3d.st.' + k) as K),
       },
       drape: drapeCanvas,

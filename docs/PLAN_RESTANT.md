@@ -20,7 +20,7 @@ Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
 ## Priorité 1 — sortir une carte jouable dans le Workbench
 | # | Tâche | État |
 |---|---|---|
-| 1 | Validation avant envoi (pentes, chevauchements, budget par bloc, objets hors carte) | 🟡 validateur + budget par plateforme ; reste chevauchements / hors carte |
+| 1 | Validation avant envoi (pentes, chevauchements, budget par bloc, objets hors carte) | ✅ panneau « Vérification avant envoi » (étape 7) : + bâtiments qui se chevauchent, objets sur la chaussée, objets de zone hors carte (logique de scripts/mg-audit.mjs, `src/validate/preSend.ts`), clic = zoom, boutons Retirer / Décaler et « Tout corriger » |
 | 2 | Export bridge → Workbench complet (champs/haies/zones de l'outil Zone) et test de bout en bout | ⬜ test de bout en bout à faire |
 | 3 | Export biome FF (`m_iBiome` dans `JWK_WorldEntity`) | ✅ |
 | 4 | Corriger la recette R3 (1 bloc > 5 surfaces sur seed 1) | 🟡 `limitPerBlock` ; recette à revérifier |
@@ -49,10 +49,10 @@ Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
 ## Priorité 4 — vue 3D et confort
 | # | Tâche | État |
 |---|---|---|
-| 18 | Sélecteur de qualité + compteur arbres / FPS | 🟡 réglages qualité ; compteur à faire |
+| 18 | Sélecteur de qualité + compteur arbres / FPS | ✅ compteur arbres affichés + objets + FPS dans la vue 3D |
 | 19 | Vraies emprises des prefabs (bbox des .xob) | 🟡 dimensions réelles sites / militaire / ponts / mods ; reste l'Atelier |
-| 20 | Forêts visibles en mode Carte quand les arbres sont masqués | ⬜ |
-| 21 | Case « compositions réelles » (jardins Casseburne) dans l'app | ⬜ |
+| 20 | Forêts visibles en mode Carte quand les arbres sont masqués | ✅ (teinte + contour sur le drapé, commit 0731d34) |
+| 21 | Case « compositions réelles » (jardins Casseburne) dans l'app | ✅ déjà là : case « Vraies compositions de jardins » (étape Villages) |
 
 ## Priorité 5 — plus tard / idées
 - ✅ Anneau de terrain hors carte (Outside Terrain Core) généré côté TS.
