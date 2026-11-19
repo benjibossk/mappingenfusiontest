@@ -26,3 +26,6 @@ scratch/
 
 # collab rooms (history, comments, last map)
 collab/data/
+
+# reference maps over 20 MB are gzipped and not committed
+public/refmaps/*.gz

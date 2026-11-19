@@ -21,7 +21,7 @@ import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
-import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
+import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
 import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
@@ -58,7 +58,7 @@ let existing: Existing = { objects: [], shapes: [] }
 interface Removed { f: 'ROAD_' | 'WATER_' | 'ANY'; x: number; z: number }
 let removed: Removed[] = []
 /** forests and field areas brought from OpenStreetMap (realWorld.ts): forests are sent as forest generators */
-interface MapArea { id: string; kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; tall?: 'low' | 'mid' | 'high'; pts: number[]; stage?: 'mature' | 'juvenile' | 'thinned' | 'clearcut'; logs?: ProdLog[] } // stage/logs: production forest (prodforest.ts)
+interface MapArea { id: string; kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; tall?: 'low' | 'mid' | 'high'; pts: number[]; holes?: number[][]; stage?: 'mature' | 'juvenile' | 'thinned' | 'clearcut'; logs?: ProdLog[] } // stage/logs: production forest (prodforest.ts)
 let areas: MapArea[] = []
 /** land cover per terrain vertex from ESA WorldCover (realWorld.ts), painted under the areas */
 let landCover: { cols: number; data: Uint8Array } | null = null
@@ -104,6 +104,7 @@ import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/netw
 import { validate, type Issue } from './modules/validate'
 import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
+import { REF_MAPS, loadRefMap, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
@@ -437,6 +438,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
         <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
       </div>
+      <div class="row">
+        <select id="tRefMap" title="${t('hint.tRef')}">${REF_MAPS.map((m) => `<option value="${m}">${t(('ref.map.' + m) as Key)}</option>`).join('')}</select>
+        <button id="tRef" type="button" class="secondary" title="${t('hint.tRef')}">${t('btn.tRef')}</button>
+        <button id="tRefStats" type="button" class="secondary" title="${t('hint.tRefStats')}">${t('btn.tRefStats')}</button>
+      </div>
+      <div id="refStats" class="hint" hidden></div>
       <details class="adv"><summary>${t('ui.advanced')} ${info('info.adv')}</summary>
       <div class="form">
         <label>${t('lbl.tSize')} <input id="tSize" type="number" value="4096"></label>
@@ -1866,6 +1873,8 @@ function threads(): Thread[] {
 const visibleThreads = () => threads().filter((th) => !th.resolved || $<HTMLInputElement>('cvShowRes').checked)
 const when = (at: number) => new Date(at).toLocaleString(getLang() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' })
 function panTo(x: number, z: number) { view.x = x; view.z = z; draw() }
+// dev only: lets the Playwright checks frame a world spot (x, z, metres per pixel)
+if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__mgView = (x: number, z: number, mpp: number) => { view.x = x; view.z = z; view.mpp = mpp; draw() }
 
 // history: one entry per undo checkpoint, named from what changed since the previous one
 let pendingAct = ''
@@ -2255,6 +2264,7 @@ async function runJob(label: string, f: () => Promise<string>, onOk?: () => void
 function islandNow() { islandSync = true; try { $<HTMLButtonElement>('tGen').click() } finally { islandSync = false } }
 let islandSync = false // applyWorld: the same island right now, on this thread (the world is applied in one go)
 $<HTMLButtonElement>('tGen').addEventListener('click', () => {
+  setRefReadOnly(false)
   const size = num('tSize')
   const p = {
     size,
@@ -2287,6 +2297,7 @@ $<HTMLButtonElement>('tGen').addEventListener('click', () => {
 /** world imported from the Workbench (null = generated island); kept so the project survives a reload */
 let imported: WorldExport | null = null
 function useWorld(w: WorldExport) {
+  setRefReadOnly(false)
   imported = { ...w, materials: [], surfaces: [] }
   island = worldToIsland(w)
   const { cols, rows, step, minX, minZ } = island.grid
@@ -2794,6 +2805,7 @@ function layersUi() {
   document.querySelectorAll<HTMLElement>('#rwLayers [data-stale]').forEach((b) => { b.hidden = !st.has(b.dataset.stale as LayerId) })
 }
 function autosave() {
+  if (refReadOnly) return // a reference map never replaces the saved project
   clearTimeout(saveTimer)
   saveTimer = window.setTimeout(() => {
     const p = islandProject()
@@ -3636,6 +3648,81 @@ function applyRealPlace(r: RealPlace) {
   coachAfter('real')
 }
 $<HTMLButtonElement>('tReal').addEventListener('click', () => openRealWorld(applyRealPlace))
+
+// --- Bohemia reference maps (public/refmaps, tools/PakTools/export_ref_map.py): read-only, drawn with the
+// site's own renderers (roads, buildings, forest areas, lakes, power) to compare with a generated map
+let refStatsRef: { name: string; s: MapStats } | null = null
+let refStatsOurs: { name: string; s: MapStats } | null = null
+function oursStats(): MapStats {
+  const g = island!.grid
+  const rr: StatRoad[] = [...roads, ...setLanes, ...setPaths].map((r) => ({ type: r.type, pts: r.pts, half: roadHalf(r) }))
+  const bld = settled.map((b) => ({ x: b.x, z: b.z, house: b.role === 'house' || b.role === 'farmhouse' || (!b.role && /^house/.test(b.cat)) }))
+  const forest = areas.filter((a) => a.kind === 'forest').reduce((s, a) => s + polyArea(a.pts) - (a.holes ?? []).reduce((h, p) => h + polyArea(p), 0), 0)
+  return mapStats(rr, bld, forest, (g.cols - 1) * g.step * (g.rows - 1) * g.step, null)
+}
+function renderRefStats() {
+  const box = $<HTMLDivElement>('refStats')
+  const cols = [refStatsRef, refStatsOurs].filter((c): c is { name: string; s: MapStats } => !!c)
+  box.hidden = !cols.length
+  if (!cols.length) return
+  const f = (v: number) => (Number.isFinite(v) ? String(v) : '—')
+  const tr = (v: [number, number, number]) => `${f(v[1])} (${f(v[0])}–${f(v[2])})`
+  const types = [...new Set(cols.flatMap((c) => Object.keys(c.s.roadKm)))].sort((a, b) => (cols[0].s.roadKm[b] ?? 0) - (cols[0].s.roadKm[a] ?? 0))
+  const rows: [string, (s: MapStats) => string][] = [
+    [t('ref.st.houses'), (s) => String(s.houses)],
+    [t('ref.st.villages'), (s) => String(s.villages)],
+    [t('ref.st.perVillage'), (s) => tr(s.housesPerVillage)],
+    [t('ref.st.setback'), (s) => tr(s.setback)],
+    [t('ref.st.forest'), (s) => `${s.forestPct} %`],
+    [t('ref.st.trees'), (s) => (s.treesPerHa == null ? '—' : String(s.treesPerHa))],
+    ...types.map((k) => [`${t('ref.st.km')} ${t(('road.type.' + k) as Key)}`, (s: MapStats) => f(s.roadKm[k] ?? 0)] as [string, (s: MapStats) => string]),
+  ]
+  box.innerHTML = `<table class="ref-stats"><tr><th></th>${cols.map((c) => `<th>${c.name}</th>`).join('')}</tr>${rows.map(([l, g]) => `<tr><td>${l}</td>${cols.map((c) => `<td>${g(c.s)}</td>`).join('')}</tr>`).join('')}</table><small>${t('ref.st.note')}</small>`
+}
+function applyRefMap(m: RefMap, id: RefMapId) {
+  // the generated map in place is measured first, so both columns can be compared
+  if (!refReadOnly && island && (roads.length || settled.length)) refStatsOurs = { name: t('ref.ours'), s: oursStats() }
+  const step = 16, n = Math.round(m.size / step) + 1
+  useWorld({ minX: m.minX, minZ: m.minZ, step, cols: n, rows: n, ocean: 0, heights: new Array(n * n).fill(5), materials: ['Grass_01'], surfaces: new Array(n * n).fill(0) })
+  for (const r of m.roads) {
+    const type = roadTypeOf({ generators: [r.gen], closed: false, origin: [0, 0], points: [] }) ?? 'asphalt'
+    roads.push({ id: nextRoadId(type), type, pts: r.pts, ...(r.w > 0 ? { width: r.w } : {}) })
+  }
+  for (const l of m.lakes) waters.push({ id: nextWaterId('lake'), type: 'lake', pts: l, width: 0, depth: 2 })
+  for (const l of m.rivers) waters.push({ id: nextWaterId('river'), type: 'river', pts: l, width: 8, depth: 1.5 })
+  const mask = forestMask(m.trees)
+  const tc = m.trees
+  maskOutlines(mask, tc.cols, tc.rows, tc.cell, tc.minX, tc.minZ).forEach((o, k) => areas.push({ id: `FOREST_REF_${k + 1}`, kind: 'forest', leaf: 'mixed', pts: o.pts, holes: o.holes }))
+  settled = refBuildings(m)
+  existing = { objects: [], shapes: refFences(m).map((p) => ({ generators: ['Fence'], closed: false, origin: p[0], points: p })) }
+  m.power.forEach((l, k) => {
+    const kind: PowerKind = /HV|High|Pylon|Lattice/i.test(l.pf) ? 'hv' : 'mv'
+    let length = 0
+    for (let i = 2; i < l.pts.length; i += 2) length += Math.hypot(l.pts[i] - l.pts[i - 2], l.pts[i + 1] - l.pts[i - 1])
+    powerLines.push({ id: `POWER_REF_${k + 1}`, kind, spacing: POWER_DEFAULTS[kind].spacing, path: l.pts, poles: l.pts, length })
+  })
+  let fc = 0
+  for (const v of mask) fc += v
+  const rr: StatRoad[] = roads.map((r) => ({ type: r.type, pts: r.pts, half: roadHalf(r) }))
+  const bld = m.buildings.items.map(([, x, z, , cls]) => ({ x, z, house: cls === 'house' }))
+  refStatsRef = { name: t(('ref.map.' + id) as Key), s: mapStats(rr, bld, fc * tc.cell * tc.cell, m.size * m.size, treesPerHa(tc, mask)) }
+  setRefReadOnly(true)
+  $<HTMLInputElement>('rLive').checked = false // no relief: the rain simulation would carve fake rivers in the flat ground
+  setInfo(); powerInfo(); waterInfo(); roadInfo()
+  recompose(true)
+  draw()
+  renderRefStats()
+  logEl.textContent = t('log.ref', { name: refStatsRef.name, km: (m.size / 1000).toFixed(1), roads: m.roads.length, bld: m.buildings.items.length, fences: m.fences.items.length, forests: areas.length, trees: tc.total, src: tc.source })
+}
+$<HTMLButtonElement>('tRef').addEventListener('click', () => {
+  const id = $<HTMLSelectElement>('tRefMap').value as RefMapId
+  void busy(t('btn.tRef'), async () => applyRefMap(await loadRefMap(id), id)).catch((e) => toast(String(e), 'err'))
+})
+$<HTMLButtonElement>('tRefStats').addEventListener('click', () => {
+  if (!island) return toast(t('err.genFirst'), 'err')
+  if (!refReadOnly) refStatsOurs = { name: t('ref.ours'), s: oursStats() }
+  renderRefStats()
+})
 // tracing image (satellite / ortho photo / scanned map) stretched over the whole terrain, north up;
 // only shown here, never sent to the game; kept in IndexedDB across reloads (src/traceStore.ts) and
 // embedded in a saved project file when it is small enough (< 8 MB), never in the autosave
@@ -3690,10 +3777,12 @@ function drawRiparian() {
 function drawAreas() {
   for (const a of areas) {
     ctx.beginPath()
-    for (let k = 0; k < a.pts.length; k += 2) { const [sx, sy] = toScreen(a.pts[k], a.pts[k + 1]); if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
-    ctx.closePath()
+    for (const ring of [a.pts, ...(a.holes ?? [])]) {
+      for (let k = 0; k < ring.length; k += 2) { const [sx, sy] = toScreen(ring[k], ring[k + 1]); if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+      ctx.closePath()
+    }
     ctx.fillStyle = a.kind === 'forest' ? (a.stage === 'juvenile' ? 'rgba(110,170,60,0.4)' : a.stage === 'thinned' ? 'rgba(60,130,60,0.22)' : 'rgba(40,110,40,0.38)') : 'rgba(200,180,80,0.18)'
-    ctx.fill()
+    ctx.fill('evenodd')
     ctx.setLineDash(a.kind === 'forest' ? [] : [5, 4])
     ctx.strokeStyle = a.kind === 'forest' ? 'rgba(70,160,70,0.9)' : 'rgba(220,200,110,0.8)'
     ctx.lineWidth = 1.2

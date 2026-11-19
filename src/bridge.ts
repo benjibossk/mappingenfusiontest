@@ -22,7 +22,13 @@ export async function getStatus(): Promise<BridgeStatus> {
   }
 }
 
+/** reference map loaded (Everon / Kolguyev / Arland): read-only, nothing may be sent to the Workbench */
+export let refReadOnly = false
+export const setRefReadOnly = (v: boolean) => { refReadOnly = v }
+const guardRef = () => { if (refReadOnly) throw new Error(t('ref.readOnly')) }
+
 export async function sendToWorkbench(project: Project): Promise<string> {
+  guardRef()
   const res = await fetch(`${BRIDGE_URL}/apply`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -59,6 +65,7 @@ export async function getTemplates(): Promise<unknown[]> {
 }
 
 async function post<T>(route: string, body: unknown): Promise<T> {
+  guardRef()
   const res = await fetch(`${BRIDGE_URL}${route}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
