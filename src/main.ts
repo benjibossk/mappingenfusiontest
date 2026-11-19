@@ -22,7 +22,7 @@ import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
-import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
+import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
@@ -97,7 +97,7 @@ const toWb = async (p: Project) => {
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
-  const msg = await sendToWorkbench({ ...p, ffBiome: ffBiomeValue(currentBiome), remove: removed.filter(go).flatMap((r) => [r.x, r.z]) })
+  const msg = await sendToWorkbench({ ...p, ffBiome: ffBiomeValue(currentBiome), remove: removed.filter(go).flatMap((r) => [r.x, r.z]), comments: wbComments() } as Project)
   removed = removed.filter((r) => !go(r))
   autosave()
   return (lostPts > 0 || crumbs ? t('log.cleaned', { pts: lostPts, crumbs }) + '\n' : '') + msg
@@ -1897,6 +1897,7 @@ function addOp(p: Partial<Op>) {
   renderCollab()
   draw()
   notifyAtelierCollab()
+  syncComments()
 }
 function receiveOps(list: Op[], replace: boolean) {
   if (replace) {
@@ -1911,6 +1912,7 @@ function receiveOps(list: Op[], replace: boolean) {
   renderCollab()
   draw()
   notifyAtelierCollab()
+  syncComments()
 }
 // Atelier network viewers pin their comments in the same room
 registerAtelierCollab({ add: (x, z, text) => addOp({ kind: 'comment', text, x, z }), list: () => ops })
@@ -1927,6 +1929,25 @@ function threads(): Thread[] {
 const visibleThreads = () => threads().filter((th) => !th.resolved || $<HTMLInputElement>('cvShowRes').checked)
 const when = (at: number) => new Date(at).toLocaleString(getLang() === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' })
 function panTo(x: number, z: number) { view.x = x; view.z = z; draw() }
+// comments in the World Editor: the camera flies there on click, CommentEntity markers follow every change
+let camWarned = false
+async function camTo(x: number, z: number) {
+  const g = terrain ? heightAt(terrain, x, z) : 0
+  const ground = Number.isFinite(g) ? Math.max(g, terrain?.ocean ?? 0) : 0
+  const back = 85 // metres south of the point, ~60 m up, looking north and down ~35 deg
+  if (!(await setCamera({ x, y: ground + 60, z: z - back, yaw: 0, pitch: -35 })) && !camWarned) { camWarned = true; toast(t('cv.noWb'), 'info', undefined, 2500) }
+}
+function gotoComment(x: number, z: number) { panTo(x, z); void camTo(x, z) }
+const wbComments = (): WbComment[] => threads().filter((th) => Number.isFinite(th.c.x)).map((th) => ({ x: th.c.x!, z: th.c.z!, n: th.n, text: th.c.text ?? '', resolved: th.resolved }))
+let comTimer = 0, comSig = ''
+function syncComments() {
+  clearTimeout(comTimer)
+  comTimer = window.setTimeout(() => {
+    const list = wbComments(), sig = JSON.stringify(list)
+    if (sig === comSig) return
+    void pushComments(list).then((ok) => { if (ok) comSig = sig })
+  }, 800)
+}
 // dev only: lets the Playwright checks frame a world spot (x, z, metres per pixel)
 if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__mgView = (x: number, z: number, mpp: number) => { view.x = x; view.z = z; view.mpp = mpp; draw() }
 
@@ -2010,7 +2031,7 @@ function renderCollab() {
     const head = el('div', 'cvmeta')
     head.append(el('b', 'pin', String(th.n)), el('strong', '', th.c.author), el('span', '', ` · ${when(th.c.at)}${th.c.local ? ' · ' + t('cv.offline') : ''}`))
     head.title = t('cv.goto')
-    head.addEventListener('click', () => { selCom = th.c.id; panTo(th.c.x ?? view.x, th.c.z ?? view.z); renderCollab() })
+    head.addEventListener('click', () => { selCom = th.c.id; if (Number.isFinite(th.c.x)) gotoComment(th.c.x!, th.c.z!); renderCollab() })
     li.append(head, el('p', 'cvtext', th.c.text ?? ''))
     for (const r of th.replies) {
       const rp = el('div', 'cvreply')
@@ -2046,7 +2067,7 @@ function renderCollab() {
     if (at && Number.isFinite(at.x)) {
       li.classList.add('go')
       li.title = t('cv.goto')
-      li.addEventListener('click', () => { if (at.kind === 'comment') selCom = at.id; panTo(at.x!, at.z!); renderCollab() })
+      li.addEventListener('click', () => { if (at.kind === 'comment') { selCom = at.id; gotoComment(at.x!, at.z!) } else panTo(at.x!, at.z!); renderCollab() })
     }
     hl.append(li)
   }
@@ -2102,7 +2123,7 @@ $('cvAdd').addEventListener('click', () => {
 function commentClick(sx: number, sy: number) {
   for (const th of visibleThreads()) {
     const [px, py] = toScreen(th.c.x ?? 0, th.c.z ?? 0)
-    if (Math.hypot(px - sx, py - sy) < 12) { selCom = th.c.id; renderCollab(); draw(); return }
+    if (Math.hypot(px - sx, py - sy) < 12) { selCom = th.c.id; void camTo(th.c.x ?? 0, th.c.z ?? 0); renderCollab(); draw(); return }
   }
   draftPos = toWorld(sx, sy)
   $('cvDraft').hidden = false

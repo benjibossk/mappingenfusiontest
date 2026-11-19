@@ -116,3 +116,24 @@ export async function getCamera(): Promise<WbCamera> {
     return { ok: false, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, error: (e as Error).message }
   }
 }
+
+/** moves the World Editor camera (MG_SetCamera); never throws, false when the Workbench is unreachable */
+export async function setCamera(c: { x: number; y: number; z: number; yaw: number; pitch: number }): Promise<boolean> {
+  try {
+    const q = new URLSearchParams(Object.entries(c).map(([k, v]) => [k, v.toFixed(2)]))
+    const res = await fetch(`${BRIDGE_URL}/camera/set?${q}`, { signal: AbortSignal.timeout(3500) })
+    return !!(await res.json()).ok
+  } catch { return false }
+}
+
+export interface WbComment { x: number; z: number; n: number; text: string; resolved: boolean }
+/** comments -> CommentEntity markers in the open world (MG_SetComments); never throws */
+export async function pushComments(comments: WbComment[]): Promise<boolean> {
+  if (refReadOnly) return false
+  try {
+    const res = await fetch(`${BRIDGE_URL}/comments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comments }), signal: AbortSignal.timeout(15000),
+    })
+    return (await res.json()).status === 'ok'
+  } catch { return false }
+}

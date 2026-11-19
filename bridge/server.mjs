@@ -54,6 +54,16 @@ function readPascal(buf, offset) {
   return { value: buf.toString("utf-8", offset + 4, offset + 4 + len), next: offset + 4 + len };
 }
 
+// comments of the web app -> CommentEntity markers in the World Editor (MG_SetComments, MG_CommentsApi.c)
+// body.comments = [{ x, z, n, text, resolved }]; line format "x z resolved n text"
+function pushComments(list) {
+  const lines = (Array.isArray(list) ? list : []).filter((c) => Number.isFinite(c?.x) && Number.isFinite(c?.z))
+    .map((c) => `${c.x.toFixed(2)} ${c.z.toFixed(2)} ${c.resolved ? 1 : 0} ${Number(c.n) || 0} ${String(c.text ?? "").replace(/\s+/g, " ").trim() || "-"}`);
+  mkdirSync(join(PROFILE_DIR, "MapGen"), { recursive: true });
+  writeFileSync(join(PROFILE_DIR, "MapGen", "comments.txt"), lines.join("\n") + "\n", "utf-8");
+  return callWorkbench("MG_SetComments", { file: "$profile:MapGen/comments.txt" }, 15_000);
+}
+
 function callWorkbench(apiFunc, params = {}, timeoutMs = 120_000) {
   const version = Buffer.alloc(4);
   version.writeInt32LE(1);
@@ -219,6 +229,11 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { minX, minZ, step: cell, cols, rows, ocean, heights });
     }
 
+    if (req.method === "POST" && req.url === "/comments") {
+      const body = JSON.parse(await readBody(req));
+      try { return send(res, 200, await pushComments(body.comments)); }
+      catch (e) { return send(res, 503, { status: "error", error: e.message }); }
+    }
     if (req.method === "POST" && req.url === "/apply") {
       const text = await readBody(req);
       const project = JSON.parse(text);
@@ -255,6 +270,7 @@ const server = createServer(async (req, res) => {
       writeFileSync(join(PROFILE_DIR, "MapGen", "sent.txt"), sent.lines.join("\n"), "utf-8");
       rmSync(join(PROFILE_DIR, "MapGen", "built.txt"), { force: true });
       const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" }, 600_000); // big worlds take minutes
+      if (Array.isArray(project.comments)) await pushComments(project.comments).catch((e) => console.log("[apply] comments: " + e.message));
       const diff = compareBuilt(project, sent.warnings);
       writeFileSync(join(PROFILE_DIR, "MapGen", "report.txt"), diff.lines.join("\n"), "utf-8");
       console.log("[apply] " + diff.summary);
