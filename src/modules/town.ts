@@ -302,6 +302,8 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   const vmap = new Map(vlist.map((k, i) => [k, i]))
   res.graph = { v: vlist.flatMap((k) => [vx(k), vz(k)]), e: [...keepE.values()].map((e) => [vmap.get(e.a)!, vmap.get(e.b)!] as [number, number]) }
   const streetLines: Line[] = res.lanes.map((l) => boxed(l.pts, roadHalf(l)))
+  // the lanes are laid as smooth splines (centreLine): their bulge off the straight chords must stay clear too (pre-send seed 42: 7 houses on lanes)
+  const splineLines: Line[] = res.lanes.map((l) => boxed(centreLine(l.pts, 4), roadHalf(l)))
   const halfOf = (a: number, b: number) => (roadOf(a, b) >= 0 ? roadLines[roadOf(a, b)].half + 1.5 : isSquareEdge(a, b) ? 3 : mainE.has(ekey(a, b)) ? 3 : 2)
 
   // --- 9. block types (UCG): centre round the square, one church, a park, a parking, a small industry
@@ -408,6 +410,13 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     if (!p.length) continue
     if (type === 'farm') { if (fr[0]) along(fr[0], set, () => pick(p), 'farmhouse'); continue }
     for (const f of fr) along(f, set, () => pick(p), type === 'industry' ? 'annex' : 'house')
+  }
+  // drop what the smoothed lanes run over (corner cut of the spline), same test as the pre-send check (corners + origin)
+  for (let i = placed.length - 1; i >= keepN; i--) {
+    const q = placed[i], pr = [q.x, q.z, ...q.corners]
+    let hit = false
+    for (let k = 0; k + 1 < pr.length && !hit; k += 2) for (const l of splineLines) if (lineDist(l.pts, pr[k], pr[k + 1]) < l.half - 0.3) { hit = true; break }
+    if (hit) placed.splice(i, 1)
   }
   const houses = placed.slice(keepN).filter((q) => q.role === 'house' || q.role === 'farmhouse').length
   res.pop = Math.round(houses * 2.5)
