@@ -74,10 +74,11 @@ const GAP = 1
 const MAX_DROP: Record<BuildingCat, number> = { houseS: 1.2, houseM: 1.2, houseL: 1.0, farm: 1.5, civic: 1.0, block: 1.0, annex: 0.6, shed: 0.6 }
 
 interface Params { lotMin: [number, number, number]; lotMax: [number, number, number]; depth: [number, number, number]; setback: [number, number]; fill: [number, number, number]; grow: GrowOptions; chunk: number }
+// setbacks (road edge -> facade) checked 2026-11-19 against Everon/Arland village houses: centre-to-road-edge median ~12.5 m, i.e. facade ~7 m (REFERENCE_MAPS_STATS.md)
 // [centre, mid, edge]
 const VARIANT: Record<'village' | 'town' | 'hamlet', Params> = {
-  hamlet: { lotMin: [12, 14, 16], lotMax: [20, 26, 34], depth: [36, 40, 46], setback: [2, 6], fill: [0.8, 0.6, 0.4], grow: { ...GROW_VILLAGE, maxStreets: 0 }, chunk: 40 },
-  village: { lotMin: [9, 12, 16], lotMax: [15, 22, 40], depth: [32, 38, 48], setback: [1.5, 5], fill: [0.9, 0.7, 0.45], grow: GROW_VILLAGE, chunk: 40 },
+  hamlet: { lotMin: [12, 14, 16], lotMax: [20, 26, 34], depth: [36, 40, 46], setback: [3, 7], fill: [0.8, 0.6, 0.4], grow: { ...GROW_VILLAGE, maxStreets: 0 }, chunk: 40 },
+  village: { lotMin: [9, 12, 16], lotMax: [15, 22, 40], depth: [32, 38, 48], setback: [2.5, 6], fill: [0.9, 0.7, 0.45], grow: GROW_VILLAGE, chunk: 40 },
   town: { lotMin: [7, 9, 14], lotMax: [11, 16, 30], depth: [26, 32, 44], setback: [0.5, 2.5], fill: [0.97, 0.85, 0.55], grow: GROW_TOWN, chunk: 36 },
 }
 
