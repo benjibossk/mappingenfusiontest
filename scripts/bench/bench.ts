@@ -13,7 +13,7 @@ import { roadTypeOf } from '../../src/atelier/networks/roads'
 import { settleVillages } from '../../src/modules/village'
 import { generateTown } from '../../src/modules/town'
 import { WORLD } from '../../src/data/worldParams'
-import { lotFences, makeBlocker, type FenceLot } from '../../src/modules/worldextras'
+import { lotFences, makeBlocker, townLots, type FenceLot } from '../../src/modules/worldextras'
 import { worldPowerGrid, powerWorld } from '../../src/modules/worldpower'
 import type { Site } from '../../src/modules/network'
 import type { Water } from '../../src/modules/water'
@@ -99,7 +99,8 @@ for (const kind of ['town', 'village', 'hamlet'] as const) {
   lots.push(...vr.lots)
 }
 const kinds = new Map<string, string>(sites.map((q) => [q.id, q.kind]))
-const fenceParcels = lots.length ? lotFences(lots, { seed: 21, ...(opt("--fence-share") ? { share: Number(opt("--fence-share")) } : {}), kindOf: (id) => kinds.get(id) as never, blocked: makeBlocker((placed as never as { corners: number[] }[]).map((q) => q.corners), roads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) }))) }) : []
+if (!args.includes('--no-town-lots')) lots.push(...townLots(placed as never, (id) => kinds.get(id) === 'town'))
+const fenceParcels = lots.length ? lotFences(lots, { seed: 21, ...(opt("--fence-share") ? { share: Number(opt("--fence-share")) } : {}), ...(opt("--garden") ? { garden: Number(opt("--garden")) } : {}), kindOf: (id) => kinds.get(id) as never, blocked: makeBlocker((placed as never as { corners: number[] }[]).map((q) => q.corners), roads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) }))) }) : []
 const genFences = fenceParcels.flatMap((fp) => fp.fences.map((f) => f.pts))
 const isWater = (x: number, z: number) => { const c = Math.round((x - grid.minX) / grid.step), r = Math.round((z - grid.minZ) / grid.step); return (heights[Math.min(grid.rows - 1, Math.max(0, r)) * grid.cols + Math.min(grid.cols - 1, Math.max(0, c))] ?? 0) <= 0 }
 const pw = noPower ? null : worldPowerGrid(heights, grid, sites, [], roads.map((r) => r.pts), isWater, m.size, 'eden', powerWorld(roads, (placed as never as { corners: number[] }[]).map((q) => q.corners), lots.filter((l) => l.used).map((l) => l.corners), []), 'auto')

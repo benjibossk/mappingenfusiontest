@@ -16,14 +16,17 @@ test('addProdForests: a share of the large conifer woods, deterministic, tracks 
   assert.ok(a.areas.some((x) => 'stage' in x && x.stage))
 })
 
-test('lotFences: built village lots get walls with a gate, shared edges once, towns none', () => {
+test('lotFences: built village lots get walls with a gate, shared edges once, town garden lots too', () => {
   const lots = [{ site: 'V', corners: square(0, 0, 20), used: true }, { site: 'V', corners: [20, 0, 40, 0, 40, 20, 20, 20], used: true }, { site: 'T', corners: square(100, 0, 20), used: true }]
   const kinds: Record<string, 'village' | 'town'> = { V: 'village', T: 'town' }
-  const f = lotFences(lots, { seed: 1, share: 1, kindOf: (s) => kinds[s] })
-  assert.ok(f.length >= 1 && f.every((p) => p.site === 'V'))
-  const n = f.flatMap((p) => p.fences).length
+  const f = lotFences(lots, { seed: 1, share: 1, garden: 0, kindOf: (s) => kinds[s] })
+  assert.ok(f.some((p) => p.site === 'V') && f.some((p) => p.site === 'T'))
+  const n = f.filter((p) => p.site === 'V').flatMap((p) => p.fences).length
   assert.ok(n >= 6 && n <= 9, String(n))
-  assert.deepEqual(f, lotFences(lots, { seed: 1, share: 1, kindOf: (s) => kinds[s] }))
+  assert.deepEqual(f, lotFences(lots, { seed: 1, share: 1, garden: 0, kindOf: (s) => kinds[s] }))
+  // gardens behind the lots add fence (vanilla walled gardens / paddocks)
+  const g = lotFences(lots, { seed: 1, share: 1, garden: 1, kindOf: (s) => kinds[s] }).flatMap((p) => p.fences).length
+  assert.ok(g > f.flatMap((p) => p.fences).length, String(g))
 })
 
 test('random world: production forests and plot fences, same seed = same world', async () => {

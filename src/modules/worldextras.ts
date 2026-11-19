@@ -9,6 +9,8 @@ import type { VillageParcel } from './village'
 export interface ProdArea { id: string; kind: 'forest'; leaf?: 'broad' | 'needle' | 'mixed'; pts: number[]; tall?: 'low' | 'mid' | 'high'; stage?: ProdStage; logs?: ProdLog[] }
 export interface ProdWorldOptions {
   seed: number
+  garden?: number // share of the fenced lots that get a fenced garden / paddock behind them (default 0.8: Everon bench 0.66x -> 0.95x the vanilla length)
+  back?: number // share of the lots with a back fence (default 0.7)
   share?: number // share of the eligible woods turned into production forests (default 0.35)
   minArea?: number // m², eligible wood size (default 25 ha)
   maxCount?: number // default 4
@@ -58,12 +60,27 @@ export interface FenceOptions {
   seed: number
   kindOf: (site: string) => 'town' | 'village' | 'hamlet' | undefined
   blocked?: (x: number, z: number) => boolean // a building footprint, a road...
+  garden?: number // share of the fenced lots that get a fenced garden / paddock behind them (default 0.8: Everon bench 0.66x -> 0.95x the vanilla length)
+  back?: number // share of the lots with a back fence (default 0.7)
   share?: number // share of the built lots fenced (default 1: reconstruction bench, Everon sites: 0.65 laid 0.43x the vanilla fence length, 1 -> 0.66x)
 }
 const STYLE = {
   village: [[FENCES.stone1, FENCES.wood1], [FENCES.brickOld, FENCES.wood2], [FENCES.stone2, FENCES.woodOld], [FENCES.wood1, FENCES.wood1]],
   hamlet: [[FENCES.woodRural, FENCES.woodRural], [FENCES.woodOld, FENCES.woodRural], [FENCES.stone1, FENCES.woodRural]],
 } as const
+
+/** garden lots round the town houses (vanilla Saint-Pierre: 8 km of garden walls and fences within 300 m, the
+ *  terraced core has none: neighbours block those edges). Footprint pushed out by `margin` metres. */
+export function townLots(placed: { site?: string; role?: string; x: number; z: number; corners?: number[] }[], isTown: (site: string) => boolean, margin = 4): FenceLot[] {
+  const out: FenceLot[] = []
+  for (const q of placed) {
+    if (!q.site || !q.corners || q.corners.length < 8 || !isTown(q.site) || (q.role !== 'house' && q.role !== 'farmhouse')) continue
+    const c: number[] = []
+    for (let i = 0; i < 8; i += 2) { const dx = q.corners[i] - q.x, dz = q.corners[i + 1] - q.z, d = Math.hypot(dx, dz) || 1; c.push(q.corners[i] + dx / d * margin * 1.41, q.corners[i + 1] + dz / d * margin * 1.41) }
+    out.push({ site: q.site, corners: c, used: true })
+  }
+  return out
+}
 
 /** fences / low walls round the built village and hamlet lots (corners: front-left, front-right, back-right,
  *  back-left): a front wall with a gate, side and back fences; an edge shared by two lots is laid once, an
@@ -81,11 +98,11 @@ export function lotFences(lots: FenceLot[], o: FenceOptions): VillageParcel[] {
   }
   lots.forEach((l, i) => {
     const kind = o.kindOf(l.site)
-    if (!l.used || l.corners.length < 8 || (kind !== 'village' && kind !== 'hamlet')) return
+    if (!l.used || l.corners.length < 8 || (kind !== 'town' && kind !== 'village' && kind !== 'hamlet')) return
     if (hash(o.seed, i) > share) return
     let sh = 0
     for (const ch of l.site) sh = (sh * 31 + ch.charCodeAt(0)) >>> 0
-    const styles = STYLE[kind], [front, side] = styles[Math.floor(hash(o.seed ^ sh, 7) * styles.length)]
+    const styles = STYLE[kind === 'town' ? 'village' : kind], [front, side] = styles[Math.floor(hash(o.seed ^ sh, 7) * styles.length)]
     const c = l.corners, P = (k: number) => [c[(k % 4) * 2], c[(k % 4) * 2 + 1]]
     const fences: PlacedFence[] = []
     const edge = (guid: string, a: number[], b: number[]) => {
@@ -101,7 +118,14 @@ export function lotFences(lots: FenceLot[], o: FenceOptions): VillageParcel[] {
       edge(front, fl, gl); edge(front, gr, fr)
     }
     edge(side, P(1), P(2)); edge(side, P(3), P(0))
-    if (hash(o.seed, 5000 + i) < 0.7) edge(side, P(2), P(3))
+    const back = o.back ?? 0.7
+    if (hash(o.seed, 6000 + i) < (o.garden ?? 0.8)) {
+      // a garden / paddock behind the lot (vanilla: walled gardens, farmyard fences past the house lots)
+      const [br, bl] = [P(2), P(3)], dx = br[0] - P(1)[0], dz = br[1] - P(1)[1], d = Math.hypot(dx, dz) || 1
+      const ext = d * (0.5 + 0.5 * hash(o.seed, 7000 + i))
+      const er = [br[0] + dx / d * ext, br[1] + dz / d * ext], el = [bl[0] + dx / d * ext, bl[1] + dz / d * ext]
+      edge(side, br, er); edge(side, er, el); edge(side, el, bl)
+    } else if (hash(o.seed, 5000 + i) < back) edge(side, P(2), P(3))
     if (fences.length) out.push({ site: l.site, items: [], fences })
   })
   return out

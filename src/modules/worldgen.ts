@@ -27,7 +27,7 @@ import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, insertPoint, maxGrade, nearestOn, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
-import { addProdForests, lotFences, makeBlocker, type FenceLot } from './worldextras'
+import { addProdForests, lotFences, makeBlocker, townLots, type FenceLot } from './worldextras'
 import { generateTown } from './town'
 import { makeSiteZone } from './sitezones'
 import { fieldTrees } from './fieldtrees'
@@ -669,6 +669,10 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     builtLots.push(...vr.lots)
   }
   // fences / low walls along the built village and hamlet plots (biome worlds already have their parcels' fences)
+  if (!p.biome || p.biome === 'temperate_everon') {
+    const kinds = new Map(sites.map((s) => [s.id, s.kind]))
+    builtLots.push(...townLots(settlement.placed, (id) => kinds.get(id) === 'town'))
+  }
   if ((!p.biome || p.biome === 'temperate_everon') && builtLots.length) {
     const kinds = new Map(sites.map((s) => [s.id, s.kind]))
     const blocked = makeBlocker(settlement.placed.map((q) => q.corners), [...allRoads, ...settlement.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) })))
