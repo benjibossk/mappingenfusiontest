@@ -320,8 +320,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="rwAir" type="checkbox" checked> ${t('wg.airfield')} ${info('info.wg.airfield')}</label>
           <label class="check"><input id="rwMotorway" type="checkbox"> ${t('lbl.motorway')} ${info('info.motorway')}</label>
           <label class="check"><input id="rwDams" type="checkbox"> ${t('lbl.dams')} ${info('info.dams')}</label>
-          <label class="check"><input id="rwVanillaSites" type="checkbox"> ${t('lbl.vanillaSites')} ${info('info.vanillaSites')}</label>
-          <label class="check"><input id="rwVillageTpl" type="checkbox"> ${t('lbl.villageTpl')} ${info('info.villageTpl')}</label>
+          <label class="check"><input id="rwVanillaSites" type="checkbox" checked> ${t('lbl.vanillaSites')} ${info('info.vanillaSites')}</label>
+          <label class="check"><input id="rwVillageTpl" type="checkbox" checked> ${t('lbl.villageTpl')} ${info('info.villageTpl')}</label>
           <label class="check"><input id="rwPower" type="checkbox" checked> ${t('wg.power')}</label>
         </div>
         <div class="form"><label>${t('lbl.powDistrib')} ${info('info.powDistrib')} <select id="rwPowDistrib"><option value="auto" selected>${t('opt.powDistAuto')}</option><option value="overhead">${t('opt.powDistOver')}</option><option value="underground">${t('opt.powDistUnder')}</option></select></label></div>
