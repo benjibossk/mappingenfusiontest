@@ -162,6 +162,17 @@ class MG_ProjectApplier
 		return ", no JWK_WorldEntity (FF biome skipped)";
 	}
 
+	//! adds the family prefix of an id ("FIELD_4_Hedge_2" -> "FIELD_"); ids without "_" are ignored
+	static void AddFamily(array<string> families, string id)
+	{
+		int u = id.IndexOf("_");
+		if (u < 1)
+			return;
+		string fam = id.Substring(0, u + 1);
+		if (!families.Contains(fam))
+			families.Insert(fam);
+	}
+
 	//! true when the name is in the lock list (exact, or an entry "PREFIX*")
 	static bool IsLocked(array<string> locked, string name)
 	{
@@ -213,23 +224,14 @@ class MG_ProjectApplier
 		api.ToggleGeneratorEvents(true);
 		bool ownsAction = api.BeginEntityAction("MapGen apply project");
 
-		// Replace the previous objects of each family sent (ROAD_*, WATER_*, SET_*) at top level (children go with their parent)
+		// Replace the previous objects of each family sent (prefix up to the first "_": ROAD_, FIELD_, TREE_, TOWN_...)
+		// at top level (children go with their parent). Only ROAD_/WATER_/SET_ were cleared before, so fields, trees,
+		// hedges and towns piled up at each send (duplicate names, floating walls left at the old ground height).
 		array<string> families = {};
 		foreach (MG_ProjectShape fs : project.shapes)
-		{
-			if (fs.id.StartsWith("ROAD_") && !families.Contains("ROAD_"))
-				families.Insert("ROAD_");
-			if (fs.id.StartsWith("WATER_") && !families.Contains("WATER_"))
-				families.Insert("WATER_");
-			if (fs.id.StartsWith("SET_") && !families.Contains("SET_"))
-				families.Insert("SET_");
-		}
-		// settlements: buildings (entities) plus their lanes and footpaths (shapes SET_x_LANE_n / SET_x_PATH_n)
+			AddFamily(families, fs.id);
 		foreach (MG_ProjectEntity fe : project.entities)
-		{
-			if (fe.id.StartsWith("SET_") && !families.Contains("SET_"))
-				families.Insert("SET_");
-		}
+			AddFamily(families, fe.id);
 		array<IEntitySource> old = {};
 		for (int i = api.GetEditorEntityCount() - 1; i >= 0; i--)
 		{
