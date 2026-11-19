@@ -24,7 +24,7 @@ import { buildMotorway, overpassDecks, resolveCrossings } from './motorway'
 import { forestTuning, leafOf } from '../biomes/vegetation'
 import { styleTracks } from './network'
 import { GENERATORS, type ProjectEntity } from '../project'
-import { SITE_RADIUS, buildNetwork, maxGrade, routeLink, worstGrade, type Site, type SiteKind } from './network'
+import { SITE_RADIUS, buildNetwork, insertPoint, maxGrade, nearestOn, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
 import { addProdForests, lotFences, makeBlocker, type FenceLot } from './worldextras'
@@ -428,7 +428,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 6. road network (places + zone gates)
   await step('roads')
   const net = { sites: sites.length, spacing: 300, maxSlope: WORLD.roads.maxSlope, seed: ss('roads', 'roads'), main: WORLD.roads.main as RoadType, minor: WORLD.roads.minor as RoadType, lane: WORLD.roads.lane as RoadType,
-    loops: Math.round(WORLD.roads.loopsPerKm2 * landKm2), loopDetour: WORLD.roads.loopDetour, loopMaxM: WORLD.roads.loopMaxM, loopType: WORLD.roads.loopType as RoadType, v2: p.roadsV2 !== false }
+    loops: Math.round(WORLD.roads.loopsPerKm2 * landKm2), loopDetour: WORLD.roads.loopDetour, loopMaxM: WORLD.roads.loopMaxM, loopType: WORLD.roads.loopType as RoadType, v2: p.roadsV2 !== false,
+    // no road through a base / airfield / stamped site (pre-send: 18 base objects on a road crossing MIL_1, seed 42); the disc stops 2 cells short of the gate
+    avoid: zones.filter((z) => z.kind === 'military' || z.kind === 'airfield' || z.sub?.startsWith('vanilla:')).map((z) => { const d = zoneDisc(z), ga = z.access ? Math.hypot(z.access[0] - d.x, z.access[1] - d.z) - 2 * g.step : Infinity; return { x: d.x, z: d.z, r: Math.min(d.r * 0.8, ga) } }).filter((d) => d.r > g.step) }
   const rid = roadIdMaker()
   const linked = [...sites, ...access.filter((a) => a.x > g.minX && a.z > g.minZ && a.x < g.minX + (g.cols - 1) * g.step && a.z < g.minZ + (g.rows - 1) * g.step)]
   const ri = WORLD_STAGES.indexOf('roads')
@@ -644,7 +646,10 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         // parking / church blocks dressed by the site generators (same as the Town zone tool): bays, cemetery round the church
         const lines = [...allRoads, ...tr.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) }))
         const ground = (x: number, z: number) => hAt(x, z)
-        const okAt = (x: number, z: number) => !isWater(x, z) && !tr.placed.some((q) => Math.abs(q.x - x) < 30 && Math.abs(q.z - z) < 30 && pointInPoly(q.corners, x, z))
+        // no cemetery / parking object on a road crossing the block (pre-send: 21 graves on ROAD_TERRE_2, seed 42)
+        const segD = (q: number[], x: number, z: number) => { let b = Infinity; for (let i = 2; i < q.length; i += 2) { const ax = q[i - 2], az = q[i - 1], dx = q[i] - ax, dz = q[i + 1] - az, L = dx * dx + dz * dz, t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0; b = Math.min(b, Math.hypot(x - ax - t * dx, z - az - t * dz)) } return b }
+        const offRoad = (x: number, z: number) => !lines.some((l) => segD(l.pts, x, z) < l.half + 1.5)
+        const okAt = (x: number, z: number) => !isWater(x, z) && offRoad(x, z) && !tr.placed.some((q) => Math.abs(q.x - x) < 30 && Math.abs(q.z - z) < 30 && pointInPoly(q.corners, x, z))
         tr.blocks.forEach((bl, bi) => {
           if (bl.type !== 'parking' && bl.type !== 'church') return
           const zn = makeSiteZone(bl.type === 'church' ? 'cemetery' : 'parking', bl.inset, { id: `${s.id}_SITE_${bi + 1}`, seed: ss('settlements', 'townsite-' + s.id, bi), roads: lines, ground, ok: okAt })
@@ -716,7 +721,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     if (!zs.length) return
     countryside.push(...zs)
     const near = (x: number, z: number) => Math.hypot(x - s.x, z - s.z) < ring + 60
-    const obst = [...roadObstacles(allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) })), 3, near), ...settlement.placed.filter((b) => near(b.x, b.z)).map((b) => pointObstacle(b.x, b.z, 14))]
+    const obst = [...roadObstacles(allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) })), 3, near), ...settlement.placed.filter((b) => near(b.x, b.z)).map((b) => pointObstacle(b.x, b.z, 14)),
+      // site zones (cemetery, parking, vanilla stamps): no field track through them (pre-send: 21 cemetery objects on tracks, seed 42)
+      ...zones.filter((zn) => zn.kind === 'site' && zn.entities.length && near(zn.x, zn.z)).map((zn) => { const d = zoneDisc(zn); return pointObstacle(d.x, d.z, d.r + 4) })]
     zs.forEach((zone, zi) => {
       const id = zi ? `${k + 1}_${zi + 1}` : `${k + 1}`
       const r = fillFieldZone({ zone, seed: ss('fields', 'fields' + k, zi), prefix: `FIELD_${id}_`, angle: ss('fields', 'field' + k) % 90, ok, obstacles: obst, laid, seen, roads: allRoads.map((rd) => rd.pts), hedgeSeed: ss('fields', 'hedges' + k, zi), centre: [s.x, s.z], fringe: R * 1.1, reach: ring })
@@ -729,6 +736,13 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       // no grove in a treeless biome (desert): its forests are off too
       if (Math.min(0.9, WORLD.vegetation.forestCover * p.forests) * forestTuning(p.biome).coverMul >= 0.03) r.groves.forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${id}_${j + 1}`, kind: 'forest', leaf: groveLeaf, pts }))
       for (const [j, pts] of r.tracks.entries()) {
+        // an end landing on a roundabout ring becomes one of its control points (the junction is shared, not a near miss)
+        for (const e of [0, pts.length - 2]) for (const ring of roads) {
+          if (!ring.id.startsWith('RB_')) continue
+          const [qx, qz] = nearestOn(ring.pts, pts[e], pts[e + 1])
+          if (Math.hypot(qx - pts[e], qz - pts[e + 1]) > 2.5) continue
+          pts[e] = qx; pts[e + 1] = qz; insertPoint(ring, qx, qz); break
+        }
         const tr: Road = { id: `ROAD_FIELD_${id}_${j + 1}`, type: 'dirt', pts, auto: true }
         roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too
       }
@@ -774,7 +788,18 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const sl = (x: number, z: number) => (Math.hypot(hAt(x + 4, z) - hAt(x - 4, z), hAt(x, z + 4) - hAt(x, z - 4)) / 16)
     const houseNear = (x: number, z: number) => settlement.placed.some((b) => Math.abs(b.x - x) < 15 && Math.abs(b.z - z) < 15)
     const inForest = (x: number, z: number) => areas.some((a) => (a.kind === 'forest' || a.kind === 'field') && pointInPoly(a.pts, x, z))
-    const okOpen = (x: number, z: number) => !isLakeOrSea(x, z) && !houseNear(x, z) && !inForest(x, z) && !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r })
+    // no bush / rock on a carriageway (pre-send check flagged ~100 belt bushes on roads, seed 42): 2 m cells within half + 1.5 m
+    const onRoadCells = new Set<number>()
+    for (const r of [...allRoads, ...settlement.lanes]) {
+      if (r.pts.length < 4) continue
+      const c = centreLine(r.pts, 2), R = roadHalf(r) + 1.5, n = Math.ceil(R / 2)
+      for (let i = 0; i < c.length; i += 2) {
+        const cx = Math.floor(c[i] / 2), cz = Math.floor(c[i + 1] / 2)
+        for (let dx = -n; dx <= n; dx++) for (let dz = -n; dz <= n; dz++) if (Math.hypot(dx * 2, dz * 2) <= R + 1) onRoadCells.add((cx + dx) * 100003 + (cz + dz))
+      }
+    }
+    const onRoad = (x: number, z: number) => onRoadCells.has(Math.floor(x / 2) * 100003 + Math.floor(z / 2))
+    const okOpen = (x: number, z: number) => !isLakeOrSea(x, z) && !onRoad(x, z) && !houseNear(x, z) && !inForest(x, z) && !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r })
     const span = (g.cols - 1) * g.step
     const scat = scatterLayers({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, slopeAt: sl, maxHeight: isl.maxHeight,
       ok: okOpen, seed: ss('forests', 'scatter'), density: Math.min(1.5, p.forests), prefix: 'SCAT_', max: Math.round(250 * landKm2) })
@@ -783,7 +808,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       b = Math.min(b, Math.hypot(x - ax - dx * t, z - az - dz * t)) } return b }
     areas.filter((a) => a.kind === 'forest' && polyAreaM2(a.pts) < 6000).slice(0, 400).forEach((a, k) => {
       scat.push(...featheredBelt({ pts: a.pts, seed: ss('forests', 'belt', k), prefix: `BELT_${k + 1}_`, max: 300,
-        ok: (x, z) => !isLakeOrSea(x, z) && !houseNear(x, z), inside: (x, z) => pointInPoly(a.pts, x, z), distToOutline: (x, z) => segDist(a.pts, x, z),
+        ok: (x, z) => !isLakeOrSea(x, z) && !onRoad(x, z) && !houseNear(x, z), inside: (x, z) => pointInPoly(a.pts, x, z), distToOutline: (x, z) => segDist(a.pts, x, z),
         trees: a.leaf === 'needle' ? [VEG.spruce, VEG.pine] : [VEG.hornbeam, VEG.birch], bushes: [VEG.hazel, VEG.hazel2] }))
     })
     if (scat.length) zones.push({ id: 'VEG_SCATTER', kind: 'site', sub: 'scatter', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'scatter'), shapes: [], entities: scat, flat: [], plat: [], roads: [], warnings: [],

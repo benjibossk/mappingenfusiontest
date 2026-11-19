@@ -33,7 +33,7 @@ export function summarise(w: WorldResult, px = 128): SeedSummary {
     if (z.kind === 'military') military++
     else if (z.kind === 'industrial') industry++
     else if (z.kind === 'airfield') airfield++
-    else if (z.sub === 'port') ports++
+    else if (z.sub === 'port' || z.sub?.startsWith('vanilla:port')) ports++ // vanilla harbours: sub 'vanilla:port:<template>'
     else if (z.sub === 'military' || z.sub.startsWith('mil')) military++
   }
   const roadKm = w.roads.reduce((a, r) => a + len(r.pts), 0) / 1000

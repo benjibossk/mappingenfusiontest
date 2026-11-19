@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "bridge": "node bridge/server.mjs",
     "collab": "node collab/server.mjs",
-    "check:changelog": "node scripts/check-changelog.mjs"
+    "check:changelog": "node scripts/check-changelog.mjs",
+    "bench": "npx tsx scripts/bench/bench.ts",
+    "bench:presend": "npx tsx scripts/bench/presend-world.ts"
   },
   "devDependencies": {
     "@types/d3-delaunay": "^6.0.4",

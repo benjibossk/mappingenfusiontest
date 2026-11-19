@@ -87,6 +87,8 @@ export interface NetworkParams {
    *  rounded into line + arc fillets (radius >= class Rmin when there is room), junction points kept exactly.
    *  A fillet is kept only when the carved road stays under its grade limit. false = the old output. */
   v2?: boolean
+  /** zone footprints (bases, airfields, vanilla sites) no road may cross; a road still reaches its gate (the goal) */
+  avoid?: { x: number; z: number; r: number }[]
 }
 
 const DIRS = [
@@ -208,7 +210,7 @@ const RANK = DIR_ORDER.map((_, k) => DIR_ORDER.indexOf(k))
 //! A* from `from` to any cell of `goal`; returns the cell path or null.
 //! The state is (cell, heading): a step may turn by one heading notch at most (~25 degrees), which
 //! keeps hairpins wide enough for the road generator; cliffs beside the road and the coast cost extra.
-function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Uint8Array, from: number, goal: Set<number>, goalXY: [number, number], maxSlope: number, hardGrade = Infinity): number[] | null {
+function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Uint8Array, from: number, goal: Set<number>, goalXY: [number, number], maxSlope: number, hardGrade = Infinity, block?: Uint8Array): number[] | null {
   const n = g.cols * g.rows, D = DIRS.length
   const cost = new Float32Array(n * D).fill(Infinity)
   const prev = new Int32Array(n * D).fill(-1)
@@ -243,6 +245,7 @@ function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Ui
       if (cc < 1 || rr < 1 || cc >= g.cols - 1 || rr >= g.rows - 1) continue
       const j = rr * g.cols + cc
       if (h[j] <= 0.3) continue // sea (and the waterline)
+      if (block && block[j] && !goal.has(j) && !block[i]) continue // zone footprint (military base, airfield...): enter only at its goal cell
       const run = Math.hypot(dc, dr) * g.step
       if (Math.abs(h[j] - h[i]) / run > hardGrade) continue // steeper than the check allows for this road type
       const grade = Math.abs(h[j] - h[i]) / run / (maxSlope / 100)
@@ -315,6 +318,15 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))
   const xyOf = (i: number): [number, number] => [g.minX + (i % g.cols) * g.step, g.minZ + Math.floor(i / g.cols) * g.step]
   const onRoad = new Uint8Array(g.cols * g.rows)
+  let block: Uint8Array | undefined
+  if (p.avoid?.length) {
+    block = new Uint8Array(g.cols * g.rows)
+    for (const d of p.avoid) {
+      const R = Math.ceil(d.r / g.step), c0 = Math.round((d.x - g.minX) / g.step), r0 = Math.round((d.z - g.minZ) / g.step)
+      for (let r = Math.max(0, r0 - R); r <= Math.min(g.rows - 1, r0 + R); r++) for (let c = Math.max(0, c0 - R); c <= Math.min(g.cols - 1, c0 + R); c++)
+        if (Math.hypot(c - c0, r - r0) * g.step <= d.r) block[r * g.cols + c] = 1
+    }
+  }
   const roads: Road[] = []
   const keep = new Set<string>() // control points that must survive the fillets (a place checks it is served)
   // cell -> [road, index of the control point that sits on it] for T junctions
@@ -395,7 +407,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     const ladder = [want, ...(['dirt', 'trailDirt'] as RoadType[]).filter((x) => maxGrade(x) > maxGrade(want))]
     search: for (const tt of ladder)
       for (const f of [1.25, 1, 0.8, 0.6, 0.45]) {
-        const path = route(h, g, river, onRoad, start, goal, aim, Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt) * f)
+        const path = route(h, g, river, onRoad, start, goal, aim, Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt) * f, block)
         if (!path || path.length < 2) break // no way under this limit: a tighter one will not find any either
         // stop where the path joins an existing road (it would only run on top of it)
         let end = path.length - 1
@@ -520,7 +532,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
       const netD = roadDist(ca[0], new Set(cb), d * detour)
       if (netD <= d * detour) continue // already joined by a short enough road
       tries++
-      const path = route(h, g, river, onRoad, cellOf(a.x, a.z), new Set([cellOf(b.x, b.z), ...cb]), [b.x, b.z], Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt))
+      const path = route(h, g, river, onRoad, cellOf(a.x, a.z), new Set([cellOf(b.x, b.z), ...cb]), [b.x, b.z], Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt), block)
       if (!path || path.length < 3) continue
       // keep the longest run off the existing roads, from the road cell before it to the road cell after it
       let bs = -1, be = -1, k = 0

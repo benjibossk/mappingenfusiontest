@@ -48,8 +48,10 @@ export const WORLD = {
     /** the generated relief is bumpy at 8-16 m a cell: footprints may straddle 1.5x the default drop (foundations hide it) [est] */
     dropScale: 3, // was 1.5: with lot-sized model choice + sliding retries, fill rose from ~30 % to ~70 % of the lots that drew a house (8 km bench)
     town: { density: 1.25, maxStreets: 16 as number | undefined },
-    village: { density: 1.15, maxStreets: 7 as number | undefined },
-    hamlet: { density: 0.6, maxStreets: undefined as number | undefined },
+    // reconstruction bench (scripts/bench, Everon sites + roads): 1.15 / 7 / 0.6 built 2.3x the vanilla buildings per site;
+    // 0.3 / 4 / 0.2 gives 1.01x (villages) and 1.07x (hamlets), score 62.8 -> 75.5
+    village: { density: 0.3, maxStreets: 4 as number | undefined },
+    hamlet: { density: 0.2, maxStreets: undefined as number | undefined },
     farm: { density: 0.15, maxStreets: 0 as number | undefined }, // farmsteads: 1-3 buildings
   },
   /** farmsteads at the end of a dirt track ([M] Everon 197 lone buildings for ~80 km² of land -> ~2.5/km²; we
