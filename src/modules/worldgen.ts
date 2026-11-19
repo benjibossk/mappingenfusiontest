@@ -6,6 +6,9 @@
 // lines -> forests -> surfaces. The result is loaded into the normal steps (main.ts) to be tweaked.
 
 import { WORLD } from '../data/worldParams'
+import { DENSITY, scaledCount, worldCounts } from '../data/densities'
+import { featheredBelt, scatterLayers } from './vegLayers'
+import { VEG } from '../data/biomes'
 import { fr } from '../i18n'
 import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
 import { addRoundabouts, dropOrphanRings, overlapJunctions, squareRoundabout } from './roundabouts'
@@ -41,7 +44,7 @@ import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
-import { applyZones, makeAirfield, makeIndustrial, makeMilitary, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
+import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
 
 export interface WorldParams {
   seed: number
@@ -52,6 +55,10 @@ export interface WorldParams {
   industry: number
   military: number
   airfield: boolean
+  /** stamp real Bohemia sites: vanilla military bases / checkpoints, fuel depots, gas stations, bus stops, ports (default off) */
+  vanillaSites?: boolean
+  /** villages stamp a real Bohemia house row along their main road first (village.ts template mode, default off) */
+  villageTemplates?: boolean
   power: boolean
   forests: number
   /** isolated trees, corner clumps and hedgerow trees in the countryside (#8): 0 = none, 1 = default, 2 = dense */
@@ -180,6 +187,7 @@ function lakeAsSea(h: number[], mask: Uint8Array): number[] {
 }
 
 /** a footprint disc touches the water mask (sea, lakes + margin, river cells) */
+function polyAreaM2(pts: number[]) { let a = 0; for (let i = 0; i < pts.length; i += 2) { const j = (i + 2) % pts.length; a += pts[i] * pts[j + 1] - pts[j] * pts[i + 1] } return Math.abs(a) / 2 }
 function discWet(g: Grid, wet: (i: number) => boolean, x: number, z: number, R: number) {
   for (let a = 0; a < 16; a++) for (const f of [0, 0.35, 0.7, 1]) {
     const c = Math.round((x + Math.cos((a / 16) * Math.PI * 2) * R * f - g.minX) / g.step), r = Math.round((z + Math.sin((a / 16) * Math.PI * 2) * R * f - g.minZ) / g.step)
@@ -233,12 +241,8 @@ export function placeWorldSites(h: ArrayLike<number>, g: Grid, river: Float32Arr
   let land = 0, top = 1
   for (let i = 0; i < h.length; i++) { if (h[i] > 0.5) land++; top = Math.max(top, h[i]) }
   const landKm2 = (land * g.step * g.step) / 1e6
-  const localities = landKm2 * S.perKm2
-  const want: Record<SiteKind, number> = {
-    town: Math.max(p.towns > 0 ? 1 : 0, Math.round(localities * S.townShare * p.towns)),
-    village: Math.round(localities * (1 - S.townShare) * p.villages),
-    hamlet: Math.round(localities * S.hamletsPerLocality * p.hamlets),
-  }
+  const wc = worldCounts(p, landKm2) // densities per km² of land (data/densities.ts)
+  const want: Record<SiteKind, number> = { town: wc.town, village: wc.village, hamlet: wc.hamlet }
   const stride = Math.max(1, Math.round(50 / g.step)), edge = Math.round(S.edgeM / g.step)
   const at = (c: number, r: number) => h[Math.min(g.rows - 1, Math.max(0, r)) * g.cols + Math.min(g.cols - 1, Math.max(0, c))]
   const cand: { x: number; z: number; slope: number; base: number; c: number; r: number }[] = []
@@ -375,7 +379,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   }
   // 5. military: the main base near the airfield, outposts on high ground
   await step('military')
-  const nMil = Math.min(4, Math.round(p.military * WORLD.military.perMap4km * (p.size / 4096) ** 2))
+  const nMil = worldCounts(p, landKm2).military // [M] 0.1 bases / km² of land, spacing 800-950 m (keepOut)
   for (let k = 0; k < nMil; k++) {
     const keep = [...siteDiscs(WORLD.military.keepOutM), ...zones.map((z) => { const d = zoneDisc(z); return { ...d, r: d.r + 150 } })]
     // the main base needs a big flat ground: on a small or steep island fall back to an outpost, then a checkpoint
@@ -389,7 +393,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     let pick = list[Math.floor(r() * Math.min(3, list.length))]
     if (kind === 'main' && air) pick = list.find((q) => Math.hypot(q.x - air.x, q.z - air.z) < WORLD.military.nearAirfieldM(p.size)) ?? pick
     if (!pick) break
-    const m = makeMilitary(cur.heights, g, { id: `MIL_${k + 1}`, kind, x: pick.x, z: pick.z, yaw: pick.yaw, seed: ss('settlements', 'military', k) })
+    const m = makeMilitary(cur.heights, g, { id: `MIL_${k + 1}`, kind, x: pick.x, z: pick.z, yaw: pick.yaw, seed: ss('settlements', 'military', k), vanilla: p.vanillaSites })
     if (zoneWet(m)) continue // no dry ground for it: skipped
     zones.push(m)
     if (m.access) access.push({ id: `ACCESS_MIL_${k + 1}`, x: m.access[0], z: m.access[1], kind: 'hamlet' })
@@ -406,7 +410,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // farmsteads: [M] Everon 197 lone buildings (1-2) and 136 km of dirt + 74 km of paths for 344 km: a dirt track
   // leaves the network for each farm, which adds the T junctions a tree of places lacks
   if (roads.length) {
-    const farms = placeFarms(lakeAsSea(cur.heights, lakes0), g, roads, sites, zones, Math.round(WORLD.farms.perKm2 * landKm2 * p.hamlets), ss('settlements', 'farms'))
+    const farms = placeFarms(lakeAsSea(cur.heights, lakes0), g, roads, sites, zones, worldCounts(p, landKm2).farms, ss('settlements', 'farms'))
     const anchor = sites.find((s) => roads.some((r) => r.pts.some((v, i) => i % 2 === 0 && Math.hypot(v - s.x, r.pts[i + 1] - s.z) < SITE_RADIUS[s.kind])))
     if (farms.length && anchor) {
       const more = buildNetwork(lakeAsSea(cur.heights, lakes0), g, cur.sim.river, [anchor, ...farms], { ...net, loops: 0, lane: WORLD.farms.track as RoadType }, roads)
@@ -482,7 +486,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 7. industrial zones: near the towns, along a main road
   await step('industry')
   const towns = sites.filter((s) => s.kind === 'town').concat(sites.filter((s) => s.kind === 'village'))
-  const nInd = Math.min(WORLD.industry.maxZones, Math.round(p.industry * WORLD.industry.perTown * Math.max(1, sites.filter((s) => s.kind === 'town').length)))
+  const nInd = worldCounts(p, landKm2).industry // [M] per km² of land (data/densities.ts)
   const isWater = (x: number, z: number) => {
     const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
     return c < 0 || r < 0 || c >= g.cols || r >= g.rows || wetAt(r * g.cols + c)
@@ -497,8 +501,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     return cur.heights[r * g.cols + c]
   }
   const mainRoads = roads.filter((r) => r.type === net.main || r.type === net.minor)
-  for (let k = 0, ti = 0; k < nInd && ti < towns.length; ti++) {
-    const t = towns[ti], r = mulberry(ss('settlements', 'industry', k))
+  // several zones per town on big maps: the towns are visited in turn (spacing via the 200 m zone keep-out)
+  for (let k = 0, ti = 0; k < nInd && ti < towns.length * 3; ti++) {
+    const t = towns[ti % towns.length], r = mulberry(ss('settlements', 'industry', k))
     const type = INDUSTRIAL_TYPES[Math.floor(r() * 3)] // factory / depot / quarry ... the first three read best near a town
     const D = WORLD.industry.searchM
     const list = suggestIndustrialSites(hAt, mainRoads.length ? mainRoads : roads, {
@@ -513,6 +518,50 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     zones.push(zn)
     k++
   }
+  function placeVanillaWorldSites() {
+    const wc = worldCounts(p, landKm2)
+    const paved = roads.filter((r) => isPaved(r.type) && r.pts.length >= 4)
+    const anyRoad = roads.filter((r) => r.pts.length >= 4)
+    // coast length (km): land cells with a sea neighbour x the cell size
+    let coast = 0
+    for (let r = 1; r < g.rows - 1; r++) for (let c = 1; c < g.cols - 1; c++) {
+      const i = r * g.cols + c
+      if (cur.heights[i] > 0.5 && (cur.heights[i - 1] <= 0 || cur.heights[i + 1] <= 0 || cur.heights[i - g.cols] <= 0 || cur.heights[i + g.cols] <= 0)) coast++
+    }
+    const nPorts = scaledCount(DENSITY.portsPerKmCoast, (coast * g.step) / 1000)
+    const free = (x: number, z: number, r: number, sameSub: string, gap: number) =>
+      !sites.some((s) => Math.hypot(s.x - x, s.z - z) < SITE_RADIUS[s.kind] * 0.6 + r) &&
+      !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r + r + (zn.sub?.startsWith(sameSub) ? gap : 10) })
+    const put = (type: string, n: number, list: Road[], setback: number, gap: number, r0: number, near?: (x: number, z: number) => boolean) => {
+      const rnd = mulberry(ss('settlements', 'vanilla-' + type))
+      for (let k = 0, tries = 0; k < n && list.length && tries < n * 60 + 60; tries++) {
+        const rd = list[Math.floor(rnd() * list.length)]
+        const i = Math.floor(rnd() * (rd.pts.length / 2 - 1)) * 2
+        const ax = rd.pts[i], az = rd.pts[i + 1], dx = rd.pts[i + 2] - ax, dz = rd.pts[i + 3] - az, len = Math.hypot(dx, dz)
+        if (len < 1) continue
+        const side = rnd() < 0.5 ? 1 : -1, nx = (-dz / len) * side, nz = (dx / len) * side, t = rnd()
+        const off = roadHalf(rd) + setback
+        const x = ax + dx * t + nx * off, z = az + dz * t + nz * off
+        if (isWater(x, z) || (near && !near(x, z)) || !free(x, z, r0, 'vanilla:' + type, gap)) continue
+        const zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x, z, yaw: (Math.atan2(-nx, -nz) * 180) / Math.PI, seed: ss('settlements', 'vanilla-' + type, k) })
+        if (!zn || (type !== 'port' && zoneWet(zn))) continue
+        zn.sub = `vanilla:${type}:${zn.sub?.slice(8) ?? ''}`
+        zones.push(zn)
+        k++
+      }
+    }
+    const nearPlace = (R: number) => (x: number, z: number) => sites.some((s) => Math.hypot(s.x - x, s.z - z) < SITE_RADIUS[s.kind] + R)
+    // [M] SITES_VANILLA: fuel depot 22 m from the axis (spacing 300-800 m), gas station 13-15 m on a main asphalt road,
+    // bus stop at the roadside of a place, port 30-80 m from a dirt road on the coast
+    put('fuel_depot', wc.fuelDepots, paved.length ? paved : anyRoad, 16, 300, 15)
+    put('gas_station', wc.gasStations, paved.length ? paved : anyRoad, 9, 400, 12)
+    put('bus_stop', wc.busStops, anyRoad, 2.5, 250, 4, nearPlace(150))
+    const coastal = (x: number, z: number) => { for (let a = 0; a < 8; a++) { const q = (a / 8) * Math.PI * 2; if (hAt(x + Math.cos(q) * 35, z + Math.sin(q) * 35) <= 0) return true } return false }
+    put('port', nPorts, anyRoad, 30, 350, 20, coastal)
+  }
+  // 7b. vanilla sites (option): fuel depots, gas stations, bus stops, ports stamped from the Bohemia templates
+  // at the measured densities (data/densities.ts), beside a road at the measured setback, +Z facing the road
+  if (p.vanillaSites) placeVanillaWorldSites()
   cur = composeHeights(base, g, waters, zones, roads)
   // 8. villages v2
   await step('villages')
@@ -555,7 +604,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     }
     if (!ks.length) continue
     const V = WORLD.villages[kind]
-    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome }, settlement.placed)
+    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm' }, settlement.placed)
     settlement.placed = vr.placed
     settlement.tried = (settlement.tried ?? 0) + (vr.tried ?? 0); settlement.housed = (settlement.housed ?? 0) + (vr.housed ?? 0)
     settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)
@@ -654,6 +703,27 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       zones.push({ id: 'TREES_FIELD', kind: 'site', sub: 'fieldtrees', x: cx, z: cz, yaw: 0, seed: ss('forests', 'fieldtrees'), shapes: [], entities: ents, flat: [], plat: [], roads: [], warnings: [],
         boxes: ents.map((t) => ({ corners: [t.x - 2, t.z - 2, t.x + 2, t.z - 2, t.x + 2, t.z + 2, t.x - 2, t.z + 2], role: 'tree', h: 0.1 })) })
     }
+  }
+  // TAT-like vegetation layers (vegLayers.ts): elevation-banded understory + rocks on open ground (Poisson-disk,
+  // slope filter, CE ~1.7), and a feathered bush belt round the small woods that get no native edge bands
+  if (p.forests > 0) {
+    const sl = (x: number, z: number) => (Math.hypot(hAt(x + 4, z) - hAt(x - 4, z), hAt(x, z + 4) - hAt(x, z - 4)) / 16)
+    const houseNear = (x: number, z: number) => settlement.placed.some((b) => Math.abs(b.x - x) < 15 && Math.abs(b.z - z) < 15)
+    const inForest = (x: number, z: number) => areas.some((a) => (a.kind === 'forest' || a.kind === 'field') && pointInPoly(a.pts, x, z))
+    const okOpen = (x: number, z: number) => !isLakeOrSea(x, z) && !houseNear(x, z) && !inForest(x, z) && !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r })
+    const span = (g.cols - 1) * g.step
+    const scat = scatterLayers({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, slopeAt: sl, maxHeight: isl.maxHeight,
+      ok: okOpen, seed: ss('forests', 'scatter'), density: Math.min(1.5, p.forests), prefix: 'SCAT_', max: Math.round(250 * landKm2) })
+    const segDist = (pts: number[], x: number, z: number) => { let b = Infinity; for (let i = 0; i < pts.length; i += 2) { const j = (i + 2) % pts.length
+      const ax = pts[i], az = pts[i + 1], dx = pts[j] - ax, dz = pts[j + 1] - az, L = dx * dx + dz * dz, t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+      b = Math.min(b, Math.hypot(x - ax - dx * t, z - az - dz * t)) } return b }
+    areas.filter((a) => a.kind === 'forest' && polyAreaM2(a.pts) < 6000).slice(0, 400).forEach((a, k) => {
+      scat.push(...featheredBelt({ pts: a.pts, seed: ss('forests', 'belt', k), prefix: `BELT_${k + 1}_`, max: 300,
+        ok: (x, z) => !isLakeOrSea(x, z) && !houseNear(x, z), inside: (x, z) => pointInPoly(a.pts, x, z), distToOutline: (x, z) => segDist(a.pts, x, z),
+        trees: a.leaf === 'needle' ? [VEG.spruce, VEG.pine] : [VEG.hornbeam, VEG.birch], bushes: [VEG.hazel, VEG.hazel2] }))
+    })
+    if (scat.length) zones.push({ id: 'VEG_SCATTER', kind: 'site', sub: 'scatter', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'scatter'), shapes: [], entities: scat, flat: [], plat: [], roads: [], warnings: [],
+      boxes: scat.map((t) => ({ corners: [t.x - 1, t.z - 1, t.x + 1, t.z - 1, t.x + 1, t.z + 1, t.x - 1, t.z + 1], role: 'tree', h: 0.1 })) })
   }
   // tracks and trails through the woods take the forest styles (and open-ground trails gravel); the late
   // tracks (fields, production forests) may not cross the motorway either: cut back there
