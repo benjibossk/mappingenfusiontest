@@ -8,7 +8,7 @@ import { applyFlatten, boxCorners, type FlattenRequest } from './gen-common'
 import { generateIndustrial, applyFlatten as applyPlatform, type IndustrialType, type FlattenRequest as Platform } from './industrial'
 import { generateMilitary, flattenFor, type MilitaryKind } from './military'
 import { applyDam, type Dam } from './dam'
-import { pickTemplate, stampTemplate } from './vanillaSites'
+import { pickTemplate, stampTemplate, type VanillaTemplate } from './vanillaSites'
 import { generateAirfield, flattenAirfield, type AirfieldSize } from './airfield'
 
 export type ZoneKind = 'industrial' | 'military' | 'airfield' | 'site' // site: structured Zone-tool fills (sitezones.ts)
@@ -50,7 +50,10 @@ export function makeAirfield(heights: number[], g: Grid, o: { id: string; size: 
 
 export function makeMilitary(heights: number[], g: Grid, o: { id: string; kind: MilitaryKind; x: number; z: number; yaw: number; seed: number; vanilla?: boolean }): ZoneItem {
   if (o.vanilla) { // real Bohemia base / checkpoint (data/templates/vanilla_sites.json); our yaw turns +Z AWAY from the road, the template's +Z faces it
-    const v = makeVanillaSite(heights, g, { id: o.id, type: o.kind === 'checkpoint' ? 'checkpoint' : 'military_base', x: o.x, z: o.z, yaw: o.yaw + 180, seed: o.seed })
+    // a base template sized for the spot the suggester found (Cain's 290 m quarry-sized bases do not fit an outpost spot)
+    const maxR = o.kind === 'main' ? 150 : 100, minN = o.kind === 'main' ? 150 : 50
+    const v = makeVanillaSite(heights, g, { id: o.id, type: o.kind === 'checkpoint' ? 'checkpoint' : 'military_base', x: o.x, z: o.z, yaw: o.yaw + 180, seed: o.seed,
+      fit: o.kind === 'checkpoint' ? undefined : (t) => t.radius <= maxR && t.objects.length >= minN })
     if (v) return { ...v, kind: 'military', sub: o.kind, yaw: o.yaw }
   }
   const m = generateMilitary({ kind: o.kind, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed })
@@ -103,8 +106,8 @@ export function nextZoneId(zones: ZoneItem[], kind: ZoneKind) {
 
 /** stamps a vanilla site template (military_base, checkpoint, port, fuel_depot, gas_station, farm...) at x/z, its
  *  access side (+Z) turned to `yaw`; ground flattened to the mean height over the template radius. null = no template. */
-export function makeVanillaSite(heights: number[], g: Grid, o: { id: string; type: string; x: number; z: number; yaw: number; seed: number }): ZoneItem | null {
-  const t = pickTemplate(o.type, o.seed)
+export function makeVanillaSite(heights: number[], g: Grid, o: { id: string; type: string; x: number; z: number; yaw: number; seed: number; fit?: (t: VanillaTemplate) => boolean; template?: VanillaTemplate }): ZoneItem | null {
+  const t = o.template ?? pickTemplate(o.type, o.seed, o.fit)
   if (!t) return null
   const entities = stampTemplate(t, o.x, o.z, o.yaw, { id: t.id })
   const r = Math.max(10, t.radius), box = { x: o.x, z: o.z, hw: r, hd: r, yaw: o.yaw }

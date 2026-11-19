@@ -10,7 +10,7 @@ import { DENSITY, scaledCount, worldCounts } from '../data/densities'
 import { featheredBelt, scatterLayers } from './vegLayers'
 import { VEG } from '../data/biomes'
 import { fr } from '../i18n'
-import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
+import { computeSurfaces, settlementMask, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
 import { addRoundabouts, dropOrphanRings, overlapJunctions, squareRoundabout } from './roundabouts'
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
@@ -44,6 +44,7 @@ import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
+import { pickTemplate, fitPort, type VanillaTemplate } from './vanillaSites'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
 
 export interface WorldParams {
@@ -387,6 +388,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const mil = (kind: MilitaryKind) => suggestMilitary(mh, g, { kind, seaLevel: 0, keepOut: keep, count: 8 })
     let kind: MilitaryKind = k === 0 ? 'main' : 'outpost', list = mil(kind)
     if (!list.length && kind === 'main') list = mil((kind = 'outpost'))
+    if (!list.length && p.vanillaSites && k === 0) { // vanilla on: the first site must be a real base, not a 13-object checkpoint (a 4 km map
+      // rarely has a flat spot 700 m past every place); retry closer to the places before giving up to a checkpoint
+      const near = [...siteDiscs(WORLD.military.keepOutM / 4), ...zones.map((z) => { const d = zoneDisc(z); return { ...d, r: d.r + 50 } })]
+      for (const kk of ['main', 'outpost'] as MilitaryKind[]) { list = suggestMilitary(mh, g, { kind: kk, seaLevel: 0, keepOut: near, count: 8 }); if (list.length) { kind = kk; break } }
+    }
     if (!list.length) list = mil((kind = 'checkpoint'))
     const air = zones.find((z) => z.kind === 'airfield')
     const r = mulberry(ss('settlements', 'military', k))
@@ -532,6 +538,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const free = (x: number, z: number, r: number, sameSub: string, gap: number) =>
       !sites.some((s) => Math.hypot(s.x - x, s.z - z) < SITE_RADIUS[s.kind] * 0.6 + r) &&
       !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r + r + (zn.sub?.startsWith(sameSub) ? gap : 10) })
+    const allRoadLines = () => [...roads.map((r) => r.pts), ...zones.flatMap((zn) => zn.roads.map((r) => r.pts))]
     const put = (type: string, n: number, list: Road[], setback: number, gap: number, r0: number, near?: (x: number, z: number) => boolean) => {
       const rnd = mulberry(ss('settlements', 'vanilla-' + type))
       for (let k = 0, tries = 0; k < n && list.length && tries < n * 60 + 60; tries++) {
@@ -543,7 +550,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         const off = roadHalf(rd) + setback
         const x = ax + dx * t + nx * off, z = az + dz * t + nz * off
         if (isWater(x, z) || (near && !near(x, z)) || !free(x, z, r0, 'vanilla:' + type, gap)) continue
-        const zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x, z, yaw: (Math.atan2(-nx, -nz) * 180) / Math.PI, seed: ss('settlements', 'vanilla-' + type, k) })
+        let sx = x, sz = z, syaw = (Math.atan2(-nx, -nz) * 180) / Math.PI, tpl: VanillaTemplate | undefined
+        if (type === 'port') { // sea side to the sea, breakwaters / piers in the water, sheds ashore, no road through the footprint
+          tpl = pickTemplate('port', ss('settlements', 'vanilla-port', k + tries), (t) => t.radius <= 160) ?? undefined
+          const fit = tpl && fitPort(tpl, hAt, x, z, allRoadLines())
+          if (!tpl || !fit || !free(fit.x, fit.z, tpl.radius * 0.6, 'vanilla:' + type, gap)) continue
+          sx = fit.x; sz = fit.z; syaw = fit.yaw
+        }
+        const zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x: sx, z: sz, yaw: syaw, seed: ss('settlements', 'vanilla-' + type, k), template: tpl })
         if (!zn || (type !== 'port' && zoneWet(zn))) continue
         zn.sub = `vanilla:${type}:${zn.sub?.slice(8) ?? ''}`
         zones.push(zn)
@@ -734,7 +748,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   { const all = [...roads, ...settlement.lanes]; overlapJunctions(roads, all); overlapJunctions(settlement.lanes, all) }
   // 11. surfaces (5 per block at most)
   await step('surfaces')
-  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas))
+  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas), settlementMask(g, settlement.placed.map((q) => q.corners)))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, power, refusedGaps: [], heights: cur.heights, grid: g })
   return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
