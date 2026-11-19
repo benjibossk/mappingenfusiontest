@@ -34,6 +34,10 @@ export function forestTuning(id?: string): { coverMul: number; needleShift: numb
     treeLine: treeLineOf(b.vegetation.treesPerHa / ev.vegetation.treesPerHa),
   }
 }
+/** village / hamlet building density multiplier per biome, calibrated on the reconstruction bench with the
+ *  vanilla site list (Everon 1: ratios 1.01 / 1.07; Kolguyev 1 laid 1.35x / 1.27x the vanilla buildings, 0.75 -> 0.99x / 0.97x) */
+const SETTLE_MUL: Record<string, number> = { nordic_kolguyev: 0.75, woodland_arland: 1.15 } // Arland 1: 0.80x / 0.78x -> 1.15: 0.98x / 1.11x
+export function settlementDensityMul(id?: string): number { return (id && SETTLE_MUL[id]) || 1 }
 /** leaf type of a generated forest from its mean relative altitude (Everon: > 0.5 needle, < 0.15 broad).
  *  Measured on the vanilla maps (PakTools/analyses/FORESTS_VANILLA.md): conifers are 72 % of the trees at
  *  sea level and 94-98 % on the tops, 70-85 % of the massifs are needle and only 2-9 % broadleaf. */

@@ -3,6 +3,7 @@
 //   npx tsx scripts/bench/bench.ts [everon|arland|kolguyev] [--png outDir] [--json out.json]
 // Scores are 0..100 (100 = identical statistics). Categories: villages (building count per 250 m tile,
 // road setback, orientation vs road, nearest-neighbour spacing), power (pole spans).
+import { settlementDensityMul } from '../../src/biomes/vegetation'
 import '../../src/workers/shim'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
@@ -94,7 +95,7 @@ for (const kind of ['town', 'village', 'hamlet'] as const) {
   }
   if (!ks.length) continue
   const V = WORLD.villages[kind]
-  const vr = settleVillages(ks, roads, waters, heights, grid, { seed: 21, density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true }, placed as never)
+  const vr = settleVillages(ks, roads, waters, heights, grid, { seed: 21, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true }, placed as never)
   placed = vr.placed
   lots.push(...vr.lots)
 }

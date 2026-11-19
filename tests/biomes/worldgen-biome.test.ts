@@ -32,8 +32,9 @@ test('other biomes: deterministic, forests and gardens follow the biome', async 
   const ev = await generateWorld(P)
   const k1 = await generateWorld({ ...P, biome: 'nordic_kolguyev' }), k2 = await generateWorld({ ...P, biome: 'nordic_kolguyev' })
   assert.equal(digest(strip(k1)), digest(strip(k2)))
-  // houses are the same, gardens are dressed
-  assert.deepEqual(k1.settlement.placed.map((q) => q.id), ev.settlement.placed.map((q) => q.id))
+  // village density follows the biome (settlementDensityMul: Kolguyev 0.75, reconstruction bench), gardens are dressed
+  const vil = (w: typeof ev) => w.settlement.placed.filter((q) => /^SET_(VILLAGE|HAMLET)/.test(q.id)).length
+  assert.ok(vil(k1) <= vil(ev), `kolguyev ${vil(k1)} <= everon ${vil(ev)} village buildings`)
   assert.ok((k1.settlement.parcels ?? []).some((p) => p.items.length || p.fences.length))
   const de = await generateWorld({ ...P, biome: 'desert' })
   assert.equal(de.areas.filter((a) => a.kind === 'forest').length, 0)

@@ -21,7 +21,7 @@ import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
 import { streamCulverts } from './culverts'
 import { buildMotorway, overpassDecks, resolveCrossings } from './motorway'
-import { forestTuning, leafOf } from '../biomes/vegetation'
+import { forestTuning, leafOf, settlementDensityMul } from '../biomes/vegetation'
 import { styleTracks } from './network'
 import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, insertPoint, maxGrade, nearestOn, routeLink, worstGrade, type Site, type SiteKind } from './network'
@@ -661,7 +661,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     }
     if (!ks.length) continue
     const V = WORLD.villages[kind]
-    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm', farmyards: kind === 'farm' }, settlement.placed)
+    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density * settlementDensityMul(p.biome), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm', farmyards: kind === 'farm' }, settlement.placed)
     settlement.placed = vr.placed
     settlement.tried = (settlement.tried ?? 0) + (vr.tried ?? 0); settlement.housed = (settlement.housed ?? 0) + (vr.housed ?? 0)
     settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)
