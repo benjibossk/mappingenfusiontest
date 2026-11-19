@@ -7,6 +7,8 @@ Remplace `docs/UI_POLISH_PLAN.md` (audit MILSPEC du 16/11, terminé ou dépassé
 Parcours testé : accueil → Nouvelle île → bulle « Voilà ton île » → visite guidée (5 bulles) → bouton Aide → étapes Sculpter, Eau, Routes, Villages → menu.
 Hors périmètre : rendu 2D/3D de la carte, mobile (non testé ici), contenu de la génération.
 
+Statut au 19/11/2026 : A1 à A7 corrigés (branche `ui/kit-css-v2`), A8 à A14 à faire.
+
 Légende : **P1** = le débutant bloque ou se trompe · **P2** = il hésite · **P3** = finition.
 
 ## Ce qui marche déjà
@@ -21,36 +23,43 @@ Légende : **P1** = le débutant bloque ou se trompe · **P2** = il hésite · *
 - **Constat** : La barre du haut montre déjà 9 outils (Relief en un clic, Rejouer, Graines, Économie, Bibliothèque, Partager, caméra, puce « Workbench : non connecté ») alors qu'aucune carte n'existe.
 - **Pour le débutant** : Premier écran = première impression : trop de boutons sans contexte, et un statut « non connecté » qui laisse croire que quelque chose est cassé.
 - **Correctif** : Sur l'accueil, n'afficher que le logo, la langue et « Aide ». Les outils apparaissent une fois la carte créée.
+- **Statut** : Fait : sur l'accueil la barre ne montre que le logo, la langue et « Aide » (`src/ui/kit.css`).
 
 ### A2 · P1 · Après « Nouvelle île »
 - **Constat** : 4 messages arrivent en même temps : toast « Générer : terminé », bulle « Voilà ton île », aide souris en bas, ligne « Île 513×513, pas 8 m — aperçu seulement » en bas du panneau.
 - **Pour le débutant** : Le joueur ne sait pas quoi lire en premier ; le message utile (« et maintenant ? ») est noyé.
 - **Correctif** : Un seul message : la bulle « Voilà ton île » avec un bouton « Étape suivante ». Pas de toast pour la première génération, ligne technique déplacée dans l'aide.
+- **Statut** : Fait : tant que la bulle « Voilà ton île » est ouverte, toast, aide souris, infos pinceau et ligne technique sont masqués.
 
 ### A3 · P1 · Étapes
 - **Constat** : Après la seule génération du relief, les étapes 2 Sculpter et 3 Eau sont cochées vertes, et la bulle dit « Déjà fait : Relief, Sculpter, Eau ».
 - **Pour le débutant** : Le joueur pense avoir sauté des étapes ou que l'outil a fait des choses dans son dos ; il ne sait plus où il en est.
 - **Correctif** : Ne cocher que ce que le joueur a fait ou validé. Eau générée automatiquement = état « proposé » (pastille grise) jusqu'à ouverture de l'étape.
+- **Statut** : Fait : Sculpter n'est coché qu'après un coup de pinceau qui modifie le sol (`sculptStrokes` dans `stepSigs`). Eau reste cochée quand la génération a créé des rivières (contenu réel). Limite : le compteur n'est pas enregistré dans le projet, Sculpter repasse à « à faire » après rechargement.
 
 ### A4 · P1 · Étape 1 Relief
 - **Constat** : 14 contrôles visibles : Générer, Autre tirage, Monde aléatoire, Lieu réel, Importer le monde ouvert, liste Everon, Charger une carte de référence, Mesurer, Réglages avancés, Anneau de terrain hors carte, « la mer », Envoyer l'anneau (OTC), Enregistrer, Ouvrir.
 - **Pour le débutant** : Le débutant voulait juste une île : il doit trier 14 choix, dont du jargon (OTC, anneau, heightmap, carte de référence).
 - **Correctif** : Garder Biome, Générer, Autre tirage. Tout le reste dans un repli « Plus d'options » fermé par défaut ; l'anneau et l'OTC vont à l'étape Envoyer.
+- **Statut** : Fait : l'étape 1 garde Biome, Générer, Autre tirage ; le reste est dans « Plus d'options ». L'anneau / OTC n'a pas encore été déplacé à l'étape Envoyer.
 
 ### A5 · P1 · Aide
 - **Constat** : Le seul accès à l'aide est un « ? » de 34 px sans libellé dans le coin ; F1 n'est indiqué que dans l'infobulle. Le panneau d'aide (bon contenu : Cette étape / FAQ / Lexique / Clavier) recouvre le panneau d'étape.
 - **Pour le débutant** : Un débutant bloqué ne voit pas où cliquer ; quand il trouve, l'aide cache justement ce qu'il essayait de comprendre.
 - **Correctif** : Bouton « Aide » avec libellé dans la barre ; un lien « Comment faire ? » sous le titre de chaque étape qui ouvre l'aide sur cette étape ; aide en tiroir à gauche du panneau, pas par-dessus.
+- **Statut** : Fait : bouton « Aide » avec libellé dans la barre, lien « Comment faire ? » sous chaque étape. **Correction de l'audit** : le panneau d'aide s'ouvre sur la carte, à gauche du panneau d'étape, il ne le recouvre pas ; ce point du constat était faux.
 
 ### A6 · P1 · Visite guidée
 - **Constat** : La visite (5 bulles) n'est proposée qu'après la première génération, via « Montre-moi » dans la bulle. Rien sur l'accueil. La dernière bulle parle du « relais lancé » sans dire ce que c'est.
 - **Pour le débutant** : Le joueur qui ferme la bulle ne reverra jamais la visite (seulement cachée dans l'aide) ; le mot « relais » arrive sans explication.
 - **Correctif** : Sur l'accueil : lien « Première fois ? Visite en 1 minute ». Dernière bulle : « Pour jouer ta carte, il faudra connecter le Workbench : on t'expliquera à l'étape 7. »
+- **Statut** : Fait : lien « Première fois ? Visite guidée en 1 minute » sur l'accueil (crée une île puis lance la visite) ; la dernière bulle renvoie à l'étape 7 au lieu de parler du relais.
 
 ### A7 · P1 · Workbench
 - **Constat** : La puce « Workbench : non connecté » et la caméra Workbench sont visibles et actives dès la première seconde, alors que la connexion n'est utile qu'à l'envoi.
 - **Pour le débutant** : Le joueur croit qu'il doit installer/connecter quelque chose avant de commencer.
 - **Correctif** : Masquer puce et caméra jusqu'à la première action d'envoi ; à l'étape 7, un encart « Connecter le Workbench » en 3 étapes (le contenu existe déjà dans l'aide).
+- **Statut** : Fait : puce et caméra Workbench masquées hors étape Envoyer tant qu'il n'est pas connecté ; à l'étape Envoyer, encart « Connecte le Workbench » qui ouvre l'aide sur la procédure.
 
 ### A8 · P2 · Envoyer au Workbench
 - **Constat** : Chaque étape a son propre bouton d'envoi (« Envoyer l'eau », « Envoyer les routes », « Envoyer les bâtiments », « Envoyer l'anneau ») en plus de l'étape 7 « Envoyer ».

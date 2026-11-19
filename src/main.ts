@@ -244,7 +244,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
       </div>
     </div>
-    <button id="helpFab" type="button" class="hist helpbtn" title="${t('help.tip')} (F1)" aria-label="${t('help.tip')}" aria-haspopup="dialog" aria-keyshortcuts="F1">?</button>
+    <button id="helpFab" type="button" class="hist withlbl helpbtn" title="${t('help.tip')} (F1)" aria-label="${t('help.tip')}" aria-haspopup="dialog" aria-keyshortcuts="F1">${ic('help')}<span>${t('help.short')}</span></button>
   </header>
   <div id="collabBox" class="ctxmenu collabbox" hidden>
     <div class="title">${t('collab.title')}</div>
@@ -352,6 +352,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <span class="kicker">${t('welcome.kicker')}</span>
         <h2>${t('welcome.title2')}</h2>
         <p>${t('welcome.lead')}</p>
+        <button type="button" id="welcomeTour" class="rm-link wtour">${ic('help', 16)}<span>${t('welcome.tour')}</span></button>
       </div>
       <div class="wgroup">
         <span class="wglabel">${t('welcome.g.create')}</span>
@@ -434,7 +435,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <ol class="tabs stepper" id="tabs">
       ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.tab === 'camp' ? 'step.fields.short' : s.label)}</span><i class="badge"></i></button></li>`).join('')}
     </ol>
-    <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p></div>
+    <div class="stephead"><span id="stepKicker" class="kicker"></span><h2 id="stepTitle"></h2><button id="stepRegen" type="button" class="regen" title="${t('step.regen')}" aria-label="${t('step.regen')}">${ic('refresh', 16)}</button><p id="stepLead" class="lead"></p><button id="stepHelp" type="button" class="rm-link stephelp">${ic('help', 16)}<span>${t('step.howto')}</span></button></div>
 
     <div class="tab" data-tab="island">
       <div class="row biomerow">${biomeField('pBiome')}</div>
@@ -442,6 +443,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="tGen" type="button">${t('btn.tGen')}</button>
         <button id="tReroll" type="button" class="secondary">${t('btn.tReroll')}</button>
       </div>
+      <details class="adv more"><summary>${t('ui.more')}</summary>
       <div class="row">
         <button id="tRandom" type="button" class="secondary" title="${t('wg.tip')}">${ic('dice', 16)} ${t('btn.tRandom')}</button>
       </div>
@@ -473,6 +475,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="pOpen" type="button" class="secondary">${t('btn.pOpen')}</button>
         <input id="pFile" type="file" accept=".json,application/json" hidden>
       </div>
+      </details>
       ${hint('hint.island')}
     </div>
 
@@ -715,6 +718,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
 
     <div class="tab" data-tab="wb" hidden>
+      <div class="wbconnect"><b>${t('wb.need.t')}</b><p>${t('wb.need.p')}</p><button id="wbConnectHelp" type="button" class="secondary">${t('wb.need.btn')}</button></div>
       <div class="form">
         <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
         <label>${t('lbl.tWorld')} <input id="tWorld" value="Worlds/MG_Test"></label>
@@ -1533,6 +1537,8 @@ setTool('zone')
 
 /** heights before the current stroke, to tell how much it changed (feedback once released) */
 let strokeBefore: number[] | null = null
+/** strokes that changed the ground (step 2 "Sculpter" is done once there is at least one) */
+let sculptStrokes = 0
 function strokeFeedback() {
   const before = strokeBefore
   strokeBefore = null
@@ -1541,6 +1547,7 @@ function strokeFeedback() {
   const h = island.heights
   for (let i = 0; i < h.length; i++) { const d = h[i] - before[i]; if (d > up) up = d; if (-d > down) down = -d }
   const v = { up: up.toFixed(1), down: down.toFixed(1) }
+  if (up >= 0.05 || down >= 0.05) { sculptStrokes++; refreshSteps() }
   logEl.textContent = up < 0.05 && down < 0.05 ? t('brush.none')
     : tool() === 'raise' ? t('brush.up', v) : tool() === 'lower' || tool() === 'sea' ? t('brush.down', v) : t('brush.done', v)
 }
@@ -2462,7 +2469,7 @@ function stepSigs(): string[] {
   const relief = terrain || island ? `${oid(terrainImg)}` : ''
   return [
     relief,
-    relief,
+    relief && sculptStrokes ? `${sculptStrokes}` : '',
     waters.length || rivers ? `${waters.length}:${ptsSum(waters)}:${oid(rivers)}` : '',
     roads.length || powerLines.length ? `${roads.length}:${ptsSum(roads)}:${powerLines.length}:${ptsSum(powerLines.map((l) => ({ pts: l.path })))}` : '',
     settled.length || zones.length ? `${settled.length}:${oid(settled)}:${zones.map((z) => z.id).join(',')}` : '',
@@ -2471,7 +2478,7 @@ function stepSigs(): string[] {
   ]
 }
 // which steps each step is built on
-const UP: number[][] = [[], [], [0], [0, 2], [0, 3], [0, 3, 4], []]
+const UP: number[][] = [[], [0], [0], [0, 2], [0, 3], [0, 3, 4], []]
 const doneSnap: (string | null)[] = STEPS.map(() => null)
 const ownSnap: string[] = STEPS.map(() => '')
 function refreshSteps() {
@@ -2507,6 +2514,7 @@ function showStep(tab: string) {
   $<HTMLButtonElement>('stepPrev').disabled = i === 0
   $<HTMLButtonElement>('stepNext').hidden = i === STEPS.length - 1
   $<HTMLButtonElement>('stepRegen').hidden = !REGEN[tab]
+  document.querySelector<HTMLElement>('.app')!.dataset.step = tab
   try { localStorage.setItem('reforger-mapper.step', tab) } catch { /* private window */ }
 }
 const goStep = (d: number) => {
@@ -2718,6 +2726,7 @@ const MINI: Record<Entry, [string, Key][]> = {
   open: [['#tabs', 'mt.steps'], ['#tabs [data-tab="wb"]', 'mt.send']],
   join: [['#collabBox', 'mt.collab'], ['#tabs', 'mt.steps']],
 }
+let autoTour = false
 function coachAfter(kind: Entry) {
   if (entry !== kind) return
   entry = null
@@ -2741,12 +2750,16 @@ function coachAfter(kind: Entry) {
     next.textContent = t('coach.next', { s: t(STEPS[at].label) })
     next.onclick = () => { el.hidden = true; btns[at]?.click() }
     $<HTMLButtonElement>('coachTour').onclick = () => { el.hidden = true; runTour(MINI[kind]) }
+    if (autoTour) { autoTour = false; runTour(MINI[kind]); return }
     el.hidden = false
     if (kind !== 'join') next.focus()
   }
   setTimeout(render, 0)
 }
 $<HTMLButtonElement>('coachClose').addEventListener('click', () => { $('coach').hidden = true })
+$<HTMLButtonElement>('welcomeTour').addEventListener('click', () => { autoTour = true; document.querySelector<HTMLButtonElement>('#welcome [data-go="tGen"]')?.click() })
+$<HTMLButtonElement>('stepHelp').addEventListener('click', () => openHelp())
+$<HTMLButtonElement>('wbConnectHelp').addEventListener('click', () => openHelp('helpConnect'))
 $('coach').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('coach').hidden = true })
 $<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { entry = 'join'; coachAfter('join'); if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
 // Mode Atelier (src/atelier/): own full-screen layout, loaded on demand; reopened after a language switch

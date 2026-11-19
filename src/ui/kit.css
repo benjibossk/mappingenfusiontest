@@ -267,3 +267,31 @@ textarea, pre, code, #trace, .log { font-family: ui-monospace, 'Share Tech Mono'
 .top .verbadge, .top .status { height: 28px; }
 .top .langbtn { display: inline-flex; align-items: center; }
 .top .helpbtn { width: var(--h-md); }
+
+/* =====================================================================
+   Audit débutant (docs/UI_AUDIT_DEBUTANT.md) : A1, A2, A5, A6, A7
+   ===================================================================== */
+/* A1 · accueil : seulement le logo, la langue et l'aide tant qu'aucune carte n'est ouverte */
+.app:has(#welcome:not([hidden])) .top > :not(.brand):not(.langsel):not(#helpFab):not(.grow) { display: none !important; }
+/* A2 · après la première île : un seul message (la bulle), pas de toast / aide souris / ligne technique en même temps */
+body:has(#coach:not([hidden])) :is(.toast, #mapHint, #log, #brushInfo) { display: none !important; }
+/* A5 · bouton Aide avec libellé (reste visible à tous les paliers sauf téléphone) */
+.top .helpbtn.withlbl { width: auto !important; padding: 0 12px !important; gap: 6px; background: #2A2C2E; border: 1px solid var(--line-2); color: var(--tx-1); }
+.top .helpbtn.withlbl > span { display: inline !important; font-size: 14px; }
+.top .helpbtn.withlbl:hover:not(:disabled) { border-color: var(--amber); color: var(--amber-hi); }
+@container top (max-width: 600px) { .top .helpbtn.withlbl { width: 34px !important; padding: 0 !important; } .top .helpbtn.withlbl > span { display: none !important; } }
+/* lien « Comment faire ? » sous la phrase de l'étape */
+.stephead .stephelp { margin: 6px 0 0 -8px; gap: 6px; display: inline-flex; align-items: center; color: var(--amber-hi); font-size: 14px; }
+/* A6 · « Première fois ? » sur l'accueil */
+.welcome .wtour { margin-top: 10px; align-self: center; display: inline-flex; align-items: center; gap: 6px; color: var(--amber-hi); font-size: 15px; height: 32px; }
+/* A7 · puce et caméra Workbench : seulement à l'étape Envoyer, ou une fois connecté */
+.app:not([data-step="wb"]) .top .status:not([data-ok="true"]),
+.app:not([data-step="wb"]):not(:has(.top .status[data-ok="true"])) .top #camBtn { display: none; }
+/* A4 · « Plus d'options » de l'étape 1 : même allure que « Réglages avancés » */
+.side details.adv.more > .row { margin-top: 8px; }
+/* A7 · étape Envoyer : encart « Connecte le Workbench » tant qu'il n'est pas connecté */
+.wbconnect { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; margin-bottom: 8px; background: rgba(225, 161, 46, .08); border-left: 3px solid var(--amber); }
+.wbconnect b { color: var(--tx-1); font-size: 15px; }
+.wbconnect p { margin: 0; color: var(--tx-2); font-size: 14px; line-height: 1.4; }
+.wbconnect button { align-self: flex-start; margin-top: 4px; }
+.app:has(.top .status[data-ok="true"]) .wbconnect { display: none; }
