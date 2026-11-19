@@ -78,7 +78,7 @@ class MG_CameraHudTool : WorldEditorTool
 		float yaw = Math.Atan2(fwd[0], fwd[2]) * Math.RAD2DEG; // same convention as MG_GetCamera: 0 = north, clockwise
 		if (yaw < 0)
 			yaw = yaw + 360;
-		string txt = string.Format("MapGen cam X %1 Z %2 cap %3°", Math.Round(pos[0]), Math.Round(pos[2]), Math.Round(yaw));
+		string txt = string.Format("MapGen cam X %1 Z %2 cap %3 deg", Math.Round(pos[0]), Math.Round(pos[2]), Math.Round(yaw));
 		m_Text.SetText(txt);
 		float w = txt.Length() * MG_CAMHUD_SIZE * MG_CAMHUD_CHAR_W;
 		float left = m_iViewportWidth - MG_CAMHUD_MARGIN_RIGHT - w;
