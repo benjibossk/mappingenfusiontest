@@ -24,6 +24,19 @@ export interface RefMap {
   rivers: number[][]
   power: { pf: string; pts: number[] }[]
   trees: { cell: number; cols: number; rows: number; minX: number; minZ: number; counts: number[]; source: string; total: number }
+  bushes?: RefMap['trees']
+  /** game terrain heights (export_ref_map.py): Int16 decimetres, little-endian, row 0 = south, base64 */
+  heights: { step: number; cols: number; rows: number; enc: 'i16dm-b64'; data: string } | null
+  lakes2?: { pts: number[]; level: number; lake: number }[]
+  rivers2?: { pts: number[]; w: number; y: number[] }[]
+}
+
+/** heights block -> metres (row-major, row 0 = south) */
+export function refHeights(h: NonNullable<RefMap['heights']>): number[] {
+  const bin = atob(h.data), n = h.cols * h.rows, dv = new DataView(new ArrayBuffer(n * 2)), out = new Array<number>(n)
+  for (let i = 0; i < n * 2; i++) dv.setUint8(i, bin.charCodeAt(i))
+  for (let i = 0; i < n; i++) out[i] = dv.getInt16(i * 2, true) / 10
+  return out
 }
 
 export async function loadRefMap(id: RefMapId): Promise<RefMap> {

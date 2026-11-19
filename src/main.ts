@@ -104,7 +104,7 @@ import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/netw
 import { validate, type Issue } from './modules/validate'
 import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
-import { REF_MAPS, loadRefMap, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
+import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
@@ -888,6 +888,7 @@ function draw() {
   if (furn && layer('furniture') && $<HTMLInputElement>('furnShow').checked && tool() === 'road') drawFurniture(furn)
   if (layer('power')) drawPower()
   if (layer('buildings')) drawSettlements()
+  if (layer('existing') && view.mpp < 4) drawFences()
   if (layer('zones')) drawZones()
   drawSatPreview()
   if (layer('sites')) drawSites()
@@ -3682,21 +3683,28 @@ function renderRefStats() {
 function applyRefMap(m: RefMap, id: RefMapId) {
   // the generated map in place is measured first, so both columns can be compared
   if (!refReadOnly && island && (roads.length || settled.length)) refStatsOurs = { name: t('ref.ours'), s: oursStats() }
-  const step = 16, n = Math.round(m.size / step) + 1
-  useWorld({ minX: m.minX, minZ: m.minZ, step, cols: n, rows: n, ocean: 0, heights: new Array(n * n).fill(5), materials: ['Grass_01'], surfaces: new Array(n * n).fill(0) })
+  if (m.heights) {
+    const hb = m.heights
+    useWorld({ minX: m.minX, minZ: m.minZ, step: hb.step, cols: hb.cols, rows: hb.rows, ocean: 0, heights: refHeights(hb), materials: ['Grass_01'], surfaces: new Array(hb.cols * hb.rows).fill(0) })
+  } else {
+    const step = 16, n = Math.round(m.size / step) + 1
+    useWorld({ minX: m.minX, minZ: m.minZ, step, cols: n, rows: n, ocean: 0, heights: new Array(n * n).fill(5), materials: ['Grass_01'], surfaces: new Array(n * n).fill(0) })
+  }
+  const byGen = new Map(Object.entries(ROAD_TYPES).filter(([k]) => k !== 'motorway').map(([k, v]) => [v.generator.replace(/^.*\//, '').replace(/\.et$/, '').toLowerCase(), k as RoadType]))
   for (const r of m.roads) {
-    const type = roadTypeOf({ generators: [r.gen], closed: false, origin: [0, 0], points: [] }) ?? 'asphalt'
+    const g = r.gen.replace(/^.*\//, '').replace(/\.et$/, '').toLowerCase()
+    const type = byGen.get(g) ?? (/runway/.test(g) ? 'concrete' : roadTypeOf({ generators: [r.gen], closed: false, origin: [0, 0], points: [] }) ?? 'asphalt')
     roads.push({ id: nextRoadId(type), type, pts: r.pts, ...(r.w > 0 ? { width: r.w } : {}) })
   }
-  for (const l of m.lakes) waters.push({ id: nextWaterId('lake'), type: 'lake', pts: l, width: 0, depth: 2 })
-  for (const l of m.rivers) waters.push({ id: nextWaterId('river'), type: 'river', pts: l, width: 8, depth: 1.5 })
+  for (const l of m.lakes2 ?? m.lakes.map((pts) => ({ pts, level: 0, lake: 1 }))) waters.push({ id: nextWaterId('lake'), type: 'lake', pts: l.pts, width: 0, depth: 2, ...(m.heights ? { level: l.level } : {}) })
+  for (const l of m.rivers2 ?? m.rivers.map((pts) => ({ pts, w: 8 }))) waters.push({ id: nextWaterId('river'), type: 'river', pts: l.pts, width: l.w, depth: 1.5 })
   const mask = forestMask(m.trees)
   const tc = m.trees
   maskOutlines(mask, tc.cols, tc.rows, tc.cell, tc.minX, tc.minZ).forEach((o, k) => areas.push({ id: `FOREST_REF_${k + 1}`, kind: 'forest', leaf: 'mixed', pts: o.pts, holes: o.holes }))
   settled = refBuildings(m)
   existing = { objects: [], shapes: refFences(m).map((p) => ({ generators: ['Fence'], closed: false, origin: p[0], points: p })) }
   m.power.forEach((l, k) => {
-    const kind: PowerKind = /HV|High|Pylon|Lattice/i.test(l.pf) ? 'hv' : 'mv'
+    const kind: PowerKind = (l as { kind?: PowerKind }).kind ?? (/HV|High|Pylon|Lattice/i.test(l.pf) ? 'hv' : 'mv')
     let length = 0
     for (let i = 2; i < l.pts.length; i += 2) length += Math.hypot(l.pts[i] - l.pts[i - 2], l.pts[i + 1] - l.pts[i - 1])
     powerLines.push({ id: `POWER_REF_${k + 1}`, kind, spacing: POWER_DEFAULTS[kind].spacing, path: l.pts, poles: l.pts, length })
@@ -3707,12 +3715,13 @@ function applyRefMap(m: RefMap, id: RefMapId) {
   const bld = m.buildings.items.map(([, x, z, , cls]) => ({ x, z, house: cls === 'house' }))
   refStatsRef = { name: t(('ref.map.' + id) as Key), s: mapStats(rr, bld, fc * tc.cell * tc.cell, m.size * m.size, treesPerHa(tc, mask)) }
   setRefReadOnly(true)
-  $<HTMLInputElement>('rLive').checked = false // no relief: the rain simulation would carve fake rivers in the flat ground
+  // the rain simulation only makes sense on the real relief (flat placeholder ground would grow fake rivers)
+  $<HTMLInputElement>('rLive').checked = !!m.heights
   setInfo(); powerInfo(); waterInfo(); roadInfo()
   recompose(true)
   draw()
   renderRefStats()
-  logEl.textContent = t('log.ref', { name: refStatsRef.name, km: (m.size / 1000).toFixed(1), roads: m.roads.length, bld: m.buildings.items.length, fences: m.fences.items.length, forests: areas.length, trees: tc.total, src: tc.source })
+  logEl.textContent = t('log.ref', { name: refStatsRef.name, km: (m.size / 1000).toFixed(1), roads: m.roads.length, bld: m.buildings.items.length, fences: m.fences.items.length, forests: areas.length, trees: tc.total, src: tc.source, relief: m.heights ? (getLang() === 'fr' ? ', relief du jeu' : ', game relief') : (getLang() === 'fr' ? ', sans relief' : ', no relief') })
 }
 $<HTMLButtonElement>('tRef').addEventListener('click', () => {
   const id = $<HTMLSelectElement>('tRefMap').value as RefMapId
@@ -4318,8 +4327,20 @@ function existingRoads(): Road[] {
     .filter((s) => s.generators.some((g) => /Road/i.test(g)))
     .map((s, i) => ({ id: `EXIST_${i}`, type: 'asphalt' as RoadType, pts: s.points.flat() }))
 }
+/** fence and wall pieces (generator 'Fence', reference maps): drawn above the forest and the buildings */
+function drawFences() {
+  ctx.beginPath()
+  for (const s of existing.shapes) {
+    if (s.generators[0] !== 'Fence') continue
+    s.points.forEach(([x, z], i) => { const [sx, sy] = toScreen(x, z); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) })
+  }
+  ctx.strokeStyle = 'rgba(120,80,40,0.95)'
+  ctx.lineWidth = Math.max(1.5, 0.8 / view.mpp)
+  ctx.stroke()
+}
 function drawExisting() {
   for (const s of existing.shapes) {
+    if (s.generators[0] === 'Fence') continue
     const road = s.generators.some((g) => /Road/i.test(g)), forest = s.generators.some((g) => /Forest/i.test(g))
     const water = s.generators.some((g) => /River|Lake|Water/i.test(g))
     ctx.beginPath()
