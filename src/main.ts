@@ -11,6 +11,7 @@ import { Collab, type CollabEvents, type CollabTransport, type Op } from './coll
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
+import { cemeteryPathMasks, parcelGroundMasks } from './modules/parcelground'
 import { POWER_DEFAULTS, mergePowerLines, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
@@ -1415,6 +1416,14 @@ let setLanes: Road[] = [] // settlement lanes and footpaths, squares (tab Villag
 let setPaths: Road[] = []
 let setSquares: Square[] = []
 let setGardens: { site: string; corners: number[] }[] = [] // v2 back gardens (drawn only)
+//! custom ground in parcels: cemetery gravel paths between grave rows + alley, worn dirt / patchy grass in gardens and farm yards
+function parcelGround() {
+  const seed = num('tSeed'), out = []
+  for (const z of zones) if (z.kind === 'site' && z.sub === 'cemetery') out.push(...cemeteryPathMasks(z.boxes.filter((b) => b.role === 'grave').map((b) => b.corners), z.shapes.find((sh) => sh.id.endsWith('_aisle'))?.points, seed))
+  const yards = settled.filter((b) => b.role === 'farmyard').map((b) => ({ corners: b.corners.map((v, i) => (i % 2 ? b.z : b.x) + (v - (i % 2 ? b.z : b.x)) * 1.8) }))
+  out.push(...parcelGroundMasks([...setGardens, ...yards], settled, seed))
+  return out
+}
 let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences
 let countryside: number[][] = [] // random world: the countryside polygons the plots were laid in (worldgen 10b)
 let riparian: RiparianPatch[] = [] // riparian band (riparian.ts): random world, or the Water tab button
@@ -2314,7 +2323,7 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
       terrainSize: num('tSize'),
       surfaces: island.surfaces,
       colours: { ...island.colours, ...ROAD_COLOURS },
-      roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))],
+      roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' })
   }),
@@ -3222,7 +3231,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))],
+      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.sat', { file: r.satellite?.file ?? '—' }))
     out.push(t('test.rest'))
@@ -3991,7 +4000,7 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))],
+      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.rest'))
     return out.join('\n')
@@ -4544,7 +4553,7 @@ $<HTMLButtonElement>('satSend').addEventListener('click', () =>
     if (!s || !island) throw new Error(t('sat.none'))
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))],
+      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     return t('test.masks', { dir: r.dir })
   }),

@@ -305,6 +305,8 @@ export function makeCemetery(polygon: number[], c: ExtraCtx, graves: readonly st
   o.shapes.push({ id: `${c.id}_aisle`, kind: 'spline', closed: false, points: [...a0, ...P(f, um, (vmin + vmax) / 2), ...P(f, um, vmax - 5)].map(round), generator: EXTRA_PREFABS.dirtTracks })
   // trees along the wall
   for (const p of rowGrid(polygon, { dx: 12, dz: 12, margin: 1.5, frame: f, jitter: 0.3, rand })) if (distLine(polygon, p.x, p.z, true) < 3 && rand() < 0.5 && b.free(p.x, p.z, 1.5)) b.ent(rand() < 0.5 ? VEG.lime : VEG.spruce, p.x, p.z, rand() * 360)
+  // a few hazel bushes in the gaps along the wall (variety between the trees)
+  for (const p of rowGrid(polygon, { dx: 7, dz: 7, margin: 1.2, frame: f, jitter: 0.4, rand })) if (distLine(polygon, p.x, p.z, true) < 2.5 && rand() < 0.3 && b.free(p.x, p.z, 1.2)) b.ent(pick(rand, [VEG.hazel, VEG.hazel2, VEG.hazelL]), p.x, p.z, rand() * 360)
   if (steep) o.warnings.push('cemetery: on a slope, rows follow the contour on flattened terraces')
   return o
 }
