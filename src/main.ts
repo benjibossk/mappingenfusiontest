@@ -123,6 +123,7 @@ import { applyPads, layPads } from './modules/pads'
 import { buildingFootprints, Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
 import { mountSeedBrowser } from './ui/seedBrowser'
+import { mountLifeEconomy, drawLifeRoute } from './ui/lifeEconomyTab'
 import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, stageTimer, type Pipeline } from './modules/replay'
 let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modules/layers.ts), saved in the project
 let pipeline: Pipeline = emptyPipeline() // recorded generation steps (src/modules/replay.ts), saved in the project; declared early: the autosave reads it at startup
@@ -930,6 +931,7 @@ function draw() {
   if (!draping) drawComments()
   if (collab && !draping) drawPeers()
   drawWbCamera()
+  drawLifeRoute(ctx, toScreen)
   drawBrush()
   renderMini()
   drapeLater()
@@ -4909,6 +4911,12 @@ $<HTMLButtonElement>('oneClick').addEventListener('click', () => {
   void worldGo()
 })
 // seed explorer (ui/seedBrowser.ts): a card click runs the world pipeline with that seed's exact params
+// "Économie Life" (ui/lifeEconomyTab.ts): RP chains over the road graph, read-only unless "Appliquer" is clicked
+mountLifeEconomy({
+  world: () => ({ roads, zones, sites, fields: result?.fields, crops: result?.crops }),
+  redraw: () => draw(),
+  retag: (id, role) => { const zn = zones.find((z) => z.id === id); if (zn) (zn as { rpRole?: string }).rpRole = role },
+})
 mountSeedBrowser({
   settings: () => ({ size: Number($<HTMLSelectElement>('rwSize').value), biome: currentBiome }),
   load: (p) => {
