@@ -36,42 +36,54 @@ const userPack = (): AssetPack => ({ format: 'reforger-mapper.assetpack', versio
 const rebuild = () => buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...repoPacks, ...localPacks, ...(userCompos.length ? [userPack()] : [])])
 let lib: Library = buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...repoPacks])
 
-const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '', compos: false, compo: '', src: '' }
+const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '', compos: false, compo: '', src: '', allTags: false }
 
 const app = document.getElementById('lib-app')!
+const DICE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="15" cy="15" r="1.2" fill="currentColor"/><circle cx="15" cy="9" r="1.2" fill="currentColor"/><circle cx="9" cy="15" r="1.2" fill="currentColor"/></svg>'
 app.innerHTML = `
 <header class="lb-head"><h1>${tr('lib.title')}</h1>
   <span class="lb-sub">${tr('lib.lead')}</span>
+  <span class="lb-grow"></span>
+  <button type="button" id="packsBtn" class="lb-btn" aria-controls="packsDrawer" aria-expanded="false">${tr('lib.packs_mods')}</button>
   <a class="lb-back" href="./">← reforger-mapper</a></header>
 <main class="lb-main">
   <aside class="lb-side">
-    <label>${tr('lib.biome')}<select id="f-biome">${BIOMES.map((b) => `<option value="${b.id}">${lab(b.label)} · ${AVAIL[b.availability]}</option>`).join('')}</select></label>
+    <label class="lb-field">${tr('lib.search')}<input id="f-text" type="search" placeholder="FarmHouse, pinus, ussr…"></label>
+    <label class="lb-field">${tr('lib.biome')}<select id="f-biome">${BIOMES.map((b) => `<option value="${b.id}">${lab(b.label)} · ${AVAIL[b.availability]}</option>`).join('')}</select></label>
     <p id="b-desc" class="lb-desc"></p>
+    <div class="lb-two">
+      <label class="lb-field">${tr('lib.kind')}<select id="f-kind"><option value="">${tr('lib.all')}</option>${ASSET_KINDS.map((k) => `<option value="${k}">${kindLabel(k)}</option>`).join('')}</select></label>
+      <label class="lb-field">Source<select id="f-src"><option value="">${tr('lib.all')}</option><option value="vanilla">vanilla</option>${modPacks.map((m) => `<option value="${m.source}">${m.name.replace(/s+/g, '')}</option>`).join('')}</select></label>
+    </div>
     <label class="lb-check"><input type="checkbox" id="f-fb" checked> ${tr('lib.include_fallback_biome')}</label>
-    <label>${tr('lib.kind')}<select id="f-kind"><option value="">${tr('lib.all')}</option>${ASSET_KINDS.map((k) => `<option value="${k}">${kindLabel(k)}</option>`).join('')}</select></label>
-    <label>Source<select id="f-src"><option value="">${tr('lib.all')}</option><option value="vanilla">vanilla</option>${modPacks.map((m) => `<option value="${m.source}">${m.name.replace(/s+/g, '')}</option>`).join('')}</select></label>
-    <label>${tr('lib.search')}<input id="f-text" type="search" placeholder="FarmHouse, pinus, ussr…"></label>
+    <div class="lb-tagshead"><span>${tr('lib.tags')}</span><button type="button" id="tagsMore" class="lb-link"></button></div>
     <div class="lb-tags" id="f-tags"></div>
-    <div class="lb-packs" id="packs"></div>
-    <div id="lb-mods"></div>
-    <label class="lb-import">${tr('lib.import_a_json_pack')}<input id="f-import" type="file" accept=".json,application/json"></label>
-    <label class="lb-import">${tr('lib.import_compo')}<input id="f-compo" type="file" accept=".et"></label>
-    <a id="compo-dl" class="lb-dl" style="display:none">${tr('lib.compo_export')}</a>
-    <p id="msg" class="lb-msg"></p>
   </aside>
-  <section class="lb-list"><div class="lb-count" id="count"></div><ul id="list"></ul></section>
+  <section class="lb-list"><div class="lb-listhead"><span id="count"></span><button type="button" id="clearF" class="lb-link" hidden>${tr('lib.clear')}</button></div><ul id="list"></ul></section>
   <section class="lb-view">
     <div class="lb-tabs">
-      <button id="m-parcel" class="on">${tr('lib.lot')}</button><button id="m-asset">${tr('lib.asset')}</button>
-      <select id="f-tpl">${LOT_TEMPLATES.map((t) => `<option value="${t.id}">${lab(t.label)}</option>`).join('')}</select>
+      <span class="lb-seg" role="tablist"><button id="m-parcel" class="on" role="tab">${tr('lib.lot')}</button><button id="m-asset" role="tab">${tr('lib.asset')}</button></span>
+      <select id="f-tpl" aria-label="${tr('lib.lot')}">${LOT_TEMPLATES.map((t) => `<option value="${t.id}">${lab(t.label)}</option>`).join('')}</select>
       <select id="f-compo-sel"></select>
       <label class="lb-check"><input type="checkbox" id="f-compos"> ${tr('lib.real_compos')}</label>
-      <button id="reroll" title="seed">🎲</button>
+      <button id="reroll" class="lb-btn lb-ico" title="seed" aria-label="seed">${DICE}</button>
     </div>
     <div id="view3d" class="lb-canvas"></div>
     <div id="info" class="lb-info"></div>
   </section>
-</main>`
+</main>
+<aside id="packsDrawer" class="lb-drawer" hidden aria-label="${tr('lib.packs_mods')}">
+  <header><b>${tr('lib.packs_mods')}</b><button type="button" id="packsClose" class="lb-btn lb-ico" aria-label="${tr('lib.close')}">✕</button></header>
+  <div class="lb-drawer-body">
+    <section><h2>${tr('lib.import_title')}</h2>
+      <label class="lb-import">${tr('lib.import_a_json_pack')}<input id="f-import" type="file" accept=".json,application/json"></label>
+      <label class="lb-import">${tr('lib.import_compo')}<input id="f-compo" type="file" accept=".et"></label>
+      <a id="compo-dl" class="lb-dl" style="display:none">${tr('lib.compo_export')}</a>
+      <p id="msg" class="lb-msg"></p></section>
+    <section class="lb-packs" id="packs"></section>
+    <section id="lb-mods"></section>
+  </div>
+</aside>`
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 // one shared promise: render() runs several times at start-up (and on every keystroke), and a plain
@@ -89,7 +101,7 @@ function getViewer(): Promise<Viewer | null> {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
 function renderPacks() {
-  $('packs').innerHTML = `<b>${tr('lib.packs')}</b>` + lib.packs.map((p) => `<div>${esc(p.name)} <small>(${p.count}) — ${esc(p.author)}</small></div>`).join('')
+  $('packs').innerHTML = `<h2>${tr('lib.packs')} <small>${lib.packs.length}</small></h2><ul>` + lib.packs.map((p) => `<li><span>${esc(p.name)}</span><small>${p.count} · ${esc(p.author)}</small></li>`).join('') + '</ul>'
     + (loadErrors.length ? `<div class="lb-err">${loadErrors.map(esc).join('<br>')}</div>` : '')
 }
 
@@ -100,13 +112,19 @@ function results(): Asset[] {
 function render() {
   const b = biome(st.biome)!
   // "Missing" is a warning only when a biome really lacks assets (vanilla biomes: neutral/green)
-  $('b-desc').innerHTML = `${esc(lab(b.desc))}<br><em class="${b.missing.en.startsWith('Nothing') ? 'ok' : b.availability === 'vanilla' ? 'note' : 'miss'}">${tr('lib.missing')} : ${esc(lab(b.missing))}</em><br><small>FF : ${b.ff}${b.maps.length ? ' · ' + b.maps.join(', ') : ''}</small>`
+  // one short paragraph; "missing" only when something really is; the technical line goes to the tooltip
+  const full = b.missing.en.startsWith('Nothing')
+  $('b-desc').innerHTML = `${esc(lab(b.desc))}${full ? '' : `<em class="${b.availability === 'vanilla' ? 'note' : 'miss'}">${tr('lib.missing')} : ${esc(lab(b.missing))}</em>`}`
+  $('b-desc').title = `FF : ${b.ff}${b.maps.length ? ' · ' + b.maps.join(', ') : ''}`
   const res = results()
-  const tags = tagCounts(search(lib, { biome: st.biome, kind: st.kind || undefined, fallback: st.fallback })).slice(0, 24)
+  const allTags = tagCounts(search(lib, { biome: st.biome, kind: st.kind || undefined, fallback: st.fallback })).slice(0, 24)
+  const tags = st.allTags ? allTags : allTags.filter(([t], i) => i < 12 || st.tags.includes(t))
+  const more = $<HTMLButtonElement>('tagsMore'); more.hidden = allTags.length <= 12; more.textContent = st.allTags ? tr('lib.less_tags') : `${tr('lib.more_tags')} (${allTags.length})`
+  $<HTMLButtonElement>('clearF').hidden = !(st.text || st.kind || st.src || st.tags.length)
   $('f-tags').innerHTML = tags.map(([t, n]) => `<button class="tag${st.tags.includes(t) ? ' on' : ''}" data-tag="${esc(t)}">${esc(t)} <small>${n}</small></button>`).join('')
   $('count').textContent = `${res.length} ${tr('lib.assets')}`
   $('list').innerHTML = res.slice(0, 300).map((a) => `<li data-guid="${esc(a.guid)}" class="${a.guid === st.sel ? 'sel' : ''}">
-    <span class="k k-${a.kind}">${kindLabel(a.kind)}</span><span class="n">${esc(a.name ?? a.guid)}</span>
+    <span class="n">${esc(a.name ?? a.guid)}</span><span class="k k-${a.kind}">${kindLabel(a.kind)}</span>
     <span class="t">${a.tags.slice(0, 4).map(esc).join(' · ')}</span></li>`).join('')
   void preview()
 }
@@ -132,7 +150,12 @@ async function preview() {
     if (!a) { $('info').textContent = tr('lib.no_asset'); return }
     v.showAsset(a, b)
     const f = a.footprint
-    $('info').innerHTML = `<code>${esc(a.guid)}</code><br>${kindLabel(a.kind)} · ${(f.maxX - f.minX).toFixed(1)}×${(f.maxZ - f.minZ).toFixed(1)}×${f.h} m${f.measured ? '' : ' (' + tr('lib.estimated') + ')'} · ${esc(a.source)} · ${esc(a.author)} · ${esc(a.licence)}<br>${tr('lib.biomes')} : ${a.biomes.join(', ')}`
+    $('info').innerHTML = `<h3>${esc(a.name ?? a.guid)}</h3><dl>
+      <div><dt>${tr('lib.type')}</dt><dd>${kindLabel(a.kind)}</dd></div>
+      <div><dt>${tr('lib.size')}</dt><dd>${(f.maxX - f.minX).toFixed(1)} × ${(f.maxZ - f.minZ).toFixed(1)} × ${f.h} m${f.measured ? '' : ' (' + tr('lib.estimated') + ')'}</dd></div>
+      <div><dt>Source</dt><dd>${esc(a.source)} · ${esc(a.author)} · ${esc(a.licence)}</dd></div>
+      <div><dt>${tr('lib.biomes')}</dt><dd>${a.biomes.join(', ')}</dd></div></dl>
+      <div class="lb-guid"><code>${esc(a.guid)}</code><button type="button" class="lb-btn" data-copy="${esc(a.guid)}">${tr('lib.copy_guid')}</button></div>`
   } else {
     const t = lotTemplate(st.tpl)!
     const p = generateParcel(lib, st.biome, t, demoLot(t.size.w[1], t.size.d[1]), st.seed, { compositions: st.compos })
@@ -175,6 +198,21 @@ $<HTMLInputElement>('f-fb').onchange = (e) => { st.fallback = (e.target as HTMLI
 $<HTMLInputElement>('f-text').oninput = (e) => { st.text = (e.target as HTMLInputElement).value; render() }
 $<HTMLSelectElement>('f-tpl').onchange = (e) => { st.tpl = (e.target as HTMLSelectElement).value; void preview() }
 $('reroll').onclick = () => { st.seed++; void preview() }
+$('info').onclick = (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-copy]'); if (!b) return
+  void navigator.clipboard?.writeText(b.dataset.copy!).then(() => { b.textContent = tr('lib.copied'); setTimeout(() => { b.textContent = tr('lib.copy_guid') }, 1200) }).catch(() => {})
+}
+$('tagsMore').onclick = () => { st.allTags = !st.allTags; render() }
+$('clearF').onclick = () => {
+  Object.assign(st, { text: '', kind: '', src: '', tags: [] })
+  $<HTMLInputElement>('f-text').value = ''; $<HTMLSelectElement>('f-kind').value = ''; $<HTMLSelectElement>('f-src').value = ''
+  render()
+}
+const drawer = $('packsDrawer'), packsBtn = $<HTMLButtonElement>('packsBtn')
+const showDrawer = (on: boolean) => { drawer.hidden = !on; packsBtn.setAttribute('aria-expanded', String(on)); packsBtn.classList.toggle('on', on) }
+packsBtn.onclick = () => showDrawer(!packsBtn.classList.contains('on'))
+$('packsClose').onclick = () => showDrawer(false)
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !drawer.hidden) showDrawer(false) })
 $('m-parcel').onclick = () => { st.mode = 'parcel'; void preview() }
 $('m-asset').onclick = () => { st.mode = 'asset'; void preview() }
 $('f-tags').onclick = (e) => {
@@ -186,6 +224,7 @@ $('list').onclick = (e) => {
   const g = (e.target as HTMLElement).closest<HTMLElement>('[data-guid]')?.dataset.guid
   if (!g) return
   st.sel = g; st.mode = 'asset'; render()
+  if (matchMedia('(max-width: 1100px)').matches) document.querySelector('.lb-view')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) // preview is below the list there
 }
 $<HTMLInputElement>('f-import').onchange = async (e) => {
   const f = (e.target as HTMLInputElement).files?.[0]
