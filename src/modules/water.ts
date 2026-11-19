@@ -302,11 +302,104 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
         for (let i = pts.length - 2; i >= 0; i -= 2) r.push(pts[i], pts[i + 1])
         pts = r
       }
+      // LG_Lake* makes no water past too many / too short segments: simplify, then lift from the kept points
+      pts = simplifyLake(pts)
       const lift: number[] = []
       for (let i = 0; i < pts.length; i += 2) lift.push(r2(Math.max(0, L - ground(pts[i], pts[i + 1]))))
       out.push({ id: w.id, kind: 'polyline', closed: true, points: pts.map(r2), generator: wt.generator, lift })
     }
   }
+  return out
+}
+
+export const LAKE_MAX_POINTS = 60
+export const LAKE_MIN_SPACING = 6
+
+function segCross(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): boolean {
+  const o = (px: number, pz: number, qx: number, qz: number, rx: number, rz: number) => (qx - px) * (rz - pz) - (qz - pz) * (rx - px)
+  const d1 = o(cx, cz, dx, dz, ax, az), d2 = o(cx, cz, dx, dz, bx, bz), d3 = o(ax, az, bx, bz, cx, cz), d4 = o(ax, az, bx, bz, dx, dz)
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+}
+
+//! true when two non-adjacent edges of the closed ring cross
+export function ringSelfIntersects(pts: number[]): boolean {
+  const n = pts.length / 2
+  for (let i = 0; i < n; i++) {
+    const i2 = (i + 1) % n
+    for (let j = i + 2; j < n; j++) {
+      const j2 = (j + 1) % n
+      if (j2 === i) continue
+      if (segCross(pts[i * 2], pts[i * 2 + 1], pts[i2 * 2], pts[i2 * 2 + 1], pts[j * 2], pts[j * 2 + 1], pts[j2 * 2], pts[j2 * 2 + 1])) return true
+    }
+  }
+  return false
+}
+
+function segDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const vx = bx - ax, vz = bz - az, l = vx * vx + vz * vz
+  const t = l > 0 ? Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / l)) : 0
+  return Math.hypot(px - ax - t * vx, pz - az - t * vz)
+}
+
+//! would replacing vertex k (neighbours a, b) by edge a-b cross another edge of the ring `idx`?
+function shortcutCrosses(pts: number[], idx: number[], k: number): boolean {
+  const n = idx.length, a = idx[(k - 1 + n) % n], b = idx[(k + 1) % n]
+  for (let i = 0; i < n; i++) {
+    const p = idx[i], q = idx[(i + 1) % n]
+    if (p === a || p === b || q === a || q === b || p === idx[k] || q === idx[k]) continue
+    if (segCross(pts[a * 2], pts[a * 2 + 1], pts[b * 2], pts[b * 2 + 1], pts[p * 2], pts[p * 2 + 1], pts[q * 2], pts[q * 2 + 1])) return true
+  }
+  return false
+}
+
+//! one pass at tolerance `tol`: Douglas-Peucker-like vertex removal on the closed ring (always removing the
+//! vertex closest to its shortcut), then merges edges shorter than `minSpacing`; never creates a crossing
+function simplifyRing(pts: number[], tol: number, minSpacing: number): number[] {
+  const idx = Array.from({ length: pts.length / 2 }, (_, i) => i)
+  const dev = (k: number) => {
+    const n = idx.length, a = idx[(k - 1 + n) % n], b = idx[(k + 1) % n], c = idx[k]
+    return segDist(pts[c * 2], pts[c * 2 + 1], pts[a * 2], pts[a * 2 + 1], pts[b * 2], pts[b * 2 + 1])
+  }
+  const len = (k: number) => {
+    const a = idx[k], b = idx[(k + 1) % idx.length]
+    return Math.hypot(pts[b * 2] - pts[a * 2], pts[b * 2 + 1] - pts[a * 2 + 1])
+  }
+  const blocked = new Set<number>()
+  // pass 1: deviation below tol (visvalingam-style ordering of the DP criterion)
+  for (;;) {
+    if (idx.length <= 4) break
+    let best = -1, bd = tol
+    for (let k = 0; k < idx.length; k++) {
+      if (blocked.has(idx[k])) continue
+      const d = dev(k)
+      if (d <= bd) { bd = d; best = k }
+    }
+    if (best < 0) break
+    if (shortcutCrosses(pts, idx, best)) { blocked.add(idx[best]); continue }
+    idx.splice(best, 1); blocked.clear()
+  }
+  // pass 2: minimum spacing — drop the end of the shortest edge that deviates least
+  for (;;) {
+    if (idx.length <= 4) break
+    let best = -1, bl = minSpacing
+    for (let k = 0; k < idx.length; k++) { const l = len(k); if (l < bl && !(blocked.has(idx[k]) && blocked.has(idx[(k + 1) % idx.length]))) { bl = l; best = k } }
+    if (best < 0) break
+    const k2 = (best + 1) % idx.length
+    const order = dev(best) <= dev(k2) ? [best, k2] : [k2, best]
+    const k = order.find((c) => !blocked.has(idx[c]) && !shortcutCrosses(pts, idx, c))
+    if (k === undefined) { blocked.add(idx[best]); blocked.add(idx[k2]); continue }
+    idx.splice(k, 1)
+  }
+  return idx.flatMap((i) => [pts[i * 2], pts[i * 2 + 1]])
+}
+
+//! lake outline for LG_Lake* generators: tolerance 1.5 m, min spacing 6 m, ≤ 60 points (tolerance raised
+//! until it fits). Keeps the ring closed (implicitly), its orientation and its simplicity.
+export function simplifyLake(pts: number[], maxPts = LAKE_MAX_POINTS, minSpacing = LAKE_MIN_SPACING): number[] {
+  if (pts.length / 2 <= 4) return pts.slice()
+  let tol = 1.5
+  let out = simplifyRing(pts, tol, minSpacing)
+  while (out.length / 2 > maxPts && tol < 1e5) { tol *= 1.5; out = simplifyRing(pts, tol, minSpacing) }
   return out
 }
 
