@@ -98,3 +98,14 @@ export async function getMaterials(): Promise<{ terr: string; declared: string[]
   if (!res.ok) throw new Error(out.error ?? `HTTP ${res.status}`)
   return out
 }
+
+export interface WbCamera { ok: boolean; x: number; y: number; z: number; yaw: number; pitch: number; error?: string }
+/** World Editor camera (MG_GetCamera); ok=false when the Workbench is unreachable or no world is open */
+export async function getCamera(): Promise<WbCamera> {
+  try {
+    const res = await fetch(`${BRIDGE_URL}/camera`, { signal: AbortSignal.timeout(2500) })
+    return (await res.json()) as WbCamera
+  } catch (e) {
+    return { ok: false, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, error: (e as Error).message }
+  }
+}

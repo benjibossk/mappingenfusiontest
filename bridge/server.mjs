@@ -167,6 +167,16 @@ const server = createServer(async (req, res) => {
       writeFileSync(join(dir, `bench-${stamp}.csv`), csv, "utf-8");
       return send(res, 200, { logs: logs.filter(Boolean), samples: rows.length, dir, stamp });
     }
+    if (req.method === "GET" && req.url === "/camera") {
+      // World Editor viewport camera (MG_CameraApi.c): x/y/z + yaw (0 = north, clockwise) + pitch, degrees
+      try {
+        const c = await callWorkbench("MG_GetCamera", {}, 2_000);
+        if (!c?.ok) return send(res, 200, { ok: false, error: "no world open" });
+        return send(res, 200, { ok: true, x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch });
+      } catch (e) {
+        return send(res, 503, { ok: false, error: e.message });
+      }
+    }
     if (req.method === "GET" && req.url.startsWith("/materials")) {
       // declared = MATS chunk of the open world's .terr; painted coverage is not readable from the script API
       const wb = await callWorkbench("MG_ListMaterials", {});

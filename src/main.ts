@@ -20,7 +20,7 @@ import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
-import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
+import { BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
 import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
@@ -907,9 +907,73 @@ function draw() {
   if (layer('issues')) drawIssues()
   if (!draping) drawComments()
   if (collab && !draping) drawPeers()
+  drawWbCamera()
   drawBrush()
   renderMini()
   drapeLater()
+}
+
+// --- Workbench camera: live marker + view cone (bridge /camera -> MG_GetCamera), opt-in toggle next to the status chip
+let wbCam: WbCamera | null = null
+let camTimer = 0
+const camBtn = document.createElement('button')
+const camInfo = document.createElement('span')
+camBtn.type = 'button'
+camInfo.className = 'cam-readout'
+camInfo.style.marginLeft = '6px'
+camInfo.hidden = true
+function camLabel() { camBtn.textContent = (camTimer ? '◉ ' : '○ ') + t('cam.toggle'); camBtn.title = t('cam.tip') }
+function stopCam() {
+  if (camTimer) clearInterval(camTimer)
+  camTimer = 0
+  wbCam = null
+  camInfo.hidden = true
+  camLabel()
+  draw()
+}
+async function pollCam() {
+  const c = await getCamera()
+  if (!camTimer) return
+  if (!c.ok) { if (c.error && !/no world/.test(c.error)) stopCam(); return } // bridge / Workbench off: stop polling
+  wbCam = c
+  camInfo.hidden = false
+  camInfo.textContent = t('cam.readout', { x: Math.round(c.x), z: Math.round(c.z), yaw: Math.round(c.yaw) })
+  draw()
+}
+camBtn.addEventListener('click', () => {
+  if (camTimer) return stopCam()
+  camTimer = window.setInterval(() => void pollCam(), 1000)
+  camLabel()
+  void pollCam()
+})
+camLabel()
+statusEl.after(camBtn, camInfo)
+
+function drawWbCamera() {
+  if (!wbCam) return
+  const [sx, sy] = toScreen(wbCam.x, wbCam.z)
+  const a = (wbCam.yaw * Math.PI) / 180 // 0 = north (screen up), clockwise
+  const half = (35 * Math.PI) / 180
+  const len = 60
+  const dir = (r: number): [number, number] => [sx + Math.sin(r) * len, sy - Math.cos(r) * len]
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(sx, sy)
+  ctx.lineTo(...dir(a - half))
+  ctx.arc(sx, sy, len, a - half - Math.PI / 2, a + half - Math.PI / 2)
+  ctx.closePath()
+  ctx.fillStyle = 'rgba(255,80,200,0.25)'
+  ctx.strokeStyle = 'rgba(255,80,200,0.9)'
+  ctx.lineWidth = 1.5
+  ctx.fill()
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(sx, sy, 5, 0, Math.PI * 2)
+  ctx.fillStyle = '#ff50c8'
+  ctx.fill()
+  ctx.strokeStyle = '#fff'
+  ctx.stroke()
+  ctx.restore()
 }
 
 function drawBrush() {
