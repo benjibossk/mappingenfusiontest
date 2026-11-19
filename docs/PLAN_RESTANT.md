@@ -41,10 +41,10 @@ Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
 | # | Tâche | État |
 |---|---|---|
 | 13 | Ville 100-300 habitants (îlots, bouclage des rues, L-system contraint) | 🟡 grille de rues avec boucles (zone Habitation) ; vraie ville à îlots à faire |
-| 14 | Port / côte, ferme en U, murs et clôtures de village | 🟡 murets et clôtures livrés ; port et ferme en U à faire |
-| 15 | Giratoires, croisements dénivelés, ponts sur arcs courts | 🟡 giratoires + passage supérieur autoroute ; ponts sur arcs courts à faire |
+| 14 | Port / côte, ferme en U, murs et clôtures de village | 🟡 murets, clôtures et ferme en U livrés (sites FARM_* : parcelles larges 26-46 x 46-52 m, ferme au fond + 2 ailes grange/hangar autour de la cour, option `farmyards` de village.ts) ; port à faire |
+| 15 | Giratoires, croisements dénivelés, ponts sur arcs courts | ✅ giratoires + passage supérieur autoroute + ponts courts sur les petits ruisseaux (culverts.ts : tablier vanilla le plus court selon la largeur, BridgeConcrete_E_01_small pour pistes, ConcreteBridge_01 Narrow/Wide sinon ; pas de prefab de buse en vanilla), dessinés en ocre sur la carte 2D |
 | 16 | Largeur de route depuis OSM, exclure ponts/tunnels | 🟡 largeurs vanilla par classe ; tags OSM lanes/surface à faire |
-| 17 | Prefabs le long d'une spline (glissières, poteaux, murets) | 🟡 murets ; glissières à faire |
+| 17 | Prefabs le long d'une spline (glissières, poteaux, murets) | ✅ murets + glissières (remblai > 1,8 m déjà dans roadFurniture ; guardrails.ts ajoute abords de pont 24 m des deux côtés et extérieur des virages serrés en pente, mêmes générateurs WG_CrashBarrier vanilla, les poteaux recouverts sont retirés) |
 
 ## Priorité 4 — vue 3D et confort
 | # | Tâche | État |

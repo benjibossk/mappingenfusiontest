@@ -32,6 +32,7 @@ export interface VillageOptions {
   streets?: boolean // organic street growth (default true)
   maxStreets?: number // overrides the variant's street count
   farms?: boolean // U courtyards on the edge (default true)
+  farmyards?: boolean // #14 farm sites (worldgen FARM_*): every wide enough lot tries the U courtyard first, any ring
   church?: boolean // one church on the square (default true)
   port?: boolean // quay + boat sheds when the site touches the sea (default true)
   maxSlope?: number // steepest street grade (0.15)
@@ -159,7 +160,8 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
   for (const site of sites) {
     const rand = rng(hash(site.id, o.seed))
     const variant: 'village' | 'town' | 'hamlet' = site.kind === 'hamlet' ? 'hamlet' : o.variant === 'town' || (o.variant !== 'village' && site.kind === 'town') ? 'town' : 'village'
-    const P = VARIANT[variant]
+    // #14 farmstead: wide deep plots (farmhouse at the back + two wings around the yard need >= 26 x 44 m)
+    const P: Params = o.farmyards && variant === 'hamlet' ? { ...VARIANT.hamlet, lotMin: [26, 28, 30], lotMax: [38, 42, 46], depth: [46, 48, 52], fill: [0.9, 0.8, 0.6] } : VARIANT[variant]
     const reach = o.reach ?? Math.max(REACH[site.kind], SITE_RADIUS[site.kind]) * (variant === 'town' && site.kind !== 'town' ? 1.3 : 1)
     const pre = `SET_${site.id}_`
     const info: VillageSite = { site: site.id, variant, coastal: false, streets: 0, lots: 0 }
@@ -477,7 +479,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       res.tried = (res.tried ?? 0) + 1
 
       // farm courtyard (U): farmhouse at the back, two wings facing the court, open to the street
-      if (o.farms !== false && k === 2 && lot.w >= 24 && variant !== 'town' && rand() < 0.7) {
+      if (o.farms !== false && (k === 2 || o.farmyards) && lot.w >= (o.farmyards ? 20 : 24) && variant !== 'town' && (o.farmyards || rand() < 0.7)) {
         const farms = pool(['farm']).sort(() => rand() - 0.5)
         const wings = pool(['annex', 'shed']).sort(() => rand() - 0.5)
         let ok = false

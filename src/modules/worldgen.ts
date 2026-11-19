@@ -19,6 +19,7 @@ import { damFootprint, damZone, placeDams, snapRoadsToCrest } from './dam'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
+import { streamCulverts } from './culverts'
 import { buildMotorway, overpassDecks, resolveCrossings } from './motorway'
 import { forestTuning, leafOf } from '../biomes/vegetation'
 import { styleTracks } from './network'
@@ -502,6 +503,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     if (p.motorway) bridgesOut.push(...overpassDecks(roads, atB))
     if (any) cur = composeHeights(base, g, waters, zones, roads)
   }
+  // #15: short decks where a road crosses a narrow stream (not a water polygon: no export gap there)
+  if (roads.length) {
+    const ch = cur.heights, atC = (x: number, z: number) => ch[Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))]
+    bridgesOut.push(...streamCulverts(roads, cur.sim.river, g, atC).entities)
+  }
   // a place no road reaches is dropped (the checker would flag it)
   const isolated = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'isolated').map((i) => i.id))
   sites = sites.filter((s) => !isolated.has(s.id))
@@ -644,7 +650,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     }
     if (!ks.length) continue
     const V = WORLD.villages[kind]
-    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm' }, settlement.placed)
+    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density, maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm', farmyards: kind === 'farm' }, settlement.placed)
     settlement.placed = vr.placed
     settlement.tried = (settlement.tried ?? 0) + (vr.tried ?? 0); settlement.housed = (settlement.housed ?? 0) + (vr.housed ?? 0)
     settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)

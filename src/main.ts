@@ -40,6 +40,7 @@ import { addRoundabouts, dropOrphanRings, villageWalls } from './modules/roundab
 import { buildMotorway, overpassDecks } from './modules/motorway'
 import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fillFieldZone, flatToPoly, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { cutAtRoads } from './modules/roadGaps'
+import { dropCoveredPosts, extraGuardrails } from './modules/guardrails'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
@@ -923,6 +924,7 @@ function draw() {
     })
   }
   if (layer('bridges')) drawBridges()
+  if (layer('bridges')) drawWorldDecks()
   if (layer('density') && density) drawDensityHeat(ctx, density, PLATFORM_BUDGETS[budgetPlatform()].perKm2, toScreen)
   if (layer('issues')) drawIssues()
   if (!draping) drawComments()
@@ -4000,6 +4002,17 @@ function roadGaps() {
   }
   return gapCache.gaps
 }
+//! generated decks (valley bridges, overpasses, #15 stream culverts): a strip along +X from the pivot, culverts in ochre
+function drawWorldDecks() {
+  for (const e of worldBridges) {
+    if (!/_DECK_/.test(e.id ?? '')) continue
+    const len = /Long|Wide/.test(e.prefab) ? 26 : 13, a = (e.yaw * Math.PI) / 180
+    const [x0, y0] = toScreen(e.x, e.z), [x1, y1] = toScreen(e.x + Math.cos(a) * len, e.z - Math.sin(a) * len)
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1)
+    ctx.strokeStyle = /_CULVERT/.test(e.id ?? '') ? '#d9a441' : '#c8c8c8'
+    ctx.lineWidth = Math.max(3, 6 / view.mpp); ctx.stroke()
+  }
+}
 function drawBridges() {
   if (tool() !== 'water' && tool() !== 'road') return
   for (const g of roadGaps()) {
@@ -4310,7 +4323,9 @@ function roadShapesWithFurniture() {
   const walls = villageWalls(roads, (x, z) => near(x, z, 45) >= 3, (x, z) => near(x, z, 9) > 0)
   // roadside lines stop at the mouth of every joining / crossing road (half width + 2 m each side)
   const gapRoads = roads.filter((r) => r.pts.length >= 4).map((r) => ({ id: r.id, line: centreLine(r.pts, 5), half: roadHalf(r) }))
-  return [...shapes, ...cutAtRoads([...roadFurniture(roads, heightAt, num('furnDrop'), num('furnPost')), ...walls], gapRoads)]
+  // #17: extra rails at bridge approaches (valley spans + kept water gaps) and on the outer side of bends on slopes
+  const rails = extraGuardrails(roads, heightAt, roadGaps().filter((g) => !noBridge.has(gapKey(g))), { drop: num('furnDrop') })
+  return [...shapes, ...cutAtRoads([...dropCoveredPosts(roadFurniture(roads, heightAt, num('furnDrop'), num('furnPost')), rails), ...rails, ...walls], gapRoads)]
 }
 
 document.querySelectorAll<HTMLInputElement>('#layers [data-layer]').forEach((el) => el.addEventListener('change', () => {
