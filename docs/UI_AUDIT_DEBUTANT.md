@@ -7,7 +7,7 @@ Remplace `docs/UI_POLISH_PLAN.md` (audit MILSPEC du 16/11, terminé ou dépassé
 Parcours testé : accueil → Nouvelle île → bulle « Voilà ton île » → visite guidée (5 bulles) → bouton Aide → étapes Sculpter, Eau, Routes, Villages → menu.
 Hors périmètre : rendu 2D/3D de la carte, mobile (non testé ici), contenu de la génération.
 
-Statut au 19/11/2026 : A1 à A7 corrigés (branche `ui/kit-css-v2`), A8 à A14 à faire.
+Statut au 19/11/2026 : A1 à A14 traités (branche `ui/kit-css-v2`) ; restes notés dans chaque statut.
 
 Légende : **P1** = le débutant bloque ou se trompe · **P2** = il hésite · **P3** = finition.
 
@@ -65,36 +65,53 @@ Légende : **P1** = le débutant bloque ou se trompe · **P2** = il hésite · *
 - **Constat** : Chaque étape a son propre bouton d'envoi (« Envoyer l'eau », « Envoyer les routes », « Envoyer les bâtiments », « Envoyer l'anneau ») en plus de l'étape 7 « Envoyer ».
 - **Pour le débutant** : Le joueur ne sait pas s'il doit envoyer à chaque étape ou à la fin, ni ce qui se passe s'il oublie.
 - **Correctif** : Un seul envoi, à l'étape 7, avec la liste de ce qui part. Les envois partiels vont dans « Plus d'options » de chaque étape.
+- **Statut** : Fait : les envois par étape (eau, routes, bâtiments, zones, forêts, anneau) sont repliés en bas de chaque étape dans « Envoi partiel au Workbench », avec la mention que l'étape 7 envoie tout.
 
 ### A9 · P2 · Étape 5 Villages
 - **Constat** : Accessible sans aucune route alors que le texte dit « le long des routes » ; « Générer les villages » ne donnera rien. 9 cases à cocher, deux générateurs (« Nouveau générateur »), Densité/Graine en champs libres, cases centrées au-dessus des libellés.
 - **Pour le débutant** : Le joueur clique Générer, rien n'apparaît, il ne sait pas pourquoi. Le formulaire ressemble à un panneau de debug.
 - **Correctif** : Si pas de routes : encart « Trace d'abord des routes (étape 4) » + bouton. Un seul générateur ; Densité en curseur Peu / Normal / Beaucoup ; options dans un repli ; cases alignées à gauche de leur libellé.
+- **Statut** : Fait : encart « Trace d'abord des routes » + bouton vers l'étape 4 quand il n'y a pas de route ; options repliées dans « Options des villages » ; cases à gauche de leur libellé. Pas fait : densité en curseur, suppression de l'ancien générateur.
 
 ### A10 · P2 · Étape 4 Routes
 - **Constat** : Liste de 21 types de routes aux noms techniques (« Asphalte style 2 », « Route de charbon », « Béton, ligne pointillée (11 m) ») ; « Outils de test » visible.
 - **Pour le débutant** : Le débutant ne sait pas laquelle choisir ; « Outils de test » fait penser à une version inachevée.
 - **Correctif** : 5 types courants en boutons (Route principale, Route, Chemin de terre, Sentier, Autoroute), le reste dans « Tous les types ». « Outils de test » masqué hors mode avancé.
+- **Statut** : Fait : 5 types courants en tête de liste (groupe « Courants »), le reste dans « Tous les types » ; « Outils de test » masqué (visible avec `localStorage['reforger-mapper.dev'] = '1'`).
 
 ### A11 · P2 · Étape 3 Eau
 - **Constat** : 7 types d'eau dont « Lac sombre (Cain) », « Mare sale », « Ripisylve » ; deux boutons ambre (Nouveau tracé, Envoyer l'eau) ; « Outils de test » visible.
 - **Pour le débutant** : Jargon et deux actions principales concurrentes : le joueur ne sait pas laquelle faire.
 - **Correctif** : Rivière / Lac en premier, le reste replié ; un seul bouton principal par étape ; « ripisylve » → « Végétation de berge ».
+- **Statut** : Fait : Rivière / Lac en tête ; « Ripisylve » → « Végétation de berge » ; l'envoi passe en envoi partiel, il reste un seul bouton ambre (Nouveau tracé) ; « Outils de test » masqué.
 
 ### A12 · P2 · Carte
 - **Constat** : Infos pinceau (« rayon 200 m · force 6 — Maj+molette… ») affichées sur les étapes Villages/Routes où il n'y a pas de pinceau ; aide souris en double avec la barre d'état.
 - **Pour le débutant** : Bruit permanent en bas de la carte.
 - **Correctif** : Infos pinceau seulement à l'étape Sculpter ; supprimer l'aide souris quand la barre d'état la montre déjà.
+- **Statut** : Fait : infos pinceau seulement à l'étape Sculpter ; l'aide souris est fusionnée dans la barre d'état (bouton du milieu ajouté), le bandeau en double est retiré.
 
 ### A13 · P2 · Vocabulaire
 - **Constat** : Termes non expliqués : graine, OTC, heightmap, prefab, relais, bridge, Workbench, carte de référence.
 - **Pour le débutant** : Chaque mot inconnu est un point d'abandon.
 - **Correctif** : Remplacer quand c'est possible (graine → « numéro de tirage »), sinon un (i) qui ouvre le Lexique de l'aide sur le bon mot.
+- **Statut** : Fait (libellés FR) : graine → « N° de tirage », heightmap → « carte de hauteurs », OTC retiré du bouton, ripisylve → végétation de berge, « passerelle » → « relais ». Le Lexique de l'aide garde les termes techniques.
 
 ### A14 · P3 · Étapes
 - **Constat** : Libellés d'étapes en 11 px ; « Champs » dans la barre mais « Champs et forêts » dans le titre ; on peut cliquer n'importe quelle étape sans prérequis.
 - **Pour le débutant** : Lisibilité et cohérence.
 - **Correctif** : Libellés 13 px, mêmes mots partout ; étapes non prêtes grisées avec infobulle « Fais d'abord : Routes ».
+- **Statut** : Fait : libellés d'étapes en 12 px ; étape sans base grisée avec infobulle « Fais d'abord : … » (reste cliquable). Pas fait : « Champs » / « Champs et forêts » toujours différents (place).
+
+## Bugs UI trouvés en repassant chaque écran (1440, 1280, 1024, 390 px)
+
+Méthode : chaque étape (détails ouverts), chaque dialogue (Lieu réel, Monde aléatoire, Partager, Graines, Économie, Nouveautés, Langue, Aide et ses 4 onglets), vue 3D, panneau replié, menu ; détecteur automatique (texte qui déborde, bouton hors de son cadre, élément hors écran) + erreurs JavaScript (aucune).
+
+- **Lieu réel** : 9 boutons ambre, tout en capitales, champ de recherche coupé (« Chercher un lie »), titre en colonne sur téléphone → un seul bouton principal (Construire le terrain), casse normale, champ ≥ 180 px, titre sur une ligne.
+- **Collaboration** : « Rejoindre un salon… » sur 3 lignes dans un bouton de 80 px → bouton sur une ligne, texte d'état à côté qui passe dessous si besoin.
+- **Graines** : fenêtre sans fond assombri, passait sous le panneau Collaboration, 3 boutons ambre → vraie fenêtre modale, un seul ambre (Générer).
+- **Vue 3D** : ligne d'aide en capitales qui débordait à gauche de l'écran et passait sous « Calques » ; à 1024 px « Vue de dessus » sortait de l'écran → aide centrée qui se replie, masquée sous 1100 px ; barre d'outils qui passe à la ligne.
+- **Faux positifs** du détecteur : boutons dans un repli fermé (« Schéma par défaut », « Envoyer l'anneau »).
 
 ## Ordre conseillé
 1. A1, A2, A7 : alléger le premier contact (accueil et première île).

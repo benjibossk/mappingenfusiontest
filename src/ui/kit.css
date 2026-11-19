@@ -295,3 +295,58 @@ body:has(#coach:not([hidden])) :is(.toast, #mapHint, #log, #brushInfo) { display
 .wbconnect p { margin: 0; color: var(--tx-2); font-size: 14px; line-height: 1.4; }
 .wbconnect button { align-self: flex-start; margin-top: 4px; }
 .app:has(.top .status[data-ok="true"]) .wbconnect { display: none; }
+
+/* =====================================================================
+   Audit débutant A8–A14
+   ===================================================================== */
+/* A9 · encart « fais d'abord » (même allure que l'encart Workbench) */
+.needprev { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; margin-bottom: 8px; background: rgba(225, 161, 46, .08); border-left: 3px solid var(--amber); }
+.needprev[hidden] { display: none; }
+.needprev b { color: var(--tx-1); font-size: 15px; }
+.needprev p { margin: 0; color: var(--tx-2); font-size: 14px; line-height: 1.4; }
+.needprev button { align-self: flex-start; margin-top: 4px; }
+/* A9 · cases à cocher : case à gauche du libellé, alignées à gauche (plus de case centrée au-dessus du texte) */
+.form label.check, .side .form label.check { display: flex !important; flex-direction: row !important; align-items: center; justify-content: flex-start; gap: 8px; text-align: left; grid-column: auto; }
+.form label.check input[type=checkbox] { margin: 0; flex: none; }
+.side fieldset.test { border-color: var(--line-1); }
+/* A8 · envoi partiel en bas de chaque étape */
+.side details.adv.partial > .hint { margin: 8px 0; font-size: 13px; }
+.side details.adv.partial > button, .side details.adv.partial > .row { margin-top: 6px; width: 100%; }
+/* A12 · bas de la carte : l'aide souris passe dans la barre d'état ; infos pinceau seulement à l'étape Sculpter */
+#mapHint { display: none !important; }
+.app:not([data-step="brush"]) #brushInfo { display: none !important; }
+/* A14 · étapes : libellés lisibles, étape sans base grisée (reste cliquable) */
+.stepper button { font-size: 12px; }
+.stepper button[data-blocked]:not(.active) { opacity: .5; }
+
+/* =====================================================================
+   Bugs UI relevés au passage (chasse du 19/11)
+   ===================================================================== */
+/* casse normale aussi dans les dialogues hors .app (lieu réel, bibliothèque de parcelles, graines, 3D) */
+:is(.parcels, .rwdlg, #seedBrowser, .v3d-bar, .v3d-help, .v3d-stats, .newspanel, .helppanel) :is(button, h1, h2, h3, h4, label, legend, summary, th, span, small, em, b, strong, .kicker) {
+  text-transform: none !important; letter-spacing: .01em !important; }
+/* dialogue « Lieu réel » / bibliothèque : 9 boutons ambre → un seul principal (Construire le terrain), le reste en gris */
+.parcels button:not(.secondary):not(#rwGo):not(.rm-icon) { background: #2A2C2E; border-color: #2A2C2E; color: var(--tx-1); }
+.parcels button:not(.secondary):not(#rwGo):not(.rm-icon):hover:not(:disabled) { background: #33363A; border-color: var(--amber); }
+.parcels input[type=search] { min-width: 180px; flex: 1 1 180px; }
+/* panneau Collaboration : « Rejoindre un salon… » ne passe plus sur 3 lignes */
+.cvconn { flex-wrap: wrap; }
+.cvconn #cvJoin { white-space: nowrap; flex: none; padding: 6px 12px; }
+.cvconn #cvConn { flex: 1 1 160px; min-width: 0; }
+/* explorateur de graines : vraie fenêtre modale (fond assombri), au-dessus du panneau latéral */
+#seedBrowser { z-index: 9500; box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-raised); }
+#seedBrowser header { flex-wrap: wrap; row-gap: 8px; }
+/* vue 3D : la ligne d'aide ne passe plus sous « Calques » ni hors de l'écran */
+.v3d-help { max-width: calc(100% - 520px); white-space: normal; text-align: center; line-height: 1.4; font-family: var(--f-body) !important; }
+@media (max-width: 1100px) { .v3d-help { display: none; } }
+.v3d-bar { flex-wrap: wrap; row-gap: 6px; }
+.v3d-help { text-transform: none !important; letter-spacing: .01em !important; }
+/* boutons-fichiers (label) du dialogue Lieu réel : gris comme les autres actions secondaires */
+.parcels label.pc-file, .parcels label:has(> input[type=file]) { background: #2A2C2E !important; border-color: #2A2C2E !important; color: var(--tx-1) !important; text-transform: none !important; letter-spacing: .01em !important; }
+/* explorateur de graines : un seul bouton ambre (Générer) */
+#seedBrowser header button:not(#sbGo) { background: #2A2C2E; border-color: #2A2C2E; color: var(--tx-1); }
+/* dialogue Lieu réel / bibliothèque : titre sur une ligne, l'explication passe dessous (plus de titre en colonne sur téléphone) */
+.pc-head { flex-wrap: wrap; row-gap: 4px; }
+.pc-head > b { white-space: nowrap; font-size: 18px; }
+.pc-head > .hint { flex: 1 1 260px; min-width: 0; }
+@media (max-width: 720px) { .pc-head > .hint { order: 3; flex-basis: 100%; } }

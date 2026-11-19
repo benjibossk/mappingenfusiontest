@@ -159,6 +159,12 @@ function biomeField(id: string) {
   const opts = BIOMES.map((b) => `<option value="${b.id}">${fr ? b.label.fr : b.label.en} · ${t(('biomeAvailability.' + b.availability) as K)}</option>`).join('')
   return `<label class="biomesel"><span class="lbl">${t('biome')}</span><span class="biomeline"><select id="${id}" data-biome>${opts}</select><span class="biomebadge" data-avail="vanilla"></span></span></label>`
 }
+/** a long list: the usual choices first, everything else in a second group (audit A10 / A11) */
+function groupedOptions(all: [string, string][], common: string[]) {
+  const o = ([k, l]: [string, string]) => `<option value="${k}">${l}</option>`
+  return `<optgroup label="${t('opt.common')}">${common.map((k) => all.find((x) => x[0] === k)).filter((x): x is [string, string] => !!x).map(o).join('')}</optgroup>`
+    + `<optgroup label="${t('opt.allTypes')}">${all.filter((x) => !common.includes(x[0])).map(o).join('')}</optgroup>`
+}
 const ICON: Record<string, string> = {
   book: '<path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z"/>',
   lock: '<rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -489,7 +495,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <div class="tab" data-tab="water" hidden>
       <div class="form">
-        <label>${t('lbl.waterType')} <select id="wType">${Object.entries(WATER_TYPES).map(([k, wt]) => `<option value="${k}">${wt.label}</option>`).join('')}</select></label>
+        <label>${t('lbl.waterType')} <select id="wType">${groupedOptions(Object.entries(WATER_TYPES).map(([k, wt]) => [k, wt.label]), ['river', 'lake'])}</select></label>
         <label>${t('lbl.waterWidth')} <input id="wWidth" type="number" step="1" min="2" value="12"></label>
         <label>${t('lbl.waterDepth')} <input id="wDepth" type="number" step="0.5" min="0.5" value="1.5"></label>
       </div>
@@ -531,7 +537,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
     <div class="tab" data-tab="roads" hidden>
       <div class="form">
-        <label>${t('lbl.roadType')} <select id="roadType">${Object.entries(ROAD_TYPES).map(([k, rt]) => `<option value="${k}">${rt.label}</option>`).join('')}</select></label>
+        <label>${t('lbl.roadType')} <select id="roadType">${groupedOptions(Object.entries(ROAD_TYPES).map(([k, rt]) => [k, rt.label]), ['asphalt', 'asphaltNarrow', 'dirt', 'trailDirt', 'motorway'])}</select></label>
       </div>
       <div class="row">
         <button id="roadNew" type="button">${t('btn.roadNew')}</button>
@@ -612,8 +618,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
 
     <div class="tab" data-tab="villages" hidden>
+      <div id="setNeedRoads" class="needprev" hidden><b>${t('need.roads.t')}</b><p>${t('need.roads.p')}</p><button type="button" class="secondary" data-goto-step="roads">${t('need.roads.btn')}</button></div>
       <fieldset class="test">
         <legend>${t('legend.set')}</legend>
+        <details class="adv"><summary>${t('set.options')}</summary>
         <div class="form">
           <label>${t('lbl.setDensity')} <input id="setDensity" type="number" step="0.1" min="0.1" max="2" value="1"></label>
           <label>${t('lbl.setSeed')} <input id="setSeed" type="number" step="1" value="1"></label>
@@ -632,7 +640,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="setPort" type="checkbox" checked> ${t('lbl.setPort')} ${info('info.setPort')}</label>
           <label class="check"><input id="setCompositions" type="checkbox"> ${t('lbl.setCompositions')} ${info('info.setCompositions')}</label>
         </div>
-        <button id="parcelLib" type="button">${t('pc.open')}</button>
+        <button id="parcelLib" type="button" class="secondary">${t('pc.open')}</button>
+        </details>
         ${hint('hint.set')}
         <div class="row">
           <button id="setGen" type="button">${t('btn.setGen')}</button>
@@ -2499,8 +2508,13 @@ function refreshSteps() {
     } else { ownSnap[i] = ''; doneSnap[i] = null }
     const b = btns[i]
     b.dataset.state = state
+    // a step whose base is missing: greyed, the tooltip says what to do first (it stays clickable)
+    const miss: number = i === 4 && !sig[3] ? 3 : i > 0 && i < 6 && !sig[0] ? 0 : -1
+    const missLabel = miss >= 0 ? t((STEPS as readonly { label: K }[])[miss].label) : ''
+    if (missLabel) b.dataset.blocked = missLabel; else delete b.dataset.blocked
+    if (i === 4) { const need = document.getElementById('setNeedRoads'); if (need) need.hidden = !!sig[3] }
     b.title = `${t(s.lead)}
-${t(`step.state.${state}`)}`
+${missLabel ? t('step.blocked', { s: missLabel }) : t(`step.state.${state}`)}`
   })
 }
 // step header (title + one-line explanation) and Previous / Next
@@ -2759,6 +2773,20 @@ function coachAfter(kind: Entry) {
 $<HTMLButtonElement>('coachClose').addEventListener('click', () => { $('coach').hidden = true })
 $<HTMLButtonElement>('welcomeTour').addEventListener('click', () => { autoTour = true; document.querySelector<HTMLButtonElement>('#welcome [data-go="tGen"]')?.click() })
 $<HTMLButtonElement>('stepHelp').addEventListener('click', () => openHelp())
+document.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((b) => b.addEventListener('click', () => document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${b.dataset.gotoStep}"]`)?.click()))
+{
+  // audit A8: one send, at step 7; a step's own send stays reachable under "Partial send" at the bottom of the step
+  for (const id of ['wSend', 'roadSend', 'setSend', 'zoneSend', 'forestSend', 'tOutsideSend']) {
+    const btn = document.getElementById(id); const tab = btn?.closest<HTMLElement>('.tab'); if (!btn || !tab) continue
+    let box = tab.querySelector<HTMLDetailsElement>(':scope > details.partial')
+    if (!box) { box = document.createElement('details'); box.className = 'adv partial'; box.innerHTML = `<summary>${t('send.partial')}</summary><p class="hint">${t('send.partial.p')}</p>`; tab.appendChild(box) }
+    const row = btn.parentElement?.classList.contains('row') && btn.parentElement.children.length === 1 ? btn.parentElement : null
+    btn.classList.add('secondary'); box.appendChild(row ?? btn)
+  }
+  // audit A10 / A11: "Test tools" only for developers (localStorage reforger-mapper.dev = 1)
+  let dev = false; try { dev = localStorage.getItem('reforger-mapper.dev') === '1' } catch { /* */ }
+  if (!dev) document.querySelectorAll<HTMLElement>('.side details.adv > summary').forEach((sm) => { if (sm.textContent?.trim() === t('ui.tests')) sm.parentElement!.hidden = true })
+}
 $<HTMLButtonElement>('wbConnectHelp').addEventListener('click', () => openHelp('helpConnect'))
 $('coach').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('coach').hidden = true })
 $<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { entry = 'join'; coachAfter('join'); if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })

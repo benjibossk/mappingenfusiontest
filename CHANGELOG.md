@@ -9,6 +9,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 ## [Unreleased]
 
 ### Changed
+- **Beginner audit A8–A14 + UI bugs**: per-step sends folded under "Partial send to the Workbench" (step 7 sends everything); Villages shows "Draw roads first" without roads, options folded, checkboxes left of their labels; road and water lists start with the common types; "Test tools" hidden unless `localStorage['reforger-mapper.dev'] = '1'`; brush info only on Sculpt, mouse help merged into the status bar; plainer French labels (draw number, heightmap, riverbank vegetation, relay); steps without their base greyed with "Do first: …". Fixed: Real place dialog (one primary button, sentence case, search field width, title on phone), Collaboration "Join a room" button on 3 lines, seed explorer without backdrop, 3D help line off screen.
 - **Beginner onboarding** (`docs/UI_AUDIT_DEBUTANT.md` A1–A7): the welcome screen shows only the logo, language and a labelled Help button, plus a "First time? Guided tour in 1 minute" link that creates an island and starts the tour; after the first island a single message (the "Here is your island" bubble) instead of four; step 2 Sculpt is ticked only once the ground was actually sculpted; step 1 keeps Biome / Generate / Reroll and folds the rest into "More options"; "How do I do this?" link under every step opens the help; the Workbench chip and camera only show on the Send step (or once connected), where a "Connect the Workbench" box opens the 3-step help.
 
 ### Changed
