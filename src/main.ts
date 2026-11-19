@@ -508,10 +508,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="row">
         <button id="wGen" type="button" class="secondary">${t('btn.waterGen')}</button>
       </div>
+      <details class="adv"><summary>${t('lbl.waterRipa')}</summary>
       <div class="row">
-        <label class="check"><input id="wRipa" type="checkbox"> ${t('lbl.waterRipa')}</label>
+        <label class="check"><input id="wRipa" type="checkbox"> ${t('ripa.show')}</label>
         <button id="wRipaGen" type="button" class="secondary">${t('btn.waterRipa')}</button>
       </div>
+      </details>
       <details class="adv"><summary>${t('ui.tests')}</summary>
         <button id="wTest" type="button" class="secondary">${t('btn.waterTest')}</button>
       </details>
@@ -623,14 +625,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <legend>${t('legend.set')}</legend>
         <details class="adv"><summary>${t('set.options')}</summary>
         <div class="form">
-          <label>${t('lbl.setDensity')} <input id="setDensity" type="number" step="0.1" min="0.1" max="2" value="1"></label>
+          <label class="wide">${t('lbl.setDensity')} <span class="rangeline"><input id="setDensity" type="range" step="0.1" min="0.3" max="2" value="1"><span id="setDensityOut" class="rangeval"></span></span></label>
           <label>${t('lbl.setSeed')} <input id="setSeed" type="number" step="1" value="1"></label>
           <label class="check"><input id="setSquare" type="checkbox" checked> ${t('lbl.setSquare')}</label>
           <label class="check"><input id="setLanes" type="checkbox" checked> ${t('lbl.setLanes')}</label>
           <label class="check"><input id="setPaths" type="checkbox" checked> ${t('lbl.setPaths')}</label>
           <label class="check"><input id="setParcels" type="checkbox"> ${t('lbl.setParcels')}</label>
         </div>
-        <label class="check"><input id="setV2" type="checkbox" checked> ${t('lbl.setV2')} ${info('info.setV2')}</label>
+        <label class="check devonly"><input id="setV2" type="checkbox" checked> ${t('lbl.setV2')} ${info('info.setV2')}</label>
         <div class="form" id="setV2Box">
           <label>${t('lbl.setVariant')} ${info('info.setVariant')} <select id="setVariant"><option value="auto">${t('opt.var.auto')}</option><option value="village">${t('opt.var.village')}</option><option value="town">${t('opt.var.town')}</option></select></label>
           <label>${t('lbl.setMaxStreets')} ${info('info.setMaxStreets')} <input id="setMaxStreets" type="number" min="0" max="10" step="1" value="" placeholder="${t('opt.var.auto')}"></label>
@@ -683,9 +685,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label id="zoneLeafRow" hidden>${t('lbl.zoneLeaf')} <select id="zoneLeaf"><option value="auto">${t('leaf.auto')}</option><option value="mixed">${t('leaf.mixed')}</option><option value="needle">${t('leaf.needle')}</option><option value="broad">${t('leaf.broad')}</option></select></label>
         <label id="zoneFactionRow" hidden>${t('lbl.zoneFaction')} <select id="zoneFaction"><option value="US">US</option><option value="USSR">USSR</option><option value="FIA">FIA</option></select></label>
         <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="8"></label>
-        <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
-      ${hint('hint.zoneType')}
       ${hint('hint.zone')}
       <div class="row">
         <button id="generate" type="button">${t('btn.generate')}</button>
@@ -701,15 +701,17 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.minHedge')} <input id="minHedge" type="number" value="15"></label>
         <label>${t('lbl.seed')} <input id="seed" type="number" value="1"></label>
         <label>${t('lbl.prefix')} <input id="prefix" value="CAMP"></label>
+        <label class="wide">${t('lbl.zone')} <input id="zone" value=""></label>
       </div>
+      ${hint('hint.zoneType')}
+      <label class="check" title="${t('tip.forestEdge')}"><input id="forestEdge" type="checkbox" checked> ${t('lbl.forestEdge')}</label>
+      ${hint('hint.areas')}
       </details>
       <div class="row">
-        <button id="forestGen" type="button">${t('btn.forestGen')}</button>
+        <button id="forestGen" type="button" class="secondary">${t('btn.forestGen')}</button>
         <button id="forestSend" type="button" class="secondary">${t('btn.forestSend')}</button>
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
-      <label class="inline" title="${t('tip.forestEdge')}"><input id="forestEdge" type="checkbox" checked> ${t('lbl.forestEdge')}</label>
-      ${hint('hint.areas')}
       <details class="adv" id="satBox"><summary>${t('legend.sat')} ${info('info.sat')}</summary>
         <p id="satNone" class="hint">${t('sat.none')}</p>
         <div id="satBody">
@@ -727,28 +729,28 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
 
     <div class="tab" data-tab="wb" hidden>
-      <div class="wbconnect"><b>${t('wb.need.t')}</b><p>${t('wb.need.p')}</p><button id="wbConnectHelp" type="button" class="secondary">${t('wb.need.btn')}</button></div>
-      <div class="form">
-        <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
-        <label>${t('lbl.tWorld')} <input id="tWorld" value="Worlds/MG_Test"></label>
-        <p id="ffBiomeInfo" class="hint"></p>
+      <div id="wbGuide" class="wbguide" hidden>
+        <strong>${t('wb.guide.title')}</strong>
+        ${connectSteps()}
+        <div class="row"><button type="button" class="wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button><button id="wbDownload" type="button" class="secondary" title="${t('wb.download.tip')}">${ic('folder', 14)} ${t('wb.download')}</button></div>
       </div>
-      <fieldset class="test">
-        <legend>${t('legend.check')}</legend>
+      <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
+      <details class="adv" id="checkBox"><summary>${t('legend.check')}</summary>
         ${hint('hint.check')}
         <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <p id="checkDensity" class="hint"></p>
         <button id="checkFixAll" type="button" class="secondary" hidden></button>
         <ul id="checkList" class="issues"></ul>
-      </fieldset>
-      <div id="wbGuide" class="wbguide" hidden>
-        <strong>${t('wb.guide.title')}</strong>
-        ${connectSteps()}
-        <div class="row"><button type="button" class="wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button><button id="wbDownload" type="button" class="secondary" title="${t('wb.download.tip')}">${ic('folder', 14)} ${t('wb.download')}</button></div>
+      </details>
+      <details class="adv" id="wbProject"><summary>${t('wb.project')}</summary>
+      <div class="form">
+        <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
+        <label>${t('lbl.tWorld')} <input id="tWorld" value="Worlds/MG_Test"></label>
+        <p id="ffBiomeInfo" class="hint"></p>
       </div>
       <div id="modsBox"></div><pre id="modDeps" class="hint" hidden></pre>
-      <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
+      </details>
       <details class="adv"><summary>${t('ui.manual')}</summary>
         <ol class="steps">
           <li><button id="tSurf" type="button" class="secondary">${t('btn.tSurf')}</button><span class="hint">${t('wb.closed')}</span></li>
@@ -2529,6 +2531,7 @@ function showStep(tab: string) {
   $<HTMLButtonElement>('stepNext').hidden = i === STEPS.length - 1
   $<HTMLButtonElement>('stepRegen').hidden = !REGEN[tab]
   document.querySelector<HTMLElement>('.app')!.dataset.step = tab
+  if (tab === 'villages') document.getElementById('setDensity')?.dispatchEvent(new Event('input')) // value may come from a loaded project
   try { localStorage.setItem('reforger-mapper.step', tab) } catch { /* private window */ }
 }
 const goStep = (d: number) => {
@@ -2776,7 +2779,10 @@ $<HTMLButtonElement>('stepHelp').addEventListener('click', () => openHelp())
 document.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((b) => b.addEventListener('click', () => document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${b.dataset.gotoStep}"]`)?.click()))
 {
   // audit A8: one send, at step 7; a step's own send stays reachable under "Partial send" at the bottom of the step
-  for (const id of ['wSend', 'roadSend', 'setSend', 'zoneSend', 'forestSend', 'tOutsideSend']) {
+  // the off-map terrain ring belongs to sending: step 7, folded
+  { const row = document.getElementById('outsideRow'), wb = document.querySelector('.tab[data-tab="wb"]'), proj = document.getElementById('wbProject')
+    if (row && wb) { const d = document.createElement('details'); d.className = 'adv'; d.innerHTML = `<summary>${t('outside.title')}</summary>`; d.appendChild(row); wb.insertBefore(d, proj) } }
+  for (const id of ['wSend', 'roadSend', 'setSend', 'zoneSend', 'forestSend']) {
     const btn = document.getElementById(id); const tab = btn?.closest<HTMLElement>('.tab'); if (!btn || !tab) continue
     let box = tab.querySelector<HTMLDetailsElement>(':scope > details.partial')
     if (!box) { box = document.createElement('details'); box.className = 'adv partial'; box.innerHTML = `<summary>${t('send.partial')}</summary><p class="hint">${t('send.partial.p')}</p>`; tab.appendChild(box) }
@@ -2785,9 +2791,13 @@ document.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((b) => 
   }
   // audit A10 / A11: "Test tools" only for developers (localStorage reforger-mapper.dev = 1)
   let dev = false; try { dev = localStorage.getItem('reforger-mapper.dev') === '1' } catch { /* */ }
+  document.documentElement.classList.toggle('rm-dev', dev)
+  // village density as a slider with words: few / normal / many
+  const dens = $<HTMLInputElement>('setDensity'), densOut = $('setDensityOut')
+  const densTxt = () => { const v = Number(dens.value); densOut.textContent = `${v < 0.75 ? t('dens.sparse') : v <= 1.25 ? t('dens.normal') : t('dens.dense')} · ×${v.toFixed(1)}` }
+  dens.addEventListener('input', densTxt); densTxt()
   if (!dev) document.querySelectorAll<HTMLElement>('.side details.adv > summary').forEach((sm) => { if (sm.textContent?.trim() === t('ui.tests')) sm.parentElement!.hidden = true })
 }
-$<HTMLButtonElement>('wbConnectHelp').addEventListener('click', () => openHelp('helpConnect'))
 $('coach').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('coach').hidden = true })
 $<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { entry = 'join'; coachAfter('join'); if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
 // Mode Atelier (src/atelier/): own full-screen layout, loaded on demand; reopened after a language switch
@@ -2880,6 +2890,7 @@ function islandProject() {
     powerAccess,
     biome: currentBiome,
     layers: layerMap,
+    sculptStrokes,
   }
 }
 function layersUi() {
@@ -2917,6 +2928,8 @@ function loadProject(p: any) {
   const macro = new Float32Array(unb64(p.macro).buffer)
   if (macro.length !== sculpt.macro.length) throw new Error(t('err.gridMismatch'))
   sculpt.macro.set(macro)
+  // step 2 state survives a reload; older projects: a macro grid that is not flat means it was sculpted
+  sculptStrokes = typeof p.sculptStrokes === 'number' ? p.sculptStrokes : macro.some((v) => Math.abs(v) > 1e-3) ? 1 : 0
   sink = p.sink ? unb64(p.sink) : undefined
   roads = Array.isArray(p.roads) ? p.roads : []
   sites = Array.isArray(p.sites) ? p.sites.filter((x: Site) => x && x.kind) : []

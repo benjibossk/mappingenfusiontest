@@ -350,3 +350,21 @@ body:has(#coach:not([hidden])) :is(.toast, #mapHint, #log, #brushInfo) { display
 .pc-head > b { white-space: nowrap; font-size: 18px; }
 .pc-head > .hint { flex: 1 1 260px; min-width: 0; }
 @media (max-width: 720px) { .pc-head > .hint { order: 3; flex-basis: 100%; } }
+
+/* =====================================================================
+   Volets plus calmes (19/11) : un seul bouton ambre par étape, le reste replié
+   ===================================================================== */
+html:not(.rm-dev) .devonly { display: none !important; }
+.rangeline { display: flex; align-items: center; gap: 10px; }
+.rangeline input[type=range] { flex: 1 1 auto; min-width: 0; }
+.rangeval { flex: none; min-width: 110px; text-align: right; color: var(--tx-1); font-size: 13px; }
+/* étape 7 : le guide de connexion puis le gros bouton Envoyer tout, juste sous le titre */
+.tab[data-tab="wb"] > .wbguide { margin-bottom: 12px; }
+.tab[data-tab="wb"] > #sendAll { width: 100%; min-height: 48px; margin-bottom: 12px; font-size: 16px; }
+/* les replis d'une étape forment une seule liste serrée au lieu de cartes espacées */
+.side .tab > details.adv { margin-top: 0; }
+.side .tab > details.adv + details.adv { margin-top: -1px; }
+/* un texte d'aide par bloc, plus discret */
+.side .tab > p.hint, .side .tab > .hint { font-size: 13px; line-height: 1.4; color: var(--tx-4); margin: 2px 0 6px; }
+/* options des villages : une case par ligne (plus de libellés sur 4 lignes) */
+.tab[data-tab="villages"] .form label.check { grid-column: 1 / -1; }

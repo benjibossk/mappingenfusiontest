@@ -7,7 +7,7 @@ Remplace `docs/UI_POLISH_PLAN.md` (audit MILSPEC du 16/11, terminé ou dépassé
 Parcours testé : accueil → Nouvelle île → bulle « Voilà ton île » → visite guidée (5 bulles) → bouton Aide → étapes Sculpter, Eau, Routes, Villages → menu.
 Hors périmètre : rendu 2D/3D de la carte, mobile (non testé ici), contenu de la génération.
 
-Statut au 19/11/2026 : A1 à A14 traités (branche `ui/kit-css-v2`) ; restes notés dans chaque statut.
+**Clos le 19/11/2026** : A1 à A14 traités sur la branche `ui/kit-css-v2`, restes compris (densité en curseur, ancien générateur réservé au mode dev, étape « Campagne », anneau à l'étape Envoyer, état Sculpter enregistré), plus un passage de désencombrement de chaque volet. Le tableau correspondant a été retiré du canvas.
 
 Légende : **P1** = le débutant bloque ou se trompe · **P2** = il hésite · **P3** = finition.
 
