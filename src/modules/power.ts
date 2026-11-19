@@ -30,8 +30,8 @@ export const POWER_GENERATORS: Record<PowerKind, string> = {
 export const POWER_DEFAULTS: Record<PowerKind, { spacing: number; maxSlope: number; roadBonus: number }> = {
   ehv: { spacing: 130, maxSlope: 0.5, roadBonus: 1 }, // EHV_01 lattice towers, very long straight spans
   hv: { spacing: 80, maxSlope: 0.45, roadBonus: 1 }, // pylons cross country, ignore roads
-  mv: { spacing: 60, maxSlope: 0.35, roadBonus: 0.6 },
-  lv: { spacing: 45, maxSlope: 0.3, roadBonus: 0.35 }, // wooden poles hug the roads
+  mv: { spacing: 50, maxSlope: 0.35, roadBonus: 0.6 },
+  lv: { spacing: 35, maxSlope: 0.3, roadBonus: 0.35 }, // wooden poles hug the roads
 }
 
 /** Generator per style and level, with its own m_fDistance (read from the .et, GUIDs from layers that
@@ -40,8 +40,8 @@ export const POWER_STYLE: Record<PowerStyle, Record<PowerKind, { gen: string; sp
   eden: {
     ehv: { gen: POWER_GENERATORS.ehv, spacing: 130 },
     hv: { gen: POWER_GENERATORS.hv, spacing: 80 },
-    mv: { gen: POWER_GENERATORS.mv, spacing: 60 },
-    lv: { gen: POWER_GENERATORS.lv, spacing: 45 },
+    mv: { gen: POWER_GENERATORS.mv, spacing: 50 },
+    lv: { gen: POWER_GENERATORS.lv, spacing: 35 },
   },
   ussr: {
     ehv: { gen: POWER_GENERATORS.ehv, spacing: 130 },
