@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import { generateWorld, WORLD_DEFAULTS } from '../../src/modules/worldgen.ts'
 import { forestTuning, leafOf, mixedNeedle, drapeTint, treeTint, forestGeneratorFor } from '../../src/biomes/vegetation.ts'
 
-const P = { ...WORLD_DEFAULTS, size: 2048, seed: 4242 }
+const P = { ...WORLD_DEFAULTS, size: 2048, seed: 4242, rpPlaces: false } // RP places off: a 2 km map keeps 1 broadleaf stand, the leaf-share check is about biomes only
 const digest = (w: unknown) => createHash('sha1').update(JSON.stringify(w)).digest('hex')
 const strip = (w: Awaited<ReturnType<typeof generateWorld>>) => ({ ...w, params: undefined })
 

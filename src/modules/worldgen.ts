@@ -48,6 +48,7 @@ import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
 import { pickTemplate, fitPort, type VanillaTemplate } from './vanillaSites'
+import { placeRpPlaces } from './rpPlaces'
 import { buildHarbour, harbourTier, PORT_SEA_RX } from './harbour'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
 
@@ -62,6 +63,8 @@ export interface WorldParams {
   airfield: boolean
   /** stamp real Bohemia sites: vanilla military bases / checkpoints, fuel depots, gas stations, bus stops, ports (default off) */
   vanillaSites?: boolean
+  /** RP / Life places (rpPlaces.ts), default on */
+  rpPlaces?: boolean
   /** villages stamp a real Bohemia house row along their main road first (village.ts template mode, default off) */
   villageTemplates?: boolean
   power: boolean
@@ -608,6 +611,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 7b. vanilla sites (option): fuel depots, gas stations, bus stops, ports stamped from the Bohemia templates
   // at the measured densities (data/densities.ts), beside a road at the measured setback, +Z facing the road
   if (p.vanillaSites) placeVanillaWorldSites()
+  // 7c. RP places (rpPlaces.ts): police, clinic, town hall, bank, market, shops, garages, car lots, bus stops, sawmills, mines,
+  // delivery depots, fuel: vanilla buildings stamped before the villages so the lots build around them; off with rpPlaces: false
+  if (p.rpPlaces !== false) zones.push(...placeRpPlaces({ heights: cur.heights, g, sites, zones, roads, isWater, seed: ss('settlements', 'rp'), landKm2 }))
   cur = composeHeights(base, g, waters, zones, roads)
   // 8. villages v2
   await step('villages')

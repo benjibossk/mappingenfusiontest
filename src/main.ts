@@ -44,7 +44,7 @@ import { dropCoveredPosts, extraGuardrails } from './modules/guardrails'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names'] as const
+const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp'] as const
 const hiddenLayers = new Set<string>()
 let density: DensityGrid | null = null // object count per cell for the platform budget (platformBudget.ts)
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
@@ -114,6 +114,7 @@ import { CAT_COLOUR, settle, settlementEntities, buildingMasks, yardMasks, settl
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 import { settleVillages, type VillageParcel, type VillageVariant } from './modules/village'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
+import { rpPlacesOf } from './modules/rpPlaces'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly, type IndustrialType } from './modules/industrial'
 import { suggestMilitary, type MilitaryKind } from './modules/military'
 import { suggestAirfield, type AirfieldSize } from './modules/airfield'
@@ -907,6 +908,7 @@ function draw() {
   if (layer('zones')) drawZones()
   drawSatPreview()
   if (layer('sites')) drawSites()
+  if (layer('rp')) drawRpPlaces()
 
   const z = zonePoints()
   if (z.length >= 2) {
@@ -3444,6 +3446,26 @@ function hitSite(sx: number, sy: number): Site | null {
 function nextSiteId(kind: SiteKind) {
   const pre = kind.toUpperCase() + '_'
   for (let n = 1; ; n++) if (!sites.some((s) => s.id === pre + n)) return pre + n
+}
+// RP / Life places (rpPlaces.ts): one coloured badge + short label per role, toggled by the "Lieux RP" layer
+const RP_STYLE: Record<string, [string, string]> = {
+  police: ['#3a7bff', 'POL'], clinic: ['#ff4a5a', 'MED'], town_hall: ['#c9a227', 'MAIRIE'], bank: ['#2fbf71', 'BANK'], market: ['#ff9f1c', 'MARCHE'],
+  shop: ['#f6c945', 'SHOP'], pub: ['#b5651d', 'PUB'], garage: ['#8d99ae', 'GARAGE'], car_dealer: ['#adb5bd', 'AUTO'], bus_stop: ['#5bc0eb', 'BUS'],
+  fuel: ['#e63946', 'FUEL'], fuel_depot: ['#9d0208', 'DEPOT FUEL'], sawmill: ['#6a994e', 'SCIERIE'], mine: ['#7f5539', 'MINE'], fishing: ['#00b4d8', 'PECHE'],
+  depot: ['#9b5de5', 'LIVRAISON'], farm: ['#a7c957', 'FERME'], lumber: ['#386641', 'BUCHERON'], furnace: ['#d00000', 'FOURNEAU'], orchard: ['#90be6d', 'VERGER'],
+  beehive: ['#ffd60a', 'RUCHES'], juicer: ['#f8961e', 'PRESSOIR'], distillery: ['#6d597a', 'DISTILLERIE'], sell_point: ['#ffb703', 'VENTE'],
+}
+function drawRpPlaces() {
+  ctx.font = 'bold 10px sans-serif'
+  ctx.textAlign = 'center'
+  for (const p of rpPlacesOf({ zones, sites })) {
+    const [col, lbl] = RP_STYLE[p.role] ?? ['#fff', p.role]
+    const [sx, sy] = toScreen(p.x, p.z)
+    ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#000c'; ctx.stroke()
+    if (view.mpp > 12) continue
+    ctx.lineWidth = 3; ctx.strokeStyle = '#000b'; ctx.strokeText(lbl, sx, sy - 8); ctx.fillStyle = col; ctx.fillText(lbl, sx, sy - 8)
+  }
+  ctx.textAlign = 'start'
 }
 function drawSites() {
   ctx.font = '12px sans-serif'

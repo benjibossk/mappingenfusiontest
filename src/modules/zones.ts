@@ -36,6 +36,8 @@ export interface ZoneItem {
   dam?: { d: Dam; crestHalf: number; slope: number }
   /** port: dredged basin + flat apron (harbour.ts) sculpted by applyZones */
   harbour?: HarbourPlan
+  /** RP / Life place role (rpPlaces.ts): police, clinic, market, fuel, sawmill... (metadata only, the map stays vanilla) */
+  rpRole?: string
 }
 
 const tag = (zid: string, id: string) => `${zid}_${id.replace(/[^A-Za-z0-9_]+/g, '_')}`
