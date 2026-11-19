@@ -34,9 +34,11 @@ export function forestTuning(id?: string): { coverMul: number; needleShift: numb
     treeLine: treeLineOf(b.vegetation.treesPerHa / ev.vegetation.treesPerHa),
   }
 }
-/** leaf type of a generated forest from its mean relative altitude (Everon: > 0.55 needle, < 0.25 broad) */
+/** leaf type of a generated forest from its mean relative altitude (Everon: > 0.5 needle, < 0.15 broad).
+ *  Measured on the vanilla maps (PakTools/analyses/FORESTS_VANILLA.md): conifers are 72 % of the trees at
+ *  sea level and 94-98 % on the tops, 70-85 % of the massifs are needle and only 2-9 % broadleaf. */
 export function leafOf(meanAlt: number, needleShift = 0): Leaf {
-  return meanAlt > 0.55 - needleShift ? 'needle' : meanAlt < 0.25 - needleShift ? 'broad' : 'mixed'
+  return meanAlt > 0.5 - needleShift ? 'needle' : meanAlt < 0.15 - needleShift ? 'broad' : 'mixed'
 }
 export type ZoneLeafChoice = 'auto' | Leaf
 /** species of a forest drawn with the Zone tool: the user's choice, or 'auto' = from the zone's mean

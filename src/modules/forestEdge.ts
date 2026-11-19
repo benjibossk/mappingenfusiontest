@@ -29,7 +29,7 @@ export interface EdgeForest { id: string; pts: number[]; leaf?: Leaf; generator:
 export interface EdgePiece { id: string; forest: string; band: 0 | 1 | 2; pts: number[]; generator: string } // band 0 = core
 
 export interface EdgeOptions {
-  width?: number // m, total edge depth on a big forest (default 24)
+  width?: number // m, total edge depth on a big forest (default 24; vanilla density reaches 90 % of the core 16-24 m in, bushes peak on the outline)
   minArea?: number // m², forests smaller than this keep no edge (default 6000)
   twoBands?: number // m, from this depth on the ring is split in 2 bands (default 14)
   touch?: number // m, gap under which two forests count as touching (default 3)

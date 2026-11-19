@@ -98,7 +98,7 @@ export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions)
       }
     }
     for (const k of q) seen[k] = 0 // not taken: free for the next group
-    if (group.length < 5) continue
+    if (group.length < 3) continue // ~0.7 ha: vanilla massifs p10 0.6-0.7 ha, median 1.6-2.8 ha
     const pts: [number, number][] = []
     for (const k of group) {
       const c = k % nc, r = (k - c) / nc

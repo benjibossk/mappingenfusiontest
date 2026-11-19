@@ -3700,7 +3700,8 @@ function applyRefMap(m: RefMap, id: RefMapId) {
   for (const l of m.rivers2 ?? m.rivers.map((pts) => ({ pts, w: 8 }))) waters.push({ id: nextWaterId('river'), type: 'river', pts: l.pts, width: l.w, depth: 1.5 })
   const mask = forestMask(m.trees)
   const tc = m.trees
-  maskOutlines(mask, tc.cols, tc.rows, tc.cell, tc.minX, tc.minZ).forEach((o, k) => areas.push({ id: `FOREST_REF_${k + 1}`, kind: 'forest', leaf: 'mixed', pts: o.pts, holes: o.holes }))
+  if (m.forests) for (const f of m.forests) for (const pts of [f.pts, ...(f.parts ?? [])]) areas.push({ id: `FOREST_REF_${areas.length + 1}`, kind: 'forest', leaf: f.leaf, pts, holes: pts === f.pts ? f.holes : [] })
+  else maskOutlines(mask, tc.cols, tc.rows, tc.cell, tc.minX, tc.minZ).forEach((o, k) => areas.push({ id: `FOREST_REF_${k + 1}`, kind: 'forest', leaf: 'mixed', pts: o.pts, holes: o.holes }))
   settled = refBuildings(m)
   existing = { objects: [], shapes: refFences(m).map((p) => ({ generators: ['Fence'], closed: false, origin: p[0], points: p })) }
   m.power.forEach((l, k) => {
@@ -3711,6 +3712,8 @@ function applyRefMap(m: RefMap, id: RefMapId) {
   })
   let fc = 0
   for (const v of mask) fc += v
+  // forest share from the smooth outlines when present (hectares -> grid cells for mapStats)
+  if (m.forests) fc = m.forests.reduce((a, f) => a + f.ha, 0) * 1e4 / (tc.cell * tc.cell)
   const rr: StatRoad[] = roads.map((r) => ({ type: r.type, pts: r.pts, half: roadHalf(r) }))
   const bld = m.buildings.items.map(([, x, z, , cls]) => ({ x, z, house: cls === 'house' }))
   refStatsRef = { name: t(('ref.map.' + id) as Key), s: mapStats(rr, bld, fc * tc.cell * tc.cell, m.size * m.size, treesPerHa(tc, mask)) }

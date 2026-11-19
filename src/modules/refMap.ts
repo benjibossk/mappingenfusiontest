@@ -25,6 +25,9 @@ export interface RefMap {
   power: { pf: string; pts: number[] }[]
   trees: { cell: number; cols: number; rows: number; minX: number; minZ: number; counts: number[]; source: string; total: number }
   bushes?: RefMap['trees']
+  /** smooth forest outlines rebuilt from the tree points (PakTools/forest_outlines.py): holes = clearings,
+   *  parts = extra outer rings of the same massif, leaf from the conifer share (>= 70 % needle, <= 30 % broad) */
+  forests?: { pts: number[]; holes: number[][]; parts?: number[][]; leaf: 'broad' | 'needle' | 'mixed'; ha: number; trees: number; conifer: number }[]
   /** game terrain heights (export_ref_map.py): Int16 decimetres, little-endian, row 0 = south, base64 */
   heights: { step: number; cols: number; rows: number; enc: 'i16dm-b64'; data: string } | null
   lakes2?: { pts: number[]; level: number; lake: number }[]
