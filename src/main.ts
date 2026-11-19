@@ -2792,6 +2792,13 @@ document.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((b) => 
   // audit A10 / A11: "Test tools" only for developers (localStorage reforger-mapper.dev = 1)
   let dev = false; try { dev = localStorage.getItem('reforger-mapper.dev') === '1' } catch { /* */ }
   document.documentElement.classList.toggle('rm-dev', dev)
+  // form labels written "Label (i) <input>": label text and its (i) on one line, the field below
+  document.querySelectorAll<HTMLLabelElement>('.form > label:not(.check)').forEach((lb) => {
+    const field = lb.querySelector(':scope > input, :scope > select, :scope > .rangeline'); if (!field || !lb.querySelector(':scope > .info')) return
+    const head = document.createElement('span'); head.className = 'lblhead'
+    while (lb.firstChild && lb.firstChild !== field) head.appendChild(lb.firstChild)
+    lb.insertBefore(head, field)
+  })
   // village density as a slider with words: few / normal / many
   const dens = $<HTMLInputElement>('setDensity'), densOut = $('setDensityOut')
   const densTxt = () => { const v = Number(dens.value); densOut.textContent = `${v < 0.75 ? t('dens.sparse') : v <= 1.25 ? t('dens.normal') : t('dens.dense')} · ×${v.toFixed(1)}` }

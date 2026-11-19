@@ -368,3 +368,6 @@ html:not(.rm-dev) .devonly { display: none !important; }
 .side .tab > p.hint, .side .tab > .hint { font-size: 13px; line-height: 1.4; color: var(--tx-4); margin: 2px 0 6px; }
 /* options des villages : une case par ligne (plus de libellés sur 4 lignes) */
 .tab[data-tab="villages"] .form label.check { grid-column: 1 / -1; }
+/* libellé + (i) sur une ligne au-dessus du champ */
+.lblhead { display: inline-flex; align-items: center; gap: 6px; }
+.lblhead .info { flex: none; }
