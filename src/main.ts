@@ -107,7 +107,7 @@ import { worldToIsland } from './modules/importWorld'
 import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
-import { CAT_COLOUR, settle, settlementEntities, buildingMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
+import { CAT_COLOUR, settle, settlementEntities, buildingMasks, yardMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 import { settleVillages, type VillageParcel, type VillageVariant } from './modules/village'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
@@ -320,6 +320,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="rwAir" type="checkbox" checked> ${t('wg.airfield')} ${info('info.wg.airfield')}</label>
           <label class="check"><input id="rwMotorway" type="checkbox"> ${t('lbl.motorway')} ${info('info.motorway')}</label>
           <label class="check"><input id="rwDams" type="checkbox"> ${t('lbl.dams')} ${info('info.dams')}</label>
+          <label class="check"><input id="rwVanillaSites" type="checkbox"> ${t('lbl.vanillaSites')} ${info('info.vanillaSites')}</label>
+          <label class="check"><input id="rwVillageTpl" type="checkbox"> ${t('lbl.villageTpl')} ${info('info.villageTpl')}</label>
           <label class="check"><input id="rwPower" type="checkbox" checked> ${t('wg.power')}</label>
         </div>
         <div class="form"><label>${t('lbl.powDistrib')} ${info('info.powDistrib')} <select id="rwPowDistrib"><option value="auto" selected>${t('opt.powDistAuto')}</option><option value="overhead">${t('opt.powDistOver')}</option><option value="underground">${t('opt.powDistUnder')}</option></select></label></div>
@@ -670,7 +672,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
       <details class="adv"><summary>${t('ui.advanced')} ${info('info.adv')}</summary>
       <div class="form">
-        <label>${t('lbl.fieldSize')} <input id="fieldSize" type="number" value="90"></label>
+        <label>${t('lbl.fieldSize')} <input id="fieldSize" type="number" value="110"></label>
+        <label>${t('lbl.fieldAspect')} <input id="fieldAspect" type="number" step="0.1" value="1.5"></label>
         <label>${t('lbl.jitter')} <input id="jitter" type="number" step="0.1" value="0.6"></label>
         <label>${t('lbl.angle')} <input id="angle" type="number" value="15"></label>
         <label>${t('lbl.hedgeChance')} <input id="hedgeChance" type="number" step="0.1" value="0.5"></label>
@@ -1095,7 +1098,7 @@ function zoneFields(zone: number[], n: number) {
   const laid = (result?.fields ?? []).map((f) => flatToPoly(f.slice(0, -1).flat())).filter((p): p is Poly => !!p)
   const landOk = (x: number, z: number) => !tr || isLand(tr, x, z)
   // same pipeline as the random world's countryside (zonefill.ts fillFieldZone)
-  const { fields: kept, hedges, groves, tracks } = fillFieldZone({ zone, seed: num('seed') + n, prefix, fieldSize: num('fieldSize'), jitter: num('jitter'), angle: num('angle'), hedgeChance: num('hedgeChance'), minHedge: num('minHedge'), ok, landOk, obstacles: zoneObstacles('fields'), laid, roads: roads.map((rd) => rd.pts), hedgeSeed: (num('seed') * 31 + n) || 1 })
+  const { fields: kept, hedges, groves, tracks } = fillFieldZone({ zone, seed: num('seed') + n, prefix, fieldSize: num('fieldSize'), aspect: num('fieldAspect') || 1.5, jitter: num('jitter'), angle: num('angle'), hedgeChance: num('hedgeChance'), minHedge: num('minHedge'), ok, landOk, obstacles: zoneObstacles('fields'), laid, roads: roads.map((rd) => rd.pts), hedgeSeed: (num('seed') * 31 + n) || 1 })
   result ??= { fields: [], hedges: [], shapes: [] }
   result.fields.push(...kept)
   for (const h of hedges) {
@@ -2359,7 +2362,7 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
       terrainSize: num('tSize'),
       surfaces: island.surfaces,
       colours: { ...island.colours, ...ROAD_COLOURS },
-      roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' })
   }),
@@ -3268,7 +3271,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.sat', { file: r.satellite?.file ?? '—' }))
     out.push(t('test.rest'))
@@ -4125,7 +4128,7 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.rest'))
     return out.join('\n')
@@ -4490,13 +4493,13 @@ function drawZones() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-    if (zn.sub === 'fieldtrees') continue // scattered over the whole countryside: no label at its centroid
+    if (zn.sub === 'fieldtrees' || zn.sub === 'scatter') continue // scattered over the whole countryside: no label at its centroid
     const [sx, sy] = toScreen(zn.x, zn.z)
     ctx.font = '11px sans-serif'
     ctx.lineWidth = 3
     ctx.strokeStyle = '#000a'
     ctx.fillStyle = '#fff'
-    const label = zn.kind === 'site' ? t(('zt.' + zn.sub) as K) : t(('zone.name.' + zn.kind) as K, { n: zn.id.replace(/\D+/g, '') })
+    const label = zn.kind === 'site' ? (t(('zt.' + zn.sub) as K) ?? (zn.sub?.startsWith('vanilla:') ? zn.sub.split(':')[1].replace(/_/g, ' ') : zn.sub ?? '')) : t(('zone.name.' + zn.kind) as K, { n: zn.id.replace(/\D+/g, '') })
     ctx.strokeText(label, sx + 8, sy - 8)
     ctx.fillText(label, sx + 8, sy - 8)
   }
@@ -4690,7 +4693,7 @@ $<HTMLButtonElement>('satSend').addEventListener('click', () =>
     if (!s || !island) throw new Error(t('sat.none'))
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     return t('test.masks', { dir: r.dir })
   }),
@@ -4788,6 +4791,7 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
     seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
     towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'), fieldTrees: v('fieldTrees'),
     airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome, motorway: $<HTMLInputElement>('rwMotorway').checked, dams: $<HTMLInputElement>('rwDams').checked,
+    vanillaSites: $<HTMLInputElement>('rwVanillaSites').checked, villageTemplates: $<HTMLInputElement>('rwVillageTpl').checked,
     powerDistrib: $<HTMLSelectElement>('rwPowDistrib').value as PowerDistrib,
     layerSeeds: layerSeedTable(),
   }
