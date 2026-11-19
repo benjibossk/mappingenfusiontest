@@ -42,7 +42,7 @@ test('zone habitation: lots inside the polygon and every lot on a street', () =>
   }
 })
 
-test('zone habitation: houses do not overlap and face the street (±20°)', () => {
+test('zone habitation: houses do not overlap and stand square to the street (±20°, any side)', () => {
   const houses = res.placed.filter((q) => q.role === 'house')
   assert.ok(houses.length > 3, `${houses.length} houses`)
   for (let i = 0; i < houses.length; i++) for (let j = i + 1; j < houses.length; j++) assert.ok(!overlap(houses[i].corners, houses[j].corners, -0.05), `${houses[i].id} x ${houses[j].id}`)
@@ -56,7 +56,10 @@ test('zone habitation: houses do not overlap and face the street (±20°)', () =
       d = Math.min(d, Math.abs(((a - h.yaw) % 360 + 540) % 360 - 180))
     }
     if (d === Infinity) continue // square / farm buildings are not lot houses
-    assert.ok(d <= 20, `${h.id} faces ${d.toFixed(0)}° off the street`)
+    // ee7ddee: Bohemia-measured orientation (VILLAGES_VANILLA.md: 11-21 % turn their back to the road, 31-44 %
+    // show a flank, a quarter are gable-on), so 90 / 180 deg off is valid: only the squareness is checked
+    const sq = Math.min(d % 90, 90 - (d % 90))
+    assert.ok(sq <= 20, `${h.id} is ${sq.toFixed(0)}° off square to the street (${d.toFixed(0)}°)`)
   }
 })
 

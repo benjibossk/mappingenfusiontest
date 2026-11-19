@@ -18,8 +18,8 @@ test('Everon is neutral in every helper', () => {
     assert.equal(treeTint(id), undefined)
     assert.equal(forestGeneratorFor(id, 'mixed', 'mid'), undefined)
   }
-  // historical thresholds
-  assert.equal(leafOf(0.6), 'needle'); assert.equal(leafOf(0.2), 'broad'); assert.equal(leafOf(0.4), 'mixed')
+  // thresholds 0.5 / 0.15 since 46cec76 (FORESTS_VANILLA.md: vanilla massifs 70-85 % needle, 2-9 % broad)
+  assert.equal(leafOf(0.6), 'needle'); assert.equal(leafOf(0.1), 'broad'); assert.equal(leafOf(0.2), 'mixed'); assert.equal(leafOf(0.4), 'mixed')
 })
 
 test('Everon world: biome unset == temperate_everon (same seed, same map)', async () => {

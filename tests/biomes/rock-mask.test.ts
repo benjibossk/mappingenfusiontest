@@ -24,9 +24,14 @@ test('rockMask: a long uniform slope stays vegetated, a tall cliff turns to rock
   const m = rockMasks(h, cols, rows, step, 200, terrainShape(h, cols, rows, step), { maxShare: 1 })
   const at = (c: number) => m.rock[20 * cols + c]
   assert.ok(at(30) < 0.2, `uniform slope rock ${at(30)}`)
-  assert.ok(at(97) > 0.5, `cliff rock ${at(97)}`)
+  // since 3aec1b7 rock weight tops at 0.45 beyond 45 deg ([M] FIELDS_SURFACES_VANILLA §3: 45 % Rock_01 pixels there)
+  assert.ok(at(97) > 0.4, `cliff rock ${at(97)}`)
   let footScree = 0
   for (let c = 100; c < 110; c++) footScree = Math.max(footScree, m.scree[20 * cols + c])
   assert.ok(footScree > 0.05, `scree at cliff foot ${footScree}`)
-  assert.ok(m.scree[20 * cols + 30] < 0.05)
+  // 3aec1b7: scree-grass now rises with the slope on any 15-35 deg ground ([M] Everon Debris_Rock_01 13 % at 15 deg -> 32 % at 30 deg),
+  // so a 22 deg ramp carries ~0.19 of it; the cliff foot must still get more
+  const rampScree = m.scree[20 * cols + 30]
+  assert.ok(rampScree < 0.25, `ramp scree ${rampScree}`)
+  assert.ok(footScree > rampScree, `foot ${footScree} > ramp ${rampScree}`)
 })
