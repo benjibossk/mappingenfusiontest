@@ -614,3 +614,26 @@ export function buildingMasks(placed: Placed[]) {
 export const CAT_COLOUR: Record<BuildingCat, string> = {
   houseS: '#f2c48d', houseM: '#e8955a', houseL: '#c9573a', farm: '#9bc25b', annex: '#a0a0a0', shed: '#7d7d7d', civic: '#c77dff', block: '#6c8ebf',
 }
+
+//! yard ground around each house (FIELDS_SURFACES_VANILLA.md §3: short Grass_01 lawn only within 15 m of houses,
+//! 11-14 % of that ring on Everon, and a slight dirt excess within 4-16 m; no gravel). Small round patches,
+//! deterministic per house, laid BEFORE the road and building masks so a road or the house's dirt bed wins.
+export function yardMasks(placed: Pick<Placed, 'corners'>[], seed = 1, lawn = 'Grass_01', dirt = 'Dirt_01') {
+  const out: { points: number[]; half: number; edge: number; core: string }[] = []
+  for (const q of placed) {
+    const c = q.corners
+    const x = (c[0] + c[2] + c[4] + c[6]) / 4, z = (c[1] + c[3] + c[5] + c[7]) / 4
+    let s = (Math.imul(Math.round(x * 10), 73856093) ^ Math.imul(Math.round(z * 10), 19349663) ^ Math.imul(seed | 0, 83492791)) >>> 0
+    const rnd = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+    const patch = (rMin: number, rMax: number, size: number, core: string) => {
+      const a = rnd() * Math.PI * 2, d = rMin + rnd() * (rMax - rMin), b = rnd() * Math.PI
+      const cx = x + Math.cos(a) * d, cz = z + Math.sin(a) * d, l = size * (0.4 + rnd() * 0.6)
+      out.push({ points: [cx - Math.cos(b) * l, cz - Math.sin(b) * l, cx + Math.cos(b) * l, cz + Math.sin(b) * l], half: size * 0.6, edge: 1.5, core })
+    }
+    // ~12 % of the 15 m ring (~700 m²) = ~85 m² of lawn: 4-5 patches of ~4 m; dirt: 2 patches in 4-10 m
+    const n = 4 + Math.floor(rnd() * 2)
+    for (let k = 0; k < n; k++) patch(6, 15, 3.5, lawn)
+    for (let k = 0; k < 2; k++) patch(4, 10, 2.5, dirt)
+  }
+  return out
+}

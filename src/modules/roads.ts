@@ -17,16 +17,19 @@ export const ROAD_TYPES: Record<RoadType, {
   label: string
   generator: string
   half: number // half width of the core surface = RoadWidth / 2 (sent to the generator), metres
-  edge: number // fade / shoulder width, metres
+  edge: number // fade / shoulder width, metres (terrain carve)
+  /** painted dirt shoulder beyond the edge of the carriageway (m); default = edge. [M] FIELDS_SURFACES_VANILLA §3:
+   *  Everon paved roads: Dirt_01 excess fades over 4-6 m beyond the edge */
+  shoulder?: number
   core: string
   side?: string
   colour: string
 }> = {
-  asphalt: { label: t('road.type.asphalt'), generator: '{723C2AAE6E9AD131}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01.et', half: 6, edge: 2, core: 'Asphalt_01', side: 'Dirt_01', colour: '#3a3a3e' },
-  asphaltLine: { label: t('road.type.asphaltLine'), generator: '{512AB601E1636E26}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01_DashedLine.et', half: 6, edge: 2, core: 'Asphalt_01', side: 'Dirt_01', colour: '#44444a' },
-  asphaltNarrow: { label: t('road.type.asphaltNarrow'), generator: '{8E689EDC77E2A3DC}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01_Narrow.et', half: 4, edge: 2, core: 'Asphalt_01', side: 'Dirt_01', colour: '#4a4a4e' },
+  asphalt: { label: t('road.type.asphalt'), generator: '{723C2AAE6E9AD131}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01.et', half: 6, edge: 2, shoulder: 5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#3a3a3e' },
+  asphaltLine: { label: t('road.type.asphaltLine'), generator: '{512AB601E1636E26}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01_DashedLine.et', half: 6, edge: 2, shoulder: 5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#44444a' },
+  asphaltNarrow: { label: t('road.type.asphaltNarrow'), generator: '{8E689EDC77E2A3DC}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01_Narrow.et', half: 4, edge: 2, shoulder: 5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#4a4a4e' },
   asphalt2: { label: t('road.type.asphalt2'), generator: '{1E681E4ED25E5E1F}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_02.et', half: 4, edge: 4, core: 'Asphalt_01', side: 'Dirt_01', colour: '#3e3e44' },
-  asphalt3: { label: t('road.type.asphalt3'), generator: '{FBF452B7DEBBC974}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_03.et', half: 4, edge: 2, core: 'Asphalt_01', side: 'Dirt_01', colour: '#424248' },
+  asphalt3: { label: t('road.type.asphalt3'), generator: '{FBF452B7DEBBC974}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_03.et', half: 4, edge: 2, shoulder: 5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#424248' },
   cobble: { label: t('road.type.cobble'), generator: '{24948AB10942D327}Prefabs/WEGenerators/Roads/Cobblestone/RG_Road_Cobblestone_01.et', half: 4, edge: 4, core: 'Cobblestone_01_Wave', side: 'Dirt_01', colour: '#6d655a' },
   cobbleRough: { label: t('road.type.cobbleRough'), generator: '{836900316A627744}Prefabs/WEGenerators/Roads/Cobblestone/RG_Road_Cobblestone_01_rough.et', half: 4, edge: 4, core: 'Cobblestone_01_Wave', side: 'Dirt_01', colour: '#746a5c' },
   concrete: { label: t('road.type.concrete'), generator: '{82B82C5E2B744C86}Prefabs/WEGenerators/Roads/Concrete/RG_Road_Concrete_USSR_02.et', half: 3.75, edge: 2, core: 'Concrete_01', side: 'Dirt_01', colour: '#8a8a86' },
@@ -38,7 +41,7 @@ export const ROAD_TYPES: Record<RoadType, {
   trailGravel: { label: t('road.type.trailGravel'), generator: '{F49A6A9439B063BB}Prefabs/WEGenerators/Roads/Dirt/RG_TrailGravel_01.et', half: 0.875, edge: 2.2, core: 'Dirt_02', colour: '#a39880' },
   trailForest: { label: t('road.type.trailForest'), generator: '{BA46C6FF0A547B99}Prefabs/WEGenerators/Roads/Dirt/RG_TrailForest_01.et', half: 0.875, edge: 2.2, core: 'Dirt_03', colour: '#6a5638' },
   // added from the vanilla catalogue (Prefabs/WEGenerators/Roads, docs/ROAD_NETWORK_V2.md §3.1): bare paths, GUID resolved by the plugin
-  motorway: { label: t('road.type.motorway'), generator: '{723C2AAE6E9AD131}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01.et', half: 6, edge: 2, core: 'Asphalt_01', side: 'Dirt_01', colour: '#2e2e34' },
+  motorway: { label: t('road.type.motorway'), generator: '{723C2AAE6E9AD131}Prefabs/WEGenerators/Roads/Asphalt/RG_Road_Asphalt_E_01.et', half: 6, edge: 2, shoulder: 5, core: 'Asphalt_01', side: 'Dirt_01', colour: '#2e2e34' },
   concreteLine: { label: t('road.type.concreteLine'), generator: 'Prefabs/WEGenerators/Roads/Concrete/RG_Road_Concrete_USSR_01_dashedline.et', half: 5.5, edge: 2, core: 'Concrete_01', side: 'Dirt_01', colour: '#868682' },
   concreteNarrow: { label: t('road.type.concreteNarrow'), generator: 'Prefabs/WEGenerators/Roads/Concrete/RG_Road_Concrete_USSR_01_narrow.et', half: 2.5, edge: 2, core: 'Concrete_01', side: 'Dirt_01', colour: '#8e8e8a' },
   concretePath: { label: t('road.type.concretePath'), generator: 'Prefabs/WEGenerators/Roads/Concrete/RG_Path_Concrete_USSR_01.et', half: 1.125, edge: 2, core: 'Concrete_01', colour: '#9a9a95' },
@@ -303,7 +306,7 @@ export function roadShapes(roads: Road[]): ProjectShape[] {
 export function roadMasks(roads: Road[]) {
   return roads.filter((r) => r.pts.length >= 4).map((r) => {
     const T = ROAD_TYPES[r.type]
-    return { points: centreLine(r.pts, 4), half: roadHalf(r), edge: T.edge, core: T.core, side: T.side }
+    return { points: centreLine(r.pts, 4), half: roadHalf(r), edge: T.shoulder ?? T.edge, core: T.core, side: T.side }
   })
 }
 

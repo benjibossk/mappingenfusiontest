@@ -180,8 +180,13 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const take = (w: number) => { const t = Math.min(free, Math.max(w, 0)); free -= t; return t }
     const shore = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)))
     const beach = take(1 - band(h, 3.5, 5))
+    // [M] shore band 0-10 m above the sea: Pebbles_02 20-30 % + BeachGrass 10-14 % (FIELDS_SURFACES_VANILLA §3)
+    const lowShore = h > 0 ? 1 - band(h, 9, 11) : 0
+    const pebbles = take(0.25 * lowShore * (0.6 + 0.8 * variants((c * step) / 40, (r * step) / 40)))
+    const sand = take(0.12 * lowShore)
     const coastal = take(1 - band(h, 9, 12))
-    const high = band(h, maxHeight * 0.45, maxHeight * 0.7)
+    // [M] MountainGrass 15 % at 200-300 m, ~42 % above 300 m on Everon (top ~370 m): relative 0.55 / 0.8 of the range
+    const high = 0.15 * band(h, maxHeight * 0.5, maxHeight * 0.6) + 0.27 * band(h, maxHeight * 0.75, maxHeight * 0.85)
     const inland = band(h, 10, 16)
     const gw = groundWeights(slope, shape.tpi[i], shape.curv[i], variants((c * step) / 300, (r * step) / 300))
     // gw.rock is left to rockMasks (crests are part of its relief context); gravel only on gentle ridges
@@ -192,19 +197,21 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const rest = Math.max(free, 0)
     weights.SeaBed_01.push(deep)
     weights.Pebbles_01.push(bed)
-    weights.Pebbles_02.push(shore)
+    weights.Pebbles_02.push(shore + pebbles)
     weights.Dirt_02.push(bare) // sandy look
-    weights.BeachGrass_01.push(beach)
+    weights.BeachGrass_01.push(beach + sand)
     weights.Grass_03_coastal.push(coastal)
     weights.Rock_01.push(rock)
     weights.Debris_Rock_01.push(scree)
     // real land cover takes the free ground (grass), never the coast, rock or river bed
     const covered = cover && cover[i] && h > 1 ? COVER_OF[cover[i]] : ''
-    if (cover) for (const k of Object.keys(COVER)) weights[k].push(k === covered ? rest : 0)
     weights.Grass_02.push(moist)
-    const mountain = Math.min(1, high + (1 - high) * 0.5 * gw.variant * inland)
-    weights.MountainGrass_01.push(covered ? 0 : rest * mountain)
-    weights.Grass_01.push(covered ? 0 : rest * (1 - mountain))
+    const mountain = Math.min(1, high + (1 - high) * 0.15 * gw.variant * inland)
+    // + heather ~20 % with the mountain grass ([M] Everon / Kolguyev uplands), only when the cover set carries Heather_01
+    const heather = cover && !covered ? rest * 0.2 * band(h, maxHeight * 0.5, maxHeight * 0.75) : 0
+    if (cover) for (const k of Object.keys(COVER)) weights[k].push(k === covered ? rest : k === 'Heather_01' ? heather : 0)
+    weights.MountainGrass_01.push(covered ? 0 : (rest - heather) * mountain)
+    weights.Grass_01.push(covered ? 0 : (rest - heather) * (1 - mountain))
   }
   for (const k of names) weights[k] = weights[k].map((w) => (w < 1 / 255 ? 0 : w))
   const out = names.map((name) => ({ ...grid, name, weights: weights[name] }))

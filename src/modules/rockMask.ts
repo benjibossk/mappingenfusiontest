@@ -15,7 +15,7 @@ export interface RockMasks {
 }
 
 export interface RockOptions {
-  /** max share of the land (h > 1 m) that may be rock (default 0.3) */
+  /** max share of the land (h > 1 m) that may be rock (default 0.05; [M] Everon bare Rock_01 1.4 %, Kolguyev 0, Arland 0.1 %) */
   maxShare?: number
 }
 
@@ -83,10 +83,13 @@ function blur(src: Float32Array, cols: number, rows: number, k: number): Float32
   return out
 }
 
+const TAN35 = Math.tan((35 * Math.PI) / 180), TAN45 = 1
+const TAN15 = Math.tan((15 * Math.PI) / 180)
+
 //! Rock and scree weights for the whole grid. `shape` is terrainShape(heights, ...) (TPI + curvature).
 export function rockMasks(heights: ArrayLike<number>, cols: number, rows: number, step: number, maxHeight: number,
   shape: TerrainShape, opts: RockOptions = {}): RockMasks {
-  const maxShare = opts.maxShare ?? 0.3
+  const maxShare = opts.maxShare ?? 0.05
   const n = cols * rows
   const slope = slopes(heights, cols, rows, step)
   const relief = localRelief(heights, cols, rows, step, 30)
@@ -96,7 +99,8 @@ export function rockMasks(heights: ArrayLike<number>, cols: number, rows: number
     const h = heights[i]
     if (h <= -2) continue
     if (h > 1) land++
-    const steep = ramp(slope[i], 0.3, 0.6)
+    // [M] FIELDS_SURFACES_VANILLA §3 (Everon): Rock_01 only above 35 deg (19 % of the pixels at 35-45 deg, 45 % beyond 45)
+    const steep = 0.19 * ramp(slope[i], TAN35 - 0.04, TAN35 + 0.04) + 0.26 * ramp(slope[i], TAN45 - 0.06, TAN45 + 0.06)
     if (steep <= 0) continue
     // relief context, each 0..1
     const crest = ramp(shape.tpi[i], 1, 8) * ramp(shape.curv[i], 0, -0.01)
@@ -105,7 +109,7 @@ export function rockMasks(heights: ArrayLike<number>, cols: number, rows: number
     const alpine = ramp(h, maxHeight * 0.6, maxHeight * 0.85)
     const vertical = ramp(slope[i], 1.0, 1.6)
     const ctx = Math.max(crest, brk, tall, alpine, vertical)
-    score[i] = steep * ctx
+    score[i] = steep * (0.5 + 0.5 * ctx) // the relief context still decides where in the band the rock shows
   }
   // cap: on a steep island nearly every vertex scores 1, so rank the candidates by how "cliffy" they are
   // (slope, local drop, crest) and keep only the top of the list until the share fits
@@ -133,7 +137,9 @@ export function rockMasks(heights: ArrayLike<number>, cols: number, rows: number
     if (heights[i] <= -2) continue
     // foot = below the local mean (negative TPI, not the plateau edge above the face), not itself steep
     const foot = Math.max(ramp(-shape.tpi[i], 0, 3), ramp(shape.curv[i], 0, 0.004)) * (1 - ramp(slope[i], 0.35, 0.6)) * ramp(-shape.tpi[i], -1, 0.5)
-    scree[i] = Math.min(1 - rock[i], clamp01(foot * ramp(near[i], 0.05, 0.3)))
+    // + scree-grass rising with the slope ([M] Everon Debris_Rock_01 13 % at 15 deg -> 32-34 % at 30-35 deg)
+    const bySlope = 0.13 * ramp(slope[i], TAN15 * 0.7, TAN15) + 0.2 * ramp(slope[i], TAN15, TAN35)
+    scree[i] = Math.min(1 - rock[i], Math.max(bySlope, clamp01(foot * ramp(near[i], 0.05, 0.3))))
   }
   return { rock, scree }
 }
