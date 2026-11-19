@@ -26,6 +26,7 @@ import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overf
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { type CampaignResult } from './modules/campaign'
+import { CROP_COLOURS, colourCrops, type Crop } from './modules/fieldlayout'
 import { cutForests, isAutumnBiome, riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
 import { forestEdges, forestEdgeShapes } from './modules/forestEdge'
@@ -836,10 +837,15 @@ function draw() {
 
   if (layer('countryside')) drawCountryside()
   if (result && layer('fields')) {
+    // crop mosaic (fieldlayout.ts): recoloured when the plots changed (Zone tool, cut by a zone)
+    if (result.crops?.length !== result.fields.length) result.crops = colourCrops(result.fields, { seed: num('seed') || 1 })
+    const crops = result.crops
     result.fields.forEach((f, i) => {
       path(f, true)
-      ctx.fillStyle = `hsla(${(i * 47) % 360}, 40%, 45%, 0.25)`
+      ctx.fillStyle = CROP_COLOURS[crops[i] as Crop] ?? '#c8b866'
+      ctx.globalAlpha = 0.55
       ctx.fill()
+      ctx.globalAlpha = 1
       ctx.strokeStyle = 'rgba(0,0,0,0.4)'
       ctx.lineWidth = 1
       ctx.stroke()
@@ -1045,6 +1051,7 @@ function cutLower(type: ZoneFillType, zone: number[], rings: number[][] = [zone]
   if (!zps.length) return
   if (P < ZONE_PRIORITY.fields && result) {
     result.fields = clipPlots(result.fields, { obstacles: zps, ok: () => true, minArea: 1500, okShare: 0 })
+    result.crops = undefined // recoloured at the next draw
     const keep = result.hedges.map((h) => { const m = h[0], n = h[h.length - 1]; return !rings.some((rg) => pointInPoly(rg, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2)) })
     result.hedges = result.hedges.filter((_, i) => keep[i])
     result.shapes = result.shapes.filter((_, i) => keep[i])
@@ -1101,6 +1108,7 @@ function zoneFields(zone: number[], n: number) {
   const { fields: kept, hedges, groves, tracks } = fillFieldZone({ zone, seed: num('seed') + n, prefix, fieldSize: num('fieldSize'), aspect: num('fieldAspect') || 1.5, jitter: num('jitter'), angle: num('angle'), hedgeChance: num('hedgeChance'), minHedge: num('minHedge'), ok, landOk, obstacles: zoneObstacles('fields'), laid, roads: roads.map((rd) => rd.pts), hedgeSeed: (num('seed') * 31 + n) || 1 })
   result ??= { fields: [], hedges: [], shapes: [] }
   result.fields.push(...kept)
+  result.crops = undefined // recoloured at the next draw (neighbours never share a crop)
   for (const h of hedges) {
     result.hedges.push(h)
     result.shapes.push({ id: `${prefix}Hedge_${result.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })

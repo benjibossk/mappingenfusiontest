@@ -35,6 +35,8 @@ export interface CampaignResult {
   fields: number[][][]   // [x, z][] rings per plot (preview, masks later)
   hedges: number[][][]   // polylignes [x, z][]
   shapes: ProjectShape[]
+  /** crop per plot (fieldlayout.ts Crop), same order as `fields` */
+  crops?: string[]
 }
 
 // deterministic PRNG: same seed → same countryside

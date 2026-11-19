@@ -40,14 +40,15 @@ import type { CampaignResult } from './campaign'
 import { mergeForestPatches } from './forestMerge'
 import { cutForests, riparianBands, type RiparianPatch } from './riparian'
 import { countrysideZones, fillFieldZone, pointObstacle, roadObstacles } from './zonefill'
+import { colourCrops, cropCover } from './fieldlayout'
 import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
 import { pickTemplate, fitPort, type VanillaTemplate } from './vanillaSites'
+import { buildHarbour, harbourTier, PORT_SEA_RX } from './harbour'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
 
-import { buildHarbour, harbourTier, PORT_SEA_RX } from './harbour'
 export interface WorldParams {
   seed: number
   size: number // 2048 / 4096 / 8192 m
@@ -669,6 +670,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // low-ground probe 0.1: below Everon's broad threshold (0.15 since 46cec76; 0.2 had silently turned them mixed)
   const groveLeaf = leafOf(0.1, forestTuning(p.biome).needleShift)
   const seen = new Set<string>(), laid: Feature<Polygon>[] = [], countryside: number[][] = []
+  const fieldSite: { x: number; z: number; f: number; r: number }[] = [] // the town of each plot (crop colouring)
   sites.forEach((s, k) => {
     const R = SITE_RADIUS[s.kind], ring = R * (s.kind === 'town' ? 2.6 : 2.4) + (s.kind === 'hamlet' ? 420 : 260) // hamlets: a farm needs its fields too
     const ok = (x: number, z: number) => {
@@ -688,8 +690,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const obst = [...roadObstacles(allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) })), 3, near), ...settlement.placed.filter((b) => near(b.x, b.z)).map((b) => pointObstacle(b.x, b.z, 14))]
     zs.forEach((zone, zi) => {
       const id = zi ? `${k + 1}_${zi + 1}` : `${k + 1}`
-      const r = fillFieldZone({ zone, seed: ss('fields', 'fields' + k, zi), prefix: `FIELD_${id}_`, angle: ss('fields', 'field' + k) % 90, ok, obstacles: obst, laid, seen, roads: allRoads.map((rd) => rd.pts), hedgeSeed: ss('fields', 'hedges' + k, zi) })
+      const r = fillFieldZone({ zone, seed: ss('fields', 'fields' + k, zi), prefix: `FIELD_${id}_`, angle: ss('fields', 'field' + k) % 90, ok, obstacles: obst, laid, seen, roads: allRoads.map((rd) => rd.pts), hedgeSeed: ss('fields', 'hedges' + k, zi), centre: [s.x, s.z], fringe: R * 1.1, reach: ring })
       camp.fields.push(...r.fields)
+      fieldSite.push(...r.fields.map(() => ({ x: s.x, z: s.z, f: R * 1.1, r: ring })))
       for (const h of r.hedges) {
         camp.hedges.push(h)
         camp.shapes.push({ id: `FIELD_${id}_Hedge_${camp.shapes.length}`, kind: 'polyline', closed: false, points: h.flatMap((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]), generator: GENERATORS.hedgeCorylus })
@@ -702,6 +705,12 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       }
     })
   })
+  // crops over the whole countryside at once: plots of two zones / sites can touch (fieldlayout.ts)
+  if (camp.fields.length) camp.crops = colourCrops(camp.fields, { seed: ss('fields', 'crops'), centre: (x, z) => {
+    let best = Infinity
+    for (const q of fieldSite) best = Math.min(best, (Math.hypot(x - q.x, z - q.z) - q.f) / Math.max(1, q.r - q.f))
+    return best
+  } })
   // 10c. riparian band along rivers / lake shores: width from the height above the water + the bank grade
   const riparian = riparianBands(cur.heights, g, waters, {
     seed: ss('forests', 'riparian'), roads: allRoads.map((r) => ({ pts: r.pts, half: roadHalf(r) })),
@@ -760,7 +769,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   { const all = [...roads, ...settlement.lanes]; overlapJunctions(roads, all); overlapJunctions(settlement.lanes, all) }
   // 11. surfaces (5 per block at most)
   await step('surfaces')
-  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, areas), settlementMask(g, settlement.placed.map((q) => q.corners)))
+  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas, ...cropCover(camp)]), settlementMask(g, settlement.placed.map((q) => q.corners)))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, power, refusedGaps: [], heights: cur.heights, grid: g })
   return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }

@@ -53,12 +53,13 @@ const COVER: Record<string, [number, number, number]> = {
   ForestDeciduous_01_Base: [72, 74, 46],
   ForestConiferous_01_Base: [60, 62, 44],
   Crop_Field_01: [138, 118, 80],
+  Crop_Field_02: [112, 92, 66],
   Heather_01: [112, 92, 96],
   Concrete_01: [150, 150, 146],
   Dirt_01: [140, 116, 86],
 }
-/** cover codes of cover.ts, in order: 1 broadleaved, 2 needleleaved, 3 mixed, 4 field, 5 shrubs, 6 built-up, 7 bare */
-const COVER_OF = ['', 'ForestDeciduous_01_Base', 'ForestConiferous_01_Base', 'ForestDeciduous_01_Base', 'Crop_Field_01', 'Heather_01', 'Concrete_01', 'Dirt_01']
+/** cover codes of cover.ts, in order: 1 broadleaved, 2 needleleaved, 3 mixed, 4 field, 5 shrubs, 6 built-up, 7 bare, 8 ploughed */
+const COVER_OF = ['', 'ForestDeciduous_01_Base', 'ForestConiferous_01_Base', 'ForestDeciduous_01_Base', 'Crop_Field_01', 'Heather_01', 'Concrete_01', 'Dirt_01', 'Crop_Field_02']
 export const SURFACE_COLOURS: Record<string, [number, number, number]> = { ...COLOURS, ...COVER }
 
 function rng(seed: number) {

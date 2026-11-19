@@ -1,11 +1,12 @@
 // Land cover on the terrain grid: forest and field areas (OpenStreetMap, realWorld.ts) rasterised to one
 // code per grid vertex, used by computeSurfaces to paint forest floor and crop field instead of grass.
 //   0 nothing, 1 broadleaved forest, 2 needleleaved forest, 3 mixed forest, 4 field,
-//   5 shrubs / heath, 6 built-up, 7 bare ground (5-7 come from ESA WorldCover only)
+//   5 shrubs / heath, 6 built-up, 7 bare ground (5-7 come from ESA WorldCover only), 8 ploughed field
+//   (generated plots, fieldlayout.ts)
 
 import type { Grid } from './island'
 
-export interface CoverArea { kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; pts: number[] }
+export interface CoverArea { kind: 'forest' | 'field'; leaf?: 'broad' | 'needle' | 'mixed'; pts: number[]; code?: number }
 
 const CODE = { broad: 1, needle: 2, mixed: 3 } as const
 
@@ -19,7 +20,7 @@ export function rasterCover(grid: Grid, areas: CoverArea[], base?: Uint8Array): 
   for (const a of order) {
     const p = a.pts
     if (p.length < 6) continue
-    const code = a.kind === 'field' ? 4 : CODE[a.leaf ?? 'mixed']
+    const code = a.code ?? (a.kind === 'field' ? 4 : CODE[a.leaf ?? 'mixed'])
     let z0 = Infinity, z1 = -Infinity
     for (let k = 1; k < p.length; k += 2) { z0 = Math.min(z0, p[k]); z1 = Math.max(z1, p[k]) }
     const r0 = Math.max(0, Math.ceil((z0 - minZ) / step)), r1 = Math.min(rows - 1, Math.floor((z1 - minZ) / step))

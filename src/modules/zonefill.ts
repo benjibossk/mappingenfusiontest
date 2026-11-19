@@ -6,6 +6,7 @@ import * as turf from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { generateCampaign } from './campaign'
 import { edgeTracks } from './fieldtracks'
+import { borderHedges, colourCrops, roadFieldLayout, type Crop } from './fieldlayout'
 import { SITE_MAX_SLOPE, SITE_PRIORITY, SITE_TYPES, type SiteType } from './sitezones'
 
 export type ZoneFillType = 'fields' | 'forest' | 'habitation' | 'town' | 'scattered' | 'industrial' | 'production' | SiteType
@@ -256,22 +257,34 @@ export interface FieldZoneOptions {
   /** road centre lines the dirt tracks join (none = no track) */
   roads?: number[][]
   hedgeSeed: number
+  /** 'roads' (default): strips cut from the roads, radial fan + size gradient around `centre` (fieldlayout.ts);
+   *  'voronoi': the former rotated-grid Voronoi plots (campaign.ts) */
+  layout?: 'roads' | 'voronoi'
+  /** town centre, fringe radius (smallest plots) and outer reach (largest), m */
+  centre?: [number, number]; fringe?: number; reach?: number
 }
-export interface FieldZoneResult { fields: number[][][]; hedges: number[][][]; groves: number[][]; tracks: number[][] }
+export interface FieldZoneResult { fields: number[][][]; hedges: number[][][]; groves: number[][]; tracks: number[][]; crops: Crop[] }
 /** the "Champs" zone pipeline: Voronoi plots clipped to the zone and the obstacles, hedges on the plot
  *  borders, groves at some corners, dirt tracks to the nearest road. Shared by the Zone tool and worldgen. */
 export function fillFieldZone(o: FieldZoneOptions): FieldZoneResult {
   const d = FIELD_ZONE_DEFAULTS
   const fieldSize = o.fieldSize ?? d.fieldSize, hedgeChance = o.hedgeChance ?? d.hedgeChance, minHedge = o.minHedge ?? d.minHedge
-  const raw = generateCampaign({ zone: o.zone, fieldSize, aspect: o.aspect ?? d.aspect, jitter: o.jitter ?? d.jitter, angle: o.angle ?? d.angle, hedgeChance, minHedge, seed: o.seed, prefix: o.prefix, isLand: o.ok })
+  const roadsLayout = (o.layout ?? 'roads') === 'roads'
+  const raw = roadsLayout
+    ? { fields: roadFieldLayout({ zone: o.zone, seed: o.seed, fieldSize, aspect: o.aspect ?? d.aspect, roads: o.roads, centre: o.centre, fringe: o.fringe, reach: o.reach, angle: o.angle ?? d.angle }) }
+    : generateCampaign({ zone: o.zone, fieldSize, aspect: o.aspect ?? d.aspect, jitter: o.jitter ?? d.jitter, angle: o.angle ?? d.angle, hedgeChance, minHedge, seed: o.seed, prefix: o.prefix, isLand: o.ok })
   const fields = clipPlots(raw.fields, { obstacles: o.obstacles, laid: o.laid, zone: flatToPoly(o.zone), ok: o.ok, minArea: Math.min(2500, fieldSize ** 2 / 4) })
   let hs = o.hedgeSeed || 1
   const rnd = () => ((hs = (hs * 16807) % 2147483647) / 2147483647)
   const land = o.landOk ?? o.ok
-  const hedges = plotHedges(fields, { seen: o.seen, rnd, ok: land, keep: Math.max(0.2, Math.min(1, hedgeChance + 0.3)), minLen: minHedge })
+  // FTG look: hedgerows on almost every parcel border
+  const hedges = roadsLayout ? borderHedges(fields, { seen: o.seen, rnd, ok: land, keep: Math.max(0.2, Math.min(1, hedgeChance + 0.42)), minLen: minHedge })
+    : plotHedges(fields, { seen: o.seen, rnd, ok: land, keep: Math.max(0.2, Math.min(1, hedgeChance + 0.3)), minLen: minHedge })
   const groves = plotGroves(fields, { rnd, ok: land })
   const tracks = o.roads?.length ? edgeTracks(fields, o.roads, { ok: land }) : [] // along the plot borders (fieldtracks.ts)
-  return { fields, hedges, groves, tracks }
+  const c = o.centre, span = Math.max(1, (o.reach ?? 1) - (o.fringe ?? 0))
+  const crops = colourCrops(fields, { seed: o.seed, centre: c && ((x, z) => (Math.hypot(x - c[0], z - c[1]) - (o.fringe ?? 0)) / span) })
+  return { fields, hedges, groves, tracks, crops }
 }
 
 /** countryside zones around a settlement for the random world, like zones drawn by hand on the open
