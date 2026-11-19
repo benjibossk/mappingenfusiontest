@@ -1,6 +1,8 @@
 #ifdef WORKBENCH
 //! World Editor tool "MapGen - Camera HUD": prints the viewport camera ("MapGen cam X 3229 Z 1291 cap 274°")
 //! top-right of the 3D view, just under the Workbench orientation cube, so screenshots carry it.
+//! Screen-space text needs DebugTextFlags.FACE_CAMERA to render (flags 0 = invisible); same pattern as
+//! base-game SCR_PrefabBoneSnappingTool / SCR_CompositionValidationEntity.
 //! Activate it once from the World Editor tools list; it lives while the tool is active.
 //! Refresh: on every mouse / wheel / key event in the viewport (the camera only moves through those)
 //! + a 0.5 s call queue tick when the game call queue runs in the editor.
@@ -26,7 +28,7 @@ class MG_CameraHudTool : WorldEditorTool
 
 	override void OnActivate()
 	{
-		m_Text = DebugTextScreenSpace.Create(m_API.GetWorld(), "", 0, 0, MG_CAMHUD_TOP, MG_CAMHUD_SIZE, 0xFFFFFFFF, 0xA0000000);
+		m_Text = DebugTextScreenSpace.Create(m_API.GetWorld(), "", DebugTextFlags.FACE_CAMERA, 0, MG_CAMHUD_TOP, MG_CAMHUD_SIZE, 0xFFFFFFFF, 0xA0000000);
 		Refresh();
 		if (GetGame() && GetGame().GetCallqueue())
 		{
@@ -50,7 +52,7 @@ class MG_CameraHudTool : WorldEditorTool
 
 	override void OnAfterLoadWorld()
 	{
-		m_Text = DebugTextScreenSpace.Create(m_API.GetWorld(), "", 0, 0, MG_CAMHUD_TOP, MG_CAMHUD_SIZE, 0xFFFFFFFF, 0xA0000000);
+		m_Text = DebugTextScreenSpace.Create(m_API.GetWorld(), "", DebugTextFlags.FACE_CAMERA, 0, MG_CAMHUD_TOP, MG_CAMHUD_SIZE, 0xFFFFFFFF, 0xA0000000);
 		Refresh();
 	}
 
