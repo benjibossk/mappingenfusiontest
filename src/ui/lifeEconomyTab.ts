@@ -15,6 +15,9 @@ const L = {
   fr: { open: 'Économie Life', title: 'Économie Life (outil de calcul RP)', run: 'Calculer', close: 'Fermer', opt: 'Organiser la carte pour le Life', apply: 'Appliquer à la carte', reset: 'Valeurs LF', band: 'Trajet cible (min)', chain: 'Filière', veh: 'Véhicule', price: 'Prix', from: 'Production', proc: 'Transfo', sell: 'Vente', trip: 'Trajet (min)', drive: 'dont route', load: 'Charge', rev: 'Recette/trajet', ph: 'Profit/h', flag: 'État', cap: 'Capacité', speeds: 'Vitesses km/h (route / terre / piste / hors piste)', missing: 'lieu absent', rich: 'trop lucratif', useless: 'inutile', short: 'trop court', long: 'trop long', ok: 'ok', none: 'Générez un monde d\'abord.', score: 'Déséquilibre', places: 'lieux', vehs: 'Paramètres véhicules', srcs: 'Sources et valeurs manquantes', route: 'route', walk: 'Véhicule', detail: 'Détail' },
   en: { open: 'Life economy', title: 'Life economy (RP calculator)', run: 'Compute', close: 'Close', opt: 'Organise the map for Life', apply: 'Apply to map', reset: 'LF values', band: 'Target trip (min)', chain: 'Chain', veh: 'Vehicle', price: 'Price', from: 'Production', proc: 'Processing', sell: 'Sell', trip: 'Trip (min)', drive: 'driving', load: 'Load', rev: 'Revenue/trip', ph: 'Profit/h', flag: 'Status', cap: 'Capacity', speeds: 'Speeds km/h (road / dirt / trail / off-road)', missing: 'missing place', rich: 'too lucrative', useless: 'useless', short: 'too short', long: 'too long', ok: 'ok', none: 'Generate a world first.', score: 'Imbalance', places: 'places', vehs: 'Vehicle settings', srcs: 'Sources and missing values', route: 'road', walk: 'Vehicle', detail: 'Detail' },
 }
+// English names for the data labels (economy.json is in French; keyed by id so a saved localStorage copy still translates)
+const EN_NAME: Record<string, string> = { foot: "On foot", tractor: "Tractor", truck: "Truck", car: "Car", apple_juice: "Apples -> juice", cabbage: "Cabbage (raw)", iron: "Iron -> ingots", copper: "Copper -> ingots", gold: "Gold -> ingots", planks: "Wood -> planks", fish: "Fishing", honey: "Hives -> honey", moonshine: "Moonshine (illegal)" }
+const nm = (id: string, label: string) => { if (getLang() === "fr") return label; return EN_NAME[id] ?? label }
 const tr = () => (getLang() === 'fr' ? L.fr : L.en)
 const KEY = 'rm-life-economy'
 const clone = (): Economy => JSON.parse(JSON.stringify(ECO))
@@ -60,7 +63,7 @@ export function mountLifeEconomy(h: LifeEconomyHooks) {
     shown = rows[sel] ?? null
     render(); h.redraw()
   }
-  const vehOpts = (v: string) => (Object.keys(eco.vehicles) as VehicleId[]).map((k) => `<option value="${k}"${k === v ? ' selected' : ''}>${eco.vehicles[k].label}</option>`).join('')
+  const vehOpts = (v: string) => (Object.keys(eco.vehicles) as VehicleId[]).map((k) => `<option value="${k}"${k === v ? ' selected' : ''}>${nm(k, eco.vehicles[k].label)}</option>`).join('')
   const SPD = ['main', 'dirt', 'trail', 'offroad'] as const
   const SPD_L = getLang() === 'fr' ? ['Route', 'Terre', 'Piste', 'Hors piste'] : ['Road', 'Dirt', 'Trail', 'Off-road']
   const badge = (r: ChainRow | undefined) => {
@@ -77,7 +80,7 @@ export function mountLifeEconomy(h: LifeEconomyHooks) {
       const c = eco.chains[i], r = rows[i], off = r?.flag === 'missing'
       const path = r?.ok ? [r.from?.id, c.process ? r.proc?.id : null, r.sell?.id].filter(Boolean).join(' → ') : ''
       const main = `<tr data-i="${i}" class="${i === sel ? 'sel' : ''}${off ? ' off' : ''}" title="${c.src ?? ''}">
-        <td class="name"><b>${c.label}</b>${path ? `<small>${path}</small>` : ''}</td>
+        <td class="name"><b>${nm(c.id, c.label)}</b>${path ? `<small>${path}</small>` : ''}</td>
         <td><select data-veh="${i}" aria-label="${T.veh}">${vehOpts(c.vehicle)}</select></td>
         <td class="num"><input data-price="${i}" type="number" step="any" value="${c.price}" aria-label="${T.price}"></td>
         <td class="num">${r?.ok ? (r.tripSec / 60).toFixed(1) : '–'}</td>
@@ -105,8 +108,8 @@ export function mountLifeEconomy(h: LifeEconomyHooks) {
       <tbody>${order.map(row).join('')}</tbody></table></div>
       <details class="rm-sec"><summary>${T.vehs}</summary>
         <table class="rm-table compact"><thead><tr><th></th><th class="num">${T.cap}</th>${SPD_L.map((l) => `<th class="num">${l} <small>km/h</small></th>`).join('')}</tr></thead><tbody>
-        ${(Object.keys(eco.vehicles) as VehicleId[]).map((k) => { const v = eco.vehicles[k]
-          return `<tr><td><b>${v.label}</b></td><td class="num"><input data-cap="${k}" type="number" value="${v.capacity}" aria-label="${v.label} ${T.cap}"></td>${SPD.map((s, j) => `<td class="num"><input data-spd="${k}:${s}" type="number" value="${v.speeds[s]}" aria-label="${v.label} ${SPD_L[j]}"></td>`).join('')}</tr>` }).join('')}
+        ${(Object.keys(eco.vehicles) as VehicleId[]).map((k) => { const v = eco.vehicles[k], vl = nm(k, v.label)
+          return `<tr><td><b>${vl}</b></td><td class="num"><input data-cap="${k}" type="number" value="${v.capacity}" aria-label="${vl} ${T.cap}"></td>${SPD.map((s, j) => `<td class="num"><input data-spd="${k}:${s}" type="number" value="${v.speeds[s]}" aria-label="${vl} ${SPD_L[j]}"></td>`).join('')}</tr>` }).join('')}
         </tbody></table></details>
       <details class="rm-sec"><summary>${T.srcs}</summary><p class="rm-meta">LF commit ${eco.lfCommit.slice(0, 10)} · ${eco.sources[eco.sources.length - 1]}</p></details>`
   }
