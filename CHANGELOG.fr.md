@@ -4,7 +4,19 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+## [0.7.0] - 2026-11-19
+
 ### Ajouté
+- **Ports réalistes** : bassin dragué (-7,5 m), terre-plein plat (+2,2 m), digues, jetées, bouées et rue de quai ; les ports vanilla font face à la mer et évitent les routes.
+- **Champs façon FTG** : parcelles en lanières ancrées sur les routes avec gradient de taille, mosaïque de cultures et haies ; parcelles calibrées sur Everon (110 m, rapport 1,5).
+- **Plateformes sous chaque bâtiment**, et carrefours raccordés au niveau de la route principale.
+- **Sites et modèles de villages vanilla** (Everon / Kolguyev / Arland) avec tamponnage, activés par défaut dans le monde aléatoire, plus une option base militaire vanilla complète.
+- **Cartes de référence** (Everon / Kolguyev / Arland) : chargement en lecture seule avec vrai relief, largeurs de rivières, niveaux des lacs, lignes électriques, types de routes exacts et statistiques de placement.
+- **Vérification avant envoi** : bâtiments qui se chevauchent, objets sur les routes, objets de zone hors carte, avec correction automatique ; compteur d’objets 3D.
+- **Mise à l’échelle selon la taille de carte** : bases, industrie, sites vanilla et ports suivent les densités vanilla mesurées × surface ; bandes d’altitude façon TAT, rochers et buissons en disque de Poisson.
+- **Règles de sol issues du vanilla** : roche nue seulement au-delà de 35°, éboulis entre 15 et 35°, galets de rive, herbe de montagne/bruyère selon la hauteur, accotements en terre, pelouses des maisons.
+- **Outils Workbench** : import automatique des masques de terrain (script UIA), captures headless du World Editor, audit chiffré après application, capture de fenêtre WGC.
+- Villages : orientation mesurée chez Bohemia (de côté, dos à la route), dépendances à côté/derrière, archétypes et mode modèle.
 - **Essence de la forêt de l’outil Zone** (`src/biomes/vegetation.ts` `zoneForestLeaf`, `src/main.ts`, #12) : la liste Essence gagne `Auto` (par défaut) : type de feuillage selon l’altitude relative moyenne de la zone (`leafOf`, décalé par le biome), ou selon la part de conifères du biome sans relief ; Mixte / Conifères / Feuillus inchangés. L’export prend déjà le générateur vanilla du biome (`forestGeneratorFor`) ; le journal l’indique maintenant. Tests dans `tests/biomes/forest-rules.test.ts`.
 - **Arbres dans les champs** (`src/modules/fieldtrees.ts`, étape 10d du monde aléatoire, #8) : arbres isolés bien à l’intérieur d’environ une parcelle sur six, bouquets de 2 à 4 arbres à certains coins et arbres de haie tous les ~45 m, en entités d’arbres vanilla (`VEG`, feuillus du biome en priorité). Hors routes, forêts, eau et bâtiments. Ils forment une zone `site` `TREES_FIELD` (dessinée, enregistrée et envoyée comme toute zone). Nouveau `WorldParams.fieldTrees` (0-2, curseur dans le dialogue monde aléatoire). Tests : `tests/biomes/fieldtrees.test.ts`.
 - **Forêts selon altitude et pente** (`src/modules/forestgen.ts`, #7) : chaque bois généré reste dans une seule tranche d’altitude (`leafOf` : feuillus en bas, mixte à mi-pente, conifères en haut), un bois qui couvre une colline est donc découpé en bandes d’essences au lieu d’une essence moyenne ; `forestCellOk` refuse les cellules plus raides que `FOREST_MAX_SLOPE` (0,55, avant 0,7) et les crêtes convexes exposées juste sous la limite des arbres. Les bosquets des champs prennent `leafOf(0.2)` du biome (mixte en Arland, feuillus en Everon). Tests dans `tests/biomes/forest-rules.test.ts`.
@@ -24,6 +36,9 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 - **Giratoires qui apparaissent vraiment** : aussi là où une principale rencontre une secondaire, à l'entrée d'un lieu (principale / secondaire × locale), ou quand deux T revêtus sont à < 60 m (fusionnés) ; chaque branche finit sur un point de l'anneau ; un anneau sans branche est retiré.
 
 ### Corrigé
+- Plus de roche nue dans les villages (le masque de localité la change en herbe/terre).
+- Électricité : plus aucun poteau dans un bâtiment (raccordements de fermes revérifiés, poteaux impossibles retirés).
+- Les bosquets de champs d’Everon ne deviennent plus mixtes.
 - Monde aléatoire : plus de bosquets de champs dans un biome sans arbres (désert).
 
 - **Hiérarchie du réseau électrique** (src/modules/powergrid.ts, docs/POWER_GRID.md) : 1 à 3 centrales (DieselPowerPlant_USSR_01, placées près de l'eau / de l'industrie / des routes, loin des localités) avec poste élévateur ; boucle de transport maillée (arbre couvrant + une liaison depuis chaque cul-de-sac) de lignes THT (PG_PowerLine_EHV_01, ses postes doubles en travées) et HT entre centrales et postes 110 kV des villes (TransformerStation110kV_E_01_simple_v1) ; départs MT en arbre vers un transformateur en bordure de chaque village, zone industrielle et ferme isolée (TransformerSubstation_01 / TransformerStation_E_02 / USSR_02) ; BT le long des rues et vers les hameaux. Plateformes aplanies, chemins d'accès, style de poteaux Everon ou soviétique (HV_USSR_01, HV_03_Wooden, LV_USSR_01), couleur par niveau en 2D, postes en volume en 3D, postes exportés en prefabs.
@@ -88,4 +103,5 @@ La grande version « débutant » : une interface guidée, un monde aléatoire e
 Les versions 0.1.0 à 0.4.8 sont décrites (en anglais) dans le [CHANGELOG.md](CHANGELOG.md#048---2026-10-17).
 
 [Non publié]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.7.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.7.0
 [0.5.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.5.0

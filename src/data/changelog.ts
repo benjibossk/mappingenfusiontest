@@ -7,6 +7,19 @@ export interface ChangelogEntry { version: string; date: string; items: Changelo
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.7.0',
+    date: '2026-11-19',
+    items: [
+      { en: "Realistic harbours: dredged basin, flat apron, jetties, buoys and quay street", fr: "Ports réalistes : bassin dragué, terre-plein, jetées, bouées et rue de quai" },
+      { en: "FTG-style fields along the roads, with crop mosaic and hedgerows", fr: "Champs façon FTG le long des routes, mosaïque de cultures et haies" },
+      { en: "Building pads and road junctions graded onto the main road", fr: "Plateformes sous les bâtiments, carrefours au niveau de la route principale" },
+      { en: "Vanilla sites, village templates and military base (on by default)", fr: "Sites, modèles de villages et base militaire vanilla (activés par défaut)" },
+      { en: "Pre-send check with auto-fix (overlaps, objects on roads, off-map)", fr: "Vérification avant envoi avec correction auto (chevauchements, objets sur routes, hors carte)" },
+      { en: "Map-size scaling and ground rules measured on vanilla maps", fr: "Mise à l’échelle selon la taille de carte et règles de sol mesurées sur les cartes vanilla" },
+      { en: "Fixes: no bare rock in villages, no power pole inside a building", fr: "Correctifs : plus de roche nue dans les villages, plus de poteau dans un bâtiment" },
+    ],
+  },
+  {
     version: '0.6.0',
     date: '2026-11-16',
     items: [

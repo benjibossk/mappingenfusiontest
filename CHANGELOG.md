@@ -8,7 +8,19 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-19
+
 ### Added
+- **Realistic harbours**: dredged basin (-7.5 m), flat apron (+2.2 m), breakwater arms, jetties, buoys and a quay street; vanilla ports face the sea and avoid roads.
+- **FTG-style fields**: road-anchored strip layout with a size gradient, crop mosaic and hedgerows; plots sized on Everon crop fields (110 m, aspect 1.5).
+- **Building pads** under every building, and road junctions graded onto the main road.
+- **Vanilla sites and village templates** (Everon / Kolguyev / Arland) with stamping, on by default in the random world, plus a full vanilla military base option.
+- **Reference maps** (Everon / Kolguyev / Arland): read-only load with real relief, river widths, lake levels, power lines, exact road types and placement stats.
+- **Pre-send check**: building overlaps, objects on roads and zone objects off the map, with auto-fix; 3D object counter.
+- **Map-size scaling**: bases, industry, vanilla sites and ports follow measured vanilla densities times land area; TAT-like elevation bands, Poisson-disk rocks and bushes.
+- **Ground rules from vanilla**: bare rock only above 35 deg, scree on 15-35 deg slopes, shore pebbles, mountain grass/heather by height, dirt shoulders on asphalt, house lawns.
+- **Workbench tooling**: automatic terrain mask import (UIA script), headless World Editor shots, post-apply numeric audit, WGC window capture.
+- Villages: Bohemia-measured orientation (side-on, back to the road), outbuildings beside/behind, archetypes and template mode.
 - **Species of the Zone tool forest** (`src/biomes/vegetation.ts` `zoneForestLeaf`, `src/main.ts`, #12): the Species dropdown gets `Auto` (default): leaf type from the zone's mean relative altitude (`leafOf`, shifted by the biome), or from the biome's conifer share without relief; Mixed / Conifers / Broadleaf are kept as before. The export already picks the biome's vanilla generator (`forestGeneratorFor`); the log now names it. Tests in `tests/biomes/forest-rules.test.ts`.
 - **Trees in the fields** (`src/modules/fieldtrees.ts`, worldgen step 10d, #8): isolated trees well inside about one plot in six, clumps of 2-4 trees at some plot corners and hedgerow trees every ~45 m on the hedges, as single vanilla tree entities (`VEG`, broadleaves of the biome first). Off roads, forests, water and buildings. They form one `site` zone `TREES_FIELD` (drawn, saved and sent like any zone). New `WorldParams.fieldTrees` (0-2, slider in the random world dialog). Tests: `tests/biomes/fieldtrees.test.ts`.
 - **Forests by altitude and slope** (`src/modules/forestgen.ts`, #7): each generated wood stays in one altitude band (`leafOf`: broadleaf low, mixed mid, conifer high), so a wood spanning a hill is split into species bands instead of one averaged leaf; `forestCellOk` refuses cells steeper than `FOREST_MAX_SLOPE` (0.55, was 0.7) and exposed convex crests just under the tree line. Field groves use `leafOf(0.2)` of the biome (mixed in Arland, broadleaf in Everon). Tests in `tests/biomes/forest-rules.test.ts`.
@@ -28,6 +40,9 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - **Roundabouts that actually appear**: also where a main road meets a secondary one, at a place entrance (main / secondary x local), or where two paved T junctions lie < 60 m apart (merged); every branch ends on a ring control point; rings left without branches are removed.
 
 ### Fixed
+- No bare rock in villages (settlement mask turns rock into grass/dirt).
+- Power: no pole left inside a building (farm drops re-checked, impossible poles dropped).
+- Everon field groves no longer turn mixed.
 - Random world: no field groves in a treeless biome (desert).
 
 - **Power grid hierarchy** (src/modules/powergrid.ts, docs/POWER_GRID.md): 1-3 power plants (DieselPowerPlant_USSR_01, sited near water / industry / roads, away from settlements) with a step-up yard; a meshed transmission loop (MST + a link from every dead end) of EHV (PG_PowerLine_EHV_01, its double stations as bays) and HV lines between plants and the towns' 110 kV substations (TransformerStation110kV_E_01_simple_v1); MV feeders as a tree to a transformer at the edge of every village, industrial zone and remote farm (TransformerSubstation_01 / TransformerStation_E_02 / USSR_02); LV along village streets and to hamlets. Flattened station pads, dirt access tracks, Everon or Soviet pole style (HV_USSR_01, HV_03_Wooden, LV_USSR_01), per-level colours in 2D, station boxes in 3D, stations exported as prefabs.
@@ -234,6 +249,7 @@ The big "newcomer" release: a guided interface, a one-click random world and man
 - First Workbench plugin tests: shapes and generators created by script.
 
 [Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[0.7.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.7.0
 [0.5.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.5.0
 [0.4.8]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.8
 [0.4.7]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.7
