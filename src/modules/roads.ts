@@ -431,7 +431,8 @@ export function roadFurniture(roads: Road[], heightAt: (x: number, z: number) =>
     const sharp = (25 * Math.PI) / 180
     for (const side of [1, -1]) {
       const posts = offsetLine(line, side * (roadHalf(road) + 1.2))
-      const barrier = offsetLine(line, side * (roadHalf(road) + 0.8))
+      // vanilla: rail 1.2 (Kolguyev) to 1.8 m (Everon) beyond the paved edge, median (sites_analysis.py)
+      const barrier = offsetLine(line, side * (roadHalf(road) + 1.5))
       // drop beside the road, measured at 6 m and 15 m from the edge (steep slope or cliff further away)
       const near = offsetLine(line, side * (roadHalf(road) + 6))
       const far = offsetLine(line, side * (roadHalf(road) + 15))

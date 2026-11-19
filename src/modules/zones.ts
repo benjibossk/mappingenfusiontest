@@ -8,6 +8,7 @@ import { applyFlatten, boxCorners, type FlattenRequest } from './gen-common'
 import { generateIndustrial, applyFlatten as applyPlatform, type IndustrialType, type FlattenRequest as Platform } from './industrial'
 import { generateMilitary, flattenFor, type MilitaryKind } from './military'
 import { applyDam, type Dam } from './dam'
+import { pickTemplate, stampTemplate } from './vanillaSites'
 import { generateAirfield, flattenAirfield, type AirfieldSize } from './airfield'
 
 export type ZoneKind = 'industrial' | 'military' | 'airfield' | 'site' // site: structured Zone-tool fills (sitezones.ts)
@@ -47,7 +48,11 @@ export function makeAirfield(heights: number[], g: Grid, o: { id: string; size: 
   return { id: o.id, kind: 'airfield', sub: o.size, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes, ...prefixed(o.id, a.shapes, a.entities), flat: a.flatten, plat: [], roads: [], warnings: [], access: [a.apron.x, a.apron.z] }
 }
 
-export function makeMilitary(heights: number[], g: Grid, o: { id: string; kind: MilitaryKind; x: number; z: number; yaw: number; seed: number }): ZoneItem {
+export function makeMilitary(heights: number[], g: Grid, o: { id: string; kind: MilitaryKind; x: number; z: number; yaw: number; seed: number; vanilla?: boolean }): ZoneItem {
+  if (o.vanilla) { // real Bohemia base / checkpoint (data/templates/vanilla_sites.json); our yaw turns +Z AWAY from the road, the template's +Z faces it
+    const v = makeVanillaSite(heights, g, { id: o.id, type: o.kind === 'checkpoint' ? 'checkpoint' : 'military_base', x: o.x, z: o.z, yaw: o.yaw + 180, seed: o.seed })
+    if (v) return { ...v, kind: 'military', sub: o.kind, yaw: o.yaw }
+  }
   const m = generateMilitary({ kind: o.kind, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed })
   m.flatten = flattenFor(m, heights, g)
   const boxes = [{ corners: boxCorners(m.area), role: 'area' }, ...m.roads.map((b) => ({ corners: boxCorners(b), role: 'pave' })), ...m.placements.map((p) => ({ corners: boxCorners(p.box), role: p.role }))]
@@ -94,4 +99,24 @@ export function zoneDisc(zn: ZoneItem): { x: number; z: number; r: number } {
 export function nextZoneId(zones: ZoneItem[], kind: ZoneKind) {
   const p = kind === 'industrial' ? 'IND' : kind === 'military' ? 'MIL' : kind === 'site' ? 'SITE' : 'AIR'
   for (let n = 1; ; n++) if (!zones.some((z) => z.id === `${p}_${n}`)) return `${p}_${n}`
+}
+
+/** stamps a vanilla site template (military_base, checkpoint, port, fuel_depot, gas_station, farm...) at x/z, its
+ *  access side (+Z) turned to `yaw`; ground flattened to the mean height over the template radius. null = no template. */
+export function makeVanillaSite(heights: number[], g: Grid, o: { id: string; type: string; x: number; z: number; yaw: number; seed: number }): ZoneItem | null {
+  const t = pickTemplate(o.type, o.seed)
+  if (!t) return null
+  const entities = stampTemplate(t, o.x, o.z, o.yaw, { id: t.id })
+  const r = Math.max(10, t.radius), box = { x: o.x, z: o.z, hw: r, hd: r, yaw: o.yaw }
+  const flat: FlattenRequest[] = o.type === 'port' ? [] : [{ box, h0: 0, h1: 0, falloff: 15 }]
+  if (flat.length) { // flat platform at the mean height of the footprint
+    let sum = 0, n = 0
+    for (let dz = -r; dz <= r; dz += g.step) for (let dx = -r; dx <= r; dx += g.step) {
+      const c = Math.round((o.x + dx - g.minX) / g.step), w = Math.round((o.z + dz - g.minZ) / g.step)
+      if (c >= 0 && w >= 0 && c < g.cols && w < g.rows) { sum += heights[w * g.cols + c]; n++ }
+    }
+    flat[0].h0 = flat[0].h1 = n ? sum / n : 0
+  }
+  return { id: o.id, kind: 'site', sub: `vanilla:${t.id}`, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes: [{ corners: boxCorners(box), role: 'area' }],
+    ...prefixed(o.id, [], entities), flat, plat: [], roads: [], warnings: [`vanilla template ${t.id} (${t.map} ${t.x},${t.z})`], access: [o.x + Math.sin(o.yaw * Math.PI / 180) * r, o.z + Math.cos(o.yaw * Math.PI / 180) * r] }
 }
