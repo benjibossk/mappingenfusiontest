@@ -1,0 +1,10 @@
+{
+  "world": "{106590BC14A91604}Worlds/MG_Test.ent",
+  "settle": 800,
+  "first": 6000,
+  "shots": [
+    { "name": "overview", "pos": [2048, 650, 700], "target": [2048, 0, 2048] },
+    { "name": "port", "target": [760, 0, 2230], "yaw": 200, "pitch": -30, "dist": 150, "agl": true },
+    { "name": "lake", "target": [1700, 0, 1700], "yaw": 45, "pitch": -35, "dist": 400, "agl": true }
+  ]
+}
