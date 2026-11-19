@@ -148,7 +148,34 @@ export function generateIsland(p: IslandParams): Island {
 }
 
 //! Surface weights from height and slope (+ river beds). Rerun after painting or rivers.
-export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array): SurfaceGrid[] {
+//! 0..1 "inside a village" weight per vertex: 1 within the lot (house + 15 m yard, FIELDS_SURFACES_VANILLA §3) plus a
+//! `margin` (default 25 m), fading to 0 over `fade` m beyond. Measured from each footprint's bounding circle.
+export const SETTLE_YARD_M = 15, SETTLE_MARGIN_M = 25
+export function settlementMask(grid: Grid, footprints: number[][], margin = SETTLE_MARGIN_M, fade = 10): Float32Array {
+  const { cols, rows, step, minX, minZ } = grid
+  const m = new Float32Array(cols * rows)
+  for (const c of footprints) {
+    let x = 0, z = 0
+    const k = c.length / 2
+    for (let i = 0; i < c.length; i += 2) { x += c[i] / k; z += c[i + 1] / k }
+    let rad = 0
+    for (let i = 0; i < c.length; i += 2) rad = Math.max(rad, Math.hypot(c[i] - x, c[i + 1] - z))
+    const r0 = rad + SETTLE_YARD_M + margin, r1 = r0 + fade
+    const c0 = Math.max(0, Math.floor((x - r1 - minX) / step)), c1 = Math.min(cols - 1, Math.ceil((x + r1 - minX) / step))
+    const q0 = Math.max(0, Math.floor((z - r1 - minZ) / step)), q1 = Math.min(rows - 1, Math.ceil((z + r1 - minZ) / step))
+    for (let q = q0; q <= q1; q++) for (let cc = c0; cc <= c1; cc++) {
+      const d = Math.hypot(minX + cc * step - x, minZ + q * step - z)
+      if (d >= r1) continue
+      const w = d <= r0 ? 1 : 1 - (d - r0) / fade
+      const i = q * cols + cc
+      if (w > m[i]) m[i] = w
+    }
+  }
+  return m
+}
+
+//! `settle` (settlementMask): no bare Rock_01 in and around the villages; that ground goes to a grass / dirt blend.
+export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array, settle?: Float32Array): SurfaceGrid[] {
   const { cols, rows, step } = grid
   const names = Object.keys(COLOURS).concat(cover ? Object.keys(COVER) : [])
   const weights: Record<string, number[]> = Object.fromEntries(names.map((k) => [k, []]))
@@ -176,7 +203,11 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const cliff = Math.min(1, rm.rock[i] + rm.scree[i]) * (h > -2 ? 1 : 0) * (1 - bed)
     let scree = Math.min(cliff, rm.scree[i] * (1 - bed))
     let rock = cliff - scree
-    let free = clamp01(1 - deepAll - bed - cliff)
+    // village banks: the rock weight becomes 75 % grass (free ground) + 25 % dirt
+    const sv = settle ? settle[i] : 0
+    const villageDirt = rock * sv * 0.25
+    let free = clamp01(1 - deepAll - bed - cliff + rock * sv * 0.75)
+    rock -= rock * sv
     const take = (w: number) => { const t = Math.min(free, Math.max(w, 0)); free -= t; return t }
     const shore = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)))
     const beach = take(1 - band(h, 3.5, 5))
@@ -198,7 +229,7 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     weights.SeaBed_01.push(deep)
     weights.Pebbles_01.push(bed)
     weights.Pebbles_02.push(shore + pebbles)
-    weights.Dirt_02.push(bare) // sandy look
+    weights.Dirt_02.push(bare + villageDirt) // sandy look
     weights.BeachGrass_01.push(beach + sand)
     weights.Grass_03_coastal.push(coastal)
     weights.Rock_01.push(rock)

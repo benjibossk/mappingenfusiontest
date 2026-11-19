@@ -22,7 +22,7 @@ import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
-import { computeSurfaces, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
+import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
 import { type CampaignResult } from './modules/campaign'
@@ -1566,7 +1566,7 @@ function recompose(final: boolean) {
     if (beds && !waters.some((w) => w.auto) && num('rDepth') > 0) layBeds(island.heights, beds)
   }
   if (final) {
-    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined))
+    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined)
     island.colours = { ...SURFACE_COLOURS, ...island.colours }
     const bad = overfullBlocks(island.surfaces)
     $<HTMLSpanElement>('brushInfo').dataset.warn = bad ? '1' : ''
