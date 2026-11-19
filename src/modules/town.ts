@@ -41,7 +41,7 @@ export interface TownResult {
   warnings: string[]
 }
 
-const CELL_AREA = 4200 // m² per Voronoi cell (≈ 65 m blocks)
+const CELL_AREA = 2000 // m² per Voronoi cell (≈ 45 m blocks; 4200 / max 70 cells laid 31 buildings on Everon's 300 m town disc, vanilla 169)
 const SNAP = 3 // merge Voronoi vertices closer than this (no tiny street segments)
 const MAIN_GRADE = 0.18, STREET_GRADE = 0.14
 const CHURCH_RE = /Church|Chapel|Chapelle|Eglise/i
@@ -114,7 +114,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   const R = Math.sqrt(area / Math.PI)
   // existing roads: through-roads become streets (seed pairs mirrored across them, vertices snapped on them)
   const roadLines: Line[] = roads.filter((r) => r.pts.length >= 4).map((r) => boxed(centreLine(r.pts, 4), roadHalf(r)))
-  const n = Math.max(14, Math.min(70, Math.round(area / CELL_AREA)))
+  const n = Math.max(14, Math.min(200, Math.round(area / CELL_AREA)))
   const seeds: number[][] = [[cx, cz]]
   const rot0 = rand() * Math.PI
   for (let k = 0; k < 6; k++) { const a = rot0 + (k * Math.PI) / 3; seeds.push([cx + Math.cos(a) * 46, cz + Math.sin(a) * 46]) }
@@ -193,7 +193,10 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     for (let s = 0; s < m; s++) g = Math.max(g, grade(vx(a) + ((vx(b) - vx(a)) * s) / m, vz(a) + ((vz(b) - vz(a)) * s) / m, vx(a) + ((vx(b) - vx(a)) * (s + 1)) / m, vz(a) + ((vz(b) - vz(a)) * (s + 1)) / m))
     return g
   }
-  const cand = [...edges.values()].filter((e) => e.cells.some(district) && vIn(e.a) && vIn(e.b) && (roadOf(e.a, e.b) >= 0 || (dry(e.a, e.b) && egrade(e.a, e.b) <= MAIN_GRADE)))
+  // no street through a stamped zone box (RP places, vanilla sites: pre-send seed 42, a market on a town lane)
+  const boxes = o.blocked ?? []
+  const free = (a: number, b: number) => { for (let t = 0; t <= 1; t += 0.125) { const x = vx(a) + (vx(b) - vx(a)) * t, z = vz(a) + (vz(b) - vz(a)) * t; for (const q of boxes) if (x > q[0] - 3 && x < q[2] + 3 && z > q[1] - 3 && z < q[3] + 3) return false } return true }
+  const cand = [...edges.values()].filter((e) => e.cells.some(district) && vIn(e.a) && vIn(e.b) && (roadOf(e.a, e.b) >= 0 || (dry(e.a, e.b) && egrade(e.a, e.b) <= MAIN_GRADE && free(e.a, e.b))))
   const adj = new Map<number, { to: number; e: typeof cand[number] }[]>()
   for (const e of cand) for (const [p, q] of [[e.a, e.b], [e.b, e.a]]) { const l = adj.get(p) ?? []; l.push({ to: q, e }); adj.set(p, l) }
   const plazaV = cellV[0].filter((k) => adj.has(k))
@@ -369,10 +372,11 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   const along = (f: number[], set: { back: number; gap: number; skip: number }, choose: () => Building, role: PlacedRole, cat?: BuildingCat) => {
     const [ax, az, bx, bz, half, nx, nz, L] = f, ux = (bx - ax) / L, uz = (bz - az) / L
     const yaw = (Math.atan2(-nx, -nz) * 180) / Math.PI + FRONT_YAW
-    let t = 9
-    while (t < L - 9) {
+    const E = 6 // clear of the junction at each end of the frontage
+    let t = E
+    while (t < L - E) {
       const b = choose(), w = b.maxX - b.minX
-      if (t + w > L - 9) break
+      if (t + w > L - E) break
       if (rand() < set.skip) { t += w * 0.6 + set.gap; continue }
       const yr = (yaw * Math.PI) / 180, sgn = Math.cos(yr) * ux - Math.sin(yr) * uz // local +X = (cos, -sin): along +u or -u
       const s = sgn > 0 ? t - b.minX : t + b.maxX

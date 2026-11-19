@@ -770,7 +770,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // one 'site' zone of single vanilla tree entities (drawn, saved and sent like any zone)
   const ftd = (p.fieldTrees ?? 1) * Math.min(1, forestTuning(p.biome).coverMul)
   if (camp.fields.length && ftd > 0 && Math.min(0.9, WORLD.vegetation.forestCover * Math.max(p.forests, 0.5)) * forestTuning(p.biome).coverMul >= 0.03) {
-    const rp = allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) + 3 }))
+    // smoothed centre lines (as laid) of the roads and the village / town lanes (pre-send seed 42: 3 field trees on a road)
+    const rp = [...allRoads, ...settlement.lanes].filter((rd) => rd.pts.length >= 4).map((rd) => ({ pts: centreLine(rd.pts, 4), half: roadHalf(rd) + 3 }))
     const nearRoad = (x: number, z: number) => rp.some((rd) => { for (let i = 0; i + 3 < rd.pts.length; i += 2) {
       const ax = rd.pts[i], az = rd.pts[i + 1], dx = rd.pts[i + 2] - ax, dz = rd.pts[i + 3] - az, L = dx * dx + dz * dz
       if (Math.abs(x - ax) > 400 && Math.abs(x - rd.pts[i + 2]) > 400) continue
