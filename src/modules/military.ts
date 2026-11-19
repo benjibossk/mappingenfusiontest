@@ -96,7 +96,7 @@ export function generateMilitary(o: MilitaryOptions): MilitarySite {
     const hr = S.road / 2, streetLen = o.kind === 'main' ? S.hd + 10 : S.hd
     const street = lbox(0, -S.hd + streetLen / 2, hr, streetLen / 2)
     roads.push(street)
-    const sp = [...W(0, -S.hd - 15), ...W(0, -S.hd + streetLen)]
+    const sp = [...W(0, -S.hd - MIL_ROAD_CLEAR), ...W(0, -S.hd + streetLen)]
     if (o.kind === 'main') {
       const cz = -S.hd + streetLen
       roads.push(lbox(0, cz, S.hw - 14, hr))
@@ -189,19 +189,40 @@ export function suggestMilitary(heights: ArrayLike<number>, g: Grid, o: Military
       ring += hx; nr++; if (hx < sea) wet++
     }
     const relief = h - ring / nr
-    let roadDist = Infinity, yaw = 0
-    for (const l of o.roads ?? []) for (let i = 0; i + 1 < l.length; i += 2) {
-      const d = Math.hypot(l[i] - x, l[i + 1] - z)
-      if (d < roadDist) { roadDist = d; yaw = Math.atan2(x - l[i], z - l[i + 1]) * 180 / Math.PI }
-    }
+    let roadDist = Infinity, yaw = 0, ax = x, az = z
+    const al = alignToRoad(x, z, o.roads ?? [], S.hd)
+    if (al) { roadDist = al.dist; yaw = al.yaw; ax = al.x; az = al.z }
     let score = 1 - slope / 0.15
     score += Math.max(-0.5, Math.min(1, relief / 30)) * 0.8
     if (o.roads?.length) score += roadDist < 300 ? 1 - Math.abs(roadDist - 60) / 300 : -0.5
     if (o.coast) score += o.coast * (wet / 12)
-    out.push({ x: round(x), z: round(z), yaw: round(yaw), score: round(score), slope: round(slope), relief: round(relief), roadDist: round(roadDist) })
+    out.push({ x: round(ax), z: round(az), yaw: round(yaw), score: round(score), slope: round(slope), relief: round(relief), roadDist: round(roadDist) })
   }
   out.sort((a, b) => b.score - a.score)
   const keep: MilitarySuggestion[] = []
   for (const s of out) { if (keep.length >= (o.count ?? 5)) break; if (keep.every((k) => Math.hypot(k.x - s.x, k.z - s.z) > r * 6)) keep.push(s) }
   return keep
+}
+
+/** gap between the gate (front fence) and the public road centre line; equals the access stub length in generateMilitary */
+export const MIL_ROAD_CLEAR = 15
+
+/** Snaps a base to the nearest public road SEGMENT: yaw makes the front fence (and the internal cross
+ *  street) parallel to the segment, gate facing it; the centre is moved onto the segment normal at
+ *  hd + MIL_ROAD_CLEAR so the access street is one perpendicular stub ending on the road axis. */
+export function alignToRoad(x: number, z: number, roads: number[][], hd: number, clear = MIL_ROAD_CLEAR): { x: number; z: number; yaw: number; dist: number } | null {
+  let best: { d: number; px: number; pz: number; tx: number; tz: number } | null = null
+  for (const l of roads) for (let i = 0; i + 3 < l.length; i += 2) {
+    const ax = l[i], az = l[i + 1], dx = l[i + 2] - ax, dz = l[i + 3] - az, L2 = dx * dx + dz * dz
+    if (L2 < 1e-9) continue
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2))
+    const px = ax + dx * t, pz = az + dz * t, d = Math.hypot(x - px, z - pz)
+    if (!best || d < best.d) { const L = Math.sqrt(L2); best = { d, px, pz, tx: dx / L, tz: dz / L } }
+  }
+  if (!best) return null
+  // normal of the segment, on the side of the candidate
+  let nx = -best.tz, nz = best.tx
+  if ((x - best.px) * nx + (z - best.pz) * nz < 0) { nx = -nx; nz = -nz }
+  const off = hd + clear
+  return { x: best.px + nx * off, z: best.pz + nz * off, yaw: Math.atan2(nx, nz) * 180 / Math.PI, dist: best.d }
 }
