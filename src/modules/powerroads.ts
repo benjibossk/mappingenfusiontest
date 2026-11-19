@@ -323,10 +323,23 @@ export function fixPoles(ob: PowerObstacles, poles: number[]): number[] {
     const tries: [number, number][] = []
     for (let s = 3; s <= 15; s += 3) tries.push([s, 0], [-s, 0])
     for (let q = 3; q <= 12; q += 3) for (const s of [0, 4, -4, 8, -8]) tries.push([s, q], [s, -q])
+    let moved = false
     for (const [s, q] of tries) {
       const x = p[i] + tx * s - tz * q, z = p[i + 1] + tz * s + tx * q
-      if (ob.poleOk(x, z) && Math.min(ob.spanBld(ax, az, x, z, 1), ob.spanBld(x, z, bx, bz, 1)) >= cur) { p[i] = x; p[i + 1] = z; break }
+      if (ob.poleOk(x, z) && Math.min(ob.spanBld(ax, az, x, z, 1), ob.spanBld(x, z, bx, bz, 1)) >= cur) { p[i] = x; p[i + 1] = z; moved = true; break }
     }
+    // never leave a pole inside a building: any valid spot wins, even with a worse span
+    if (!moved) for (const [s, q] of [...tries, [0, 16], [0, -16], [0, 20], [0, -20]] as [number, number][]) {
+      const x = p[i] + tx * s - tz * q, z = p[i + 1] + tz * s + tx * q
+      if (ob.poleOk(x, z)) { p[i] = x; p[i + 1] = z; break }
+    }
+  }
+  // still invalid (deep in a yard): drop the pole when the merged span stays under ~2x the spacing
+  for (let i = p.length - 4; i >= 2; i -= 2) {
+    if (ob.poleOk(p[i], p[i + 1])) continue
+    const L = Math.hypot(p[i + 2] - p[i - 2], p[i + 3] - p[i - 1])
+    const span = Math.max(Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]), Math.hypot(p[i + 2] - p[i], p[i + 3] - p[i + 1]))
+    if (L <= Math.max(span, 25) * 2.05) p.splice(i, 2)
   }
   return p
 }

@@ -560,7 +560,7 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       if (along) for (let i = 0; i + 3 < along.length; i += 2) alen += Math.hypot(along[i + 2] - along[i], along[i + 3] - along[i + 1])
       const head = along && alen <= Math.max(src.d * 2.2, opt.farmMax * 1.5) ? [src.x, src.z, ...along] : [src.x, src.z, rx, rz]
       const path = fx !== rx || fz !== rz ? [...head, fx, fz] : head
-      const poles = path.length <= 4 && src.d < sp * 0.5 ? path : fixPoles(ob, placePoles(path, sp))
+      const poles = path.length <= 4 && src.d < sp * 0.5 ? path : fixPoles(ob, clearSpans(ob, fixPoles(ob, placePoles(path, sp)), sp))
       let length = 0
       for (let i = 0; i + 3 < poles.length; i += 2) length += Math.hypot(poles[i + 2] - poles[i], poles[i + 3] - poles[i + 1])
       lines.push({ kind: 'lv', spacing: sp, path: poles, poles, length, style, id: `POWER_LV_${++lid}`, from, to: s.id })
