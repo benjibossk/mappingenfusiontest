@@ -125,6 +125,7 @@ import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, type ZoneLeafChoice } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
 import { sanitizeRoadShape } from './modules/roadSanitize'
+import { camLookAt, worldToMap } from './modules/wbCamera'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
 // the side panel is a guided path: one step per tab, in the order a map is built
@@ -784,10 +785,7 @@ let drapeTimer = 0
 // view: world X/Z at the canvas centre + metres per pixel
 const view = { x: 2048, z: 2048, mpp: 4096 / 800 }
 
-const toScreen = (x: number, z: number): [number, number] => [
-  (x - view.x) / view.mpp + map.width / 2,
-  map.height / 2 - (z - view.z) / view.mpp,
-]
+const toScreen = (x: number, z: number): [number, number] => worldToMap({ ...view, width: map.width, height: map.height }, x, z)
 const toWorld = (sx: number, sy: number): [number, number] => [
   view.x + (sx - map.width / 2) * view.mpp,
   view.z - (sy - map.height / 2) * view.mpp,
@@ -974,6 +972,26 @@ function drawWbCamera() {
   ctx.fill()
   ctx.strokeStyle = '#fff'
   ctx.stroke()
+  // what the camera looks at (view centre on the ground): the camera itself often hangs ~250 m before it
+  const hit = terrain && camLookAt(wbCam, (x, z) => {
+    const c = Math.round((x - terrain!.minX) / terrain!.step), r = Math.round((z - terrain!.minZ) / terrain!.step)
+    if (c < 0 || r < 0 || c >= terrain!.cols || r >= terrain!.rows) return undefined
+    return Math.max(terrain!.heights[r * terrain!.cols + c], terrain!.ocean)
+  })
+  if (hit) {
+    const [hx, hy] = toScreen(hit[0], hit[1])
+    ctx.setLineDash([4, 3])
+    ctx.beginPath()
+    ctx.moveTo(sx, sy)
+    ctx.lineTo(hx, hy)
+    ctx.strokeStyle = 'rgba(255,80,200,0.9)'
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.beginPath()
+    ctx.moveTo(hx - 7, hy); ctx.lineTo(hx + 7, hy); ctx.moveTo(hx, hy - 7); ctx.lineTo(hx, hy + 7)
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
   ctx.restore()
 }
 
