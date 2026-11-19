@@ -1,0 +1,32 @@
+{
+  "lfCommit": "ca7715046469ffbffc847f33c4f6f1fb9dc35a36",
+  "repo": "C:/Users/benbo/tools/ai-tooling-survey/Life-Framework (paths below relative to addons/LifeFramework/)",
+  "sources": [
+    "Configs/Resources/ResourceChains.conf (gather yields, machines, chains: juicer 3 Pomme->1 AppleJuice, furnaces 2 nugget->1 bar, sawmill 1 log->4 WoodPlank, moonshine 4 Prune+2 Chou->2 WaterBottle, 2->1 Moonshine)",
+    "Configs/Shop/ShopPrices.conf (default buy 50 / sell 25, Food sell 4, GoldNugget 35, IronBar 45, CopperBar 35, GoldBar 150)",
+    "Configs/Market/LF_Market.conf (dynamic: IronBar base 30, CopperBar 40, GoldBar 200)",
+    "Configs/Crime/LF_BuyerPrices.conf (Moonshine 60)",
+    "Configs/Lumber/LF_TreeSpecies.conf (1-3 logs, 15-45 s chop)",
+    "Configs/Fishing/LF_Fishing.conf (bite 15-60 s)",
+    "Configs/Farming/LF_Hives.conf (6 h per comb, max 4 combs)",
+    "MISSING in LF: vehicle cargo capacities (LF_VehicleCompartments.conf empty), machine times in seconds (only m_iWork), prices of fish / planks / honey / juice: values marked 'est' are estimates"
+  ],
+  "band": { "minMin": 5, "maxMin": 15 },
+  "vehicles": {
+    "foot":    { "label": "A pied",   "capacity": 20,  "speeds": { "main": 5,  "dirt": 5,  "trail": 4,  "offroad": 4 } },
+    "tractor": { "label": "Tracteur", "capacity": 60,  "speeds": { "main": 30, "dirt": 25, "trail": 15, "offroad": 10 } },
+    "truck":   { "label": "Camion",   "capacity": 200, "speeds": { "main": 70, "dirt": 40, "trail": 20, "offroad": 10 } },
+    "car":     { "label": "Voiture",  "capacity": 40,  "speeds": { "main": 90, "dirt": 50, "trail": 25, "offroad": 12 } }
+  },
+  "chains": [
+    { "id": "apple_juice", "label": "Pommes -> jus", "source": "field:orchard", "harvestSecPerUnit": 5, "rawItem": "Pomme", "process": { "role": "farm", "inPerOut": 3, "secPerOut": 10, "outItem": "AppleJuice" }, "sellRole": "market", "price": 25, "costPerRaw": 0, "vehicle": "tractor", "src": "ResourceChains.conf:110-121 juicer; price = ShopPrices default sell 25 (est)" },
+    { "id": "cabbage", "label": "Choux (brut)", "source": "field:ploughed", "harvestSecPerUnit": 4, "rawItem": "Chou", "process": null, "sellRole": "market", "price": 4, "costPerRaw": 1, "vehicle": "tractor", "src": "ShopPrices.conf:22-25 Food sell 4; seeds 4 buy / est. 1 per head" },
+    { "id": "iron", "label": "Fer -> lingots", "source": "role:mine", "harvestSecPerUnit": 12, "rawItem": "IronNugget", "process": { "role": "depot", "inPerOut": 2, "secPerOut": 10, "outItem": "IronBar" }, "sellRole": "market", "price": 45, "costPerRaw": 0, "vehicle": "truck", "src": "ResourceChains.conf:124-136; ShopPrices.conf:62-64" },
+    { "id": "copper", "label": "Cuivre -> lingots", "source": "role:mine", "harvestSecPerUnit": 12, "rawItem": "CopperNugget", "process": { "role": "depot", "inPerOut": 2, "secPerOut": 10, "outItem": "CopperBar" }, "sellRole": "market", "price": 35, "costPerRaw": 0, "vehicle": "truck", "src": "ResourceChains.conf:154-166; ShopPrices.conf:67-69" },
+    { "id": "gold", "label": "Or -> lingots", "source": "role:mine", "harvestSecPerUnit": 40, "rawItem": "GoldNugget", "process": { "role": "depot", "inPerOut": 2, "secPerOut": 10, "outItem": "GoldBar" }, "sellRole": "market", "price": 150, "costPerRaw": 0, "vehicle": "car", "src": "ResourceChains.conf:139-151 (cooldown 600 s); ShopPrices.conf:72-74" },
+    { "id": "planks", "label": "Bois -> planches", "source": "role:sawmill", "harvestSecPerUnit": 15, "rawItem": "WoodLog_Small", "process": { "role": "sawmill", "inPerOut": 0.25, "secPerOut": 3, "outItem": "WoodPlank" }, "sellRole": "depot", "price": 5, "costPerRaw": 0, "vehicle": "truck", "src": "ResourceChains.conf:169-187; LF_TreeSpecies.conf; plank price est" },
+    { "id": "fish", "label": "Peche", "source": "role:fishing", "harvestSecPerUnit": 40, "rawItem": "Fish", "process": null, "sellRole": "market", "price": 8, "costPerRaw": 0, "vehicle": "car", "src": "LF_Fishing.conf bite 15-60 s; price est (Food 4..8)" },
+    { "id": "honey", "label": "Ruches -> miel", "source": "field:meadow", "harvestSecPerUnit": 300, "rawItem": "Honeycomb", "process": null, "sellRole": "shop", "price": 20, "costPerRaw": 0, "vehicle": "car", "src": "LF_Hives.conf 6 h/comb x 4 (300 s per comb = touring ready hives); price est" },
+    { "id": "moonshine", "label": "Gnole (illegal)", "source": "field:orchard", "harvestSecPerUnit": 5, "rawItem": "Prune+Chou", "process": { "role": "farm", "inPerOut": 6, "secPerOut": 30, "outItem": "Moonshine" }, "sellRole": "pub", "price": 60, "costPerRaw": 0, "vehicle": "car", "src": "ResourceChains.conf:314-371; LF_BuyerPrices.conf Moonshine 60" }
+  ]
+}
