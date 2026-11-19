@@ -428,7 +428,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
   </section>
 
-  <aside class="side">
+  <button id="sideCollapse" type="button" class="sidecollapse" aria-controls="sidePanel" aria-expanded="true" title="${t('side.hide')}" aria-label="${t('side.hide')}">${ic('caret', 16)}</button>
+  <aside class="side" id="sidePanel">
     <button id="sideToggle" type="button" class="secondary sidetog" aria-expanded="true" aria-controls="tabs">${ic('caret', 14)}<span>${t('side.toggle')}</span></button>
     <ol class="tabs stepper" id="tabs">
       ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.tab === 'camp' ? 'step.fields.short' : s.label)}</span><i class="badge"></i></button></li>`).join('')}
@@ -2522,6 +2523,18 @@ $<HTMLButtonElement>('sideToggle').addEventListener('click', (e) => {
   const min = document.querySelector('.app')!.classList.toggle('side-min')
   ;(e.currentTarget as HTMLButtonElement).setAttribute('aria-expanded', String(!min))
 })
+// desktop: the side panel folds away completely (map full width), remembered between sessions
+{
+  const K = 'reforger-mapper.sideClosed', app = document.querySelector<HTMLElement>('.app')!, b = $<HTMLButtonElement>('sideCollapse')
+  const set = (closed: boolean) => {
+    app.classList.toggle('side-closed', closed)
+    const lbl = t(closed ? 'side.show' : 'side.hide')
+    b.title = lbl; b.setAttribute('aria-label', lbl); b.setAttribute('aria-expanded', String(!closed))
+    try { localStorage.setItem(K, closed ? '1' : '0') } catch { /* private window */ }
+  }
+  try { if (localStorage.getItem(K) === '1') set(true) } catch { /* */ }
+  b.addEventListener('click', () => set(!app.classList.contains('side-closed')))
+}
 // map hint (bottom centre): can be hidden for good
 {
   const K = 'reforger-mapper.mapHint'

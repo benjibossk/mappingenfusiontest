@@ -158,3 +158,105 @@ body:has(.rm-drawer:not([hidden])) .toast { top: 72px; bottom: auto; }
 #seedBrowser .sbc img { border-radius: 0; }
 #seedBrowser .sbc b { font: 500 var(--fs-md) var(--f-head); letter-spacing: .06em; color: var(--tx-1); }
 #seedBrowser .tags span { background: transparent; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--tx-3); font: var(--fs-xs) var(--f-mono); }
+
+/* =====================================================================
+   Thème « Reforger » — calqué sur les menus du jeu (menu principal, Admin Menu,
+   Paramètres) : police condensée en casse normale, panneaux anthracite
+   translucides, angles droits, ambre pour l'onglet actif / la ligne
+   sélectionnée / les touches, liste à lignes alternées.
+   Hypothèse : la police du jeu n'est pas publique, Roboto Condensed est l'équivalent
+   le plus proche disponible sur Google Fonts.
+   ===================================================================== */
+:root {
+  --f-head: 'Roboto Condensed', 'Arial Narrow', sans-serif;
+  --f-body: 'Roboto Condensed', 'Arial Narrow', sans-serif;
+  --amber: #E1A12E; --amber-hi: #F2B84B; --amber-lo: #A87316;
+  --panel: rgba(28, 29, 30, .92);
+  --panel-solid: #1C1D1E;
+  --row-alt: rgba(255, 255, 255, .025);
+  --row-hover: rgba(225, 161, 46, .10);
+  --line-1: #2C2E30; --line-2: #3B3E41;
+  --tx-1: #F2F2F2; --tx-2: #D4D6D8; --tx-3: #A9ADB1; --tx-4: #82878C;
+  font-family: var(--f-body);
+}
+/* casse normale partout, comme dans le jeu (seul le logo reste en capitales) */
+.app :is(button, h1, h2, h3, h4, label, summary, th, legend, .kicker, .lbl, .wglabel, em, small, .statusbar, .rm-field, .rm-badge, dt),
+.rm-drawer :is(button, h2, th, summary, label, dt), #seedBrowser :is(button, h2),
+.statusbar { text-transform: none !important; letter-spacing: .01em !important; }
+.top .brand, .top .brand span { text-transform: uppercase !important; letter-spacing: .06em !important; font-weight: 700; }
+button { font-weight: 500; font-size: 14px; }
+h1, h2, h3, .stephead h2, .welcome .whead h2 { font-weight: 700; }
+
+/* panneaux : anthracite translucide, angles droits, bord fin */
+.app > .top, .app > .side, .rm-drawer, #seedBrowser, .langmenu, .helppanel, .newspanel, .mapdock, .layers, .dlg, dialog {
+  border-radius: 0; }
+.app > .top { background: var(--panel); border-color: var(--line-1); }
+.app > .side { background: var(--panel-solid); }
+.rm-drawer, #seedBrowser { background: var(--panel); backdrop-filter: blur(6px); }
+
+/* boutons : secondaire = gris plein, principal = ambre plein, survol = liseré ambre */
+button.secondary, .side button.secondary { background: #2A2C2E; border-color: #2A2C2E; color: var(--tx-1); }
+button.secondary:hover:not(:disabled), .side button.secondary:hover:not(:disabled) { background: #33363A; border-color: var(--amber); color: var(--tx-1); }
+button:not(.secondary):not(.hist):not(.rm-link):not(.rm-icon):not(.brand):not(.langbtn):not(.verbadge) { border-radius: 0; }
+
+/* onglets / étapes : onglet actif plein ambre, texte sombre (Admin Menu / Paramètres) */
+.stepper button { background: #232527; border-color: transparent; color: var(--tx-3); font-size: 12px; }
+.stepper button:hover:not(:disabled) { background: #2C2F31; border-color: transparent; color: var(--tx-1); }
+.stepper button.active, .stepper button.active:hover { background: var(--amber); border-color: var(--amber); color: #111; }
+.stepper button.active b { border-color: #111; color: #111; background: transparent; }
+.stepper button.active[data-state="done"] b { background: #111; border-color: #111; color: transparent; }
+.stepper button.active[data-state="done"] b::after { color: var(--amber); }
+
+/* tableaux / listes : lignes alternées, ligne choisie liserée d'ambre */
+.rm-table tbody tr[data-i]:nth-child(odd), .ref-stats tr:nth-child(even) { background: var(--row-alt); }
+.rm-table tbody tr[data-i]:hover { background: var(--row-hover); }
+.rm-table tbody tr.sel { background: rgba(225, 161, 46, .14); box-shadow: inset 0 0 0 1px var(--amber); }
+.rm-table th { background: var(--panel-solid); color: var(--tx-3); font-size: var(--fs-sm); }
+.rm-sec > summary, .rm-field, .rm-table tr.det dt { font-size: var(--fs-sm); color: var(--tx-3); }
+
+/* champs : fond noir, bord fin, focus ambre */
+input, select, textarea { border-radius: 0; background: #121314; border-color: var(--line-2); }
+
+/* étiquettes de section du panneau (« Biome », kicker d'étape) : gris clair, pas de mono */
+.kicker { font-family: var(--f-body); color: var(--amber); font-size: 13px; font-weight: 500; }
+.form label, .side .row > label, .biomesel .lbl { font-size: 13px !important; color: var(--tx-3) !important; }
+
+/* barre d'état = barre des touches du jeu : libellés clairs */
+.statusbar { font-family: var(--f-body); font-size: 12px; color: var(--tx-3); }
+
+/* cartes d'accueil = tuiles du menu principal : titre en bas à gauche, liseré ambre au survol */
+.welcome .choices button { border-radius: 0; }
+.welcome .choices button:hover:not(:disabled), .welcome .choices button.rec { border-color: var(--amber); }
+.welcome .choices strong { font-weight: 700; font-size: 22px; }
+.welcome .choices strong, .top .hist.withlbl > span { text-transform: none !important; letter-spacing: .01em !important; }
+.top .hist.withlbl > span { font-size: 14px; }
+.top .status, .rm-badge, .rm-meta, .welcome .choices em, .biomebadge { font-family: var(--f-body) !important; letter-spacing: .01em !important; }
+.rm-badge, .biomebadge { font-size: 12px; text-transform: none !important; }
+
+/* ---------- panneau latéral rétractable (bureau) ---------- */
+.app { --side-w: 360px; }
+@media (max-width: 1100px) { .app { --side-w: 320px; } }
+.sidecollapse { position: fixed; z-index: 30; top: 50%; right: var(--side-w); transform: translateY(-50%);
+  width: 18px; height: 64px; padding: 0; background: var(--panel-solid); border: 1px solid var(--line-2); border-right: 0; border-radius: 0; color: var(--tx-3); }
+.sidecollapse:hover:not(:disabled) { background: #2A2C2E; border-color: var(--amber); color: var(--amber-hi); }
+.sidecollapse .ic { transform: rotate(-90deg); }
+.app.side-closed .sidecollapse { right: 0; }
+.app.side-closed .sidecollapse .ic { transform: rotate(90deg); }
+.app.side-closed, .app.norail.side-closed { grid-template-columns: minmax(0, 1fr) 0; }
+.app.side-closed > .side { display: none; }
+body:has(.app.side-closed) .rm-drawer { right: calc(18px + var(--sp-2)); }
+body:has(.app.side-closed) .toast { left: 50vw; }
+.app:has(#welcome:not([hidden])) .sidecollapse { display: none; }
+@media (max-width: 760px) { .sidecollapse { display: none; } .app.side-closed > .side { display: flex; } .app.side-closed { grid-template-columns: 1fr; } }
+
+/* pas de monospace façon « terminal » : le jeu n'en a pas. Le mono reste pour le code et les textes bruts */
+:root { --f-mono: 'Roboto Condensed', 'Arial Narrow', sans-serif; }
+textarea, pre, code, #trace, .log { font-family: ui-monospace, 'Share Tech Mono', monospace; }
+/* casse normale aussi hors de .app (coach, dialogues, 3D, toasts) */
+:is(#coach, #tour, .toast, .v3d-bar, #shareDlg, #rwDlg, #helpPanel, #newsPanel, #busy, .mapdock, #mapHint) :is(button, h1, h2, h3, h4, label, summary, th, strong, em, small, span, .kicker) {
+  text-transform: none !important; letter-spacing: .01em !important; }
+/* « Réglages avancés » : libellé, (i) collé, flèche à droite, hauteur de bouton */
+.side details.adv > summary { display: flex; justify-content: flex-start; align-items: center; gap: 6px; min-height: var(--h-md); padding: 0 var(--sp-2); font-size: 14px; color: var(--tx-2); }
+.side details.adv > summary::after { margin-left: auto; }
+#coachTitle, #coach h3, #coach b { text-transform: none !important; letter-spacing: .01em !important; }
+.toast { bottom: 76px; }
