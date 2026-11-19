@@ -11,7 +11,7 @@ import { Collab, type CollabEvents, type CollabTransport, type Op } from './coll
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
-import { POWER_DEFAULTS, mergePowerLines, placePoles, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
+import { POWER_DEFAULTS, mergePowerLines, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
 import { accessShapes, planGrid, stationEntities, type PowerDistrib, type GridSite, type Station } from './modules/powergrid'
@@ -89,7 +89,7 @@ function cleanSpline(pts: number[]): number[] {
 }
 const toWb = async (p: Project) => {
   const before = p.shapes.reduce((n, sh) => n + sh.points.length, 0), count = p.shapes.length
-  p = { ...p, shapes: p.shapes.map(withAvoid).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).filter((sh) => sh.points.length >= 4) }
+  p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).filter((sh) => sh.points.length >= 4) }
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
@@ -123,6 +123,7 @@ import { BIOMES, PROPS, biome, type BiomeId } from './data/biomes'
 import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, type ZoneLeafChoice } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
+import { sanitizeRoadShape } from './modules/roadSanitize'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
 // the side panel is a guided path: one step per tab, in the order a map is built
@@ -2249,7 +2250,7 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
       terrainSize: num('tSize'),
       surfaces: island.surfaces,
       colours: { ...island.colours, ...ROAD_COLOURS },
-      roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled)],
+      roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))],
     })
     return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' })
   }),
@@ -3157,7 +3158,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled)],
+      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))],
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.sat', { file: r.satellite?.file ?? '—' }))
     out.push(t('test.rest'))
@@ -3926,7 +3927,7 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled)],
+      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))],
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.rest'))
     return out.join('\n')
@@ -4479,7 +4480,7 @@ $<HTMLButtonElement>('satSend').addEventListener('click', () =>
     if (!s || !island) throw new Error(t('sat.none'))
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled)],
+      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))],
     })
     return t('test.masks', { dir: r.dir })
   }),
