@@ -12,6 +12,8 @@ import { modDamPieces, modRef } from '../library/mods'
 
 /** GravelDam_01: GUID from the game data (Prefabs/Structures/Infrastructure/Waterworks/GravelDam_01) */
 export const GRAVEL_DAM = { prefab: '{64E482C4598F3E45}Prefabs/Structures/Infrastructure/Waterworks/GravelDam_01/GravelDam_01.et', w: 18.99, d: 1.67, h: 4.47 }
+/** flat crest length past each crest end, m (keys the wall ends into the valley sides) */
+export const DAM_END = 12
 const DIRT_ROAD = '{8E83BBD5CEC42A11}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_01.et'
 
 export interface DamOptions {
@@ -30,7 +32,7 @@ export interface DamOptions {
   maxArea: number
   count: number
 }
-export const DAM_DEFAULTS: DamOptions = { height: 12, freeboard: 1.5, maxLength: 360, crestHalf: 4, slope: 2.5, minArea: 20000, maxArea: 1.5e6, count: 1 }
+export const DAM_DEFAULTS: DamOptions = { height: 12, freeboard: 2, maxLength: 360, crestHalf: 4, slope: 2.5, minArea: 20000, maxArea: 1.5e6, count: 1 }
 
 export interface Dam {
   id: string
@@ -58,14 +60,16 @@ const hAt = (h: ArrayLike<number>, g: Grid, x: number, z: number) => { const k =
 export function damTarget(d: Dam, o: Pick<DamOptions, 'crestHalf' | 'slope'>, x: number, z: number) {
   const tx = d.bx - d.ax, tz = d.bz - d.az, L = Math.hypot(tx, tz) || 1
   const u = ((x - d.cx) * tx + (z - d.cz) * tz) / L, v = (x - d.cx) * d.nx + (z - d.cz) * d.nz
-  const ue = Math.max(0, Math.abs(u) - L / 2), ve = Math.max(0, Math.abs(v) - o.crestHalf)
+  // the crest runs on flat for DAM_END m past each end (the crest road and the wall), so the hillsides meet
+  // the top of the wall instead of the embankment dropping away at its ends
+  const ue = Math.max(0, Math.abs(u) - L / 2 - DAM_END), ve = Math.max(0, Math.abs(v) - o.crestHalf)
   // same side slope all round: beyond the crest ends the embankment rounds off into the hillsides (no 1:1 cliff)
   return d.crest - Math.hypot(ue, ve) / o.slope
 }
 
 /** raises the ground to the embankment (never lowers it) */
 export function applyDam(h: number[] | Float32Array, g: Grid, d: Dam, o: Pick<DamOptions, 'crestHalf' | 'slope'>) {
-  const R = Math.hypot(d.bx - d.ax, d.bz - d.az) / 2 + d.toe + 2 * g.step
+  const R = Math.hypot(d.bx - d.ax, d.bz - d.az) / 2 + DAM_END + d.toe + 2 * g.step
   const c0 = Math.max(0, Math.floor((d.cx - R - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((d.cx + R - g.minX) / g.step))
   const r0 = Math.max(0, Math.floor((d.cz - R - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((d.cz + R - g.minZ) / g.step))
   for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
@@ -241,7 +245,7 @@ function placeDamsAt(h: number[] | Float32Array, g: Grid, rivers: Omit<Water, 'i
     }
     const outline = maskOutline(m, g)
     res.dams.push(d); res.masks.push(m)
-    res.lakes.push({ type: 'lake', pts: outline, width: 0, depth: 1, auto: true, level: d.level })
+    res.lakes.push({ type: 'lake', pts: outline, width: 0, depth: 2, auto: true, level: d.level })
     taken.add(cd.ri)
     // the dammed river: upstream part up to the lake, downstream part from the foot
     const r0 = res.rivers[cd.ri]
@@ -273,7 +277,7 @@ function placeDamsAt(h: number[] | Float32Array, g: Grid, rivers: Omit<Water, 'i
 export function damZone(d: Dam, o: Partial<DamOptions> = {}, mods?: string[]): ZoneItem {
   const O = { ...DAM_DEFAULTS, ...o }
   const tx = d.bx - d.ax, tz = d.bz - d.az, L = Math.hypot(tx, tz) || 1, ux = tx / L, uz = tz / L
-  const ends = 12 // the crest runs into the hillsides
+  const ends = DAM_END // the crest runs into the hillsides
   const len = L + 2 * ends, n = Math.max(1, Math.ceil(len / GRAVEL_DAM.w))
   const entities: ProjectEntity[] = []
   const yaw = (Math.atan2(uz, ux) * 180) / Math.PI
@@ -299,6 +303,9 @@ export function damZone(d: Dam, o: Partial<DamOptions> = {}, mods?: string[]): Z
     id: d.id, kind: 'site', sub: 'dam', x: d.cx, z: d.cz, yaw: Math.atan2(uz, ux), seed: 0,
     boxes: [{ corners: half(len / 2, O.crestHalf, d.cx, d.cz), role: 'dam', h: 0.1 }],
     shapes: [road], entities, flat: [], plat: [], roads: [], warnings: [],
+    // the embankment itself: applyZones (zones.ts) sculpts it into every recompose, so the heightmap sent to
+    // the Workbench holds the dam and its reservoir basin (main.ts rebuilds the relief from the island)
+    dam: { d, crestHalf: O.crestHalf, slope: O.slope },
     access: [d.bx + ux * ends, d.bz + uz * ends],
   }
 }
@@ -311,8 +318,8 @@ export function damFootprint(base: ArrayLike<number>, g: Grid, dams: Dam[], o: P
   const m = new Uint8Array(g.cols * g.rows)
   for (const d of dams) {
     const tx = d.bx - d.ax, tz = d.bz - d.az, L = Math.hypot(tx, tz) || 1, ux = tx / L, uz = tz / L
-    const ends = [[d.ax - ux * 12, d.az - uz * 12], [d.bx + ux * 12, d.bz + uz * 12]]
-    const R = L / 2 + O.crestHalf + (d.crest - d.bed) * O.slope + g.step
+    const ends = [[d.ax - ux * DAM_END, d.az - uz * DAM_END], [d.bx + ux * DAM_END, d.bz + uz * DAM_END]]
+    const R = L / 2 + DAM_END + O.crestHalf + (d.crest - d.bed) * O.slope + g.step
     const c0 = Math.max(0, Math.floor((d.cx - R - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((d.cx + R - g.minX) / g.step))
     const r0 = Math.max(0, Math.floor((d.cz - R - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((d.cz + R - g.minZ) / g.step))
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
@@ -323,4 +330,21 @@ export function damFootprint(base: ArrayLike<number>, g: Grid, dams: Dam[], o: P
     }
   }
   return m
+}
+
+/** a road ending near a crest end is carried onto the crest track (no dead end against the wall's end) */
+export function snapRoadsToCrest<R extends { pts: number[] }>(roads: R[], dams: Dam[], reach = 60): R[] {
+  for (const d of dams) {
+    const tx = d.bx - d.ax, tz = d.bz - d.az, L = Math.hypot(tx, tz) || 1, ux = tx / L, uz = tz / L
+    const ends = [[d.ax - ux * DAM_END, d.az - uz * DAM_END], [d.bx + ux * DAM_END, d.bz + uz * DAM_END]]
+    for (const r of roads) {
+      const p = r.pts, n = p.length
+      if (n < 4) continue
+      for (const [ex, ez] of ends) {
+        const d1 = Math.hypot(p[n - 2] - ex, p[n - 1] - ez), d0 = Math.hypot(p[0] - ex, p[1] - ez)
+        if (d1 < reach && d1 <= d0) { if (d1 > 0.5) p.push(ex, ez) } else if (d0 < reach && d0 > 0.5) p.unshift(ex, ez)
+      }
+    }
+  }
+  return roads
 }

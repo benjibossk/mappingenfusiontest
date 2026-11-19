@@ -11,7 +11,7 @@ import { computeSurfaces, generateIsland, limitPerBlock, overfullBlocks, type Gr
 import { addRoundabouts, dropOrphanRings } from './roundabouts'
 import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
-import { damFootprint, damZone, placeDams } from './dam'
+import { damFootprint, damZone, placeDams, snapRoadsToCrest } from './dam'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
@@ -417,6 +417,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   }
   for (const r of roads) if (!r.auto) { r.auto = true; r.id = rid(r.type) }
   roads = addRoundabouts(roads, { places: sites.map((s) => ({ x: s.x, z: s.z, r: SITE_RADIUS[s.kind] })) }).roads // P3 #15: rings at busy junctions
+  if (dm) snapRoadsToCrest(roads, dm.dams) // the access road runs onto the crest track, not into the wall's end
   cur = composeHeights(base, g, waters, zones, roads)
   const steep = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
   // a road the carving left too steep for its type is first downgraded (dirt road, then dirt trail: steeper

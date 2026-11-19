@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { placeDams, damTarget, maskOutline, DAM_DEFAULTS } from '../../src/modules/dam.ts'
+import { placeDams, damTarget, maskOutline, DAM_DEFAULTS, DAM_END } from '../../src/modules/dam.ts'
 import { carveWater } from '../../src/modules/water.ts'
 
 const g = { minX: 0, minZ: 0, step: 4, cols: 201, rows: 201 }
@@ -18,7 +18,7 @@ const river = { type: 'river' as const, pts: Array.from({ length: 39 }, (_, i) =
 test('dam: rounded ends at the side slope, no 1:1 cliff', () => {
   const r = placeDams(valley(), g, [river]), d = r.dams[0]
   const L = Math.hypot(d.bx - d.ax, d.bz - d.az), ux = (d.bx - d.ax) / L, uz = (d.bz - d.az) / L
-  const t = damTarget(d, DAM_DEFAULTS, d.bx + ux * 10, d.bz + uz * 10)
+  const t = damTarget(d, DAM_DEFAULTS, d.bx + ux * (DAM_END + 10), d.bz + uz * (DAM_END + 10))
   assert.ok(Math.abs(t - (d.crest - 10 / DAM_DEFAULTS.slope)) < 1e-6)
 })
 
