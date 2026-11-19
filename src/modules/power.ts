@@ -334,3 +334,29 @@ export function simplifyPath(p: number[], tol: number): number[] {
   for (let i = 0; i < n; i++) if (keep[i]) o.push(p[2 * i], p[2 * i + 1])
   return o
 }
+
+//! disturbed ground under each pole / pylon, same mask format as roadMasks (bridge paints the bands).
+//! An irregular blob = a few short overlapping stubs with seeded jitter around the pole (never a
+//! perfect circle), soft edge. Radius ~1.2 m for LV/MV wooden poles, ~4 m for HV/EHV pylons.
+export const POLE_PATCH_RADIUS: Record<PowerKind, number> = { lv: 1.2, mv: 1.2, hv: 4, ehv: 4 }
+export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed = 1, core = 'Dirt_01') {
+  const out: { points: number[]; half: number; edge: number; core: string }[] = []
+  for (const l of lines) {
+    const R = POLE_PATCH_RADIUS[l.kind] ?? 1.2
+    for (let i = 0; i + 1 < l.poles.length; i += 2) {
+      const x = l.poles[i], z = l.poles[i + 1]
+      // deterministic per pole: hash of seed + rounded position
+      let s = (Math.imul(Math.round(x * 10), 73856093) ^ Math.imul(Math.round(z * 10), 19349663) ^ Math.imul(seed | 0, 83492791)) >>> 0
+      const rnd = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+      const lobes = 3 + Math.floor(rnd() * 3)
+      for (let k = 0; k < lobes; k++) {
+        const a = (k / lobes) * Math.PI * 2 + rnd() * 1.2, off = R * (0.15 + rnd() * 0.35)
+        const cx = x + Math.cos(a) * off, cz = z + Math.sin(a) * off
+        const b = rnd() * Math.PI, len = R * (0.2 + rnd() * 0.5)
+        const half = R * (0.35 + rnd() * 0.3)
+        out.push({ points: [cx - Math.cos(b) * len / 2, cz - Math.sin(b) * len / 2, cx + Math.cos(b) * len / 2, cz + Math.sin(b) * len / 2], half, edge: R * (0.3 + rnd() * 0.3), core })
+      }
+    }
+  }
+  return out
+}
