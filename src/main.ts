@@ -121,6 +121,8 @@ import { applyPads, layPads } from './modules/pads'
 import { buildingFootprints, Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
 import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, stageTimer, type Pipeline } from './modules/replay'
+import { buildLifeAnchors, mapIdOf, validateLifeAnchors } from './modules/lifeAnchors'
+import { buildLifeAddon, zipFiles } from './modules/lifeExport'
 let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modules/layers.ts), saved in the project
 let pipeline: Pipeline = emptyPipeline() // recorded generation steps (src/modules/replay.ts), saved in the project; declared early: the autosave reads it at startup
 import { BIOMES, PROPS, biome, type BiomeId } from './data/biomes'
@@ -732,6 +734,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <ol class="steps">
           <li><button id="tSurf" type="button" class="secondary">${t('btn.tSurf')}</button><span class="hint">${t('wb.closed')}</span></li>
           <li><button id="tHeight" type="button" class="secondary">${t('btn.tHeight')}</button><span class="hint">${t('wb.open')}</span></li>
+      <label class="check" title="${t('life.tip')}"><input id="lifeOn" type="checkbox"> ${t('life.check')}</label>
+      <div id="lifeBox" hidden><label>${t('life.guid')} <input id="lifeGuid" placeholder="0123456789ABCDEF" maxlength="16"></label> <button id="lifeExport" type="button" class="secondary">${t('life.export')}</button> <span id="lifeMsg" class="hint"></span></div>
           <li><button id="tMasks" type="button" class="secondary">${t('btn.tMasks')}</button><span class="hint">${t('wb.thenImport')}</span></li>
         </ol>
         ${hint('hint.wbImport')}
@@ -1478,6 +1482,7 @@ let zonePick: { kind: ZoneKind; sub: string } | null = null
 let zoneCands: { x: number; z: number; yaw: number }[] = []
 const ZONE_FILL: Record<string, string> = { tree: '#2f6b2acc', sand: '#e6d39a99', pasture: '#9cc46a44', orchard: '#6fa04a44', grave: '#d8d8d8', lamp: '#ffe066', lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc', basin: '#2b6a9acc', apron: '#bdb8aacc', quay: '#6e6e6e', arm: '#5b5249', jetty: '#8a6a42' }
 let satQ: Quantised | null = null
+let lifeWorld: WorldResult | null = null // last generated world, source of the optional Life layer (lifeAnchors.ts)
 let satSurf: string[] = []
 let satCanvas: HTMLCanvasElement | null = null
 const setState = () => JSON.stringify({ settled, setLanes, setPaths, setSquares, setGardens, setParcels, zones })
@@ -3874,6 +3879,20 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
     const forests = forestShapesOut(areas.filter((a) => a.kind === 'forest'))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
+// optional Life Framework layer: a separate <Map>_Life sub-addon zip, built from the last generated world
+$<HTMLInputElement>('lifeOn').addEventListener('change', (e) => { $('lifeBox').hidden = !(e.target as HTMLInputElement).checked })
+$<HTMLButtonElement>('lifeExport').addEventListener('click', () => {
+  const msg = $('lifeMsg')
+  if (!lifeWorld) { msg.textContent = t('life.none'); return }
+  const world = $<HTMLInputElement>('tWorld').value.trim(), addonName = $<HTMLInputElement>('tAddon').value.trim() || 'Map'
+  const mapId = mapIdOf(world), anchors = buildLifeAnchors(lifeWorld, { mapId }), issues = validateLifeAnchors(anchors, lifeWorld)
+  const files = buildLifeAddon(anchors, { mapId, addonName, addonGuid: $<HTMLInputElement>('lifeGuid').value.trim().toUpperCase(), world })
+  files.set('life_check.txt', issues.map((i) => `${i.level} ${i.id} ${i.msg}`).join('\n') || 'ok')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([zipFiles(files, addonName + '_Life') as BlobPart], { type: 'application/zip' }))
+  a.download = `${addonName}_Life.zip`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  msg.textContent = t('life.done', { n: anchors.length, e: issues.filter((i) => i.level === 'error').length, w: issues.filter((i) => i.level === 'warn').length })
+})
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
     const shapes = [...wr.shapes, ...(result?.shapes ?? []), ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
@@ -4789,6 +4808,7 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
   const box = rwDlg.querySelector('.rwbox') as HTMLElement
   box.querySelectorAll('input,select,button').forEach((x) => { if (x.id !== 'rwCancel') (x as HTMLInputElement).disabled = true })
   $<HTMLButtonElement>('rwGo').disabled = true
+  lifeWorld = w
   $('rwRun').hidden = false
   box.classList.add('running'); document.body.classList.add('rw-running')
   const prog = $<HTMLProgressElement>('rwProg'), stage = $('rwStage')
