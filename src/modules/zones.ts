@@ -9,6 +9,7 @@ import { generateIndustrial, applyFlatten as applyPlatform, type IndustrialType,
 import { generateMilitary, flattenFor, type MilitaryKind } from './military'
 import { applyDam, type Dam } from './dam'
 import { pickTemplate, stampTemplate, type VanillaTemplate } from './vanillaSites'
+import { applyHarbour, type HarbourPlan } from './harbour'
 import { generateAirfield, flattenAirfield, type AirfieldSize } from './airfield'
 
 export type ZoneKind = 'industrial' | 'military' | 'airfield' | 'site' // site: structured Zone-tool fills (sitezones.ts)
@@ -33,6 +34,8 @@ export interface ZoneItem {
   access?: [number, number]
   /** dam embankment (dam.ts) sculpted into the relief by applyZones */
   dam?: { d: Dam; crestHalf: number; slope: number }
+  /** port: dredged basin + flat apron (harbour.ts) sculpted by applyZones */
+  harbour?: HarbourPlan
 }
 
 const tag = (zid: string, id: string) => `${zid}_${id.replace(/[^A-Za-z0-9_]+/g, '_')}`
@@ -79,6 +82,7 @@ export function applyZones(heights: number[], g: Grid, zones: ZoneItem[]) {
     if (zn.flat.length) applyFlatten(heights, g, zn.flat)
     for (const p of zn.plat) applyPlatform(heights, g, p)
     if (zn.dam) applyDam(heights, g, zn.dam.d, zn.dam)
+    if (zn.harbour) applyHarbour(heights, g, zn.harbour)
   }
 }
 

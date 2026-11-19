@@ -47,6 +47,7 @@ import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industr
 import { pickTemplate, fitPort, type VanillaTemplate } from './vanillaSites'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
 
+import { buildHarbour, harbourTier, PORT_SEA_RX } from './harbour'
 export interface WorldParams {
   seed: number
   size: number // 2048 / 4096 / 8192 m
@@ -550,12 +551,13 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         const off = roadHalf(rd) + setback
         const x = ax + dx * t + nx * off, z = az + dz * t + nz * off
         if (isWater(x, z) || (near && !near(x, z)) || !free(x, z, r0, 'vanilla:' + type, gap)) continue
-        let sx = x, sz = z, syaw = (Math.atan2(-nx, -nz) * 180) / Math.PI, tpl: VanillaTemplate | undefined
+        let sx = x, sz = z, syaw = (Math.atan2(-nx, -nz) * 180) / Math.PI, tpl: VanillaTemplate | undefined, fit0: ReturnType<typeof fitPort> = null
         if (type === 'port') { // sea side to the sea, breakwaters / piers in the water, sheds ashore, no road through the footprint
           tpl = pickTemplate('port', ss('settlements', 'vanilla-port', k + tries), (t) => t.radius <= 160) ?? undefined
-          const fit = tpl && fitPort(tpl, hAt, x, z, allRoadLines())
+          const lines = allRoadLines(), pads = [...roads.map((r) => (isPaved(r.type) ? 40 : 8)), ...zones.flatMap((zn) => zn.roads.map(() => 8))]
+          const fit = tpl && fitPort(tpl, hAt, x, z, lines, { roadPads: pads })
           if (!tpl || !fit || !free(fit.x, fit.z, tpl.radius * 0.6, 'vanilla:' + type, gap)) continue
-          sx = fit.x; sz = fit.z; syaw = fit.yaw
+          sx = fit.x; sz = fit.z; syaw = fit.yaw; fit0 = fit
         }
         const zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x: sx, z: sz, yaw: syaw, seed: ss('settlements', 'vanilla-' + type, k), template: tpl })
         if (!zn || (type !== 'port' && zoneWet(zn))) continue
@@ -570,10 +572,19 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     put('fuel_depot', wc.fuelDepots, paved.length ? paved : anyRoad, 16, 300, 15)
     put('gas_station', wc.gasStations, paved.length ? paved : anyRoad, 9, 400, 12)
     put('bus_stop', wc.busStops, anyRoad, 2.5, 250, 4, nearPlace(150))
-    const coastal = (x: number, z: number) => { for (let a = 0; a < 8; a++) { const q = (a / 8) * Math.PI * 2; if (hAt(x + Math.cos(q) * 35, z + Math.sin(q) * 35) <= 0) return true } return false }
-    put('port', nPorts, anyRoad, 30, 350, 20, coastal)
+    const coastal = (x: number, z: number) => { for (let a = 0; a < 8; a++) { const q = (a / 8) * Math.PI * 2; if (hAt(x + Math.cos(q) * 90, z + Math.sin(q) * 90) <= 0) return true } return false }
+    // harbour: quay >= 40 m and apron >= 25 m off any road (HARBOURS_EVERON.md: main road 50-60 m behind the quay)
+    put('port', nPorts, anyRoad, 80, 350, 20, coastal)
   }
   // 7b. vanilla sites (option): fuel depots, gas stations, bus stops, ports stamped from the Bohemia templates
+        if (type === 'port') { // harbour around the template core (harbour.ts): basin, apron, arms, jetties, buoys, quay street
+          const near = sites.reduce<Site | null>((b, s) => (!b || Math.hypot(s.x - sx, s.z - sz) < Math.hypot(b.x - sx, b.z - sz) ? s : b), null)
+          const tier = harbourTier(near && Math.hypot(near.x - sx, near.z - sz) < 1500 ? near.kind : undefined)
+          const hb = buildHarbour({ id: zn.id, tier, x: sx, z: sz, seed: ss('settlements', 'harbour', k), hAt, core: zn.entities, isSea: (q) => PORT_SEA_RX.test(q), roads: allRoadLines() })
+          if (!hb) continue
+          zn.harbour = hb.plan; zn.entities.push(...hb.entities); zn.roads.push(...hb.roads); zn.boxes.push(...hb.boxes)
+          zn.warnings.push(`harbour ${tier}${fit0 && !fit0.deep ? ' (template heads shallow before dredging)' : ''}`)
+        }
   // at the measured densities (data/densities.ts), beside a road at the measured setback, +Z facing the road
   if (p.vanillaSites) placeVanillaWorldSites()
   cur = composeHeights(base, g, waters, zones, roads)

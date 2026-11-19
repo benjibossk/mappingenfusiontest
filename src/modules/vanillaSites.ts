@@ -4,6 +4,8 @@
 import LIB from '../../data/templates/vanilla_sites.json' with { type: 'json' }
 import type { ProjectEntity } from '../project'
 import { toWorld, round } from './gen-common'
+import { coastNormal, PORT_SEA_RX } from './harbour'
+export { PORT_SEA_RX }
 
 export interface VanillaObject { p: string; dx: number; dz: number; yaw: number }
 export interface VanillaTemplate {
@@ -93,34 +95,47 @@ export function lineInHull(hull: number[], l: ArrayLike<number>, pad = 0): boole
   return false
 }
 
-export interface PortFit { x: number; z: number; yaw: number; water: number; land: number; score: number }
+export interface PortFit { x: number; z: number; yaw: number; water: number; land: number; score: number; /** sea parts' heads >= minDepth deep (else only wet) */ deep: boolean }
 
-/** Places a port template on a coast: tries yaws (15°) and offsets around (x, z); scores the share of water parts
- *  (breakwaters, piers...) over the sea (h ≤ 0) and of land parts over dry ground (h > 0.5); candidates whose
- *  footprint hull a road enters are rejected. null = no fit with ≥ 60 % of the water parts at sea and ≥ 60 % of the
- *  land parts ashore. */
-export function fitPort(t: VanillaTemplate, hAt: (x: number, z: number) => number, x: number, z: number, roads: ArrayLike<number>[] = [], o: { reach?: number; roadPad?: number } = {}): PortFit | null {
-  const wat = t.objects.filter((ob) => PORT_WATER_RX.test(ob.p)), lnd = t.objects.filter((ob) => isPortLand(ob.p))
+/** Places a port template on a coast (HARBOURS_EVERON.md): its sea side (mean of the sea parts minus the mean of
+ *  the land parts) is turned to the coast normal, then refined +-15° (5° steps) over offsets around (x, z).
+ *  Kept: 100 % of the sea parts (PORT_SEA_RX) over the sea (h <= 0), the seaward third of them (pier / breakwater
+ *  heads) >= minDepth deep (default 5 m; a second pass drops the depth, the harbour basin is dredged anyway),
+ *  >= 60 % of the land parts ashore (h > 0.5), and no road entering the footprint hull grown by its pad
+ *  (roadPads[i], default roadPad = 8 m; ~40 m for asphalt). null = no fit. */
+export function fitPort(t: VanillaTemplate, hAt: (x: number, z: number) => number, x: number, z: number, roads: ArrayLike<number>[] = [], o: { reach?: number; roadPad?: number; roadPads?: number[]; minDepth?: number } = {}): PortFit | null {
+  const wat = t.objects.filter((ob) => PORT_SEA_RX.test(ob.p)), lnd = t.objects.filter((ob) => isPortLand(ob.p))
   if (!wat.length || !lnd.length) return null
-  // subsample for speed
-  const sub = <T,>(a: T[], n: number) => a.length <= n ? a : a.filter((_, i) => i % Math.ceil(a.length / n) === 0)
-  const W = sub(wat, 60), L = sub(lnd, 60), reach = o.reach ?? Math.min(150, t.radius), step = Math.max(15, reach / 5)
-  let best: PortFit | null = null
-  const cands: PortFit[] = []
-  for (let yaw = 0; yaw < 360; yaw += 15) for (let oz = -reach; oz <= reach; oz += step) for (let ox = -reach; ox <= reach; ox += step) {
-    const cx = x + ox, cz = z + oz
-    let w = 0, l = 0
-    for (const ob of W) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) <= 0) w++ }
-    for (const ob of L) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) > 0.5) l++ }
-    const fw = w / W.length, fl = l / L.length
-    if (fw < 0.6 || fl < 0.6) continue
-    cands.push({ x: round(cx), z: round(cz), yaw, water: round(fw), land: round(fl), score: fw + fl - Math.hypot(ox, oz) / (reach * 20) })
+  const n = coastNormal(hAt, x, z)
+  if (!n) return null
+  const mean = (a: VanillaObject[], k: 'dx' | 'dz') => a.reduce((s, q) => s + q[k], 0) / a.length
+  const mx = mean(wat, 'dx') - mean(lnd, 'dx'), mz = mean(wat, 'dz') - mean(lnd, 'dz'), ml = Math.hypot(mx, mz) || 1
+  // world angle of a local vector = its local angle + yaw
+  const base = ((Math.atan2(n[0], n[1]) - Math.atan2(mx, mz)) * 180) / Math.PI
+  const proj = wat.map((ob) => (ob.dx * mx + ob.dz * mz) / ml), cut = [...proj].sort((a, b) => a - b)[Math.floor(proj.length * 2 / 3)]
+  const heads = wat.filter((_, i) => proj[i] >= cut)
+  const sub = <T,>(a: T[], k: number) => a.length <= k ? a : a.filter((_, i) => i % Math.ceil(a.length / k) === 0)
+  const L = sub(lnd, 60), reach = o.reach ?? Math.min(150, t.radius), step = Math.max(15, reach / 5)
+  for (const depth of [o.minDepth ?? 5, 0]) {
+    const cands: PortFit[] = []
+    for (let dy = -15; dy <= 15; dy += 5) for (let oz = -reach; oz <= reach; oz += step) for (let ox = -reach; ox <= reach; ox += step) {
+      const yaw = Math.round((((base + dy) % 360) + 360) % 360), cx = x + ox, cz = z + oz
+      let ok = true
+      for (const ob of wat) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) > 0) { ok = false; break } }
+      if (ok && depth > 0) for (const ob of heads) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) > -depth) { ok = false; break } }
+      if (!ok) continue
+      let l = 0
+      for (const ob of L) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) > 0.5) l++ }
+      const fl = l / L.length
+      if (fl < 0.6) continue
+      cands.push({ x: round(cx), z: round(cz), yaw, water: 1, land: round(fl), score: fl - Math.abs(dy) / 300 - Math.hypot(ox, oz) / (reach * 20), deep: depth > 0 })
+    }
+    cands.sort((a, b) => b.score - a.score)
+    for (const c of cands.slice(0, 40)) {
+      const hull = stampHull(t, c.x, c.z, c.yaw)
+      if (roads.some((r, i) => lineInHull(hull, r, o.roadPads?.[i] ?? o.roadPad ?? 8))) continue
+      return c
+    }
   }
-  cands.sort((a, b) => b.score - a.score)
-  for (const c of cands.slice(0, 40)) {
-    const hull = stampHull(t, c.x, c.z, c.yaw)
-    if (roads.some((r) => lineInHull(hull, r, o.roadPad ?? 8))) continue
-    best = c; break
-  }
-  return best
+  return null
 }
