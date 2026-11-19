@@ -90,7 +90,7 @@ export function mountSeedBrowser(h: SeedBrowserHooks) {
   document.body.appendChild(el)
   const q = <E extends HTMLElement>(id: string) => el!.querySelector('#' + id) as E
   // toolbar button next to "Replay all" (falls back to the body corner)
-  const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'seedBrowserBtn'; btn.className = 'hist withlbl'; btn.textContent = '🗺 ' + T.open; btn.title = T.title
+  const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'seedBrowserBtn'; btn.className = 'hist withlbl'; btn.innerHTML = `<svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" aria-hidden="true"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg><span>${T.open}</span>`; btn.title = T.title; btn.setAttribute('aria-label', T.open)
   const anchor = document.getElementById('replayAll')
   if (anchor) anchor.after(btn); else { btn.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:8999'; document.body.appendChild(btn) }
 

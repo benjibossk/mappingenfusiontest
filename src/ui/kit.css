@@ -1,0 +1,160 @@
+/* =====================================================================
+   Kit UI v2 — chargé APRÈS style.css (main.ts). Une seule source pour :
+   tokens d'espacement / taille, barre du haut, boutons, champs, tableaux,
+   badges, tiroirs (panneaux d'outils), panneau latéral.
+   Règle : pas de couleur en dur ici, seulement les tokens MILSPEC de style.css.
+   ===================================================================== */
+:root {
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
+  --h-sm: 28px; --h-md: 34px; --h-lg: 40px;
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 14px; --fs-lg: 16px;
+  --side-w: 360px;
+  --scrim: rgba(6, 7, 8, .72);
+  --shadow-raised: inset 0 1px 0 rgba(234, 237, 239, .05), 0 8px 24px rgba(0, 0, 0, .55);
+}
+
+/* ---------- boutons : jamais de texte qui sort du cadre ---------- */
+button { min-width: 0; }
+button .ic { flex: none; }
+:is(.top, .rm-drawer, #seedBrowser, .stepnav) button { white-space: nowrap; }
+:is(.top, .rm-drawer) button > span { overflow: hidden; text-overflow: ellipsis; }
+/* bouton texte (action secondaire discrète) */
+button.rm-link { background: transparent; border-color: transparent; color: var(--tx-3); height: var(--h-sm); padding: 0 var(--sp-2); }
+button.rm-link:hover:not(:disabled) { background: transparent; border-color: transparent; color: var(--amber-hi); text-decoration: underline; text-underline-offset: 3px; }
+/* bouton icône seule */
+button.rm-icon { width: var(--h-md); height: var(--h-md); padding: 0; background: transparent; border-color: transparent; color: var(--tx-3); }
+button.rm-icon:hover:not(:disabled) { background: var(--ink-4); border-color: var(--line-2); color: var(--tx-1); }
+
+/* ---------- barre du haut : une seule ligne, se replie par paliers ---------- */
+.app > .top { container: top / inline-size; min-width: 0; flex-wrap: nowrap; gap: var(--sp-2); }
+.top > * { flex: none; }
+.top > .grow { flex: 1 1 0; min-width: var(--sp-2); }
+.top #collabInfo { flex: 0 1 auto; }
+.top .hist.withlbl { width: auto; height: var(--h-md); padding: 0 10px; gap: 6px; display: inline-flex; align-items: center; }
+.top .hist.withlbl > span { font: 500 var(--fs-sm) var(--f-head); letter-spacing: .08em; text-transform: uppercase; }
+.top .status { flex: 0 1 auto; min-width: 34px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* bouton caméra Workbench : même famille que les autres, plus de gros bouton ambre sur 2 lignes */
+.top .camtog { color: var(--tx-3); }
+.top .camtog.active { color: var(--amber-hi); border-color: transparent; box-shadow: none; }
+.top .camtog.active .ic { filter: drop-shadow(0 0 4px rgba(224, 162, 51, .5)); }
+/* séparateur visuel entre le groupe "projet" (gauche) et "actions" (droite) */
+.top #oneClick { margin-left: var(--sp-1); }
+.top .langsel { margin-left: var(--sp-1); }
+
+/* palier 1 : les actions secondaires passent en icône seule (le libellé reste dans le title / aria-label),
+   « Relief en un clic » et « Partager » gardent leur libellé */
+@container top (max-width: 1800px) {
+  .langbtn .lname, .langbtn .lpct { display: none; }
+  .top :is(#camBtn, #replayAll, #seedBrowserBtn, #lifeEcoBtn, #libBtn).withlbl { width: var(--h-md); padding: 0; justify-content: center; }
+  .top :is(#camBtn, #replayAll, #seedBrowserBtn, #lifeEcoBtn, #libBtn).withlbl > span { display: none; }
+}
+/* palier 2 : toutes les actions en icône */
+@container top (max-width: 1200px) {
+  .top .hist.withlbl { width: var(--h-md); padding: 0; justify-content: center; }
+  .top .hist.withlbl > span { display: none; }
+}
+/* palier 3 : badge de version et nom de l'app masqués, puce Workbench réduite au point */
+@container top (max-width: 940px) {
+  .top .verbadge, .top .brand span, .top #collabInfo { display: none; }
+  .top .status { box-sizing: border-box; width: 30px; min-width: 30px; max-width: 30px; padding: 0; justify-content: center; font-size: 0; gap: 0; }
+}
+/* palier 4 (téléphone) : les outils avancés (puce Workbench, caméra, rejouer, graines, économie) sortent de la barre */
+@container top (max-width: 600px) {
+  .top :is(#camBtn, #replayAll, #seedBrowserBtn, #lifeEcoBtn, .status) { display: none; }
+  .top .hist, .top .hist.withlbl { width: 32px; }
+  .langbtn > svg:last-child { display: none; }
+}
+
+/* calques : le champ fichier de l'image à décalquer ne déborde plus */
+label.check:has(#traceFile) { display: flex; flex-wrap: wrap; gap: 4px; }
+#traceFile { width: 100%; min-width: 0; font-size: var(--fs-sm); }
+
+/* lecture de la caméra : dans la barre d'état du bas */
+.statusbar .cam-readout { color: var(--tx-3); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ---------- panneau latéral ---------- */
+.side .row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.side .row > button { flex: 1 1 0; min-width: 0; min-height: var(--h-lg); padding: 6px 10px; white-space: normal; text-wrap: balance; text-align: center; letter-spacing: .06em; }
+.side .row > select { flex: 1 1 100%; min-height: var(--h-md); }
+/* tableau de comparaison de carte de référence */
+.ref-stats { width: 100%; border-collapse: collapse; font: var(--fs-sm)/1.35 var(--f-body); color: var(--tx-2); font-variant-numeric: tabular-nums; }
+.ref-stats th { font: 500 var(--fs-xs) var(--f-head); letter-spacing: .1em; text-transform: uppercase; color: var(--tx-4); text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line-2); }
+.ref-stats td { padding: 3px 6px; border-bottom: 1px solid var(--line-1); text-align: right; white-space: nowrap; }
+.ref-stats td:first-child { text-align: left; color: var(--tx-3); white-space: normal; }
+#refStats small { display: block; margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--tx-4); }
+
+/* ---------- champs ---------- */
+.rm-field { display: inline-flex; align-items: center; gap: var(--sp-2); font: 500 var(--fs-xs) var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--tx-4); }
+.rm-range { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--tx-4); }
+.rm-range input { width: 56px; }
+input[type=number] { height: var(--h-sm); box-sizing: border-box; padding: 0 6px; font-variant-numeric: tabular-nums; }
+select { height: var(--h-sm); box-sizing: border-box; }
+
+/* ---------- tableau de données ---------- */
+.rm-table { width: 100%; border-collapse: collapse; font: var(--fs-md)/1.3 var(--f-body); color: var(--tx-2); font-variant-numeric: tabular-nums; }
+.rm-table th { position: sticky; top: 0; z-index: 1; background: var(--ink-2); font: 500 var(--fs-xs) var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--tx-4); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.rm-table td { padding: 6px 10px; border-bottom: 1px solid var(--line-1); vertical-align: middle; }
+.rm-table .num { text-align: right; white-space: nowrap; }
+.rm-table .strong { color: var(--tx-1); font-weight: 600; }
+.rm-table td.name b { display: block; white-space: nowrap; color: var(--tx-1); font-weight: 500; }
+.rm-table td.name small { display: block; font: var(--fs-xs) var(--f-mono); color: var(--tx-4); letter-spacing: .02em; }
+.rm-table tbody tr[data-i] { cursor: pointer; }
+.rm-table tbody tr[data-i]:hover { background: var(--ink-3); }
+.rm-table tbody tr.sel { background: var(--ink-4); box-shadow: inset 2px 0 0 var(--amber); }
+.rm-table tbody tr.off { color: var(--tx-4); }
+.rm-table tbody tr.off td.name b { color: var(--tx-4); }
+.rm-table input[type=number] { width: 68px; text-align: right; }
+.rm-table select { min-width: 96px; }
+.rm-table.compact td { padding: 4px 10px; }
+.rm-table.compact input[type=number] { width: 60px; }
+.rm-table tr.det td { background: var(--ink-3); padding: 8px 10px 10px 12px; box-shadow: inset 2px 0 0 var(--amber); }
+.rm-table tr.det dl { display: flex; flex-wrap: wrap; gap: var(--sp-5); margin: 0; }
+.rm-table tr.det dt { font: 500 var(--fs-xs) var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--tx-4); }
+.rm-table tr.det dd { margin: 2px 0 0; color: var(--tx-1); }
+
+/* ---------- badges d'état (couleur + texte, jamais la couleur seule) ---------- */
+.rm-badge { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+  padding: 2px 8px; border: 1px solid var(--line-2); border-radius: var(--r); font: var(--fs-xs) var(--f-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--tx-3); }
+.rm-badge[data-tone="ok"] { border-color: var(--green); color: var(--green-hi); }
+.rm-badge[data-tone="warn"] { border-color: var(--amber-lo); color: var(--amber-hi); }
+.rm-badge[data-tone="bad"] { border-color: var(--red); color: var(--red-hi, #E58A80); }
+.rm-badge[data-tone="off"] { border-style: dashed; color: var(--tx-4); text-transform: none; }
+
+/* ---------- tiroir : panneau d'outil ancré en bas de la carte (la carte reste visible) ---------- */
+.rm-drawer { position: fixed; z-index: 40; left: var(--sp-2); right: calc(var(--side-w) + var(--sp-2)); bottom: 34px; max-height: min(62vh, 640px);
+  display: flex; flex-direction: column; background: var(--ink-2); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--shadow-raised); color: var(--tx-2); }
+.rm-drawer[hidden] { display: none; }
+.rm-drawer-head { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line-1); }
+.rm-drawer-head h2 { margin: 0; font: 600 var(--fs-lg) var(--f-head); letter-spacing: .08em; text-transform: uppercase; color: var(--tx-1); white-space: nowrap; }
+.rm-drawer-head > button:not(.rm-icon) { height: var(--h-md); padding: 0 var(--sp-4); }
+.rm-meta { font: var(--fs-xs) var(--f-mono); color: var(--tx-4); letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line-1); }
+.rm-toolbar .check { font-size: var(--fs-md); }
+.rm-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.rm-sec { border-top: 1px solid var(--line-1); }
+.rm-sec > summary { cursor: pointer; padding: var(--sp-2) var(--sp-4); font: 500 var(--fs-xs) var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--tx-3); list-style: none; display: flex; align-items: center; gap: var(--sp-2); }
+.rm-sec > summary::-webkit-details-marker { display: none; }
+.rm-sec > summary::before { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform var(--dur-fast, 90ms); }
+.rm-sec[open] > summary::before { transform: rotate(45deg); }
+.rm-sec[open] > summary { color: var(--tx-1); }
+.rm-sec > :not(summary) { margin: 0 var(--sp-4) var(--sp-3); }
+.rm-sec > .rm-table { width: calc(100% - 2 * var(--sp-4)); }
+.rm-sec p.rm-meta { white-space: normal; }
+#lifeEco { max-width: 1100px; }
+@media (max-width: 1100px) { .rm-drawer { right: calc(320px + var(--sp-2)); } }
+@media (max-width: 760px) { .rm-drawer { left: 0; right: 0; bottom: 26px; max-height: 70vh; } .rm-table td.name small { display: none; } }
+
+/* le toast passe en haut de la carte quand un tiroir est ouvert (sinon il le recouvre) */
+body:has(.rm-drawer:not([hidden])) .toast { top: 72px; bottom: auto; }
+
+/* ---------- explorateur de graines : mêmes tokens que le reste ---------- */
+#seedBrowser { background: var(--ink-2); color: var(--tx-2); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--shadow-raised); font: var(--fs-md) var(--f-body); }
+#seedBrowser header { border-bottom-color: var(--line-1); }
+#seedBrowser header h2 { font: 600 var(--fs-lg) var(--f-head); letter-spacing: .08em; text-transform: uppercase; color: var(--tx-1); }
+#seedBrowser header > button, #seedBrowser .sbf button { height: var(--h-md); padding: 0 var(--sp-4); }
+#seedBrowser .sbf { border-bottom-color: var(--line-1); }
+#seedBrowser .sbc { border: 1px solid var(--line-1); border-radius: var(--r); background: var(--ink-3); }
+#seedBrowser .sbc:hover { border-color: var(--amber); }
+#seedBrowser .sbc img { border-radius: 0; }
+#seedBrowser .sbc b { font: 500 var(--fs-md) var(--f-head); letter-spacing: .06em; color: var(--tx-1); }
+#seedBrowser .tags span { background: transparent; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--tx-3); font: var(--fs-xs) var(--f-mono); }

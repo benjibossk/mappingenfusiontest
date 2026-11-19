@@ -8,6 +8,10 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+### Changed
+- **UI kit v2** (`src/ui/kit.css`, loaded after `style.css`): one set of spacing / size tokens, buttons, fields, data tables, status badges and tool drawers built on the MILSPEC tokens. Top bar stays on one line and folds in steps (container queries: secondary actions become icon-only, then every action, then version badge / app name / Workbench chip; on phones the advanced tools leave the bar); no more text spilling out of buttons or the bar running under the side panel. Workbench camera toggle is now an icon button like the others and its readout moved to the status bar. Seeds / Life economy buttons use stroke icons instead of emoji. Side panel: button pairs share the width and keep equal heights, the reference-map select gets its own line, reference stats table readable (12 px). Toasts move to the top of the map while a drawer is open.
+- **Life economy panel** (`src/ui/lifeEconomyTab.ts`): now a drawer docked at the bottom of the map (the route stays visible), 6 columns instead of 12 (chain + route as a sub-line, vehicle, price, trip, profit/h, status badge), click a row for driving time / load / revenue, missing-place rows greyed at the bottom, vehicle settings as a collapsible table, LF sources collapsed.
+
 ## [0.7.0] - 2026-11-19
 
 ### Added

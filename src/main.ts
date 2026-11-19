@@ -2,6 +2,7 @@ import { dedupeLines, densify } from './modules/fenceDedupe'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
+import './ui/kit.css'
 import { LANGS, chooseLang, completion, exportLang, external, followsBrowser, fr, getLang, importLang, t, type Key } from './i18n'
 import { prefabDims } from './library/dims'
 import { bridgeParts } from './modules/bridges3d'
@@ -178,6 +179,7 @@ const ICON: Record<string, string> = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7"/><path d="M12 17h.01"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7h.01"/>',
   search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+  cam: '<path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/>',
 }
 const ic = (n: string, size = 18) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICON[n]}</svg>`
 const info = (k: Key) => `<i class="info" title="${t(k)}" aria-label="${t(k)}" role="img">${ic('info', 13)}</i>`
@@ -943,10 +945,15 @@ let camTimer = 0
 const camBtn = document.createElement('button')
 const camInfo = document.createElement('span')
 camBtn.type = 'button'
+camBtn.id = 'camBtn'
+camBtn.className = 'hist withlbl camtog'
 camInfo.className = 'cam-readout'
-camInfo.style.marginLeft = '6px'
 camInfo.hidden = true
-function camLabel() { camBtn.textContent = (camTimer ? '◉ ' : '○ ') + t('cam.toggle'); camBtn.title = t('cam.tip') }
+function camLabel() {
+  camBtn.innerHTML = `${ic('cam')}<span>${t('cam.toggle')}</span>`
+  camBtn.classList.toggle('active', !!camTimer); camBtn.setAttribute('aria-pressed', String(!!camTimer))
+  camBtn.title = t('cam.tip'); camBtn.setAttribute('aria-label', t('cam.toggle'))
+}
 function stopCam() {
   if (camTimer) clearInterval(camTimer)
   camTimer = 0
@@ -977,7 +984,9 @@ camBtn.addEventListener('click', () => {
   startCam()
 })
 startCam() // on by default (Benji, 2026-11-19); the button turns it off
-statusEl.after(camBtn, camInfo)
+statusEl.after(camBtn)
+// the live readout goes to the status bar (mono line at the bottom), not the header
+document.querySelector('.statusbar #cursor')?.after(camInfo)
 
 function drawWbCamera() {
   if (!wbCam) return

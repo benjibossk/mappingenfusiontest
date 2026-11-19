@@ -4,6 +4,10 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+### Modifié
+- **Kit UI v2** (`src/ui/kit.css`, chargé après `style.css`) : un seul jeu de tokens d'espacement / tailles, boutons, champs, tableaux de données, badges d'état et tiroirs d'outils, sur les tokens MILSPEC. La barre du haut reste sur une ligne et se replie par paliers (container queries : actions secondaires en icône seule, puis toutes les actions, puis badge de version / nom de l'app / puce Workbench ; sur téléphone les outils avancés sortent de la barre) ; plus de texte qui sort des boutons ni de barre qui passe sous le panneau latéral. Le bouton caméra Workbench devient un bouton icône comme les autres et sa lecture passe dans la barre d'état. Boutons Graines / Économie Life avec icônes au trait au lieu d'emoji. Panneau latéral : boutons par paire à largeur et hauteur égales, la liste des cartes de référence sur sa propre ligne, tableau de stats lisible (12 px). Les toasts passent en haut de la carte quand un tiroir est ouvert.
+- **Panneau Économie Life** (`src/ui/lifeEconomyTab.ts`) : tiroir ancré en bas de la carte (le trajet reste visible), 6 colonnes au lieu de 12 (filière + circuit en sous-ligne, véhicule, prix, trajet, profit/h, badge d'état), clic sur une ligne pour le temps de route / la charge / la recette, lignes « lieu absent » grisées en bas, paramètres véhicules en tableau repliable, sources LF repliées.
+
 ## [0.7.0] - 2026-11-19
 
 ### Ajouté
