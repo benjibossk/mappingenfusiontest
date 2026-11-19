@@ -124,6 +124,7 @@ import { applyPads, layPads } from './modules/pads'
 import { buildingFootprints, Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
 import { mountSeedBrowser } from './ui/seedBrowser'
+import { mountConsole, journal } from './ui/console'
 import { mountLifeEconomy, drawLifeRoute } from './ui/lifeEconomyTab'
 import { emptyPipeline, hashWorld, readPipeline, recordStep, replayPipeline, stageTimer, type Pipeline } from './modules/replay'
 let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modules/layers.ts), saved in the project
@@ -2649,6 +2650,7 @@ let busyT0 = 0, busyTick = 0, busyName = ''
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)))
 /** toasts: bottom centre of the map, newest at the bottom, 3 at most; success/info fade after 4 s, errors stay until closed */
 function toast(msg: string, kind: 'ok' | 'err' | 'info' = 'ok', action?: { label: string; run: () => void }, ms = 4000) {
+  journal(msg, kind)
   const box = $('toast')
   const it = document.createElement('div')
   it.className = 'toastitem'; it.dataset.kind = kind
@@ -4995,6 +4997,7 @@ $<HTMLButtonElement>('oneClick').addEventListener('click', () => {
 })
 // seed explorer (ui/seedBrowser.ts): a card click runs the world pipeline with that seed's exact params
 // "Économie Life" (ui/lifeEconomyTab.ts): RP chains over the road graph, read-only unless "Appliquer" is clicked
+mountConsole({ stepName: () => document.getElementById('stepTitle')?.textContent ?? '' })
 mountLifeEconomy({
   world: () => ({ roads, zones, sites, fields: result?.fields, crops: result?.crops }),
   redraw: () => draw(),

@@ -371,3 +371,41 @@ html:not(.rm-dev) .devonly { display: none !important; }
 /* libellé + (i) sur une ligne au-dessus du champ */
 .lblhead { display: inline-flex; align-items: center; gap: 6px; }
 .lblhead .info { flex: none; }
+
+/* =====================================================================
+   Console « Journal » : bouton dans la barre d'état, panneau semi-opaque au-dessus
+   ===================================================================== */
+.statusbar { overflow: visible; }
+.statusbar .jbtn { height: 22px; padding: 0 8px; gap: 6px; background: transparent; border: 1px solid var(--line-2); border-radius: 0; color: var(--tx-2); font: 500 12px var(--f-body); text-transform: none; letter-spacing: .01em; flex: none; }
+.statusbar .jbtn:hover:not(:disabled), .statusbar .jbtn.active { border-color: var(--amber); color: var(--amber-hi); background: transparent; }
+.statusbar .jbtn .jcount:not(:empty) { min-width: 16px; padding: 0 4px; background: var(--amber); color: #111; font-size: 11px; line-height: 16px; text-align: center; }
+.statusbar .jbtn[data-err="1"] .jcount:not(:empty) { background: var(--red); color: #fff; }
+.jpanel { position: fixed; z-index: 60; left: 8px; right: calc(var(--side-w) + 8px); bottom: 30px; height: min(34vh, 320px);
+  display: flex; flex-direction: column; background: rgba(20, 21, 22, .86); backdrop-filter: blur(4px); border: 1px solid var(--line-2); color: var(--tx-2); font: 13px/1.4 var(--f-body); }
+.jpanel[hidden] { display: none; }
+body:has(.app.side-closed) .jpanel { right: 26px; }
+@media (max-width: 1100px) { .jpanel { right: calc(320px + 8px); } }
+@media (max-width: 760px) { .jpanel { left: 0; right: 0; bottom: 26px; height: 45vh; } }
+.jpanel header { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line-1); }
+.jpanel header b { color: var(--tx-1); font-size: 14px; }
+.jpanel header button { height: 26px; padding: 0 10px; background: #2A2C2E; border: 1px solid #2A2C2E; border-radius: 0; color: var(--tx-1); font: 500 13px var(--f-body); text-transform: none; letter-spacing: .01em; }
+.jpanel header button:hover:not(:disabled) { border-color: var(--amber); background: #33363A; }
+.jpanel header .jx { width: 26px; padding: 0; background: transparent; border-color: transparent; }
+.jpanel .jfilter { display: inline-flex; margin-left: 8px; }
+.jpanel .jfilter button { background: transparent; border-color: var(--line-2); }
+.jpanel .jfilter button.on { background: var(--amber); border-color: var(--amber); color: #111; }
+.jpanel ol { list-style: none; margin: 0; padding: 4px 0; overflow: auto; flex: 1 1 auto; }
+.jpanel li { display: flex; gap: 10px; padding: 3px 12px; align-items: baseline; }
+.jpanel li:nth-child(odd) { background: rgba(255, 255, 255, .025); }
+.jpanel li time { flex: none; color: var(--tx-4); font-variant-numeric: tabular-nums; }
+.jpanel li .jsrc { flex: none; color: var(--tx-3); min-width: 70px; }
+.jpanel li .jtext { white-space: pre-wrap; overflow-wrap: anywhere; }
+.jpanel li[data-kind="ok"] .jtext { color: var(--green-hi); }
+.jpanel li[data-kind="err"] { box-shadow: inset 3px 0 0 var(--red); }
+.jpanel li[data-kind="err"] .jtext { color: var(--red-hi, #E58A80); }
+.jpanel li.jempty { color: var(--tx-4); background: none; }
+/* le tiroir Économie remonte quand le journal est ouvert */
+body:has(.jpanel:not([hidden])) .rm-drawer { bottom: calc(min(34vh, 320px) + 38px); max-height: calc(100vh - min(34vh, 320px) - 120px); }
+/* journal ouvert : les toasts n'apparaissent pas par-dessus (ils sont déjà dans le journal), « Calques » remonte */
+body:has(.jpanel:not([hidden])) .toast { display: none !important; }
+body:has(.jpanel:not([hidden])) .mapdock { bottom: calc(min(34vh, 320px) + 40px); }
