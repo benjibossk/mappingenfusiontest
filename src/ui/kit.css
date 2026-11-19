@@ -260,3 +260,10 @@ textarea, pre, code, #trace, .log { font-family: ui-monospace, 'Share Tech Mono'
 .side details.adv > summary::after { margin-left: auto; }
 #coachTitle, #coach h3, #coach b { text-transform: none !important; letter-spacing: .01em !important; }
 .toast { bottom: 76px; }
+
+/* barre du haut : tout centré sur la même ligne, une seule hauteur (34 px) pour chaque élément */
+.top > * { align-self: center !important; margin-top: 0; margin-bottom: 0; }
+.top > :is(button, .status, .langsel), .top .langbtn { box-sizing: border-box; height: var(--h-md); }
+.top .verbadge, .top .status { height: 28px; }
+.top .langbtn { display: inline-flex; align-items: center; }
+.top .helpbtn { width: var(--h-md); }
