@@ -15,7 +15,7 @@ const pond: Water = { id: 'L1', type: 'lake', pts: [480, 440, 590, 440, 590, 550
 test('town: square, closed connected streets, typed blocks, houses inside and apart', () => {
   const r = generateTown(zone, roads, [pond], flat, grid, { seed: 3, prefix: 'T1' })
   const n = r.placed.length
-  assert.ok(n >= 40 && n <= 120, `buildings ${n} ${r.warnings}`)
+  assert.ok(n >= 40 && n <= 200, `buildings ${n} ${r.warnings}`) // houses + their sheds (cap 160)
   assert.ok(r.pop >= 100 && r.pop <= 320, `pop ${r.pop}`)
   // square
   assert.equal(r.squares.length, 1)
