@@ -130,7 +130,8 @@ import { CAT_COLOUR, settle, settlementEntities, buildingMasks, yardMasks, settl
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 import { desirePaths, type MaskBand } from './modules/desirePaths'
 import { settleVillages, type VillageParcel, type VillageVariant } from './modules/village'
-import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
+import { addParcels, allParcels, parcelCorners, parcelsByCategory, pickParcel, savedToComposition, suggestParcelSpots, yawToRoad, type ParcelCategory, type SavedParcel } from './library/parcelLib'
+import { applyZones, makeAirfield, makeIndustrial, makeLibraryParcel, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
 import { rpPlacesOf } from './modules/rpPlaces'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly, type IndustrialType } from './modules/industrial'
 import { suggestMilitary, type MilitaryKind } from './modules/military'
@@ -689,6 +690,19 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <button id="indClear" type="button" class="secondary">${t('btn.indClear')}</button>
         </div>
         <span id="indInfo" class="hint"></span>
+      </details>
+      <details class="adv" id="plBox"><summary>${t('legend.plib')}</summary>
+        <div class="form">
+          <label>${t('lbl.plCat')} <select id="plCat">${[...parcelsByCategory().keys()].map((k) => `<option value="${k}">${t(('lib.pcat.' + k) as K)}</option>`).join('')}</select></label>
+          <label>${t('lbl.plWhich')} <select id="plWhich"></select></label>
+          <label>${t('lbl.zoneSeed')} <input id="plSeed" type="number" step="1" value="1"></label>
+        </div>
+        ${hint('hint.plib')}
+        <div class="row">
+          <button id="plPlace" type="button">${t('btn.plPlace')}</button>
+          <button id="plSuggest" type="button">${t('btn.plSuggest')}</button>
+          <button id="plClear" type="button" class="secondary">${t('btn.plClear')}</button>
+        </div>
       </details>
       <details class="adv" id="milBox"><summary>${t('legend.mil')} ${info('info.mil')}</summary>
         <div class="form">
@@ -4853,7 +4867,7 @@ function drawZones() {
     ctx.lineWidth = 3
     ctx.strokeStyle = '#000a'
     ctx.fillStyle = '#fff'
-    const label = zn.kind === 'site' ? (t(('zt.' + zn.sub) as K) ?? (zn.sub?.startsWith('vanilla:') ? zn.sub.split(':')[1].replace(/_/g, ' ') : zn.sub ?? '')) : t(('zone.name.' + zn.kind) as K, { n: zn.id.replace(/\D+/g, '') })
+    const label = zn.sub?.startsWith('parcel:') ? (allParcels().find((c) => 'parcel:' + c.id === zn.sub)?.name ?? zn.sub) : zn.kind === 'site' ? (t(('zt.' + zn.sub) as K) ?? (zn.sub?.startsWith('vanilla:') ? zn.sub.split(':')[1].replace(/_/g, ' ') : zn.sub ?? '')) : t(('zone.name.' + zn.kind) as K, { n: zn.id.replace(/\D+/g, '') })
     ctx.strokeText(label, sx + 8, sy - 8)
     ctx.fillText(label, sx + 8, sy - 8)
   }
@@ -4872,6 +4886,7 @@ function drawZones() {
     ctx.fillText(String(i + 1), sx, sy + 4)
     ctx.textAlign = 'start'
   })
+  drawParcelGhost()
 }
 const siteDiscs = (extra: number) => sites.map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] + extra }))
 function zoneInfo() {
@@ -4903,6 +4918,7 @@ function placeZone(sx: number, sy: number) {
   const { kind, sub } = zonePick
   const g = island.grid, id = nextZoneId(zones, kind)
   let zn: ZoneItem
+  if (kind === 'site' && sub.startsWith('parcel:')) return void placeLibraryParcel(sub.slice(7), at.x, at.z, best >= 0 ? at.yaw : null)
   if (kind === 'industrial') zn = makeIndustrial(island.heights, g, [...roads, ...existingRoads()], { id, type: sub as IndustrialType, x: at.x, z: at.z, seed: num('indSeed') + zones.length })
   else if (kind === 'military') zn = makeMilitary(island.heights, g, { id, kind: sub as MilitaryKind, x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
   else zn = makeAirfield(island.heights, g, { id, size: sub as AirfieldSize, x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
@@ -4915,6 +4931,88 @@ function placeZone(sx: number, sy: number) {
   refreshSteps()
   logEl.textContent = t('log.zoneMade', { name: t(('zone.name.' + kind) as K, { n: id.replace(/\D+/g, '') }), b: zn.entities.length }) + (zn.warnings.length ? ' · ' + zn.warnings.join(' · ') : '')
 }
+// --- library parcels (parcelLib.ts): one ready-made plot placed by hand or along the roads, a 'site' zone ---
+let plRot = 0 // extra turn (R / Shift+R) of the parcel being placed
+const plChosen = () => {
+  const cat = $<HTMLSelectElement>('plCat').value as ParcelCategory, id = $<HTMLSelectElement>('plWhich').value
+  return (id && allParcels().find((c) => c.id === id)) || pickParcel(cat, { biome: currentBiome, seed: num('plSeed') + zones.length })
+}
+function fillParcelList() {
+  const cat = $<HTMLSelectElement>('plCat').value
+  const sel = $<HTMLSelectElement>('plWhich'), keep = sel.value
+  sel.innerHTML = `<option value="">${t('pl.random')}</option>` + (parcelsByCategory().get(cat as ParcelCategory) ?? []).map((c) => `<option value="${c.id}">${c.name} · ${Math.round(c.size.w)}×${Math.round(c.size.d)} m</option>`).join('')
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : ''
+}
+function placeLibraryParcel(id: string, x: number, z: number, yaw: number | null) {
+  if (!island) return
+  const c = allParcels().find((q) => q.id === id)
+  if (!c) return
+  const y = (yaw ?? (c.road === 'none' ? 0 : yawToRoad([...roads, ...existingRoads()], x, z) ?? 0)) + plRot
+  const zn = makeLibraryParcel(island.heights, island.grid, { id: nextZoneId(zones, 'site'), parcel: c, x, z, yaw: y, seed: num('plSeed') })
+  plRot = 0
+  if (!zn || !zn.entities.length) return void (logEl.textContent = t('err.zoneEmpty'))
+  zones.push(zn)
+  recompose(true); setInfo(); zoneInfo(); refreshSteps()
+  logEl.textContent = t('log.plPlaced', { name: c.name, n: zn.entities.length })
+}
+$<HTMLSelectElement>('plCat').addEventListener('change', fillParcelList)
+fillParcelList()
+$<HTMLButtonElement>('plPlace').addEventListener('click', () => {
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  const c = plChosen()
+  if (!c) return void (logEl.textContent = t('err.zoneEmpty'))
+  plRot = 0
+  startPick('site', 'parcel:' + c.id, [])
+})
+$<HTMLButtonElement>('plSuggest').addEventListener('click', () => {
+  if (!island) return void (logEl.textContent = t('log.genFirst'))
+  const c = plChosen()
+  if (!c) return void (logEl.textContent = t('err.zoneEmpty'))
+  const blocked = [...settled.map((b) => ({ x: b.x, z: b.z, r: 8 })), ...siteDiscs(10), ...zones.map(zoneDisc)]
+  const spots = suggestParcelSpots(c, { roads: [...roads, ...existingRoads()], blocked, ok: (x, z) => groundAt(x, z) > 0.5, n: 5 })
+  plRot = 0
+  startPick('site', 'parcel:' + c.id, spots)
+})
+$<HTMLButtonElement>('plClear').addEventListener('click', () => {
+  zones = zones.filter((z) => !z.sub.startsWith('parcel:'))
+  recompose(true); setInfo(); zoneInfo(); refreshSteps(); draw()
+})
+document.addEventListener('keydown', (e) => {
+  if (!zonePick?.sub.startsWith('parcel:') || (e.key !== 'r' && e.key !== 'R')) return
+  plRot = (plRot + (e.shiftKey ? 90 : 15)) % 360
+  logEl.textContent = t('log.plRot', { a: plRot })
+  draw()
+})
+/** footprint of the parcel being placed, under the cursor */
+function drawParcelGhost() {
+  if (!zonePick?.sub.startsWith('parcel:') || !cursorWorld) return
+  const c = allParcels().find((q) => 'parcel:' + q.id === zonePick!.sub)
+  if (!c) return
+  const [x, z] = cursorWorld
+  const yaw = (c.road === 'none' ? 0 : yawToRoad([...roads, ...existingRoads()], x, z) ?? 0) + plRot
+  const cs = parcelCorners(c, x, z, yaw)
+  ctx.beginPath()
+  for (let i = 0; i < 8; i += 2) ctx.lineTo(...toScreen(cs[i], cs[i + 1]))
+  ctx.closePath()
+  ctx.fillStyle = '#9bc25b44'; ctx.fill()
+  ctx.strokeStyle = '#9bc25b'; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1
+  // front (road side) edge
+  ctx.beginPath(); ctx.moveTo(...toScreen(cs[4], cs[5])); ctx.lineTo(...toScreen(cs[6], cs[7])); ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1
+}
+// parcels saved in the Workbench (MG_SaveParcelPlugin -> $profile:MapGen/parcels, bridge GET /parcels)
+async function loadWorkbenchParcels() {
+  try {
+    const r = await fetch(BRIDGE_URL + '/parcels')
+    if (!r.ok) return
+    const got = ((await r.json()) as SavedParcel[]).map(savedToComposition).filter((c): c is NonNullable<typeof c> => !!c)
+    if (addParcels(got)) {
+      const cs = $<HTMLSelectElement>('plCat')
+      if (![...cs.options].some((o) => o.value === 'custom')) cs.insertAdjacentHTML('beforeend', `<option value="custom">${t('lib.pcat.custom')}</option>`)
+      fillParcelList()
+    }
+  } catch { /* bridge off */ }
+}
+void loadWorkbenchParcels()
 $<HTMLButtonElement>('indSuggest').addEventListener('click', () => {
   if (!island) return void (logEl.textContent = t('log.genFirst'))
   const all = [...roads, ...existingRoads()]

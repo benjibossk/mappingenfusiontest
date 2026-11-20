@@ -11,6 +11,8 @@ import { applyDam, type Dam } from './dam'
 import { pickTemplate, stampTemplate, type VanillaTemplate } from './vanillaSites'
 import { applyHarbour, type HarbourPlan } from './harbour'
 import { generateAirfield, flattenAirfield, type AirfieldSize } from './airfield'
+import { parcelCorners, parcelTemplate } from '../library/parcelLib'
+import type { Composition } from '../library/schema'
 
 export type ZoneKind = 'industrial' | 'military' | 'airfield' | 'site' // site: structured Zone-tool fills (sitezones.ts)
 export interface ZoneItem {
@@ -128,4 +130,19 @@ export function makeVanillaSite(heights: number[], g: Grid, o: { id: string; typ
   }
   return { id: o.id, kind: 'site', sub: `vanilla:${t.id}`, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes: [{ corners: boxCorners(box), role: 'area' }],
     ...prefixed(o.id, [], entities), flat, plat: [], roads: [], warnings: [`vanilla template ${t.id} (${t.map} ${t.x},${t.z})`], access: [o.x + Math.sin(o.yaw * Math.PI / 180) * r, o.z + Math.cos(o.yaw * Math.PI / 180) * r] }
+}
+
+/** a library parcel (parcelLib.ts: garden, farm, cemetery, industrial yard...) placed at x/z, its access side (+Z)
+ *  turned to `yaw`: stamped like a vanilla site (same frame), footprint = the parcel's box. */
+export function makeLibraryParcel(heights: number[], g: Grid, o: { id: string; parcel: Composition; x: number; z: number; yaw: number; seed?: number }): ZoneItem | null {
+  const zn = makeVanillaSite(heights, g, { id: o.id, type: 'parcel', x: o.x, z: o.z, yaw: o.yaw, seed: o.seed ?? 0, template: parcelTemplate(o.parcel) })
+  if (!zn) return null
+  const box = { x: o.x, z: o.z, hw: o.parcel.size.w / 2, hd: o.parcel.size.d / 2, yaw: o.yaw }
+  zn.sub = `parcel:${o.parcel.id}`
+  zn.boxes = [{ corners: parcelCorners(o.parcel, o.x, o.z, o.yaw), role: 'area' }]
+  zn.flat = zn.flat.map((f) => ({ ...f, box }))
+  zn.warnings = [`${o.parcel.category ?? 'parcel'} ${o.parcel.name}`]
+  const [fx, fz] = [Math.sin(o.yaw * Math.PI / 180), Math.cos(o.yaw * Math.PI / 180)]
+  zn.access = [o.x + fx * box.hd, o.z + fz * box.hd]
+  return zn
 }

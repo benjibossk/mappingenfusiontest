@@ -355,6 +355,18 @@ const server = createServer(async (req, res) => {
       return send(res, 200, out);
     }
 
+    // parcels saved by the "Enregistrer la sélection comme parcelle" plugin (MG_SaveParcelPlugin.c)
+    if (req.method === "GET" && req.url === "/parcels") {
+      const dir = join(PROFILE_DIR, "MapGen", "parcels");
+      let files = [];
+      try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch {}
+      const out = [];
+      for (const f of files) {
+        try { out.push(JSON.parse(readFileSync(join(dir, f), "utf-8"))); } catch {}
+      }
+      return send(res, 200, out);
+    }
+
     if (req.method === "POST" && req.url === "/surfaces") {
       const { addon, world } = JSON.parse(await readBody(req));
       // names only, no "..": the bridge must not write outside the addons folder

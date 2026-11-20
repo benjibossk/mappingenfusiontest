@@ -58,3 +58,8 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 var(--
 .lb-list .n { font-family: ui-monospace, monospace; }
 label.lb-import { white-space: normal; height: auto; min-height: 32px; line-height: 1.25; }
 label.lb-import input[type=file] { max-width: 100%; }
+
+/* parcels view (parcelLib.ts) */
+.lb-list li.lb-group { cursor: default; background: none; border: 0; padding: 8px 4px 2px; opacity: .9 }
+.lb-list li.lb-parcel { display: grid; grid-template-columns: 52px 1fr; align-items: center; column-gap: 6px }
+.lb-list li.lb-parcel .lb-thumb { grid-row: span 2; border-radius: 3px; background: #20242a }
