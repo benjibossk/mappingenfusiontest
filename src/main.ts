@@ -1976,7 +1976,9 @@ async function camTo(x: number, z: number) {
   if (!(await setCamera({ x, y: ground + 60, z: z - back, yaw: 0, pitch: -35 })) && !camWarned) { camWarned = true; toast(t('cv.noWb'), 'info', undefined, 2500) }
 }
 function gotoComment(x: number, z: number) { panTo(x, z); void camTo(x, z) }
-const wbComments = (): WbComment[] => threads().filter((th) => Number.isFinite(th.c.x)).map((th) => ({ x: th.c.x!, z: th.c.z!, n: th.n, text: th.c.text ?? '', resolved: th.resolved }))
+// a comment kept from another project / a bigger map (live: MG_COM_0 at 9483, 9436 on a 4096 m world) is not sent
+const inWorld = (x: number, z: number) => { const g = island?.grid; return !g || (x >= g.minX && z >= g.minZ && x <= g.minX + (g.cols - 1) * g.step && z <= g.minZ + (g.rows - 1) * g.step) }
+const wbComments = (): WbComment[] => threads().filter((th) => Number.isFinite(th.c.x) && inWorld(th.c.x!, th.c.z!)).map((th) => ({ x: th.c.x!, z: th.c.z!, n: th.n, text: th.c.text ?? '', resolved: th.resolved }))
 let comTimer = 0, comSig = ''
 function syncComments() {
   clearTimeout(comTimer)
