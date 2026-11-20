@@ -191,6 +191,8 @@ function placeStation(ctx: PlaceCtx, cx: number, cz: number, rings: number[], di
     const fp = footprint(x, z, yaw, dims.w, dims.d)
     if (fp.some(([px, pz]) => input.isWater(px, pz))) continue
     if (ctx.ob && (ctx.ob.bldDist(x, z, half + 4) < half + 3 || fp.some(([px, pz]) => ctx.ob!.inLot(px, pz)))) continue // never on a house or a plot
+    // nor on a village lane / any smoothed carriageway (input.roads are the raw main roads only; seed 21 audit: PSTA_MVLV_5 on SET_VILLAGE_1_LANE_3)
+    if (ctx.ob && [[x, z], ...fp].some(([px, pz]) => ctx.ob!.roadEdge(px, pz) < 3)) continue
     const relief = padRelief(h, g, { x, z, yaw, w: dims.w + 8, d: dims.d + 8 })
     if (relief > 8) continue
     let score = relief * 4 + (Number.isFinite(rd.d) ? Math.max(0, rd.d - 30) / 15 : 30) + R / 200

@@ -32,6 +32,7 @@ export interface VillageOptions {
   variant?: VillageVariant // 'auto': towns from site.kind === 'town'
   streets?: boolean // organic street growth (default true)
   maxStreets?: number // overrides the variant's street count
+  oblique?: number // street branch angle spread, 90° ± this (degrees); default the variant's (villageOblique(biome))
   farms?: boolean // U courtyards on the edge (default true)
   farmyards?: boolean // #14 farm sites (worldgen FARM_*): every wide enough lot tries the U courtyard first, any ring
   church?: boolean // one church on the square (default true)
@@ -46,12 +47,16 @@ export interface VillageOptions {
   polygon?: number[] // Zone tool: flat X/Z ring every street, lot, building and garden must stay inside
   reach?: number // overrides the site reach (m), Zone tool: the polygon size
   organic?: boolean // Bohemia-measured orientation / outbuilding rules (default true; false = the old strict street-facing grid)
+  parcelShare?: number // share of the farm-ring lots trying a harvested farmstead (default PARCEL_P; biomes/parcelShare)
   parcels?: boolean // harvested vanilla farmsteads (data/parcelTemplates.json) on farm lots (implied by template)
   template?: boolean // stamp a real Bohemia village row (data/villageTemplates.json) along the main road before the lots
 }
 export interface VillageSite { site: string; variant: 'village' | 'town' | 'hamlet'; coastal: boolean; church?: string; streets: number; lots: number; archetype?: VillageArchetype; template?: string }
 /** measured on Everon (17 villages >= 8 houses): 12 nucleated, 3 crossroads, 2 street (VILLAGES_VANILLA.md) */
 export type VillageArchetype = 'street' | 'crossroads' | 'nucleated'
+/** street branch spread per biome, measured on the vanilla village streets (junction angle median): Everon 49°
+ *  (p10-p90 2-89: oblique forks), Arland 45° (ours bench: 81° with 90 ± 20), Kolguyev 83° (USSR grid, near square) */
+export function villageOblique(biome?: string): number { return biome && /kolguyev/i.test(biome) ? 15 : 45 }
 const ARCHETYPE_STREETS: Record<VillageArchetype, number> = { street: 0, crossroads: 2, nucleated: 4 }
 export function pickArchetype(r: number): VillageArchetype { return r < 0.15 ? 'street' : r < 0.35 ? 'crossroads' : 'nucleated' }
 /** house yaw off the street grid (deg), added to the lot normal; Bohemia |house - road tangent| off 90: median 2.6, p90 ~15 (the curve of the road already gives ~2.4) */
@@ -359,7 +364,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     }
     // --- organic streets grown from the main road (and along the shore)
     else if (o.streets !== false && P.grow.maxStreets > 0) {
-      const g: GrowOptions = { ...P.grow, maxGrade: maxSlope, maxStreets: o.maxStreets ?? (info.archetype ? ARCHETYPE_STREETS[info.archetype] : P.grow.maxStreets) + Math.floor(rand() * 2) }
+      const g: GrowOptions = { ...P.grow, ...(variant !== 'town' ? { oblique: o.oblique ?? villageOblique(o.biome) } : {}), maxGrade: maxSlope, maxStreets: o.maxStreets ?? (info.archetype ? ARCHETYPE_STREETS[info.archetype] : P.grow.maxStreets) + Math.floor(rand() * 2) }
       const seeds: StreetSeed[] = []
       const cands: StreetSeed[] = []
       for (const l of main) {
@@ -375,7 +380,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
           if (square && Math.hypot(x - square.x, z - square.z) < square.r + 25) continue
           const side = rand() < 0.5 ? 1 : -1
           const [hx, hz] = [(-tz / len) * side, (tx / len) * side]
-          const j = ((rand() - 0.5) * 2 * g.angleJitter * Math.PI) / 180
+          const j = ((rand() - 0.5) * 2 * (g.oblique ?? g.angleJitter) * Math.PI) / 180
           cands.push({ x, z, hx: hx * Math.cos(j) - hz * Math.sin(j), hz: hx * Math.sin(j) + hz * Math.cos(j), parent: l })
         }
       }
@@ -383,7 +388,8 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       cands.sort((a, b) => Math.hypot(a.x - site.x, a.z - site.z) - Math.hypot(b.x - site.x, b.z - site.z) + (rand() - 0.5) * 40)
       for (const c of cands) if (!seeds.some((s) => Math.hypot(s.x - c.x, s.z - c.z) < 50)) seeds.push(c)
       if (harbourSeed) { seeds.unshift(harbourSeed, { ...harbourSeed, hx: -harbourSeed.hx, hz: -harbourSeed.hz }) }
-      const grown = growStreets({ at, wet, blocked: (x, z) => outZone(x, z) || inSquare(x, z, 6) || placed.some((q) => inside(q.corners, x, z) || lineDist(q.corners, x, z, true) < 4), lines: roadLines, cx: site.x, cz: site.z, reach, rand }, seeds, g)
+      // zones laid before the villages (RP places, sites): no street through them (pre-send: RP sell point on a lane)
+      const grown = growStreets({ at, wet, blocked: (x, z) => outZone(x, z) || inSquare(x, z, 6) || (o.blocked ?? []).some(([x0, z0, x1, z1]) => x > x0 - 4 && x < x1 + 4 && z > z0 - 4 && z < z1 + 4) || placed.some((q) => inside(q.corners, x, z) || lineDist(q.corners, x, z, true) < 4), lines: roadLines, cx: site.x, cz: site.z, reach, rand }, seeds, g)
       for (const pts of grown) {
         const road: Road = { id: `${pre}LANE_${++info.streets}`, type: variant === 'town' ? 'asphaltNarrow' : 'dirt', pts: pts.map((v) => Math.round(v * 100) / 100), auto: true }
         res.lanes.push(road)
@@ -487,7 +493,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       res.tried = (res.tried ?? 0) + 1
 
       // harvested vanilla farmstead (data/parcelTemplates.json): house + its barn / sheds as Bohemia laid them
-      if ((o.template || o.parcels) && o.farms !== false && variant !== 'town' && (k >= 1 || o.farmyards) && prand() < PARCEL_P) {
+      if ((o.template || o.parcels) && o.farms !== false && variant !== 'town' && (k >= 1 || o.farmyards) && prand() < (o.parcelShare ?? PARCEL_P)) {
         const lib = parcelTemplates().filter((t) => t.width <= lot.w + PARCEL_SLACK && t.depth <= lot.d + PARCEL_SLACK)
         let ok = false
         for (let tr = 0; tr < 3 && lib.length && !ok; tr++) {

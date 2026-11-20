@@ -42,3 +42,11 @@ export function placeParcel(t: ParcelTemplate, lot: LotFrame, d0: number, mirror
   for (const p of out) p.yaw = Math.round(p.yaw)
   return out
 }
+
+/** share of the farm-ring lots trying a harvested farmstead, per biome (bench calibration, CAL_parcels.md):
+ * Kolguyev 0.2 (0.6 cost it villages / fences), Arland 0 (5 sites: any farmstead cost its lot fences 91 -> 75) */
+export function parcelShareOf(biome?: string): number | undefined {
+  if (biome === 'nordic_kolguyev') return 0.2
+  if (biome === 'woodland_arland') return 0
+  return undefined
+}
