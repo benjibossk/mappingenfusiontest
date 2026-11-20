@@ -63,7 +63,7 @@ export function addProdForests<A extends { id: string; kind: string; leaf?: 'bro
   return { areas: out, tracks, outlines, count: n }
 }
 
-export interface FenceLot { site: string; corners: number[]; used: boolean }
+export interface FenceLot { site: string; corners: number[]; used: boolean; /** farmstead row lot: always a big paddock behind (Kolguyev ~200 m of fence a farm) */ farm?: boolean }
 export interface FenceOptions {
   seed: number
   kindOf: (site: string) => 'town' | 'village' | 'hamlet' | undefined
@@ -127,10 +127,10 @@ export function lotFences(lots: FenceLot[], o: FenceOptions): VillageParcel[] {
     }
     edge(side, P(1), P(2)); edge(side, P(3), P(0))
     const back = o.back ?? 0.7
-    if (hash(o.seed, 6000 + i) < (o.garden ?? 0.8)) {
+    if (l.farm || hash(o.seed, 6000 + i) < (o.garden ?? 0.8)) {
       // a garden / paddock behind the lot (vanilla: walled gardens, farmyard fences past the house lots)
       const [br, bl] = [P(2), P(3)], dx = br[0] - P(1)[0], dz = br[1] - P(1)[1], d = Math.hypot(dx, dz) || 1
-      const ext = d * (0.5 + 0.5 * hash(o.seed, 7000 + i))
+      const ext = d * (l.farm ? 1 + hash(o.seed, 7000 + i) : 0.5 + 0.5 * hash(o.seed, 7000 + i))
       const er = [br[0] + dx / d * ext, br[1] + dz / d * ext], el = [bl[0] + dx / d * ext, bl[1] + dz / d * ext]
       edge(side, br, er); edge(side, er, el); edge(side, el, bl)
     } else if (hash(o.seed, 5000 + i) < back) edge(side, P(2), P(3))

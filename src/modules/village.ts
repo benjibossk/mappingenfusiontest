@@ -105,6 +105,9 @@ const VARIANT: Record<'village' | 'town' | 'hamlet', Params> = {
 }
 
 /** outbuildings behind the houses per map: chance multiplier, extra push back (m), share with a second one */
+/** > 0: villages laid out as farmstead rows on this map */
+export function farmRows(biome?: string): number { return biome && /kolguyev|nordic/i.test(biome) ? 1 : 0 }
+
 export function yardProfile(biome?: string): { p: number; push: number; second: number } {
   if (biome && /kolguyev|nordic/i.test(biome)) return { p: 3, push: 10, second: 0.8 }
   return { p: 1, push: 0, second: 0 }
@@ -179,7 +182,11 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     const rand = rng(hash(site.id, o.seed))
     const variant: 'village' | 'town' | 'hamlet' = site.kind === 'hamlet' ? 'hamlet' : o.variant === 'town' || (o.variant !== 'village' && site.kind === 'town') ? 'town' : 'village'
     // #14 farmstead: wide deep plots (farmhouse at the back + two wings around the yard need >= 26 x 44 m)
-    const P: Params = o.farmyards && variant === 'hamlet' ? { ...VARIANT.hamlet, lotMin: [26, 28, 30], lotMax: [38, 42, 46], depth: [46, 48, 52], fill: [0.9, 0.8, 0.6] } : VARIANT[variant]
+    // Kolguyev farmstead rows (ensembles bench 2026-11-20: vanilla 41 houses x 2.95 outbuildings, 199 m of fence each;
+    // ours 162 x 0.49): every village / hamlet lot is a big farm lot (farmyard params, courtyard or harvested farmstead)
+    const fm = farmRows(o.yards ?? o.biome)
+    const farmy = !!o.farmyards || (fm > 0 && variant !== 'town')
+    const P: Params = farmy && (variant === 'hamlet' || fm > 0) ? { ...VARIANT.hamlet, lotMin: [26, 28, 30], lotMax: [38, 42, 46], depth: [46, 48, 52], fill: [0.9, 0.8, 0.6] } : VARIANT[variant]
     const reach = o.reach ?? Math.max(REACH[site.kind], SITE_RADIUS[site.kind]) * (variant === 'town' && site.kind !== 'town' ? 1.3 : 1)
     const pre = `SET_${site.id}_`
     const info: VillageSite = { site: site.id, variant, coastal: false, streets: 0, lots: 0 }
@@ -477,7 +484,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     let parcelDebt = 0 // extra buildings of the harvested farmsteads, paid back by leaving later lots empty
     for (const { lot, f, row } of lots) {
       const k = f < 0.3 ? 0 : f < 0.6 ? 1 : 2
-      const rec: VillageResult['lots'][number] = { site: site.id, corners: lotCorners(lot), used: false }
+      const rec: VillageResult['lots'][number] = { site: site.id, corners: lotCorners(lot), used: false, ...(fm > 0 && farmy ? { farm: true } : {}) }
       if (row) rec.row = 2
       res.lots.push(rec)
       // Zone tool: the fill follows the chosen density everywhere in the polygon (not the centre / edge rings)
@@ -501,7 +508,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       res.tried = (res.tried ?? 0) + 1
 
       // harvested vanilla farmstead (data/parcelTemplates.json): house + its barn / sheds as Bohemia laid them
-      if ((o.template || o.parcels) && o.farms !== false && variant !== 'town' && (k >= 1 || o.farmyards) && prand() < (o.parcelShare ?? PARCEL_P)) {
+      if ((o.template || o.parcels) && o.farms !== false && variant !== 'town' && (k >= 1 || farmy) && prand() < (o.parcelShare ?? PARCEL_P)) {
         const lib = parcelTemplates().filter((t) => t.width <= lot.w + PARCEL_SLACK && t.depth <= lot.d + PARCEL_SLACK)
         let ok = false
         for (let tr = 0; tr < 3 && lib.length && !ok; tr++) {
@@ -530,7 +537,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       }
 
       // farm courtyard (U): farmhouse at the back, two wings facing the court, open to the street
-      if (o.farms !== false && (k === 2 || o.farmyards) && lot.w >= (o.farmyards ? 20 : 24) && variant !== 'town' && (o.farmyards || rand() < 0.7)) {
+      if (o.farms !== false && (k === 2 || farmy) && lot.w >= (farmy ? 20 : 24) && variant !== 'town' && (farmy || rand() < 0.7)) {
         const farms = pool(['farm']).sort(() => rand() - 0.5)
         const wings = pool(['annex', 'shed']).sort(() => rand() - 0.5)
         let ok = false

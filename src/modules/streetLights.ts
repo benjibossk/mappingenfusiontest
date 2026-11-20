@@ -89,6 +89,8 @@ export interface LampInput {
 }
 
 /** lamps of every settlement, deterministic per seed */
+// Kolguyev: longer lamp spacing (bench: 1.3 -> 319, 1.6 -> 269 lamps vs vanilla 257)
+const NORDIC_STEP = 1.5
 export function streetLights(o: LampInput): StreetLamp[] {
   const R = LAMP_RULES
   const lines = o.roads.filter((r) => r.pts.length >= 4).map((r) => ({ r, l: r.pts.length >= 6 ? centreLine(r.pts, 4) : r.pts, h: roadHalf(r as Road) }))
@@ -130,6 +132,7 @@ export function streetLights(o: LampInput): StreetLamp[] {
   for (const q of order) {
     const kindOf = LIT[q.r.type]
     if (!kindOf) continue
+    if (nordic && kindOf !== 'main') continue // Kolguyev road-driven: the through roads only
     const L = q.l, rnd = rng(hash(q.r.id, o.seed))
     // cumulative length
     const acc: number[] = [0]
@@ -145,11 +148,13 @@ export function streetLights(o: LampInput): StreetLamp[] {
       const cx = ax + (bx - ax) * f, cz = az + (bz - az) * f
       const len = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / len, uz = (bz - az) / len
       const s = siteAt(cx, cz)
-      const step = (s ? R.spacing[s.kind] ?? 27 : 27) + (rnd() * 2 - 1) * R.jitter
+      const step = ((s ? R.spacing[s.kind] ?? 27 : 27) + (rnd() * 2 - 1) * R.jitter) * (nordic ? NORDIC_STEP : 1)
       t += s ? step : 20
       if (!s) continue
-      if (houseCount(cx, cz, R.houseR) < (R.houses[s.kind] ?? 2)) continue
-      const cap = Math.round(R.perHouse * (perSite.get(s.id) ?? houseCount(s.x, s.z, R.reach[s.kind]))) + 1
+      // Kolguyev: lamps follow the village road, not the house count (farmstead rows: few houses, long frontage;
+      // vanilla 257 lamps on the bench sites). Everon / Arland unchanged
+      if (!nordic && houseCount(cx, cz, R.houseR) < (R.houses[s.kind] ?? 2)) continue
+      const cap = nordic ? Infinity : Math.round(R.perHouse * (perSite.get(s.id) ?? houseCount(s.x, s.z, R.reach[s.kind]))) + 1
       if ((used.get(s.id) ?? 0) >= cap) continue
       if (famSite !== s.id) {
         famSite = s.id
