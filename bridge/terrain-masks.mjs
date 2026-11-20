@@ -100,14 +100,27 @@ export function writeSatellite(outFile, side, terrainSize, surfaces, colours, ba
 //! with weights 0..1, row 0 = south (same layout as /heightmap), sampled bilinearly.
 //! roads: [{points: [x0, z0, ...], half, edge, core, side?}] painted over the surfaces at pixel precision
 //! (see roadLayers). The pixels come from paintMasks (src/shared/maskPaint.mjs), shared with the app preview.
-export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colours = null) {
+//! opts (opt-in climate ground classes, src/biomes/groundMasks.ts): fileNames {surface: file name without
+//! .png, import-ordered e.g. 01_mer__SeaBed_01} and readme. The Workbench importer matches masks by SURFACE
+//! name, so outDir keeps plain names (scripts/wb-ui/wb-import-masks.ps1 unchanged) and skips the
+//! manquant_* layers (no such surface); the prefixed copies + 00_LISEZMOI_import.txt go to `<outDir>_ordre_import`.
+export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colours = null, opts = {}) {
   mkdirSync(outDir, { recursive: true });
   for (const f of readdirSync(outDir)) if (f.toLowerCase().endsWith(".png")) rmSync(join(outDir, f));
   const { names, bytes } = paintMasks(side, terrainSize, surfaces, roads, colours);
-  const written = [];
+  const fileNames = opts.fileNames ?? {};
+  const ordered = Object.keys(fileNames).length > 0 || !!opts.readme;
+  const orderDir = outDir + ORDER_SUFFIX;
+  if (ordered) { mkdirSync(orderDir, { recursive: true }); for (const f of readdirSync(orderDir)) if (f.toLowerCase().endsWith(".png") || f === README) rmSync(join(orderDir, f)); }
+  const written = [], orderedFiles = [];
   names.forEach((name, k) => {
-    writeFileSync(join(outDir, name + ".png"), png(side, (col, row) => bytes[k][row * side + col]));
-    written.push(name);
+    const buf = png(side, (col, row) => bytes[k][row * side + col]);
+    if (!name.startsWith("manquant_")) { writeFileSync(join(outDir, name + ".png"), buf); written.push(name); }
+    const f = fileNames[name];
+    if (ordered && /^[\w+-]+$/.test(f ?? "")) { writeFileSync(join(orderDir, f + ".png"), buf); orderedFiles.push(f); }
   });
-  return { dir: outDir, side, written };
+  if (ordered && typeof opts.readme === "string" && opts.readme) { writeFileSync(join(orderDir, README), opts.readme.replace(/\n/g, "\r\n"), "utf-8"); orderedFiles.unshift(README); }
+  return ordered ? { dir: outDir, side, written, orderDir, ordered: orderedFiles.sort() } : { dir: outDir, side, written };
 }
+const ORDER_SUFFIX = "_ordre_import";
+const README = "00_LISEZMOI_import.txt";

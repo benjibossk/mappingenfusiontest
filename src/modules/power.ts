@@ -273,7 +273,7 @@ const KIND_RANK: Record<PowerKind, number> = { ehv: 0, hv: 1, mv: 2, lv: 3 }
  *  each got their own poles: two or three pole rows side by side in the Workbench. Same-kind lines are
  *  merged like fences (dedupeLines): the parts of a line within `tol` m of an already kept one are dropped,
  *  and each remaining piece is tied to the kept line where it branches off. Higher voltages are kept first. */
-export function mergePowerLines<T extends PowerLine & { id: string }>(lines: T[], tol = 15): T[] {
+export function mergePowerLines<T extends PowerLine & { id: string }>(lines: T[], tol = 15, poleOk?: (x: number, z: number) => boolean): T[] {
   const order = lines.map((_, i) => i).sort((a, b) => KIND_RANK[lines[a].kind] - KIND_RANK[lines[b].kind] || a - b)
   const out: T[] = []
   for (const kind of Object.keys(KIND_RANK) as PowerKind[]) {
@@ -300,6 +300,9 @@ export function mergePowerLines<T extends PowerLine & { id: string }>(lines: T[]
           }
           const a = snap(p[0], p[1]), b = snap(p[p.length - 2], p[p.length - 1])
           path = [...(a ?? []), ...p, ...(b ?? [])]
+          // the cut ends and tie points are new poles: off the houses when a check is given (seed 21 live audit:
+          // a tie point 1.3 m from a hamlet house). Slid along their own span (3..15 m), dropped if none is free.
+          if (poleOk) path = freeEnds(path, poleOk)
         }
         let length = 0
         for (let i = 0; i + 3 < path.length; i += 2) length += Math.hypot(path[i + 2] - path[i], path[i + 3] - path[i + 1])
@@ -359,4 +362,20 @@ export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed =
     }
   }
   return out
+}
+
+/** the first 2 and last 2 points of a merged piece (tie + cut end) moved along their span onto a valid spot */
+function freeEnds(p: number[], ok: (x: number, z: number) => boolean): number[] {
+  const q = p.slice(), n = q.length / 2
+  for (const i of [0, 1, n - 2, n - 1]) {
+    if (i < 0 || i >= n || ok(q[i * 2], q[i * 2 + 1])) continue
+    const j = i < n / 2 ? i + 1 : i - 1
+    if (j < 0 || j >= n) continue
+    const dx = q[j * 2] - q[i * 2], dz = q[j * 2 + 1] - q[i * 2 + 1], L = Math.hypot(dx, dz) || 1
+    for (let s = 3; s <= Math.min(15, L - 1); s += 3) {
+      const x = q[i * 2] + (dx / L) * s, z = q[i * 2 + 1] + (dz / L) * s
+      if (ok(x, z)) { q[i * 2] = x; q[i * 2 + 1] = z; break }
+    }
+  }
+  return q
 }

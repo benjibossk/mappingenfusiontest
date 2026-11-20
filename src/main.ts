@@ -22,7 +22,7 @@ import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
-import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeMasks as writeMasksRaw } from './bridge'
+import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
@@ -133,6 +133,13 @@ let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modul
 let pipeline: Pipeline = emptyPipeline() // recorded generation steps (src/modules/replay.ts), saved in the project; declared early: the autosave reads it at startup
 import { BIOMES, PROPS, biome, type BiomeId } from './data/biomes'
 import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
+import { BIOME_CLASSES, CLIMATE_BIOME_IDS, DEFAULT_SETTINGS, autoCalibrate, type BiomeSettings, type ClimateBiome } from './biomes/groundClasses'
+import { derivativesFor, groundBiomeBody, groundPlan, projectTextureNames } from './biomes/groundMasks'
+import { renderIngameMap } from './modules/ingameMap'
+const GC_FIELDS: readonly [string, Key, keyof BiomeSettings, boolean][] = [
+  ['gcSnow', 'gc.snow', 'snowLine', false], ['gcTree', 'gc.tree', 'treeLine', false], ['gcSand', 'gc.sand', 'sandWidth', false],
+  ['gcForest', 'gc.forest', 'forest', true], ['gcWet', 'gc.wet', 'wetland', true], ['gcRock', 'gc.rock', 'rockSlope', false], ['gcBare', 'gc.bare', 'bareRock', false],
+]
 import { finalLayers } from './preview/finalMasks'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, type ZoneLeafChoice } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
@@ -761,6 +768,17 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <li><button id="tHeight" type="button" class="secondary">${t('btn.tHeight')}</button><span class="hint">${t('wb.open')}</span></li>
           <li><button id="tMasks" type="button" class="secondary">${t('btn.tMasks')}</button><span class="hint">${t('wb.thenImport')}</span></li>
         </ol>
+        <details id="gcBox"><summary>${t('gc.title')}</summary>
+          <label><input id="gcOn" type="checkbox"> ${t('gc.on')}</label>
+          <label>${t('gc.biome')} <select id="gcBiome">${CLIMATE_BIOME_IDS.map((b) => `<option value="${b}">${t(('gc.b.' + b) as K)}</option>`).join('')}</select></label>
+          <div class="row">${GC_FIELDS.map(([id, key]) => `<label>${t(key)} <input id="${id}" type="number" step="1"></label>`).join('')}</div>
+          <button id="gcAuto" type="button" class="secondary">${t('gc.auto')}</button>
+          <button id="gcReset" type="button" class="secondary">${t('gc.reset')}</button>
+          <button id="gcPreview" type="button" class="secondary">${t('gc.preview')}</button>
+          <div id="gcTable"></div>
+        </details>
+        <label>${t('gc.slope')} <select id="gcSlope"><option value="">${t('gc.slopeOff')}</option><option>25</option><option selected>30</option><option>35</option></select></label>
+        <button id="tIngame" type="button" class="secondary">${t('btn.tIngame')}</button>
         ${hint('hint.wbImport')}
         <button id="loadTerrain" type="button" class="secondary">${t('btn.loadTerrain')}</button>
         <button id="send" type="button" class="secondary">${t('btn.send')}</button>
@@ -2435,7 +2453,7 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
       world: txt('tWorld'),
       ...maskBody(island.surfaces),
     })
-    return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' })
+    return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '')
   }),
 )
 
@@ -2444,7 +2462,81 @@ function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
   return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()] }
 }
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
-const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => writeMasksRaw(applyBiome(body, currentBiome))
+const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => {
+  const b = applyBiome(body, currentBiome)
+  // opt-in climate ground classes (biomes/groundMasks.ts): default output unchanged when unchecked
+  if (!$<HTMLInputElement>('gcOn').checked || !island) return writeMasksRaw(b)
+  return writeMasksRaw(groundBiomeBody(b, island.grid, island.heights, gcBiome(), gcSettings(), gcOverrides))
+}
+
+// ---- climate ground classes panel (idea from giorbev MapGeneratorPro V8.4, MIT, see NOTICE)
+const gcOverrides: Record<string, string | null> = {}
+const gcBiome = () => $<HTMLSelectElement>('gcBiome').value as ClimateBiome
+function gcSettings(): BiomeSettings {
+  const s = { ...DEFAULT_SETTINGS[gcBiome()] }
+  for (const [id, , k, pct] of GC_FIELDS) { const v = Number($<HTMLInputElement>(id).value); if ($<HTMLInputElement>(id).value !== '' && Number.isFinite(v)) s[k] = pct ? v / 100 : v }
+  return s
+}
+function gcFill(s: BiomeSettings) {
+  for (const [id, , k, pct] of GC_FIELDS) { const x = s[k]; $<HTMLInputElement>(id).value = x == null || x >= 1e8 ? '' : String(Math.round((pct ? x * 100 : x) * 10) / 10) }
+}
+function gcTable() {
+  const el = $('gcTable')
+  if (!island) { el.textContent = t('gc.noIsland'); return }
+  const body = applyBiome(maskBody(island.surfaces), currentBiome), textures = projectTextureNames(body)
+  const biome = gcBiome(), { assign, layers } = groundPlan(biome, derivativesFor(island.grid, island.heights), gcSettings(), textures, gcOverrides)
+  const share = (k: number) => layers.find((l) => l.classIndices.includes(k))?.share ?? 0
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)
+  el.innerHTML = `<table><tr><th>${t('gc.class')}</th><th>${t('gc.texture')}</th><th>${t('gc.share')}</th></tr>${assign.map((a) => {
+    const c = BIOME_CLASSES[biome][a.classIndex]
+    const opts = [`<option value=""${a.texture ? '' : ' selected'}>${t('gc.missing')}</option>`, ...textures.map((x) => `<option${x === a.texture ? ' selected' : ''}>${esc(x)}</option>`)].join('')
+    const miss = a.texture ? '' : ` <span style="color:#d22" title="${esc(t('gc.missingTip'))}">${t('gc.missing')}</span>`
+    return `<tr><td>${esc(getLang() === 'fr' ? c.fr : c.en)}${miss}</td><td><select data-gc="${c.id}">${opts}</select></td><td>${(share(a.classIndex) * 100).toFixed(1)} %</td></tr>`
+  }).join('')}</table><pre class="hint">${esc(layers.map((l) => l.file).join('\n'))}</pre>`
+  el.querySelectorAll<HTMLSelectElement>('select[data-gc]').forEach((s) => s.addEventListener('change', () => { gcOverrides[s.dataset.gc!] = s.value || null; gcTable(); autosave() }))
+}
+$<HTMLSelectElement>('gcBiome').addEventListener('change', () => { for (const k of Object.keys(gcOverrides)) delete gcOverrides[k]; gcFill(DEFAULT_SETTINGS[gcBiome()]); $('gcTable').textContent = '' })
+$<HTMLButtonElement>('gcReset').addEventListener('click', () => gcFill(DEFAULT_SETTINGS[gcBiome()]))
+$<HTMLButtonElement>('gcAuto').addEventListener('click', () => {
+  if (!island) { $('gcTable').textContent = t('gc.noIsland'); return }
+  gcFill(autoCalibrate(gcBiome(), derivativesFor(island.grid, island.heights))); gcTable()
+})
+$<HTMLButtonElement>('gcPreview').addEventListener('click', gcTable)
+gcFill(DEFAULT_SETTINGS[gcBiome()])
+/** saved with the project (islandProject / loadProject) */
+function gcState() {
+  return { on: $<HTMLInputElement>('gcOn').checked, biome: gcBiome(), settings: gcSettings(), overrides: { ...gcOverrides }, slope: $<HTMLSelectElement>('gcSlope').value }
+}
+function gcLoad(s: unknown) {
+  const g = (s ?? {}) as Partial<ReturnType<typeof gcState>>
+  $<HTMLInputElement>('gcOn').checked = g.on === true
+  $<HTMLSelectElement>('gcBiome').value = CLIMATE_BIOME_IDS.includes(g.biome as ClimateBiome) ? g.biome! : 'tempere'
+  gcFill({ ...DEFAULT_SETTINGS[gcBiome()], ...(g.settings ?? {}) })
+  for (const k of Object.keys(gcOverrides)) delete gcOverrides[k]
+  for (const [k, v] of Object.entries(g.overrides ?? {})) if (typeof v === 'string' || v === null) gcOverrides[k] = v
+  $<HTMLSelectElement>('gcSlope').value = ['', '25', '30', '35'].includes(g.slope ?? '30') ? (g.slope ?? '30') : '30'
+  $('gcTable').textContent = ''
+}
+for (const id of ['gcOn', 'gcBiome', 'gcSlope', ...GC_FIELDS.map((f) => f[0])]) document.getElementById(id)?.addEventListener('change', () => autosave())
+$<HTMLButtonElement>('tIngame').addEventListener('click', () =>
+  run(t('btn.tIngame'), async () => {
+    if (!island) throw new Error(t('err.genFirst'))
+    const v = $<HTMLSelectElement>('gcSlope').value
+    const rect = (c: number[]) => {
+      const x = (c[0] + c[2] + c[4] + c[6]) / 4, z = (c[1] + c[3] + c[5] + c[7]) / 4
+      return { x, z, w: Math.hypot(c[2] - c[0], c[3] - c[1]), d: Math.hypot(c[4] - c[2], c[5] - c[3]), angle: Math.atan2(c[3] - c[1], c[2] - c[0]) }
+    }
+    const img = renderIngameMap({
+      grid: { ...island.grid, heights: island.heights }, seaLevel: 0, width: 2048, height: 2048, slopeShadeDeg: v ? Number(v) : undefined,
+      forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts),
+      roads: [...roads, ...setLanes, ...setPaths].map((r) => ({ type: r.type, points: centreLine(r.pts, 5), width: r.width })),
+      buildings: settled.filter((b) => b.corners?.length === 8).map((b) => rect(b.corners)),
+      water: waters.filter((w) => WATER_TYPES[w.type].closed).map((w) => w.pts),
+      rivers: waters.filter((w) => !WATER_TYPES[w.type].closed).map((w) => ({ points: centreLine(w.pts, 5), width: w.width })),
+    })
+    return (await writeIngameMap(img)).message
+  }),
+)
 
 async function refreshStatus() {
   const s = await getStatus()
@@ -2925,6 +3017,7 @@ function islandProject() {
     powerStations,
     powerAccess,
     biome: currentBiome,
+    groundBiome: gcState(),
     layers: layerMap,
     sculptStrokes,
   }
@@ -2989,6 +3082,7 @@ function loadProject(p: any) {
   }
   removed = Array.isArray(p.removed) ? p.removed : []
   setBiome(isBiome(p.biome) ? p.biome : DEFAULT_BIOME, false)
+  gcLoad(p.groundBiome)
   waterInfo()
   recompose(true)
 }
@@ -4363,7 +4457,15 @@ $<HTMLInputElement>('wRipa').addEventListener('change', (e) => {
 // roads (and their barriers) cut where they cross water: the gap is left for a bridge
 // --- power lines (step Routes): HV between the main sites, LV from the grid into each village along roads ---
 const POWER_COLOUR: Record<PowerKind, string> = { ehv: '#5ec8ff', hv: '#ffd24a', mv: '#ff8a3a', lv: '#e8e2c8' }
-function powerShapes() { return [...mergePowerLines(powerLines).map((l) => powerLineShape(l, l.id)), ...accessShapes(powerAccess)] }
+// merged pieces' new tie / cut-end poles kept >= 2.5 m off the settlement buildings (bounding-box test)
+function poleClearOfBuildings(x: number, z: number) {
+  for (const b of settled) { const c = (b as { corners?: number[] }).corners; if (!c || Math.abs(b.x - x) > 40 || Math.abs(b.z - z) > 40) continue
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i + 1 < c.length; i += 2) { x0 = Math.min(x0, c[i]); x1 = Math.max(x1, c[i]); z0 = Math.min(z0, c[i + 1]); z1 = Math.max(z1, c[i + 1]) }
+    if (x > x0 - 2.5 && x < x1 + 2.5 && z > z0 - 2.5 && z < z1 + 2.5) return false }
+  return true
+}
+function powerShapes() { return [...mergePowerLines(powerLines, 15, poleClearOfBuildings).map((l) => powerLineShape(l, l.id)), ...accessShapes(powerAccess)] }
 function powerInfo() {
   const km = powerLines.reduce((n, l) => n + l.length, 0) / 1000
   const poles = powerLines.reduce((n, l) => n + l.poles.length / 2, 0)

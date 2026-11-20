@@ -29,6 +29,10 @@ export interface BiomeSettings {
   forest: number     // 0..1 share of eligible land that gets forest
   wetland: number    // 0..1 share of land that gets marsh / bog (by wetness rank)
   rockSlope: number  // degrees, bare rock / scree above
+  /** degrees, bare rock (not scree) above; default rockSlope + 8 */
+  bareRock?: number
+  /** 0..1 share of the forest that is coniferous (temperate); default by sun exposure */
+  conifer?: number
 }
 
 export interface GroundClass { id: string; fr: string; en: string; keywords: string[] }
@@ -58,7 +62,9 @@ export const BIOME_CLASSES: Record<ClimateBiome, GroundClass[]> = {
 }
 
 export const DEFAULT_SETTINGS: Record<ClimateBiome, BiomeSettings> = {
-  tempere: { snowLine: 1e9, treeLine: 1e9, sandWidth: 25, forest: 0.35, wetland: 0.04, rockSlope: 38 },
+  // temperate calibrated on Everon (PakTools/analyses/FIELDS_SURFACES_VANILLA.md, share of land): forest floor 13 %,
+  // of which coniferous 72 %; rock + scree 21 % (bare Rock_01 1.4 %); shore 2 %; no marsh material. Slopes: autoCalibrate.
+  tempere: { snowLine: 1e9, treeLine: 1e9, sandWidth: 25, forest: 0.13, wetland: 0.01, rockSlope: 30, conifer: 0.72 },
   montagnard: { snowLine: 2400, treeLine: 1900, sandWidth: 0, forest: 0.45, wetland: 0.02, rockSlope: 35 },
   mediterraneen: { snowLine: 1e9, treeLine: 1e9, sandWidth: 30, forest: 0.3, wetland: 0, rockSlope: 32 },
   boreal: { snowLine: 1500, treeLine: 800, sandWidth: 15, forest: 0.55, wetland: 0.12, rockSlope: 35 },
@@ -145,11 +151,17 @@ export function autoCalibrate(biome: ClimateBiome, d: Derivatives): BiomeSetting
   const s = { ...DEFAULT_SETTINGS[biome] }
   const top = landQuantile(d, d.alt, 0.98), steep = landQuantile(d, d.slope, 0.95)
   s.rockSlope = Math.round(Math.max(20, Math.min(s.rockSlope, steep)))
+  if (biome === 'tempere') { // Everon shares (see DEFAULT_SETTINGS)
+    s.rockSlope = Math.round(Math.max(8, landQuantile(d, d.slope, 1 - TEMPERATE_SCREE)) * 10) / 10
+    s.bareRock = Math.round(Math.max(s.rockSlope + 1, landQuantile(d, d.slope, 1 - TEMPERATE_BARE)) * 10) / 10
+  }
   if (biome === 'montagnard') { s.snowLine = Math.round(landQuantile(d, d.alt, 0.92)); s.treeLine = Math.round(landQuantile(d, d.alt, 0.75)) }
   else if (biome === 'boreal') { s.snowLine = Math.round(Math.max(top + 1, landQuantile(d, d.alt, 0.97))); s.treeLine = Math.round(landQuantile(d, d.alt, 0.8)) }
   else if (biome === 'glaciaire') { s.snowLine = Math.round(landQuantile(d, d.alt, 0.35)) }
   return s
 }
+
+const TEMPERATE_SCREE = 0.21, TEMPERATE_BARE = 0.014
 
 /** Exclusion value in the class grid: cell kept as is (zone B of the exclusion mask). */
 export const EXCLUDED = 255
@@ -163,8 +175,12 @@ export function classifyGround(biome: ClimateBiome, d: Derivatives, s: BiomeSett
   const wetT = s.wetland > 0 ? landQuantile(d, d.wet, 1 - s.wetland) : Infinity
   // forest score: shaded, sheltered (hollow-ish), not too steep; threshold so `forest` of the land qualifies
   const fscore = new Float32Array(n)
-  for (let i = 0; i < n; i++) fscore[i] = (1 - d.sun[i]) * 0.6 + Math.max(-1, Math.min(1, -d.tpi[i] / 20)) * 0.25 + d.flow[i] * 0.15
+  // rock / scree / beach cells cannot be forest: excluded from the ranking so `forest` is a share of the whole land
+  for (let i = 0; i < n; i++) fscore[i] = d.slope[i] >= s.rockSlope || (d.coast[i] <= s.sandWidth && d.alt[i] < 4) ? -Infinity
+    : (1 - d.sun[i]) * 0.6 + Math.max(-1, Math.min(1, -d.tpi[i] / 20)) * 0.25 + d.flow[i] * 0.15
   const forestT = s.forest > 0 ? landQuantile(d, fscore, 1 - s.forest) : Infinity
+  const conT = s.conifer != null && s.forest > 0 ? landQuantile(d, fscore, 1 - s.forest * s.conifer) : NaN
+  const bare = s.bareRock ?? s.rockSlope + 8
   const I = Object.fromEntries(cls.map((c, k) => [c.id, k])) as Record<string, number>
   for (let i = 0; i < n; i++) {
     if (exclude && exclude[i]) { out[i] = EXCLUDED; continue }
@@ -175,8 +191,8 @@ export function classifyGround(biome: ClimateBiome, d: Derivatives, s: BiomeSett
     let k = -1
     switch (biome) {
       case 'tempere':
-        k = sl >= s.rockSlope + 8 ? I.roche : sl >= s.rockSlope ? I.eboulis : nearCoast ? I.plage : isWet ? I.marais
-          : isForest ? (sun < 0.4 || tpi > 10 ? I.coniferes : I.feuillus) : I.prairie
+        k = sl >= bare ? I.roche : sl >= s.rockSlope ? I.eboulis : nearCoast ? I.plage : isWet ? I.marais
+          : isForest ? ((Number.isNaN(conT) ? sun < 0.4 || tpi > 10 : fscore[i] >= conT) ? I.coniferes : I.feuillus) : I.prairie
         break
       case 'montagnard':
         k = a >= s.snowLine && sl < s.rockSlope + 10 ? I.neige : sl >= s.rockSlope + 8 ? I.roche : sl >= s.rockSlope || (a >= s.treeLine && tpi > 15) ? I.eboulis

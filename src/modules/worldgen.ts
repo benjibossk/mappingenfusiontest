@@ -811,7 +811,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const inForest = (x: number, z: number) => areas.some((a) => (a.kind === 'forest' || a.kind === 'field') && pointInPoly(a.pts, x, z))
     // no bush / rock on a carriageway (pre-send check flagged ~100 belt bushes on roads, seed 42): 2 m cells within half + 2.5 m (1.5: a belt bush 0.7 m on a prod track, seed 21)
     const onRoadCells = new Set<number>()
-    for (const r of [...allRoads, ...settlement.lanes]) {
+    // + the power stations' access tracks (dirt, 2 m half; 4th live send: BELT_4_B2 on PSTA_ROAD_1)
+    for (const r of [...allRoads, ...settlement.lanes, ...(pw?.access ?? []).map((pts, i): Road => ({ id: `PSTA_ROAD_${i + 1}`, type: 'dirt', pts }))]) {
       if (r.pts.length < 4) continue
       const c0 = centreLine(r.pts, 2), R = roadHalf(r) + 2.5, n = Math.ceil(R / 2)
       // both ends run 1.75 m further later (overlapJunctions, step below): extend them here too

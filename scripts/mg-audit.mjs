@@ -153,13 +153,27 @@ const bcell = new Map();
 for (const b of bldgs) for (let cx = Math.floor(b.box[0] / 32); cx <= Math.floor(b.box[2] / 32); cx++) for (let cz = Math.floor(b.box[1] / 32); cz <= Math.floor(b.box[3] / 32); cz++) {
   const k = cx + "," + cz; if (!bcell.has(k)) bcell.set(k, []); bcell.get(k).push(b);
 }
+// the AABB of a rotated building is up to ~2x its footprint (4th send: poles 18 m from a yawed L house "inside" it):
+// its local half sizes are solved back from the AABB and the yaw (|c| w + |s| d = hx, |s| w + |c| d = hz), then the
+// pole is tested in that oriented box (0.3 m tolerance). Near 45° the system is singular: the AABB test stands.
+function inOriented(b, x, z) {
+  const a = (b.yaw * Math.PI) / 180, c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a)), det = c * c - s * s;
+  if (Math.abs(det) < 0.2) return true;
+  const hx = (b.box[2] - b.box[0]) / 2, hz = (b.box[3] - b.box[1]) / 2, cx = (b.box[0] + b.box[2]) / 2, cz = (b.box[1] + b.box[3]) / 2;
+  const w = (c * hx - s * hz) / det, d = (c * hz - s * hx) / det;
+  if (w <= 0 || d <= 0) return true;
+  // the yaw sign convention is not certain: inside under either rotation counts (conservative)
+  const dx = x - cx, dz = z - cz;
+  return [a, -a].some((r) => { const u = dx * Math.cos(r) - dz * Math.sin(r), v = dx * Math.sin(r) + dz * Math.cos(r); return Math.abs(u) < w - 0.3 && Math.abs(v) < d - 0.3; });
+}
 const poles = [
   ...sent.filter((e) => /Pole|PowerLine|Pylon|Lamp|StreetLight/i.test(e.prefab)).map((e) => ({ id: e.id, x: e.x, z: e.z })),
-  ...shapes.filter((s) => /PowerLine|Pole/i.test(s.generator ?? "")).flatMap((s) => pts(s).map(([x, z], i) => ({ id: `${s.id}#${i}`, x, z }))),
+  // power-line vertices only: WEGenerators/Walls/Pole/WG_PoleFence_* are fences, not poles (24 false hits, 4th send)
+  ...shapes.filter((s) => /PowerLine|Pole/i.test(s.generator ?? "") && !/\/Walls\//i.test(s.generator ?? "")).flatMap((s) => pts(s).map(([x, z], i) => ({ id: `${s.id}#${i}`, x, z }))),
 ];
 for (const p of poles)
   for (const b of bcell.get(Math.floor(p.x / 32) + "," + Math.floor(p.z / 32)) ?? [])
-    if (p.x > b.box[0] + 0.3 && p.x < b.box[2] - 0.3 && p.z > b.box[1] + 0.3 && p.z < b.box[3] - 0.3) {
+    if (p.x > b.box[0] + 0.3 && p.x < b.box[2] - 0.3 && p.z > b.box[1] + 0.3 && p.z < b.box[3] - 0.3 && inOriented(b, p.x, p.z)) {
       findings["pole-in-bldg"].push({ id: p.id, x: r1(p.x), z: r1(p.z), building: b.prefab.split("/").pop() });
       break;
     }
