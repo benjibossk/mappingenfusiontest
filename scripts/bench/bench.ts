@@ -206,6 +206,51 @@ const power = noPower ? null : {
 // ---- power: pole spans of the vanilla lines (reference only, our routing is fed by the same sites)
 const spans = (kind: string) => m.power.filter((l) => (l as { kind?: string }).kind === kind).flatMap((l) => { const o: number[] = []; for (let i = 2; i < l.pts.length; i += 2) o.push(Math.hypot(l.pts[i] - l.pts[i - 2], l.pts[i + 1] - l.pts[i - 1])); return o })
 
+// ---- power window mode (--power-window [auto|x,z,size[;x,z,size]]): the whole-map plan takes > 25 min and the vanilla
+// lines come from a hand-made grid whose trunk crosses the island, so compare on sub-areas instead: crop relief / roads /
+// sites to each window, plan it alone, and compare with the vanilla poles inside the same window.
+const winArg = opt('--power-window')
+type PWin = { x: number; z: number; s: number }
+const pwindows: PWin[] = !winArg ? [] : winArg === 'auto'
+  ? sites.filter((s) => s.kind !== 'hamlet').sort((a, b) => b.n - a.n).slice(0, 3).map((s) => ({ x: s.x - 1500, z: s.z - 1500, s: 3000 }))
+  : winArg.split(';').map((w) => { const [x, z, s] = w.split(',').map(Number); return { x, z, s } })
+function powerInWindow(w: PWin) {
+  const c0 = Math.max(0, Math.floor((w.x - grid.minX) / grid.step)), r0 = Math.max(0, Math.floor((w.z - grid.minZ) / grid.step))
+  const c1 = Math.min(grid.cols - 1, Math.ceil((w.x + w.s - grid.minX) / grid.step)), r1 = Math.min(grid.rows - 1, Math.ceil((w.z + w.s - grid.minZ) / grid.step))
+  const g2 = { minX: grid.minX + c0 * grid.step, minZ: grid.minZ + r0 * grid.step, step: grid.step, cols: c1 - c0 + 1, rows: r1 - r0 + 1 }
+  const h2 = new Float32Array(g2.cols * g2.rows)
+  for (let r = 0; r < g2.rows; r++) for (let c = 0; c < g2.cols; c++) h2[r * g2.cols + c] = heights[(r + r0) * grid.cols + c + c0]
+  const inW = (x: number, z: number, m0 = 0) => x >= w.x - m0 && z >= w.z - m0 && x <= w.x + w.s + m0 && z <= w.z + w.s + m0
+  // roads: keep the runs of points inside the window
+  const rw: Road[] = []
+  for (const r of roads) { let run: number[] = []; const flush = () => { if (run.length >= 4) rw.push({ ...r, id: `${r.id}_${rw.length}`, pts: run }); run = [] }; for (let i = 0; i < r.pts.length; i += 2) { if (inW(r.pts[i], r.pts[i + 1])) run.push(r.pts[i], r.pts[i + 1]); else flush() } flush() }
+  const sw = sites.filter((s) => inW(s.x, s.z, -150))
+  const bw = (placed as never as { x: number; z: number; corners: number[] }[]).filter((b) => inW(b.x, b.z))
+  const t = Date.now()
+  const p = worldPowerGrid(h2, g2, sw, [], rw.map((r) => r.pts), isWater, w.s, 'eden', powerWorld(rw, bw.map((q) => q.corners), lots.filter((l) => l.used && inW(l.corners[0], l.corners[1])).map((l) => l.corners), []), (opt('--distrib') ?? 'auto') as never)
+  const vp: { x: number; z: number; k: string }[] = [], gp: typeof vp = [], vs: number[] = [], gs: number[] = []
+  const vl: number[] = [], gl: number[] = []
+  for (const l of m.power) { const k = (l as { kind?: string }).kind ?? 'mv'; let run = 0; for (let i = 0; i < l.pts.length; i += 2) if (inW(l.pts[i], l.pts[i + 1])) { vp.push({ x: l.pts[i], z: l.pts[i + 1], k }); if (i >= 2 && inW(l.pts[i - 2], l.pts[i - 1])) { const d = Math.hypot(l.pts[i] - l.pts[i - 2], l.pts[i + 1] - l.pts[i - 1]); run += d; if (k !== 'ehv') vs.push(d) } } if (run > 0) vl.push(run) }
+  for (const l of p.lines) { let run = 0; for (let i = 0; i < l.poles.length; i += 2) { gp.push({ x: l.poles[i], z: l.poles[i + 1], k: l.kind }); if (i >= 2) { const d = Math.hypot(l.poles[i] - l.poles[i - 2], l.poles[i + 1] - l.poles[i - 1]); run += d; if (l.kind !== 'ehv') gs.push(d) } } if (run > 0) gl.push(run) }
+  // road following: share of poles < 10 / < 30 m from a road edge; distance distribution KS
+  const rd = (a: typeof vp) => a.map((q) => nearRoad(q.x, q.z).d)
+  const vr = rd(vp), gr = rd(gp), share = (a: number[], d: number) => (a.length ? +(a.filter((x) => x < d).length / a.length).toFixed(2) : null)
+  const T2 = Math.ceil(w.s / TILE), tc = (a: typeof vp) => { const o = new Float64Array(T2 * T2); for (const q of a) { const i = Math.floor((q.x - w.x) / TILE), j = Math.floor((q.z - w.z) / TILE); if (i >= 0 && j >= 0 && i < T2 && j < T2) o[j * T2 + i]++ } return o }
+  const tv = tc(vp), tg = tc(gp); let n = 0, d = 0; for (let k = 0; k < tv.length; k++) { n += Math.min(tv[k], tg[k]); d += Math.max(tv[k], tg[k]) }
+  const sc = { tiles: +(100 * n / Math.max(1, d)).toFixed(1), spanKS: +ksScore(vs, gs).toFixed(1), roadKS: +ksScore(vr, gr).toFixed(1), lenKS: +ksScore(vl, gl).toFixed(1), count: +(100 * Math.min(vp.length, gp.length) / Math.max(1, vp.length, gp.length)).toFixed(1) }
+  return {
+    window: [Math.round(w.x), Math.round(w.z), w.s], sec: +((Date.now() - t) / 1000).toFixed(1), sites: sw.length,
+    poles: [vp.length, gp.length], spanMedian: [+med(vs).toFixed(1), +med(gs).toFixed(1)], lineKm: [+(vl.reduce((a, b) => a + b, 0) / 1000).toFixed(1), +(gl.reduce((a, b) => a + b, 0) / 1000).toFixed(1)],
+    lines: [vl.length, gl.length], lineMedian: [Math.round(med(vl)), Math.round(med(gl))], nearRoad10: [share(vr, 10), share(gr, 10)], nearRoad30: [share(vr, 30), share(gr, 30)],
+    roadDistMedian: [+med(vr).toFixed(1), +med(gr).toFixed(1)], stations: { ours: p.stations.length, byKind: p.stations.reduce((a, s) => { a[s.kind] = (a[s.kind] ?? 0) + 1; return a }, {} as Record<string, number>) },
+    byKind: Object.fromEntries([...new Set([...vp, ...gp].map((q) => q.k))].map((k) => [k, [vp.filter((q) => q.k === k).length, gp.filter((q) => q.k === k).length]])),
+    spanByKind: Object.fromEntries([...new Set(p.lines.map((l) => l.kind))].map((k) => [k, +med(p.lines.filter((l) => l.kind === k).flatMap((l) => spanOf(l.poles))).toFixed(1)])),
+    scores: sc, score: +((sc.tiles + sc.spanKS + sc.roadKS + sc.lenKS + sc.count) / 5).toFixed(1),
+  }
+}
+const powerWin = pwindows.map(powerInWindow)
+const powerWindowScore = powerWin.length ? +(powerWin.reduce((a, q) => a + q.score, 0) / powerWin.length).toFixed(1) : null
+
 const report = {
   map: m.name, genSec, sites: sites.length,
   villages: { score: villageScore, ...villages, counts: { vanilla: vanillaB.length, ours: placed.length }, byKind: { town: kindRatio('town'), village: kindRatio('village'), hamlet: kindRatio('hamlet') },
@@ -213,7 +258,8 @@ const report = {
     worstSites: siteScore.map((s) => ({ ...s, err: Math.abs(s.g - s.v) })).sort((a, b) => b.err - a.err).slice(0, 8) },
   fences,
   power,
-  scores: { villages: villageScore, fences: fenceScore, power: power?.tilePoles ?? null },
+  powerWindows: powerWin.length ? { score: powerWindowScore, windows: powerWin } : null,
+  scores: { villages: villageScore, fences: fenceScore, power: power?.tilePoles ?? null, powerWindow: powerWindowScore },
   powerRef: { nearRoad10: Object.fromEntries(kindsP.map((k) => [k, nearShare(vPoles, k)])), lvMedianSpan: +med(spans('lv')).toFixed(1), mvMedianSpan: +med(spans('mv')).toFixed(1), hvMedianSpan: +med(spans('hv')).toFixed(1) },
 }
 console.log(JSON.stringify(report, null, 1))
