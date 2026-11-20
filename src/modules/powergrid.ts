@@ -560,7 +560,9 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
         const m = nearestPole('mv', rx, rz)
         if (m.d <= opt.farmMax && m.d < src.d) {
           const dims = STATION_PREFABS.eden.mvlv // pole kiosk in both styles: a farm never gets a fenced yard
-          const a = Math.atan2(rx - m.x, rz - m.z), tx = m.x + Math.sin(a) * 6, tz = m.z + Math.cos(a) * 6
+          let a = Math.atan2(rx - m.x, rz - m.z), tx = m.x + Math.sin(a) * 6, tz = m.z + Math.cos(a) * 6
+          // the kiosk off the carriageway (5th live send: PSTA_POLE_8 1.7 m from an asphalt road): turn round the MV pole
+          for (let k = 1; k <= 8 && ob.roadEdge(tx, tz) < 2.5; k++) { const b = a + ((k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.PI) / 4; const x = m.x + Math.sin(b) * 6, z = m.z + Math.cos(b) * 6; if (ob.roadEdge(x, z) >= 2.5) { a = b; tx = x; tz = z } }
           const st: Station = { id: `PSTA_POLE_${++nid}`, kind: 'mvlv', site: s.id, x: tx, z: tz, yaw: a, w: dims.w, d: dims.d, h: dims.h, y: hAt(h, g, tx, tz), prefab: dims.prefab }
           stations.push(st)
           src = { x: tx, z: tz, d: Math.hypot(rx - tx, rz - tz) }; how = 'pole-trafo'; from = st.id

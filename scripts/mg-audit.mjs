@@ -156,7 +156,23 @@ for (const b of bldgs) for (let cx = Math.floor(b.box[0] / 32); cx <= Math.floor
 // the AABB of a rotated building is up to ~2x its footprint (4th send: poles 18 m from a yawed L house "inside" it):
 // its local half sizes are solved back from the AABB and the yaw (|c| w + |s| d = hx, |s| w + |c| d = hz), then the
 // pole is tested in that oriented box (0.3 m tolerance). Near 45° the system is singular: the AABB test stands.
+// footprints of the library buildings (src/data/buildings.ts rows: prefab, cat|role, [tags,] minX, minZ, maxX, maxZ,
+// local to the pivot): exact oriented test when the prefab is known (5th send: lamps 9 m from a 42°-yawed house
+// flagged by the AABB fallback)
+const FOOT = new Map();
+try {
+  const src = readFileSync(new URL("../src/data/buildings.ts", import.meta.url), "utf-8");
+  for (const m of src.matchAll(/\['(\{[0-9A-F]{16}\}[^']+\.et)',[^\]]*?(-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\]/g))
+    FOOT.set(m[1].split("/").pop(), [m[2], m[3], m[4], m[5]].map(Number));
+} catch {}
 function inOriented(b, x, z) {
+  const f = FOOT.get(b.prefab.split("/").pop());
+  if (f) {
+    const dx = x - b.x, dz = z - b.z;
+    // the app's convention (gen-common toWorld / industrial footprintOf): world = pivot + (lx c + lz s, -lx s + lz c)
+    const r = (b.yaw * Math.PI) / 180, u = dx * Math.cos(r) - dz * Math.sin(r), v = dx * Math.sin(r) + dz * Math.cos(r);
+    return u > f[0] + 0.3 && u < f[2] - 0.3 && v > f[1] + 0.3 && v < f[3] - 0.3;
+  }
   const a = (b.yaw * Math.PI) / 180, c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a)), det = c * c - s * s;
   if (Math.abs(det) < 0.2) return true;
   const hx = (b.box[2] - b.box[0]) / 2, hz = (b.box[3] - b.box[1]) / 2, cx = (b.box[0] + b.box[2]) / 2, cz = (b.box[1] + b.box[3]) / 2;
@@ -180,7 +196,7 @@ for (const p of poles)
 
 // ycm
 if (terrain)
-  for (const e of sent.filter((e) => e.ycm && !/PILLAR|_WALL_/.test(e.id))) {
+  for (const e of sent.filter((e) => e.ycm && !/PILLAR|_WALL_/.test(e.id) && !/PierConcrete/.test(e.prefab))) {
     const y = e.ycm / 100, g = terrain.at(e.x, e.z);
     if (y < g - 0.2 || y > g + 15) findings.ycm.push({ id: e.id, x: e.x, z: e.z, y: r1(y), ground: r1(g), delta: r1(y - g) });
   }
