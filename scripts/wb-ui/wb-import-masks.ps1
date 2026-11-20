@@ -21,9 +21,12 @@ function Find($root, $name, $type) {
 }
 function Pat($el, $pat) { $el.GetCurrentPattern($pat::Pattern) }
 function MenuInvoke($menu, $item) {
-  $mi = Find (WE) $menu 'MenuItem'; $ec = Pat $mi ([System.Windows.Automation.ExpandCollapsePattern])
+  $mi = Find (WE) $menu 'MenuItem'; if (-not $mi) { throw "menu $menu not found" }; $ec = Pat $mi ([System.Windows.Automation.ExpandCollapsePattern])
   $ec.Expand(); Start-Sleep -Milliseconds 400
-  $t = Find $mi $item 'MenuItem'; if (-not $t) { $ec.Collapse(); throw "menu item $menu > $item not found" }
+  $t = Find $mi $item 'MenuItem'
+  # Qt can open the menu as a separate popup window: look there too
+  if (-not $t) { foreach ($w in @(Tops)) { $t = Find $w $item 'MenuItem'; if ($t) { break } } }
+  if (-not $t) { $ec.Collapse(); throw "menu item $menu > $item not found" }
   (Pat $t ([System.Windows.Automation.InvokePattern])).Invoke(); Start-Sleep -Milliseconds 400
   # Qt leaves the popup open after a UIA Invoke: close it explicitly.
   if ($ec.Current.ExpandCollapseState -ne 'Collapsed') { $ec.Collapse() }
@@ -92,14 +95,37 @@ while ((Get-Date) -lt $deadline) {
   }
 }
 # late boxes (e.g. "Some surface masks were imported, however some were missing") can sit deep in the editor tree: sweep for them
-Start-Sleep -Seconds 3
-$late = @(WE).FindAll('Descendants', (New-Object $P($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))) | Where-Object { $_.Current.Name -match 'mask import' }
-foreach ($d in $late) { $desc = DescribeDialog $d; $desc; if ($desc -match 'import(ed)? failed') { $script:importFailed = $true }; $ok = Find $d 'OK' 'Button'; if ($ok) { (Pat $ok ([System.Windows.Automation.InvokePattern])).Invoke(); '  -> OK' } }
-foreach ($d in @(Dialogs | Where-Object { $_.Current.Name -match 'mask import' })) { $ok = Find $d 'OK' 'Button'; if ($ok) { DescribeDialog $d; (Pat $ok ([System.Windows.Automation.InvokePattern])).Invoke(); '  -> OK' } }
+# The "Surface mask import" result box (e.g. "some were missing") shows up late and is NOT a Window-type element:
+# poll up to 30 s over every top window, any control type, by name, and click its OK.
+for ($i = 0; $i -lt 15; $i++) {
+  Start-Sleep -Seconds 2; $hit = $false
+  foreach ($t in @(Tops)) {
+    $late = @($t.FindAll('Descendants', (New-Object $P($A::NameProperty, 'Surface mask import'))))
+    if ($t.Current.Name -eq 'Surface mask import') { $late += $t }
+    foreach ($d in $late) {
+      $ok = Find $d 'OK' 'Button'; if (-not $ok) { continue }
+      $desc = DescribeDialog $d; $desc; if ($desc -match 'import(ed)? failed') { $script:importFailed = $true }
+      (Pat $ok ([System.Windows.Automation.InvokePattern])).Invoke(); '  -> OK'; $hit = $true
+    }
+  }
+  if ($hit) { break }
+}
 if ($script:importFailed) { 'IMPORT FAILED: see TERRAIN (E) lines in console.log (often "Too many layers" in a block)' } else { 'import finished' }
 if (-not $NoSave) {
-  MenuInvoke 'File' 'Save World'
+  # save: menu Invoke once, else Ctrl+S
+  $saved = $false
+  # ONE attempt only: repeated UIA Invokes on Save World crashed the Workbench (2026-11-20)
+  try { MenuInvoke 'File' 'Save World'; $saved = $true } catch { $lastErr = "$_" }
+  if (-not $saved) {
+    # UIA Invoke on Save World can fault (RPC_E_SERVERFAULT) after the import box: fall back to Esc + Ctrl+S on the focused editor
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -Namespace MgK -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);'
+    [MgK.U]::SetForegroundWindow([IntPtr](WE).Current.NativeWindowHandle) | Out-Null; Start-Sleep -Milliseconds 400
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}{ESC}'); Start-Sleep -Milliseconds 300
+    [System.Windows.Forms.SendKeys]::SendWait('^s'); Start-Sleep -Seconds 4
+    $tt = (Get-Process -Id $wbpid).MainWindowTitle; if ($tt.EndsWith('*')) { "SAVE FAILED: $lastErr" } else { "saved with Ctrl+S ($tt)" }
+  }
   Start-Sleep -Seconds 3
   foreach ($d in @(Dialogs | Where-Object { $before -notcontains $_.Current.NativeWindowHandle })) { DescribeDialog $d }
-  "title: $((WE).Current.Name)"
+  "title: $((Get-Process -Id $wbpid).MainWindowTitle)"
 }
