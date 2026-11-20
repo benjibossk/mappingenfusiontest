@@ -269,7 +269,7 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
     const wt = WATER_TYPES[w.type]
     const r2 = (v: number) => Math.round(v * 100) / 100
     if (!wt.closed) {
-      const pts = centreLine(downhillCourse(w, at), Math.max(10, w.width * 0.8))
+      const pts = centreLine(downhillCourse(w, at), Math.min(LAKE_MAX_SPACING, Math.max(10, w.width * 0.8)))
       // the water sits on the profile the terrain was shaped to (nearest profile sample)
       const { line, level, sea: seaAt } = riverProfile(w, at)
       const n = pts.length / 2
@@ -400,6 +400,33 @@ export function simplifyLake(pts: number[], maxPts = LAKE_MAX_POINTS, minSpacing
   let tol = 1.5
   let out = simplifyRing(pts, tol, minSpacing)
   while (out.length / 2 > maxPts && tol < 1e5) { tol *= 1.5; out = simplifyRing(pts, tol, minSpacing) }
+  return densifyRing(out, maxPts)
+}
+
+/** vanilla lake / river bank point spacing is 6.5-26 m (VANILLA_PLACEMENT_OPTIM.md §4) */
+export const LAKE_MAX_SPACING = 26
+
+//! splits the longest edges (> maxSpacing) of a closed ring at their Catmull-Rom midpoint (a smoothed bank
+//! instead of a straight chord), longest first, while the ring has room (<= maxPts) and stays simple
+export function densifyRing(pts: number[], maxPts = LAKE_MAX_POINTS, maxSpacing = LAKE_MAX_SPACING): number[] {
+  let out = pts.slice()
+  const skip = new Set<string>()
+  while (out.length / 2 < maxPts) {
+    const n = out.length / 2
+    let best = -1, bl = maxSpacing
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, l = Math.hypot(out[j * 2] - out[i * 2], out[j * 2 + 1] - out[i * 2 + 1])
+      if (l > bl && !skip.has(`${out[i * 2]},${out[i * 2 + 1]}`)) { bl = l; best = i }
+    }
+    if (best < 0) break
+    const p = (k: number) => [out[((k + n) % n) * 2], out[((k + n) % n) * 2 + 1]]
+    const [x0, z0] = p(best - 1), [x1, z1] = p(best), [x2, z2] = p(best + 1), [x3, z3] = p(best + 2)
+    // Catmull-Rom at t = 0.5: (-p0 + 9 p1 + 9 p2 - p3) / 16
+    const mx = (-x0 + 9 * x1 + 9 * x2 - x3) / 16, mz = (-z0 + 9 * z1 + 9 * z2 - z3) / 16
+    const next = [...out.slice(0, best * 2 + 2), mx, mz, ...out.slice(best * 2 + 2)]
+    if (ringSelfIntersects(next)) { skip.add(`${x1},${z1}`); continue }
+    out = next
+  }
   return out
 }
 
