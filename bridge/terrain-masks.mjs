@@ -199,7 +199,11 @@ export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colo
   });
   const names = surfaces.map((s) => s.name);
   stampRoads(bytes, names, side, mPerPx, roads);
-  limitPixelBlocks(bytes, side, 63, 4, 3, colours ? names.map((n) => colours[n] ?? null) : null);
+  const rgb = colours ? names.map((n) => colours[n] ?? null) : null;
+  limitPixelBlocks(bytes, side, 63, 4, 3, rgb);
+  // the iterative pass above can oscillate between neighbouring blocks and stop at its pass cap
+  // (seen: block [12x22] left with 6 surfaces) -> hard, guaranteed pass on the same footprint
+  enforcePixelBlocks(bytes, side, 63, 4, 3, rgb);
   const written = [];
   names.forEach((name, k) => {
     const s = { name };
@@ -276,5 +280,99 @@ export function limitPixelBlocks(bytes, side, blockPx = 63, max = 5, margin = 3,
       }
     }
     if (!changed) return;
+  }
+}
+
+//! Guaranteed version of limitPixelBlocks (single pass, no cap): each block region (+ margin) keeps
+//! its `max` strongest surfaces; a pixel keeps only the surfaces kept by EVERY region covering it,
+//! the removed weight goes to its strongest allowed surface (else the closest-coloured / strongest
+//! of the block). Pixels whose regions share no surface get a common "glue" surface forced into
+//! those regions (as limitPerBlock in island.ts). Weights <= `tiny` are dropped first (insignificant).
+export function enforcePixelBlocks(bytes, side, blockPx = 63, max = 4, margin = 3, cols = null, tiny = 2) {
+  const n = bytes.length;
+  if (!n || max < 1) return;
+  const nb = Math.ceil((side - 1) / blockPx);
+  const lo = (i) => Math.max(0, Math.ceil((i - blockPx - margin) / blockPx));
+  const hi = (i) => Math.min(nb - 1, Math.floor((i + margin) / blockPx));
+  const strongestAt = (i, ok) => { let b = -1; for (const k of ok) if (bytes[k][i] > 0 && (b < 0 || bytes[k][i] > bytes[b][i])) b = k; return b; };
+  // insignificant weights -> strongest surface of the pixel
+  for (let i = 0; i < side * side; i++) {
+    let moved = 0, b = -1;
+    for (let k = 0; k < n; k++) { const v = bytes[k][i]; if (!v) continue; if (v <= tiny) { moved += v; bytes[k][i] = 0; } else if (b < 0 || v > bytes[b][i]) b = k; }
+    if (moved && b >= 0) bytes[b][i] = Math.min(255, bytes[b][i] + moved);
+  }
+  const ranked = [];
+  for (let by = 0; by < nb; by++) for (let bx = 0; bx < nb; bx++) {
+    const r0 = Math.max(0, by * blockPx - margin), r1 = Math.min(side - 1, by * blockPx + blockPx + margin);
+    const c0 = Math.max(0, bx * blockPx - margin), c1 = Math.min(side - 1, bx * blockPx + blockPx + margin);
+    const t = bytes.map((a) => { let s = 0; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) s += a[r * side + c]; return s; });
+    ranked.push(t.map((v, k) => [v, k]).filter(([v]) => v > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, k]) => k));
+  }
+  const keep = ranked.map((l) => new Set(l.slice(0, max)));
+  const single = new Map();
+  const allowed = (r, c) => {
+    const ra = lo(r), rb = hi(r), ca = lo(c), cb = hi(c);
+    if (ra === rb && ca === cb) {
+      const b = ra * nb + ca;
+      let a = single.get(b);
+      if (!a) single.set(b, (a = [...keep[b]]));
+      return a;
+    }
+    const ok = [];
+    for (let k = 0; k < n; k++) {
+      let all = true;
+      for (let by = ra; by <= rb && all; by++) for (let bx = ca; bx <= cb; bx++) if (!keep[by * nb + bx].has(k)) { all = false; break; }
+      if (all) ok.push(k);
+    }
+    return ok;
+  };
+  const hasWeight = (i) => { for (let k = 0; k < n; k++) if (bytes[k][i]) return true; return false; };
+  const glued = new Uint8Array(nb * nb);
+  let glue = -1;
+  for (let round = 0; round <= nb * nb; round++) {
+    const conflicts = [];
+    for (let r = 0; r < side; r++) {
+      const multiR = lo(r) !== hi(r);
+      for (let c = 0; c < side; c++) {
+        if (!multiR && lo(c) === hi(c)) continue;
+        const i = r * side + c;
+        if (hasWeight(i) && !allowed(r, c).length) conflicts.push(i);
+      }
+    }
+    if (!conflicts.length) break;
+    if (glue < 0) {
+      const w = new Array(n).fill(0);
+      for (const i of conflicts) for (let k = 0; k < n; k++) w[k] += bytes[k][i];
+      glue = w.indexOf(Math.max(...w));
+    }
+    for (const i of conflicts) {
+      const c = i % side, r = (i - c) / side;
+      for (let by = lo(r); by <= hi(r); by++) for (let bx = lo(c); bx <= hi(c); bx++) {
+        const b = by * nb + bx;
+        if (glued[b]) continue;
+        glued[b] = 1;
+        keep[b] = new Set([glue, ...ranked[b].filter((k) => k !== glue).slice(0, max - 1)]);
+        single.delete(b);
+      }
+    }
+  }
+  const gap = (a, b) => (cols && cols[a] && cols[b] ? Math.hypot(cols[a][0] - cols[b][0], cols[a][1] - cols[b][1], cols[a][2] - cols[b][2]) : 1e3);
+  for (let r = 0; r < side; r++) for (let c = 0; c < side; c++) {
+    const i = r * side + c;
+    let bad = false;
+    for (let k = 0; k < n && !bad; k++) if (bytes[k][i]) bad = true;
+    if (!bad) continue;
+    const ok = allowed(r, c);
+    const okSet = new Set(ok);
+    let best = strongestAt(i, ok);
+    for (let k = 0; k < n; k++) {
+      const v = bytes[k][i];
+      if (!v || okSet.has(k)) continue;
+      bytes[k][i] = 0;
+      let to = best;
+      if (to < 0) { to = ok.slice().sort((a, b) => gap(k, a) - gap(k, b))[0]; best = to; }
+      if (to === undefined) continue; // unreachable once the glue pass is done
+      bytes[to][i] = Math.min(255, bytes[to][i] + v);
+    }
   }
 }
