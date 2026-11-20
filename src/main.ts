@@ -45,7 +45,7 @@ import { dropCoveredPosts, extraGuardrails } from './modules/guardrails'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp'] as const
+const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp', 'desire'] as const
 const hiddenLayers = new Set<string>()
 let density: DensityGrid | null = null // object count per cell for the platform budget (platformBudget.ts)
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
@@ -113,6 +113,7 @@ import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, yardMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
+import { desirePaths, type MaskBand } from './modules/desirePaths'
 import { settleVillages, type VillageParcel, type VillageVariant } from './modules/village'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
 import { rpPlacesOf } from './modules/rpPlaces'
@@ -132,6 +133,7 @@ let layerMap: LayerMap = {} // per-layer seed overrides + stale flags (src/modul
 let pipeline: Pipeline = emptyPipeline() // recorded generation steps (src/modules/replay.ts), saved in the project; declared early: the autosave reads it at startup
 import { BIOMES, PROPS, biome, type BiomeId } from './data/biomes'
 import { DEFAULT_BIOME, applyBiome, isBiome } from './biomes/surfaces'
+import { finalLayers } from './preview/finalMasks'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, type ZoneLeafChoice } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
 import { sanitizeRoadShape } from './modules/roadSanitize'
@@ -924,6 +926,7 @@ function draw() {
   if (layer('power')) drawPower()
   if (layer('buildings')) drawSettlements()
   if (layer('existing') && view.mpp < 4) drawFences()
+  if (layer('desire') && layer('buildings') && view.mpp < 2) drawDesire()
   if (layer('zones')) drawZones()
   drawSatPreview()
   if (layer('sites')) drawSites()
@@ -2430,15 +2433,16 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
     const r = await writeMasks({
       addon: txt('tAddon'),
       world: txt('tWorld'),
-      terrainSize: num('tSize'),
-      surfaces: island.surfaces,
-      colours: { ...island.colours, ...ROAD_COLOURS },
-      roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      ...maskBody(island.surfaces),
     })
     return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' })
   }),
 )
 
+/** the mask body of every export (and of the preview's final masks, preview/finalMasks.ts) */
+function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
+  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()] }
+}
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
 const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => writeMasksRaw(applyBiome(body, currentBiome))
 
@@ -3397,8 +3401,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     out.push(t('test.routes', { msg: await toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }) }))
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
-      addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      addon: txt('tAddon'), world: txt('tWorld'), ...maskBody(island.surfaces),
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.sat', { file: r.satellite?.file ?? '—' }))
     out.push(t('test.rest'))
@@ -4285,8 +4288,7 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
     out.push(t('test.waterSent', { msg: await toWb(waterAndRoads()) }))
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
-      addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      addon: txt('tAddon'), world: txt('tWorld'), ...maskBody(island.surfaces),
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.rest'))
     return out.join('\n')
@@ -4521,6 +4523,26 @@ function existingRoads(): Road[] {
     .map((s, i) => ({ id: `EXIST_${i}`, type: 'asphalt' as RoadType, pts: s.points.flat() }))
 }
 /** fence and wall pieces (generator 'Fence', reference maps): drawn above the forest and the buildings */
+/** desire paths (desirePaths.ts): worn-ground mask bands from the doors to the nearest road, memoised per world */
+let desireMemo: { key: string; bands: MaskBand[] } | null = null
+function desireMasks(): MaskBand[] {
+  const rs = [...roads, ...existingRoads(), ...setLanes, ...setPaths].filter((r) => r.pts.length >= 4)
+  const key = `${settled.length}|${settled[0]?.id}|${settled[settled.length - 1]?.x}|${rs.length}|${setParcels.length}`
+  if (desireMemo?.key === key) return desireMemo.bands
+  const bands = desirePaths(settled, rs.map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) })), setParcels.flatMap((p) => p.fences.map((f) => f.pts)))
+  desireMemo = { key, bands }
+  return bands
+}
+function drawDesire() {
+  ctx.save(); ctx.strokeStyle = 'rgba(150,118,80,0.75)'; ctx.lineCap = 'round'
+  for (const b of desireMasks()) {
+    ctx.lineWidth = Math.max(1, (b.half * 2) / view.mpp)
+    ctx.beginPath()
+    for (let i = 0; i + 1 < b.points.length; i += 2) { const [sx, sy] = toScreen(b.points[i], b.points[i + 1]); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+    ctx.stroke()
+  }
+  ctx.restore()
+}
 function drawFences() {
   ctx.beginPath()
   for (const s of existing.shapes) {
@@ -4879,8 +4901,7 @@ $<HTMLButtonElement>('satSend').addEventListener('click', () =>
     const s = satSurfaces()
     if (!s || !island) throw new Error(t('sat.none'))
     const r = await writeMasks({
-      addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      addon: txt('tAddon'), world: txt('tWorld'), ...maskBody(s),
     })
     return t('test.masks', { dir: r.dir })
   }),
@@ -5200,10 +5221,10 @@ function wallLines(): { pts: number[]; h: number; t: number; hedge?: boolean }[]
 const flat = (ring: number[][]) => ring.flat()
 const roadKind = (t: string) => (/^asphalt/.test(t) ? 'asphalt' : /cobble|concrete/.test(t) ? 'paved' : /^trail/.test(t) ? 'trail' : 'dirt') as 'asphalt' | 'paved' | 'dirt' | 'trail'
 /** project data for the realistic 3D drape (src/view3d/drape.ts) */
-function realLayers(hm: Heightmap): import('./view3d').RealLayers {
+function realLayers(hm: Heightmap, surfaces: import('./view3d').RealLayers['surfaces'] = island?.surfaces): import('./view3d').RealLayers {
   const allRoads = [...roads, ...setLanes, ...setPaths, ...zones.flatMap((z) => z.roads)]
   return {
-    surfaces: island?.surfaces,
+    surfaces,
     forests: areas.filter((a) => a.kind === 'forest').map((a) => ({ pts: a.pts, needle: a.leaf === 'needle' ? 1 : a.leaf === 'broad' ? 0 : mixedNeedle(currentBiome) })),
     tint: drapeTint(currentBiome),
     fields: [...areas.filter((a) => a.kind === 'field').map((a) => a.pts), ...(result?.fields ?? []).map(flat)],
@@ -5217,6 +5238,11 @@ function realLayers(hm: Heightmap): import('./view3d').RealLayers {
     ],
     sat: traceImg ? { image: traceImg, x0: hm.minX, z0: hm.minZ, x1: hm.minX + (hm.cols - 1) * hm.step, z1: hm.minZ + (hm.rows - 1) * hm.step } : undefined,
   }
+}
+/** the surfaces the engine gets (export painting + per-block limit, preview/finalMasks.ts), else the app grid */
+async function previewSurfaces() {
+  if (!island?.surfaces.length) return island?.surfaces
+  try { return await finalLayers(applyBiome(maskBody(island.surfaces), currentBiome)) } catch (e) { console.warn('final masks', e); return island.surfaces }
 }
 /** the 2D render (relief, surfaces, areas, water, roads, buildings) into a square canvas over the whole terrain, without the
  *  editor overlays (site circles, labels, handles, issues, comments) */
@@ -5279,7 +5305,7 @@ btn3d.addEventListener('click', () => void (async () => {
         stage: (k) => t(('v3d.st.' + k) as K),
       },
       drape: drapeCanvas,
-      real: realLayers(hm),
+      real: realLayers(hm, await previewSurfaces()),
       progress: (s, i, n) => busyStage(s, i, n),
       notify: (m) => toast(m, 'info'),
       onClose: (tg, span) => {

@@ -27,6 +27,7 @@ export interface GrowOptions {
   branch: number // probability of a side branch at each segment end
   angleJitter: number // degrees around 90° for branches (20; towns 5)
   maxLen: number // longest street, metres
+  oblique?: number // branches / seeds leave their parent at 90° ± this (uniform, degrees); default angleJitter
 }
 export const GROW_VILLAGE: GrowOptions = { maxStreets: 4, segMin: 30, segMax: 60, step: 10, maxGrade: 0.15, contourGrade: 0.1, snap: 15, clear: 14, branch: 0.35, angleJitter: 20, maxLen: 220 }
 export const GROW_TOWN: GrowOptions = { maxStreets: 9, segMin: 40, segMax: 70, step: 10, maxGrade: 0.15, contourGrade: 0.1, snap: 15, clear: 12, branch: 0.6, angleJitter: 5, maxLen: 320 }
@@ -123,7 +124,7 @@ export function growStreets(ctx: StreetCtx, seeds: StreetSeed[], o: GrowOptions)
     grown.push(line)
     for (const [bx, bz, dx, dz] of branchAt) {
       const side = ctx.rand() < 0.5 ? 1 : -1
-      const [rx, rz] = rot(dx, dz, side * (90 + (ctx.rand() - 0.5) * 2 * o.angleJitter))
+      const [rx, rz] = rot(dx, dz, side * (90 + (ctx.rand() - 0.5) * 2 * (o.oblique ?? o.angleJitter)))
       queue.push({ x: bx, z: bz, hx: rx, hz: rz, parent: line })
     }
   }

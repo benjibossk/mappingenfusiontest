@@ -28,7 +28,7 @@ export interface TownOptions {
   maxSlope?: number // building ground slope (default 0.2)
   blocked?: number[][] // [x0, z0, x1, z1] boxes to avoid
   prefix?: string // site id (default "T")
-  maxBuildings?: number // default 110
+  maxBuildings?: number // default 160 (Everon's town disc: 169 buildings, sheds included)
 }
 export interface TownResult {
   placed: Placed[] // keep + the new buildings
@@ -42,6 +42,11 @@ export interface TownResult {
 }
 
 const CELL_AREA = 2000 // m² per Voronoi cell (≈ 45 m blocks; 4200 / max 70 cells laid 31 buildings on Everon's 300 m town disc, vanilla 169)
+// districts reach DISTRICT_R x the zone radius (0.78 left the outer ring of Everon's town empty)
+const DISTRICT_R = 0.9
+const ROAD_CHORD = 36, ROAD_FADE = 2.5 // through-road frontage: chord length (m), extra skip per unit of radius past 0.6 R
+const ROAD_NEAR = 14
+const CORE_R = 0.35 // road fronts inside this share of the radius take the centre set (big houses, tight)
 const SNAP = 3 // merge Voronoi vertices closer than this (no tiny street segments)
 const MAIN_GRADE = 0.18, STREET_GRADE = 0.14
 const CHURCH_RE = /Church|Chapel|Chapelle|Eglise/i
@@ -84,7 +89,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   const pre = o.prefix ?? 'T'
   const rand = rng(hash(pre, o.seed))
   const maxSlope = o.maxSlope ?? 0.2, density = o.density ?? 1
-  const cap = Math.round((o.maxBuildings ?? 110) * Math.min(1.5, Math.max(0.3, density)))
+  const cap = Math.round((o.maxBuildings ?? 160) * Math.min(1.5, Math.max(0.3, density)))
   const placed = keep.slice()
   const warnings: string[] = []
   const res: TownResult = { placed, lanes: [], squares: [], blocks: [], graph: { v: [], e: [] }, pop: 0, warnings }
@@ -160,7 +165,20 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   }))
   const vx = (i: number) => V[i * 2], vz = (i: number) => V[i * 2 + 1]
   const vIn = (i: number) => inZone(vx(i), vz(i))
-  const roadOf = (a: number, b: number) => roadEdge(onRoad, roadLines, vx(a), vz(a), vx(b), vz(b), a, b) // >= 0: the edge IS an existing road
+  // >= 0: the edge IS an existing road, or runs alongside one (both ends and midpoint within ROAD_NEAR m: no second
+  // street drawn a few metres beside it, the road-frontage pass lines that road with houses)
+  const roadMemo = new Map<number, number>()
+  const roadOf = (a: number, b: number) => {
+    const key = ekey(a, b), m = roadMemo.get(key)
+    if (m !== undefined) return m
+    let r = roadEdge(onRoad, roadLines, vx(a), vz(a), vx(b), vz(b), a, b)
+    if (r < 0) {
+      const mx = (vx(a) + vx(b)) / 2, mz = (vz(a) + vz(b)) / 2
+      r = roadLines.findIndex((l) => lineDist(l.pts, mx, mz) < l.half + ROAD_NEAR && lineDist(l.pts, vx(a), vz(a)) < l.half + ROAD_NEAR && lineDist(l.pts, vx(b), vz(b)) < l.half + ROAD_NEAR)
+    }
+    roadMemo.set(key, r)
+    return r
+  }
 
   // --- 4. districts: whole cells inside the zone, near the centre; the rest of the zone = farms
   const ringOf = (ci: number) => cellV[ci].flatMap((k) => [vx(k), vz(k)])
@@ -176,7 +194,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     if (!inZone(x, z) || wet(x, z, 4)) return null
     const whole = cellV[ci].every(vIn)
     if (ci === 0) return 'square'
-    if (whole && Math.hypot(x - cx, z - cz) < R * 0.78) return steep(ringOf(ci)) ? 'park' : 'residential'
+    if (whole && Math.hypot(x - cx, z - cz) < R * DISTRICT_R) return steep(ringOf(ci)) ? 'park' : 'residential'
     return 'farm'
   })
   const district = (ci: number) => { const k = kind[ci]; return !!k && k !== 'farm' }
@@ -354,7 +372,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     centre: pool(['houseL', 'houseM']), residential: pool(['houseM', 'houseS', 'houseM', 'houseL']), farm: pool(['farm']),
     industry: INDUSTRIAL.filter((b) => b.role === 'main' && (b.tags.includes('depot') || b.tags.includes('factory')) && b.maxX - b.minX < 40 && b.maxZ - b.minZ < 40).map((b) => ({ prefab: b.prefab, cat: 'shed' as BuildingCat, minX: b.minX, minZ: b.minZ, maxX: b.maxX, maxZ: b.maxZ })),
   }
-  const SET: Partial<Record<TownBlockType, { back: number; gap: number; skip: number }>> = { centre: { back: 1, gap: 0.8, skip: 0.05 }, residential: { back: 4, gap: 4, skip: 0.18 }, industry: { back: 6, gap: 8, skip: 0 }, farm: { back: 8, gap: 30, skip: 0.3 } }
+  const SET: Partial<Record<TownBlockType, { back: number; gap: number; skip: number; annex?: number }>> = { centre: { back: 1, gap: 0.8, skip: 0.05, annex: 0.3 }, residential: { back: 4, gap: 4, skip: 0.18, annex: 0.8 }, industry: { back: 6, gap: 8, skip: 0 }, farm: { back: 8, gap: 30, skip: 0.3, annex: 1 } }
   const pick = <T>(a: T[]) => a[Math.floor(rand() * a.length)]
   // street fronts of a cell: [ax, az, bx, bz, half, nx, nz] with n pointing into the block
   const fronts = (ci: number) => {
@@ -369,10 +387,20 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     })
     return out.sort((p, q) => q[8] - p[8] || q[7] - p[7]) // the square first, then main streets, then the longest
   }
-  const along = (f: number[], set: { back: number; gap: number; skip: number }, choose: () => Building, role: PlacedRole, cat?: BuildingCat) => {
+  // outbuilding behind a house (Bohemia, Everon: 1.6 per house, 76 % behind, median 9 m back, aligned within 5 deg;
+  // the vanilla town disc holds 69 sheds / garages for 88 houses)
+  const ANNEX = pool(['annex', 'shed']).filter((b) => b.maxX - b.minX < 14 && b.maxZ - b.minZ < 14)
+  const annex = (ox: number, oz: number, depth: number, maxZ: number, yaw: number, nx: number, nz: number, ux: number, uz: number) => {
+    if (!ANNEX.length) return
+    for (let tr = 0; tr < 3; tr++) {
+      const a = pick(ANNEX), d = depth - maxZ + 1.5 + rand() * 3 + a.maxZ, lat = (rand() - 0.5) * 8 // origin -> back face, gap, annex half
+      const ay = yaw + (rand() < 0.8 ? (rand() - 0.5) * 8 : rand() < 0.5 ? 90 : -90)
+      if (add(a, ox + nx * d + ux * lat, oz + nz * d + uz * lat, ay, 'annex', a.cat)) return
+    }
+  }
+  const along = (f: number[], set: { back: number; gap: number; skip: number; annex?: number }, choose: () => Building, role: PlacedRole, cat?: BuildingCat, E = 6) => {
     const [ax, az, bx, bz, half, nx, nz, L] = f, ux = (bx - ax) / L, uz = (bz - az) / L
     const yaw = (Math.atan2(-nx, -nz) * 180) / Math.PI + FRONT_YAW
-    const E = 6 // clear of the junction at each end of the frontage
     let t = E
     while (t < L - E) {
       const b = choose(), w = b.maxX - b.minX
@@ -382,8 +410,10 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
       const s = sgn > 0 ? t - b.minX : t + b.maxX
       const off = half + set.back + b.maxZ
       const ox = ax + ux * s + nx * off, oz = az + uz * s + nz * off
-      if (add(b, ox, oz, yaw, role, cat)) t += w + set.gap
-      else t += 3
+      if (add(b, ox, oz, yaw, role, cat)) {
+        t += w + set.gap
+        if ((role === 'house' || role === 'farmhouse') && cat !== 'civic' && rand() < (set.annex ?? 0)) annex(ox, oz, b.maxZ - b.minZ, b.maxZ, yaw, nx, nz, ux, uz)
+      } else t += 3
     }
   }
   const RANK: Record<TownBlockType, number> = { square: 0, church: 1, centre: 2, industry: 3, farm: 4, parking: 5, park: 5, residential: 6 } // residential last: it takes what the cap leaves
@@ -414,6 +444,36 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     if (!p.length) continue
     if (type === 'farm') { if (fr[0]) along(fr[0], set, () => pick(p), 'farmhouse'); continue }
     for (const f of fr) along(f, set, () => pick(p), type === 'industry' ? 'annex' : 'house')
+  }
+  // through-roads: the existing roads crossing the town are its main streets in Bohemia's towns (the Voronoi edges
+  // only follow them roughly): houses along both sides, in chords of ~ROAD_CHORD m, sparser towards the edge
+  // (vanilla Everon town, buildings per ha by 50 m ring: flat to 200 m, then half, then a quarter)
+  const RES = SET.residential!, rpool = POOL.residential!
+  const chords: { f: number[]; r: number }[] = []
+  for (const l of roadLines) {
+    const p = l.pts, ch: number[] = [p[0], p[1]]
+    for (let i = 2, acc = 0; i < p.length; i += 2) { acc += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]); if (acc >= ROAD_CHORD || i === p.length - 2) { ch.push(p[i], p[i + 1]); acc = 0 } }
+    for (let i = 0; i + 3 < ch.length; i += 2) {
+      const ax = ch[i], az = ch[i + 1], bx = ch[i + 2], bz = ch[i + 3], L = Math.hypot(bx - ax, bz - az)
+      if (L < 12) continue
+      const r = Math.hypot((ax + bx) / 2 - cx, (az + bz) / 2 - cz) / R
+      if (r > DISTRICT_R + 0.05 || !inZone((ax + bx) / 2, (az + bz) / 2)) continue
+      for (const sg of [1, -1]) chords.push({ f: [ax, az, bx, bz, l.half + 1.5, (-(bz - az) / L) * sg, ((bx - ax) / L) * sg, L], r })
+    }
+  }
+  chords.sort((p, q) => p.r - q.r)
+  // no church in its block (a through-road across it): the first road front near the centre that takes one
+  if (!placed.slice(keepN).some((q) => q.role === 'church')) {
+    const churches = BUILDINGS.filter((b) => CHURCH_RE.test(b.prefab))
+    for (const c of chords) {
+      if (c.r > 0.5) break
+      for (const b of churches) { along(c.f, { back: 3, gap: 100, skip: 0 }, () => b, 'church', 'civic', 2); if (placed.slice(keepN).some((q) => q.role === 'church')) break }
+      if (placed.slice(keepN).some((q) => q.role === 'church')) break
+    }
+  }
+  for (const c of chords) {
+    const core = c.r < CORE_R
+    along(c.f, core ? SET.centre! : { ...RES, skip: Math.min(0.9, RES.skip + Math.max(0, c.r - 0.6) * ROAD_FADE) }, () => pick(core ? POOL.centre! : rpool), 'house', undefined, 2)
   }
   // drop what the smoothed lanes run over (corner cut of the spline), same test as the pre-send check (corners + origin)
   for (let i = placed.length - 1; i >= keepN; i--) {
