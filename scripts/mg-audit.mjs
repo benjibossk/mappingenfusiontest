@@ -159,6 +159,12 @@ for (const b of bldgs) for (let cx = Math.floor(b.box[0] / 32); cx <= Math.floor
 // footprints of the library buildings (src/data/buildings.ts rows: prefab, cat|role, [tags,] minX, minZ, maxX, maxZ,
 // local to the pivot): exact oriented test when the prefab is known (5th send: lamps 9 m from a 42°-yawed house
 // flagged by the AABB fallback)
+// cliffRocks burial per prefab (P('guid', 'Name', dy) rows of src/modules/cliffRocks.ts): a rock is wrong when its
+// height strays from ground + dy by more than half the burial (6th send: 782 CLIFF_ findings, all vanilla burial)
+const ROCK_DY = new Map();
+try {
+  for (const m of readFileSync(new URL("../src/modules/cliffRocks.ts", import.meta.url), "utf-8").matchAll(/P\('[0-9A-F]{16}', '([^']+)', (-?[\d.]+)\)/g)) ROCK_DY.set(m[1], +m[2]);
+} catch {}
 const FOOT = new Map();
 try {
   const src = readFileSync(new URL("../src/data/buildings.ts", import.meta.url), "utf-8");
@@ -198,7 +204,11 @@ for (const p of poles)
 if (terrain)
   for (const e of sent.filter((e) => e.ycm && !/PILLAR|_WALL_/.test(e.id) && !/PierConcrete/.test(e.prefab))) {
     const y = e.ycm / 100, g = terrain.at(e.x, e.z);
-    if (y < g - 0.2 || y > g + 15) findings.ycm.push({ id: e.id, x: e.x, z: e.z, y: r1(y), ground: r1(g), delta: r1(y - g) });
+    // cliffRocks bury their pivot on purpose (vanilla burial, up to ~0.6 x the piece height): only a rock lost
+    // deep under the ground or floating counts (6th send: 782 CLIFF_ findings, all burial)
+    const rock = /^CLIFF_/.test(e.id);
+    const dy = ROCK_DY.get(e.prefab.split("/").pop().replace(/\.et$/, "")) ?? 0;
+    if (rock ? Math.abs(y - g - dy) > Math.max(3, Math.abs(dy) * 0.5) /* the 8 m audit grid misses ~3 m on 35 deg rock faces */ : y < g - 0.2 || y > g + 15) findings.ycm.push({ id: e.id, x: e.x, z: e.z, y: r1(y), ground: r1(g), delta: r1(y - g) });
   }
 
 // terrain

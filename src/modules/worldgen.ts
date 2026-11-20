@@ -11,7 +11,7 @@ import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
 import { DENSITY, scaledCount, worldCounts } from '../data/densities'
 import { featheredBelt, scatterLayers } from './vegLayers'
-import { buryRocks, cliffRocks, paintRockSurfaces, rockStamps } from './cliffRocks'
+import { buryRocks, cliffRocks, rockProfile, paintRockSurfaces, rockStamps } from './cliffRocks'
 import { VEG } from '../data/biomes'
 import { fr } from '../i18n'
 import { computeSurfaces, settlementMask, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
@@ -876,7 +876,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     // site / industry / military footprints only: the map-wide scatter layers (VEG_SCATTER, field trees...) are a
     // zone too and their disc covers the whole island (that is why this placed 0 rocks before)
     const discs = zones.map(zoneDisc).filter((d) => d.r < 600)
-    const cliffs = cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, groundAt: gAt, forest: inWood, seed: ss('forests', 'cliffs'), max: Math.round(200 * landKm2),
+    const cliffs = cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, groundAt: gAt, forest: inWood, seed: ss('forests', 'cliffs'), spacing: rockProfile(p.biome).spacing, density: rockProfile(p.biome).density, rockQ: rockProfile(p.biome).rockQ, max: Math.round(rockProfile(p.biome).perKm2 * landKm2),
       ok: (x, z) => !isLakeOrSea(x, z) && !nearRoad(x, z) && !houseNear(x, z) && !discs.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 8) })
     if (cliffs.length) zones.push({ id: 'CLIFF_ROCKS', kind: 'site', sub: 'cliffs', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'cliffs'), shapes: [], entities: cliffs, flat: [], plat: [], roads: [], warnings: [],
       boxes: cliffs.map((t) => ({ corners: [t.x - 3, t.z - 3, t.x + 3, t.z - 3, t.x + 3, t.z + 3, t.x - 3, t.z + 3], role: 'rock', h: 2 })) })

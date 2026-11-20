@@ -77,6 +77,8 @@ export interface CliffOptions {
   max?: number
   /** multiplier of the outcrop chance (1 = vanilla Everon-like density) */
   density?: number
+  /** land-slope quantile of the rock threshold (default 0.72, Everon) */
+  rockQ?: number
   prefix?: string
 }
 
@@ -88,7 +90,7 @@ function slopeAt(h: (x: number, z: number) => number, x: number, z: number, d = 
 }
 
 /** land slope distribution of the box (16 m lattice) -> rank thresholds clamped to absolute bounds */
-export function rockThresholds(o: Pick<CliffOptions, 'box' | 'heightAt'>): RockThresholds {
+export function rockThresholds(o: Pick<CliffOptions, 'box' | 'heightAt' | 'rockQ'>): RockThresholds {
   const s: number[] = []
   for (let z = o.box.minZ + 8; z < o.box.maxZ; z += 16) for (let x = o.box.minX + 8; x < o.box.maxX; x += 16) {
     if (o.heightAt(x, z) <= 0.5) continue
@@ -99,9 +101,18 @@ export function rockThresholds(o: Pick<CliffOptions, 'box' | 'heightAt'>): RockT
   const rank = (v: number) => { let lo = 0, hi = s.length; while (lo < hi) { const m = (lo + hi) >> 1; if (s[m] < v) lo = m + 1; else hi = m } return s.length ? lo / s.length : 0 }
   // [M] rock median rank 81-98, p10 25-78 -> from the 72nd percentile up, more likely the higher the rank;
   // cliffs median rank 94-98 -> 98.5th
-  const rock = Math.min(CLIFF_MIN_SLOPE, Math.max(FLOOR_ROCK, q(0.72)))
+  const rock = Math.min(CLIFF_MIN_SLOPE, Math.max(FLOOR_ROCK, q(o.rockQ ?? 0.72)))
   const cliff = Math.min(CLIFF_FACE_SLOPE, Math.max(FLOOR_CLIFF, q(0.985), rock * 1.25))
   return { rock, cliff, field: Math.max(Math.tan((6 * Math.PI) / 180), q(0.5)), q, rank }
+}
+
+/** per-map rockiness (bench tour Bohemia 2026-11-20, vanilla-rocks.json big pieces per km2 of land: Everon 22,
+ *  Kolguyev 120, Arland 373, 30 % of Arland's above 45 deg): outcrop chance multiplier, threshold quantile, cap of
+ *  pieces per km2 of land */
+export function rockProfile(biome?: string): { density: number; rockQ: number; perKm2: number; spacing: number } {
+  if (biome && /arland/i.test(biome)) return { density: 10, rockQ: 0.88, perKm2: 900, spacing: 11 }
+  if (biome && /kolguyev|nordic/i.test(biome)) return { density: 3, rockQ: 0.72, perKm2: 400, spacing: 22 }
+  return { density: 1, rockQ: 0.72, perKm2: 200, spacing: 22 }
 }
 
 export function cliffRocks(o: CliffOptions): ProjectEntity[] {

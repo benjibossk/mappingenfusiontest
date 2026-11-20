@@ -4,7 +4,7 @@
 // 8 m ref grid vs vanilla 2 m) so a threshold drift shows.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { cliffRocks, rockKind } from '../../src/modules/cliffRocks'
+import { cliffRocks, rockKind, rockProfile } from '../../src/modules/cliffRocks'
 
 interface VRocks { landKm2: number; perKm2: Record<string, number>; bigSlopeHist: number[]; landSlopeHist: number[] }
 const V: Record<string, VRocks> = JSON.parse(readFileSync(join(import.meta.dirname, 'vanilla-rocks.json'), 'utf8'))
@@ -19,7 +19,9 @@ export function rocksBench(mapId: string, box: { minX: number; minZ: number; max
   const land: number[] = []
   for (let z = box.minZ + 8; z < box.maxZ; z += 16) for (let x = box.minX + 8; x < box.maxX; x += 16) if (hAt(x, z) > 0.5) land.push(deg(sl(x, z)))
   const landKm2 = (land.length * 256) / 1e6
-  const es = cliffRocks({ box, heightAt: hAt, ok, seed: 1, max: Math.round(400 * landKm2) })
+  // the generator's per-map profile (worldgen passes the biome the same way)
+  const pf = rockProfile(mapId === 'arland' ? 'woodland_arland' : mapId === 'kolguyev' ? 'nordic_kolguyev' : undefined)
+  const es = cliffRocks({ box, heightAt: hAt, ok, seed: 1, spacing: pf.spacing, density: pf.density, rockQ: pf.rockQ, max: Math.round(Math.max(400, pf.perKm2) * landKm2) })
   const big = es.filter((e) => { const k = rockKind(e.prefab); return k === 'rock' || k === 'cliff' })
   const bh = hist(big.map((e) => deg(sl(e.x, e.z))))
   const overlap = bh.reduce((a, p, i) => a + Math.min(p, v.bigSlopeHist[i]), 0)

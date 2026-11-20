@@ -148,19 +148,19 @@ export function applyHarbour(heights: number[], g: Grid, H: HarbourPlan) {
 }
 
 /** a finer height patch over the harbour (the main grid is 8 m: the quay step becomes a ramp, 5th live send ycm on
- *  every quay piece). Written by the bridge as heightpatch.txt, sampled first by MG_HeightmapApplier. Same rule as
- *  applyHarbour on top of the coarse result, so its border matches the main grid. */
+ *  every quay piece). Written by the bridge as heightpatch.txt, sampled first by MG_HeightmapApplier. Flats exact,
+ *  the rest = the coarse result, so its border matches the main grid. */
 export interface HeightPatch { minX: number; minZ: number; step: number; cols: number; rows: number; heights: number[] }
 export function harbourPatch(heights: ArrayLike<number>, g: Grid, H: HarbourPlan, step = 2): HeightPatch {
   const b = harbourBox(H), minX = Math.floor(b.x0 / step) * step, minZ = Math.floor(b.z0 / step) * step
   const cols = Math.ceil((b.x1 - minX) / step) + 1, rows = Math.ceil((b.z1 - minZ) / step) + 1, out: number[] = []
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const x = minX + c * step, z = minZ + r * step, h = heightAt(heights, g, x, z), [u, v] = toLocal(H, x, z), { dB, dA } = dists(H, u, v)
+    // only the two flats are sharpened; the blend is already in the coarse grid (applying it again on top dug the
+    // 6th live send 7 m too deep around VAN_PORT_1)
     let y = h
     if (dB <= 0) y = BASIN_H
     else if (dA <= 0) y = APRON_H
-    else if (dB < BLEND && dB <= dA) y = Math.min(h, BASIN_H + ((h - BASIN_H) * dB) / BLEND)
-    else if (dA < BLEND) y = APRON_H + ((h - APRON_H) * dA) / BLEND
     out.push(Math.round(y * 100) / 100)
   }
   return { minX, minZ, step, cols, rows, heights: out }
