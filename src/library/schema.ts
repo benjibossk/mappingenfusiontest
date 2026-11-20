@@ -54,6 +54,8 @@ export interface Composition {
   licence: string
   /** whole plot of the parcel library (parcelLib.ts): house + fence + trees, cemetery, yard... absent = small sub-composition */
   category?: ParcelCategory
+  /** finer kind inside the category (industrial: 'sawmill'); a pick without subtype skips subtyped parcels */
+  subtype?: string
   /** 'front': the plot's +Z side faces its access road (aligned to the nearest road when placed); 'none': free */
   road?: 'front' | 'none'
   /** where it was harvested: [map, x, z] */

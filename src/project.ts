@@ -64,6 +64,9 @@ export interface ProjectEntity {
   /** degrees, tilt on the terrain slope for small props / fences (src/modules/slopeAlign.ts); absent = upright */
   pitch?: number
   roll?: number
+  /** centi-degrees, exact tilt of pitched bridge decks (water.ts riverBridges); wins over pitch / roll */
+  pitchcd?: number
+  rollcd?: number
 }
 
 export interface Project {
