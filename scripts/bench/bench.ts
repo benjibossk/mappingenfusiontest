@@ -24,6 +24,7 @@ import { GROW_VILLAGE } from '../../src/modules/villageStreets'
 import { pastureFences, pastureDensity, pastureStyles } from '../../src/modules/pastures'
 import { streetLights } from '../../src/modules/streetLights'
 import { localStreets, streetStats, polyLen, STREET_REACH } from './streets'
+import { rocksBench } from './rocks'
 
 const args = process.argv.slice(2)
 const mapId = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--'))) ?? 'everon'
@@ -377,6 +378,7 @@ const streetLightScore = +((lampCount + lampSpacing + lampOffset) / 3).toFixed(1
 const streetLightInfo = { score: streetLightScore, count: lampCount, spacing: lampSpacing, offset: lampOffset, n: [vL.length, gL.length],
   medNN: [+med(lampNN(vL)).toFixed(1), +med(lampNN(gL)).toFixed(1)], medOffset: [+med(lampOff(vL)).toFixed(1), +med(lampOff(gL)).toFixed(1)] }
 
+const rocks = rocksBench(mapId, { minX: grid.minX, minZ: grid.minZ, maxX: grid.minX + (grid.cols - 1) * grid.step, maxZ: grid.minZ + (grid.rows - 1) * grid.step }, hAt, (x, z) => nearRoad(x, z).d > 8)
 const report = {
   map: m.name, genSec, sites: sites.length,
   farmsteads,
@@ -389,7 +391,8 @@ const report = {
   power,
   streetLights: streetLightInfo,
   powerWindows: powerWin.length ? { score: powerWindowScore, windows: powerWin } : null,
-  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, streetLights: streetLightScore, power: power?.tilePoles ?? null, powerWindow: powerWindowScore },
+  rocks,
+  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, streetLights: streetLightScore, power: power?.tilePoles ?? null, powerWindow: powerWindowScore, rocks: rocks?.score ?? null },
   powerRef: { nearRoad10: Object.fromEntries(kindsP.map((k) => [k, nearShare(vPoles, k)])), lvMedianSpan: +med(spans('lv')).toFixed(1), mvMedianSpan: +med(spans('mv')).toFixed(1), hvMedianSpan: +med(spans('hv')).toFixed(1) },
 }
 console.log(JSON.stringify(report, null, 1))

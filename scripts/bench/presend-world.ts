@@ -27,3 +27,16 @@ if (process.argv.includes('--list')) for (const i of issues.slice(0, 40)) consol
   if (t) console.log(`topology: ${t.nodes.length} nodes, ${t.edges.length} edges, ${t.feeders.length} feeders, ${t.consumers.length} consumers (${t.consumers.filter((c) => !c.transformer).length} without transformer)`)
   const o = process.argv.indexOf('--topology'); if (t && o > 0) (await import('node:fs')).writeFileSync(process.argv[o + 1], JSON.stringify(t, null, 1))
 }
+// rocks (cliffRocks.ts, ROCKS_VANILLA.md): pieces per km2 of land by kind, slope histogram of the big ones (5 deg bins)
+{
+  const { rockKind } = await import('../../src/modules/cliffRocks')
+  const g = w.grid, H = w.heights, at = (x: number, z: number) => H[Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))]
+  const land = (H as ArrayLike<number>) ? Array.from(H as ArrayLike<number>).filter((h) => h > 0.5).length * g.step * g.step / 1e6 : 1
+  const es = w.zones.find((z) => z.id === 'CLIFF_ROCKS')?.entities ?? []
+  const by: Record<string, number> = {}
+  for (const e of es) { const k = rockKind(e.prefab) ?? 'other'; by[k] = (by[k] ?? 0) + 1 }
+  const deg = (x: number, z: number) => (Math.atan(Math.hypot(at(x + 4, z) - at(x - 4, z), at(x, z + 4) - at(x, z - 4)) / 8) * 180) / Math.PI
+  const hist = new Array(10).fill(0), big = es.filter((e) => /^(rock|cliff)$/.test(rockKind(e.prefab) ?? ''))
+  for (const e of big) hist[Math.min(9, Math.floor(deg(e.x, e.z) / 5))]++
+  console.log(`rocks: ${es.length} (${(es.length / land).toFixed(1)}/km2 land) ${Object.entries(by).map(([k, n]) => `${k} ${(n / land).toFixed(1)}`).join(', ')}; big slope % ${hist.map((n) => Math.round((100 * n) / Math.max(1, big.length))).join(' ')}`)
+}
