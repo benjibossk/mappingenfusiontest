@@ -9,10 +9,12 @@
 import type { Grid } from './island'
 import type { Road } from './roads'
 import { roadHalf, isPaved } from './roads'
-import { makeVanillaSite, zoneDisc, type ZoneItem } from './zones'
+import { makeVanillaSite, makeLibraryParcel, zoneDisc, type ZoneItem } from './zones'
+import { pickParcel, parcelTemplate } from '../library/parcelLib'
 import type { VanillaTemplate, VanillaObject } from './vanillaSites'
 import { SITE_RADIUS, type Site } from './network'
 import { mulberry } from './vegLayers'
+import { toWorld } from './gen-common'
 
 export type RpRole =
   | 'police' | 'clinic' | 'town_hall' | 'bank' | 'market' | 'shop' | 'pub' | 'garage' | 'car_dealer' | 'bus_stop'
@@ -37,7 +39,10 @@ const P = {
   sawmill: '{1A18A755842DCA36}Prefabs/Structures/Industrial/Houses/Sawmill_E_01/Sawmill_E_01.et',
   woodPile: '{13FD3EC5D111AD6D}Prefabs/Props/Forest/WoodPile/WoodPile_01_A.et',
   plankPile: '{67B5336A6D63CCA4}Prefabs/Props/Construction/PlankPile/PlankPile_01_Medium.et',
-  cartLog: '{2A0F520584F7B112}Prefabs/Props/Industrial/CartSawmill_01_log.et',
+  // CartSawmill_01_log is a rail log cart (vanilla: once, on SawmillRail_01 at Kolguyev): no longer laid on bare grass
+  logEnd: '{2AE32F7E8BCF68EE}Prefabs/Props/Forest/WoodPile/WoodPile_01_End_A.et',
+  log: '{5E317DC74EA1F1A4}Prefabs/Props/Forest/WoodPile/WoodLog_01_B.et',
+  logScatter: '{1D1BBD7F52F71839}Prefabs/Props/Forest/WoodPile/WoodPile_02_scattered.et',
   tippler: '{8CBA9D089278A4D7}Prefabs/Structures/Industrial/CoalMineShaft_01/CoalMineShaft_USSR_01_tippler.et',
   shaftEnd: '{02128ED43CA97BCF}Prefabs/Structures/Industrial/CoalMineShaft_01/CoalMineShaft_USSR_01_end_buried.et',
   gravelL: '{19A3C48FC2665A3F}Prefabs/Props/Construction/GravelPile_01/GravelPile_01_large.et',
@@ -81,9 +86,9 @@ const COMPOSE: Record<string, { radius: number; objects: VanillaObject[] }> = {
   garage: { radius: 18, objects: [o(P.garageBig, 0, -5), ...bays(0, 11, 1, 16)] },
   car_dealer: { radius: 18, objects: [o(P.workshop, -10, -9), o(P.garage, 2, -9, 90), ...bays(4, 8, 3, 18)] },
   bus_stop: { radius: 4, objects: [o(P.busShed, 0, 0)] },
-  sawmill: { radius: 26, objects: [o(P.sawmill, 0, -6), o(P.woodPile, -20, 6, 90), o(P.woodPile, -20, -4, 90), o(P.plankPile, 18, 6), o(P.plankPile, 18, -2), o(P.cartLog, 10, 14), o(P.cartLog, 13, 14)] },
+  sawmill: { radius: 26, objects: [o(P.sawmill, 0, -6), o(P.woodPile, -20, 6, 90), o(P.woodPile, -20, -4, 90), o(P.plankPile, 18, 6), o(P.plankPile, 18, -2), o(P.logEnd, 10, 14), o(P.log, 13, 14)] }, // fallback when the library has no vanilla sawmill
   mine: { radius: 22, objects: [o(P.tippler, 0, -10), o(P.shaftEnd, 0, -18), o(P.gravelL, -12, 2), o(P.gravelM, 10, 3), o(P.sand, 12, -8), o(P.workshop, -12, -12)] },
-  lumber: { radius: 12, objects: [o(P.woodPile, -6, 0, 90), o(P.woodPile, -2, 0, 90), o(P.woodPile, 2, 0, 90), o(P.cartLog, 7, 4), o(P.cartLog, 7, 1)] },
+  lumber: { radius: 12, objects: [o(P.woodPile, -6, 0, 90), o(P.woodPile, -2, 0, 90), o(P.woodPile, 2, 0, 90), o(P.logEnd, 7, 4, 90), o(P.log, 7, 0), o(P.logScatter, -1, 5)] },
   furnace: { radius: 9, objects: [o(P.workshop, 0, -2), o(P.stoveInd, 0, 6), o(P.gravelM, -6, 5)] },
   orchard: { radius: 19, objects: [...[-14, -7, 0, 7, 14].flatMap((dx, i) => [-12, -5, 2, 9].map((dz, j) => o((i + j) % 3 ? P.apple : P.plum, dx, dz, (i * 47 + j * 83) % 360)))] },
   beehive: { radius: 8, objects: [o(P.hive, -4, 0), o(P.hiveB, -1.5, 0), o(P.hive, 1, 0), o(P.hiveB, 3.5, 0), o(P.hiveStack, 0, -4)] },
@@ -177,8 +182,22 @@ export function placeRpPlaces(c: RpContext): ZoneItem[] {
   }
   const count: Record<string, number> = {}
   const place = (role: RpRole, list: Road[], seed: number, accept: (x: number, z: number) => boolean, score?: (x: number, z: number) => number): ZoneItem | null => {
-    const tpl = rpTemplate(role)
+    // sawmill: a whole vanilla sawmill yard of the parcel library (industrial/sawmill, harvested from Everon and
+    // Kolguyev: mill, log piles, plank stacks, rails, fences, crates) laid as a box, its entrance (+Z) on the road
+    const parcel = role === 'sawmill' ? pickParcel('industrial', { subtype: 'sawmill', seed }) : null
+    const tpl = parcel ? parcelTemplate(parcel) : rpTemplate(role)
     if (!tpl || !list.length) return null
+    const hw = parcel ? parcel.size.w / 2 : tpl.radius, hd = parcel ? parcel.size.d / 2 : tpl.radius
+    const okBox = (x: number, z: number, yaw: number) => { // the whole yard box: dry land, off every carriageway, clear of other zones
+      if (discs().some((d) => Math.hypot(d.x - x, d.z - z) < d.r + Math.max(hw, hd) + 8)) return false
+      if (c.heights[Math.round((z - g.minZ) / g.step) * g.cols + Math.round((x - g.minX) / g.step)] <= 0.5) return false
+      for (let u = -hw; u <= hw + 0.1; u += Math.max(4, hw / 6)) for (let v = -hd; v <= hd + 0.1; v += Math.max(4, hd / 6)) {
+        const [px, pz] = toWorld(x, z, yaw, u, v)
+        if (isWater(px, pz) || roadClearance(px, pz, roads) < 1.5) return false
+      }
+      return true
+    }
+    const fits = (x: number, z: number, yaw: number) => (parcel ? okBox(x, z, yaw) : ok(x, z, tpl.radius))
     const rnd = mulberry(seed)
     let best: { x: number; z: number; yaw: number; s: number } | null = null
     const tries = score ? 400 : 160
@@ -188,17 +207,19 @@ export function placeRpPlaces(c: RpContext): ZoneItem[] {
       const ax = rd.pts[i], az = rd.pts[i + 1], dx = rd.pts[i + 2] - ax, dz = rd.pts[i + 3] - az, len = Math.hypot(dx, dz)
       if (len < 1) continue
       const side = rnd() < 0.5 ? 1 : -1, nx = (-dz / len) * side, nz = (dx / len) * side, f = rnd()
-      const off = roadHalf(rd) + tpl.radius + 3 // footprint edge 3 m off the verge: reached straight from the road
+      const off = roadHalf(rd) + hd + 3 // footprint edge 3 m off the verge: reached straight from the road
       const x = ax + dx * f + nx * off, z = az + dz * f + nz * off
-      if (!accept(x, z) || !ok(x, z, tpl.radius)) continue
       const yaw = (Math.atan2(-nx, -nz) * 180) / Math.PI // +Z of the template towards the road
+      if (!accept(x, z) || !fits(x, z, yaw)) continue
       const s = score ? score(x, z) : 0
       if (!best || s > best.s) best = { x, z, yaw, s }
       if (!score) break
     }
     if (!best) return null
     count[role] = (count[role] ?? 0) + 1
-    const zn = makeVanillaSite(c.heights, g, { id: `RP_${role.toUpperCase()}_${count[role]}`, type: 'rp', x: best.x, z: best.z, yaw: best.yaw, seed, template: tpl })
+    const id = `RP_${role.toUpperCase()}_${count[role]}`
+    const zn = parcel ? makeLibraryParcel(c.heights, g, { id, parcel, x: best.x, z: best.z, yaw: best.yaw, seed }) // flat yard on the box
+      : makeVanillaSite(c.heights, g, { id, type: 'rp', x: best.x, z: best.z, yaw: best.yaw, seed, template: tpl })
     if (!zn) return null
     zn.sub = `rp:${role}`
     zn.rpRole = role

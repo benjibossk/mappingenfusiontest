@@ -4,7 +4,7 @@ import { MOD_INDEX, modPrefabs, modDamPieces, requiredMods, setEnabledMods, enab
 import { prefabDims } from '../../src/library/dims.ts'
 import { BUILDINGS, INDUSTRIAL } from '../../src/data/buildings.ts'
 import { buildingCat, modAssetPack, syncModBuildings } from '../../src/data/modBuildings.ts'
-import { damZone, GRAVEL_DAM, type Dam } from '../../src/modules/dam.ts'
+import { damZone, GRAVEL_DAM, DAM_PARAPET, type Dam } from '../../src/modules/dam.ts'
 
 const MINUS = '672166DE5926F11F', ZIM = '597697D81A1EA202'
 
@@ -40,7 +40,7 @@ test('Minus buildings join the pools only while ticked', () => {
 test('dam: concrete mod pieces when Minus is enabled, gravel wall otherwise', () => {
   const d: Dam = { id: 'DAM_1', ax: -60, az: 0, bx: 60, bz: 0, cx: 0, cz: 0, nx: 0, nz: 1, bed: 10, crest: 22, level: 20.5, toe: 34, foot: [0, 40] }
   const plain = damZone(d, {}, [])
-  assert.ok(plain.entities.every((e) => e.prefab === GRAVEL_DAM.prefab))
+  assert.ok(plain.entities.length === 0 && plain.shapes.some((s) => s.generator === DAM_PARAPET))
   assert.equal(modDamPieces([]), null)
   const z = damZone(d, {}, [MINUS])
   assert.ok(z.entities.length >= 6 && z.entities.every((e) => /Dam_0[12]\.et$/.test(e.prefab) && e.ycm === 2200))

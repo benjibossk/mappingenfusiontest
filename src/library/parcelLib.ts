@@ -39,10 +39,10 @@ export function parcelsByCategory(list: Composition[] = allParcels()): Map<Parce
   return m
 }
 
-export interface PickOptions { biome?: string; maxW?: number; maxD?: number; seed?: number }
+export interface PickOptions { biome?: string; maxW?: number; maxD?: number; seed?: number; subtype?: string }
 /** deterministic pick of one parcel of a category that fits (biome preferred, then any biome) */
 export function pickParcel(category: ParcelCategory, o: PickOptions = {}, list: Composition[] = allParcels()): Composition | null {
-  const fit = list.filter((c) => c.category === category && c.size.w <= (o.maxW ?? Infinity) && c.size.d <= (o.maxD ?? Infinity))
+  const fit = list.filter((c) => c.category === category && c.subtype === o.subtype && c.size.w <= (o.maxW ?? Infinity) && c.size.d <= (o.maxD ?? Infinity))
   const local = o.biome ? fit.filter((c) => c.biomes.includes(o.biome!)) : fit
   const pool = local.length ? local : fit
   if (!pool.length) return null
