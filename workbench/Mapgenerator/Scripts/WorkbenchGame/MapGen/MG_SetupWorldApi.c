@@ -155,9 +155,28 @@ class MG_SetupWorld : NetApiHandler
 		m_mFound.Clear();
 		Workbench.SearchResources(OnFound, { "et" });
 
+		// terrain extent: from the terrain itself, else req.size from 0,0
 		float size = req.size;
-		if (size <= 0)
-			size = 4096;
+		vector mins, maxs;
+		float x0 = 0;
+		float z0 = 0;
+		float x1 = size;
+		float z1 = size;
+		if (worldEditor.GetTerrainBounds(mins, maxs))
+		{
+			x0 = mins[0];
+			z0 = mins[2];
+			x1 = maxs[0];
+			z1 = maxs[2];
+		}
+		else if (size <= 0)
+		{
+			resp.message = "no terrain bounds and no size";
+			return resp;
+		}
+		size = x1 - x0;
+		int moved = 0;
+		int deleted = 0;
 		array<string> notes = {};
 		array<string> missing = {};
 
@@ -187,7 +206,7 @@ class MG_SetupWorld : NetApiHandler
 				}
 				vector pos = vector.Zero;
 				if (p.Contains("EnvProbe"))
-					pos = ProbePos(api, size);
+					pos = ProbePos(api, x0, z0, x1, z1);
 				IEntitySource made = api.CreateEntity(rn, "", def, null, pos, vector.Zero);
 				if (made)
 					resp.created++;
@@ -196,32 +215,49 @@ class MG_SetupWorld : NetApiHandler
 			}
 		}
 
-		// 2. world bounds
+		// 2. world bounds: reuse the rocks of a previous run (moved), delete extras, create the missing
 		if (req.bounds)
 		{
-			for (int j = api.GetEditorEntityCount() - 1; j >= 0; j--)
+			array<IEntitySource> kept = {};
+			for (int j = 0; j < api.GetEditorEntityCount(); j++)
 			{
 				IEntitySource old = api.GetEditorEntity(j);
-				if (old && old.GetName().StartsWith(BOUNDS_PREFIX))
-					api.DeleteEntity(old);
+				if (!old)
+					continue;
+				// by name, and by layer: the name passed to CreateEntity is not always kept
+				string lp = api.GetEntitySubsceneLayer(0, old);
+				if (old.GetName().StartsWith(BOUNDS_PREFIX) || (lp && lp.EndsWith(BOUNDS_LAYER) && IsPrefab(old, ROCK)))
+					kept.Insert(old);
 			}
-			ResourceName rock;
-			if (m_mFound.Find(ROCK, rock))
+			while (kept.Count() > 5)
 			{
-				int layer = LayerId(api, BOUNDS_LAYER, true);
-				float e = 1;
-				array<vector> pts = { Vector(e, 0, e), Vector(size - e, 0, e), Vector(e, 0, size - e), Vector(size - e, 0, size - e), HighestPoint(api, size) };
-				int k = 0;
-				foreach (vector q : pts)
+				api.DeleteEntity(kept[kept.Count() - 1]);
+				kept.Remove(kept.Count() - 1);
+				deleted++;
+			}
+			float e = 1;
+			array<vector> pts = { Vector(x0 + e, 0, z0 + e), Vector(x1 - e, 0, z0 + e), Vector(x0 + e, 0, z1 - e), Vector(x1 - e, 0, z1 - e), HighestPoint(api, x0, z0, x1, z1) };
+			ResourceName rock;
+			bool haveRock = m_mFound.Find(ROCK, rock);
+			int layer = LayerId(api, BOUNDS_LAYER, true);
+			for (int k = 0; k < 5; k++)
+			{
+				vector q = pts[k];
+				q[1] = api.GetTerrainSurfaceY(q[0], q[2]);
+				if (k < kept.Count())
 				{
-					q[1] = api.GetTerrainSurfaceY(q[0], q[2]);
+					api.SetVariableValue(kept[k], null, "coords", string.Format("%1 %2 %3", q[0], q[1], q[2]));
+					moved++;
+				}
+				else if (haveRock)
+				{
 					if (api.CreateEntity(rock, BOUNDS_PREFIX + k.ToString(), layer, null, q, vector.Zero))
 						resp.created++;
-					k++;
 				}
 			}
-			else
+			if (!haveRock && kept.Count() < 5)
 				missing.Insert(ROCK);
+			notes.Insert(string.Format("bounds rocks moved %1, deleted %2", moved, deleted));
 		}
 
 		if (ownsAction)
@@ -254,16 +290,17 @@ class MG_SetupWorld : NetApiHandler
 
 	//------------------------------------------------------------------------------------------------
 	//! highest terrain point, coarse 64 x 64 scan
-	protected vector HighestPoint(WorldEditorAPI api, float size)
+	protected vector HighestPoint(WorldEditorAPI api, float x0, float z0, float x1, float z1)
 	{
-		vector best = Vector(size * 0.5, -1e9, size * 0.5);
-		float step = size / 64;
+		vector best = Vector((x0 + x1) * 0.5, -1e9, (z0 + z1) * 0.5);
+		float sx = (x1 - x0) / 64;
+		float sz = (z1 - z0) / 64;
 		for (int r = 0; r <= 64; r++)
 		{
 			for (int c = 0; c <= 64; c++)
 			{
-				float x = c * step;
-				float z = r * step;
+				float x = x0 + c * sx;
+				float z = z0 + r * sz;
 				float y = api.GetTerrainSurfaceY(x, z);
 				if (y > best[1])
 					best = Vector(x, y, z);
@@ -274,22 +311,24 @@ class MG_SetupWorld : NetApiHandler
 
 	//------------------------------------------------------------------------------------------------
 	//! land point (> 1 m above sea level) closest to the map centre, 2 m above the ground
-	protected vector ProbePos(WorldEditorAPI api, float size)
+	protected vector ProbePos(WorldEditorAPI api, float x0, float z0, float x1, float z1)
 	{
-		float cx = size * 0.5;
-		float step = size / 64;
-		vector best = Vector(cx, api.GetTerrainSurfaceY(cx, cx) + 2, cx);
+		float cx = (x0 + x1) * 0.5;
+		float cz = (z0 + z1) * 0.5;
+		float sx = (x1 - x0) / 64;
+		float sz = (z1 - z0) / 64;
+		vector best = Vector(cx, api.GetTerrainSurfaceY(cx, cz) + 2, cz);
 		float bestD = 1e12;
 		for (int r = 0; r <= 64; r++)
 		{
 			for (int c = 0; c <= 64; c++)
 			{
-				float x = c * step;
-				float z = r * step;
+				float x = x0 + c * sx;
+				float z = z0 + r * sz;
 				float y = api.GetTerrainSurfaceY(x, z);
 				if (y < 1)
 					continue;
-				float d = (x - cx) * (x - cx) + (z - cx) * (z - cx);
+				float d = (x - cx) * (x - cx) + (z - cz) * (z - cz);
 				if (d < bestD)
 				{
 					bestD = d;
