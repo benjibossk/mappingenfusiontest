@@ -4476,7 +4476,7 @@ function powerShapes() {
     // line arriving at the plant: reversed so the source is always point 0
     const rev: number[] = []
     for (let i = sh.points.length - 2; i >= 0; i -= 2) rev.push(sh.points[i], sh.points[i + 1])
-    return fromPlant(rev) && !sh.lift ? { ...sh, points: rev, powerSource: true } : sh
+    return fromPlant(rev) ? { ...sh, points: rev, ...(sh.lift ? { lift: sh.lift.slice().reverse() } : {}), powerSource: true } : sh
   }), ...accessShapes(powerAccess)]
 }
 function powerInfo() {
