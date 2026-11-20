@@ -576,7 +576,8 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
         if (a) for (let i = 0; i + 3 < a.length; i += 2) al += Math.hypot(a[i + 2] - a[i], a[i + 3] - a[i + 1])
         return a && al <= Math.max(d * 2.2, opt.farmMax * 1.5) ? a : null
       }
-      let along = alongFrom(src.x, src.z, src.d)
+      // a pole transformer drop leaves the MV line straight to the farm: along the road it would double the MV corridor
+      let along = how === 'pole-trafo' ? null : alongFrom(src.x, src.z, src.d)
       // a long drop with no road from the nearest pole: try the next LV poles (up to 8, within farmMax) for one the
       // roads link to the farm, so the run follows the road instead of crossing the fields (vanilla: 87 % of the
       // distribution poles stand within 10 m of a road, scripts/bench)
@@ -590,7 +591,7 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
         for (const c of cand.slice(0, 8)) { const a = alongFrom(c.x, c.z, c.d); if (a) { src = c; along = a; break } }
       }
       // still no road path: the LV cost field (roads cheap) routes it, the straight drop stays the last resort
-      const routed = !along && src.d > 2 * sp ? routePowerLine(h, g, src.x, src.z, rx, rz, { kind: 'lv', spacing: sp, cost: cost('lv'), isWater: input.isWater }) : null
+      const routed = !along && how === 'lv' && src.d > 2 * sp ? routePowerLine(h, g, src.x, src.z, rx, rz, { kind: 'lv', spacing: sp, cost: cost('lv'), isWater: input.isWater }) : null
       const head = along ? [src.x, src.z, ...along] : routed ? routed.path : [src.x, src.z, rx, rz]
       const path = fx !== rx || fz !== rz ? [...head, fx, fz] : head
       const poles = path.length <= 4 && src.d < sp * 0.5 ? path : fixPoles(ob, clearSpans(ob, fixPoles(ob, placePoles(path, sp)), sp))
