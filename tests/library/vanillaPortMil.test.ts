@@ -3,6 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fitPort, pickTemplate, stampHull, lineInHull, stampTemplate, PORT_WATER_RX, isPortLand, convexHull } from '../../src/modules/vanillaSites.ts'
+import { isLooseWallPiece } from '../../src/modules/wallRuns.ts'
 import { generateWorld, WORLD_DEFAULTS } from '../../src/modules/worldgen.ts'
 
 test('fitPort: synthetic coast (sea at x < 0), road kept out of the footprint', () => {
@@ -32,5 +33,7 @@ test('seed 21 world (vanilla on): ports in the water, no road in a port, full mi
   }
   const mil = w.zones.find((z) => z.id === 'MIL_1')!
   assert.ok(mil && mil.sub !== 'checkpoint', 'MIL_1 is a base')
-  assert.ok(mil.entities.length > 100, `MIL_1 entities ${mil.entities.length}`)
+  assert.ok(mil.entities.length >= 50, `MIL_1 entities ${mil.entities.length}`) // flat-ground vanilla camp only (hillside bases filtered), walls as WG shapes
+  assert.ok(mil.shapes.length > 0, 'MIL_1 walls as wall-generator shapes')
+  assert.ok(w.zones.every((z) => z.entities.every((e) => !isLooseWallPiece(e.prefab))), 'no loose wall piece')
 })

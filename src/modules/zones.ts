@@ -9,6 +9,7 @@ import { generateIndustrial, applyFlatten as applyPlatform, type IndustrialType,
 import { generateMilitary, flattenFor, type MilitaryKind } from './military'
 import { applyDam, type Dam } from './dam'
 import { pickTemplate, stampTemplate, type VanillaTemplate } from './vanillaSites'
+import { wallPiecesToShapes } from './wallRuns'
 import { applyHarbour, type HarbourPlan } from './harbour'
 import { generateAirfield, flattenAirfield, type AirfieldSize } from './airfield'
 import { parcelCorners, parcelTemplate } from '../library/parcelLib'
@@ -60,7 +61,9 @@ export function makeMilitary(heights: number[], g: Grid, o: { id: string; kind: 
     // a base template sized for the spot the suggester found (Cain's 290 m quarry-sized bases do not fit an outpost spot)
     const maxR = o.kind === 'main' ? 150 : 100, minN = o.kind === 'main' ? 150 : 50
     const v = makeVanillaSite(heights, g, { id: o.id, type: o.kind === 'checkpoint' ? 'checkpoint' : 'military_base', x: o.x, z: o.z, yaw: o.yaw + 180, seed: o.seed,
-      fit: o.kind === 'checkpoint' ? undefined : (t) => t.radius <= maxR && t.objects.length >= minN })
+      // hillside bases (Cain 5072/6333 slope 0.39, Arland 1452/1834 0.62) are terraces of stone / retaining walls and dug-in
+      // bunkers built for their slope: stamped on our flat platform they read as loose wall blocks and bare grey boxes (seed 21)
+      fit: o.kind === 'checkpoint' ? undefined : (t) => t.radius <= maxR && t.objects.length >= minN && t.slope <= 0.1 })
     if (v) return { ...v, kind: 'military', sub: o.kind, yaw: o.yaw }
   }
   const m = generateMilitary({ kind: o.kind, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed })
@@ -117,7 +120,8 @@ export function nextZoneId(zones: ZoneItem[], kind: ZoneKind) {
 export function makeVanillaSite(heights: number[], g: Grid, o: { id: string; type: string; x: number; z: number; yaw: number; seed: number; fit?: (t: VanillaTemplate) => boolean; template?: VanillaTemplate }): ZoneItem | null {
   const t = o.template ?? pickTemplate(o.type, o.seed, o.fit)
   if (!t) return null
-  const entities = stampTemplate(t, o.x, o.z, o.yaw, { id: t.id })
+  // loose wall pieces of the composition -> WG polylines (wallRuns.ts: every wall is a wall generator)
+  const { entities, shapes } = wallPiecesToShapes(stampTemplate(t, o.x, o.z, o.yaw, { id: t.id }), t.id)
   const r = Math.max(10, t.radius), box = { x: o.x, z: o.z, hw: r, hd: r, yaw: o.yaw }
   const flat: FlattenRequest[] = o.type === 'port' ? [] : [{ box, h0: 0, h1: 0, falloff: 15 }]
   if (flat.length) { // flat platform at the mean height of the footprint
@@ -129,7 +133,7 @@ export function makeVanillaSite(heights: number[], g: Grid, o: { id: string; typ
     flat[0].h0 = flat[0].h1 = n ? sum / n : 0
   }
   return { id: o.id, kind: 'site', sub: `vanilla:${t.id}`, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes: [{ corners: boxCorners(box), role: 'area' }],
-    ...prefixed(o.id, [], entities), flat, plat: [], roads: [], warnings: [`vanilla template ${t.id} (${t.map} ${t.x},${t.z})`], access: [o.x + Math.sin(o.yaw * Math.PI / 180) * r, o.z + Math.cos(o.yaw * Math.PI / 180) * r] }
+    ...prefixed(o.id, shapes, entities), flat, plat: [], roads: [], warnings: [`vanilla template ${t.id} (${t.map} ${t.x},${t.z})`], access: [o.x + Math.sin(o.yaw * Math.PI / 180) * r, o.z + Math.cos(o.yaw * Math.PI / 180) * r] }
 }
 
 /** a library parcel (parcelLib.ts: garden, farm, cemetery, industrial yard...) placed at x/z, its access side (+Z)
