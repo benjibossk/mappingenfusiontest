@@ -9,6 +9,7 @@ import type { ProjectEntity, ProjectShape } from '../project'
 import type { Water } from './water'
 import type { ZoneItem } from './zones'
 import { modDamPieces, modRef } from '../library/mods'
+import { roadShape } from './gen-common'
 
 /** GravelDam_01: GUID from the game data (Prefabs/Structures/Infrastructure/Waterworks/GravelDam_01) */
 export const GRAVEL_DAM = { prefab: '{64E482C4598F3E45}Prefabs/Structures/Infrastructure/Waterworks/GravelDam_01/GravelDam_01.et', w: 18.99, d: 1.67, h: 4.47 }
@@ -294,7 +295,9 @@ export function damZone(d: Dam, o: Partial<DamOptions> = {}, mods?: string[]): Z
     const s = -len / 2 + (i + 0.5) * (len / n)
     entities.push({ id: `${d.id}_WALL_${i + 1}`, prefab: GRAVEL_DAM.prefab, x: d.cx + ux * s + d.nx * off, z: d.cz + uz * s + d.nz * off, yaw, ycm: Math.round((d.crest + 1 - GRAVEL_DAM.h) * 100) })
   }
-  const road: ProjectShape = { id: `${d.id}_CREST`, kind: 'polyline', closed: false, points: [d.ax - ux * ends, d.az - uz * ends, d.bx + ux * ends, d.bz + uz * ends], generator: DIRT_ROAD }
+  // spline with AdjustHeightMap 0 like every road (roadShape): a bare 2-point polyline let the road generator reshape
+  // the crest itself (seed 21 live audit: the whole crest built 2.2 m above the sent 20.9 m)
+  const road: ProjectShape = roadShape(`${d.id}_CREST`, [d.ax - ux * ends, d.az - uz * ends, d.bx + ux * ends, d.bz + uz * ends], DIRT_ROAD, 4)
   const half = (w: number, hd: number, cx: number, cz: number) => [
     cx - ux * w - d.nx * hd, cz - uz * w - d.nz * hd, cx + ux * w - d.nx * hd, cz + uz * w - d.nz * hd,
     cx + ux * w + d.nx * hd, cz + uz * w + d.nz * hd, cx - ux * w + d.nx * hd, cz - uz * w + d.nz * hd,

@@ -12,7 +12,8 @@
 // which rewrites entities.txt / heights.txt from the open Workbench.
 //
 // Checks:
-//   port-dry      port / naval pieces whose terrain is above the ocean (+0.3 m) and outside every lake
+//   port-dry      port / naval pieces whose terrain is above the ocean (+0.3 m) and outside every lake; quay-edge
+//                 furniture (bollards, buoys, ladders, davits, quay blocks): no water within 3 m (+ half a grid step)
 //   on-road       placed objects standing on a road carriageway (road shapes of the project)
 //   pole-in-bldg  poles (entity or power-line vertex) inside a building's AABB (built entities.txt)
 //   ycm           absolute-height entities (bridges) whose deck is under the terrain or > 15 m above it
@@ -116,10 +117,19 @@ const r1 = (n) => Math.round(n * 10) / 10;
 // port-dry
 const lakes = shapes.filter((s) => s.closed && /Lake|WATER_LAKE/i.test(s.generator + s.id)).map(pts);
 const isPort = (e) => !/^(ROAD|RB|DAM)/.test(e.id) && /Naval|Pier|Breakwater|Quay|Davit|Jetty|Bollard_Mooring|Mooring/i.test(e.prefab);
+// quay furniture (bollards, life buoys, pier ladders, davits, concrete quay blocks) stands ON the quay edge: it only
+// needs water within QUAY_REACH m (the 8 m terrain read makes the quay wall a ramp, so the edge is searched around it)
+const isQuayEdge = (e) => /SeaBollard|LifeBuoy|Ladder_Pier|Davit|PierConcrete/i.test(e.prefab);
+const QUAY_REACH = 3;
+const wetNear = (x, z, r) => {
+  for (let a = 0; a < 16; a++) for (const d of [r / 2, r]) if (terrain.at(x + Math.cos(a * Math.PI / 8) * d, z + Math.sin(a * Math.PI / 8) * d) <= terrain.ocean + 0.3) return true;
+  return false;
+};
 if (terrain)
   for (const e of sent.filter(isPort)) {
     const h = terrain.at(e.x, e.z);
-    if (h > terrain.ocean + 0.3 && !lakes.some((p) => inPoly(e.x, e.z, p)))
+    if (isQuayEdge(e) ? !wetNear(e.x, e.z, QUAY_REACH + terrain.step / 2) && h > terrain.ocean + 0.3 && !lakes.some((p) => inPoly(e.x, e.z, p))
+      : h > terrain.ocean + 0.3 && !lakes.some((p) => inPoly(e.x, e.z, p)))
       findings["port-dry"].push({ id: e.id, prefab: e.prefab.split("/").pop(), x: e.x, z: e.z, ground: r1(h), ocean: r1(terrain.ocean) });
   }
 
