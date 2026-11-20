@@ -21,6 +21,9 @@ export interface ProjectShape {
   /** point indices where another line of the same kind branches off: Workbench side, m_JunctionData on that point
    *  (generator m_DefaultJunctionPole = PowerLine_01_pole_small_hook_junction for LV) */
   junctions?: number[]
+  /** power line: one pole per point (Workbench side, m_bGeneratePerPoint on every point): the shape points ARE the
+   *  pole feet, no m_fDistance walk by SCR_PowerlineGeneratorEntity (its spacing never matched placePoles) */
+  perPoint?: boolean
   /** obstacle avoidance of an area generator (ForestGeneratorEntity / SCR_AreaGeneratorBaseEntity):
    *  expanded by withAvoid() into m_bAvoid* generator params before sending */
   avoid?: AvoidSpec
