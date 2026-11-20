@@ -1,6 +1,7 @@
 // Random world extras (worldgen.ts): production forests on part of the large conifer / mixed woods,
 // and fences / low walls along the village and hamlet plots (Everon has no biome parcels, so its lots
 // had none). Pure functions, seeded: the same seed gives the same result.
+import { centreLine } from './roads'
 import { makeProdForest, ringArea, type ProdLog, type ProdStage } from './prodforest'
 import { FENCES } from '../data/biomes'
 import type { PlacedFence } from '../biomes/parcel'
@@ -47,9 +48,13 @@ export function addProdForests<A extends { id: string; kind: string; leaf?: 'bro
     n++
     outlines.push(a.pts)
     pf.tracks.forEach((pts, j) => { if (pts.length >= 4) { tracks.push({ id: `ROAD_PROD_W${n}_${j + 1}`, type: 'dirt', pts, auto: true }); roads.push(pts) } })
+    // log piles off the other roads (seed 21 live audit: a pile on ROAD_TERRE_1 next to a production track);
+    // smoothed lines, a pile is ~4 m long and 2 m wide: >= 7 m from any other road's axis
+    const other = o.roads.map((r) => centreLine(r, 4))
+    const logs = pf.logs.filter((l) => other.every((ln) => segDist(ln, l.x, l.z) >= 7))
     kept.forEach((c, j) => {
       const tall = c.stage === 'juvenile' ? 'low' : c.stage === 'thinned' ? 'mid' : 'high'
-      out.push({ id: `FOREST_PROD_W${n}_${j + 1}`, kind: 'forest', leaf: a.leaf === 'mixed' ? 'mixed' : 'needle', tall, stage: c.stage, pts: c.pts, ...(j === 0 && pf.logs.length ? { logs: pf.logs } : {}) })
+      out.push({ id: `FOREST_PROD_W${n}_${j + 1}`, kind: 'forest', leaf: a.leaf === 'mixed' ? 'mixed' : 'needle', tall, stage: c.stage, pts: c.pts, ...(j === 0 && logs.length ? { logs } : {}) })
     })
   })
   return { areas: out, tracks, outlines, count: n }
@@ -156,4 +161,15 @@ export function makeBlocker(foot: number[][], lines: { pts: number[]; half: numb
     }
     return false
   }
+}
+
+/** distance from (x, z) to a polyline x,z,... */
+function segDist(p: number[], x: number, z: number): number {
+  let m = Infinity
+  for (let i = 0; i + 3 < p.length; i += 2) {
+    const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az, L = dx * dx + dz * dz
+    const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+    m = Math.min(m, Math.hypot(x - ax - dx * t, z - az - dz * t))
+  }
+  return m
 }
