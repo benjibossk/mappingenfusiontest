@@ -741,6 +741,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       }
       // no grove in a treeless biome (desert): its forests are off too
       if (Math.min(0.9, WORLD.vegetation.forestCover * p.forests) * forestTuning(p.biome).coverMul >= 0.03) r.groves.forEach((pts, j) => areas.push({ id: `FOREST_GROVE_${id}_${j + 1}`, kind: 'forest', leaf: groveLeaf, pts }))
+      const blk = [...settlement.placed.map((q) => q.corners), ...(pw?.stations ?? []).map((st) => footprintCorners(st))]
+      const trackHits = (l: number[], m: number) => {
+        for (let i = 0; i + 1 < l.length; i += 2) for (const c of blk) if (polyNear(c, l[i], l[i + 1], m)) return true
+        return false
+      }
       for (const [j, pts] of r.tracks.entries()) {
         // an end landing on a roundabout ring becomes one of its control points (the junction is shared, not a near miss)
         for (const e of [0, pts.length - 2]) for (const ring of roads) {
@@ -749,8 +754,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
           if (Math.hypot(qx - pts[e], qz - pts[e + 1]) > 2.5) continue
           pts[e] = qx; pts[e + 1] = qz; insertPoint(ring, qx, qz); break
         }
-        // a track through a house or farm building of a settlement is dropped (pre-send seed 21: field tracks over village houses)
-        if (centreLine(pts, 2).some((v, i, a) => i % 2 === 0 && settlement.placed.some((q) => Math.abs(q.x - v) < 40 && Math.abs(q.z - a[i + 1]) < 40 && footNear(q.corners, v, a[i + 1], 3.5)))) continue
+        // a field track never runs through a house or a power station (they are placed before the countryside;
+        // seed 21 audit: SET_VILLAGE_1_H25 on ROAD_FIELD_2_3_1, PSTA_MVLV_7 on ROAD_FIELD_7_1): the track is dropped
+        if (trackHits(centreLine(pts, 4), 3.5)) continue
         const tr: Road = { id: `ROAD_FIELD_${id}_${j + 1}`, type: 'dirt', pts, auto: true }
         roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too
       }
@@ -801,7 +807,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const onRoadCells = new Set<number>()
     for (const r of [...allRoads, ...settlement.lanes]) {
       if (r.pts.length < 4) continue
-      const c = centreLine(r.pts, 2), R = roadHalf(r) + 2.5, n = Math.ceil(R / 2)
+      const c0 = centreLine(r.pts, 2), R = roadHalf(r) + 2.5, n = Math.ceil(R / 2)
+      // both ends run 1.75 m further later (overlapJunctions, step below): extend them here too
+      const ext = (x: number, z: number, px: number, pz: number) => { const L = Math.hypot(x - px, z - pz) || 1; return [x + ((x - px) / L) * 2, z + ((z - pz) / L) * 2] }
+      const k = c0.length
+      const c = k >= 4 ? [...ext(c0[0], c0[1], c0[2], c0[3]), ...c0, ...ext(c0[k - 2], c0[k - 1], c0[k - 4], c0[k - 3])] : c0
       for (let i = 0; i < c.length; i += 2) {
         const cx = Math.floor(c[i] / 2), cz = Math.floor(c[i + 1] / 2)
         for (let dx = -n; dx <= n; dx++) for (let dz = -n; dz <= n; dz++) if (Math.hypot(dx * 2, dz * 2) <= R + 1) onRoadCells.add((cx + dx) * 100003 + (cz + dz))
@@ -879,16 +889,64 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // the Workbench drops outline points closer than 0.5 m to the previous one (seed 21 report: 55 forest outlines
   // with lost points): merge them here so what is sent is what is built
   for (const a of areas) a.pts = dedupeRing(a.pts, 0.75)
+  // last word for the small dressed zones (RP places, town sites): roads and lanes laid after them (villages, field
+  // tracks, re-snapped roads) may cross them; their props on a carriageway are dropped, their walls cut there
+  // (seed 42 pre-send: RP_SELL_POINT_2 on SET_VILLAGE_2_LANE_2, TOWN_1_SITE_2 wall and object on ROAD_TERRE_2)
+  {
+    const net = [...roads, ...settlement.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ l: centreLine(r.pts, 4), h: roadHalf(r) }))
+    const on = (x: number, z: number, m: number) => net.some((q) => lineDist(q.l, x, z) < q.h + m)
+    for (const zn of zones) {
+      if (!/^RP_|_SITE_[0-9]+$/.test(zn.id)) continue
+      zn.entities = zn.entities.filter((e) => !on(e.x, e.z, 1))
+      zn.shapes = zn.shapes.flatMap((sh) => {
+        if (sh.kind !== 'polyline' || sh.closed || /RG_Road/i.test(sh.generator)) return [sh]
+        const P = sh.points
+        let hit = false
+        for (let i = 0; i + 3 < P.length && !hit; i += 2) for (let k = 0; k <= 8; k++) if (on(P[i] + ((P[i + 2] - P[i]) * k) / 8, P[i + 1] + ((P[i + 3] - P[i + 1]) * k) / 8, 1)) { hit = true; break }
+        if (!hit) return [sh]
+        // walk the wall every <= 2 m, keep the off-road runs (original corners kept)
+        const parts: number[][] = [[]]
+        const push = (x: number, z: number) => { if (on(x, z, 1)) { if (parts[parts.length - 1].length) parts.push([]) } else parts[parts.length - 1].push(Math.round(x * 100) / 100, Math.round(z * 100) / 100) }
+        push(P[0], P[1])
+        for (let i = 0; i + 3 < P.length; i += 2) {
+          const n = Math.max(1, Math.ceil(Math.hypot(P[i + 2] - P[i], P[i + 3] - P[i + 1]) / 2))
+          for (let k = 1; k <= n; k++) { const x = P[i] + ((P[i + 2] - P[i]) * k) / n, z = P[i + 1] + ((P[i + 3] - P[i + 1]) * k) / n; if (k === n || on(x, z, 1) || on(P[i] + ((P[i + 2] - P[i]) * (k + 1)) / n, P[i + 1] + ((P[i + 3] - P[i + 1]) * (k + 1)) / n, 1) || on(P[i] + ((P[i + 2] - P[i]) * (k - 1)) / n, P[i + 1] + ((P[i + 3] - P[i + 1]) * (k - 1)) / n, 1)) push(x, z) }
+        }
+        return parts.filter((q) => q.length >= 4).map((q, k) => ({ ...sh, id: k ? `${sh.id}_${k}` : sh.id, points: q }))
+      })
+    }
+  }
   return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
 }
 
-/** point inside a 4-corner footprint grown by `m` metres */
-function footNear(c: number[], x: number, z: number, m: number): boolean {
-  if (pointInPoly(c, x, z)) return true
-  for (let i = 0; i < 8; i += 2) {
-    const ax = c[i], az = c[i + 1], bx = c[(i + 2) % 8], bz = c[(i + 3) % 8], dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz
+/** station footprint corners (x, z centre, yaw radians, w x d) */
+function footprintCorners(st: { x: number; z: number; yaw: number; w: number; d: number }): number[] {
+  const c = Math.cos(st.yaw), n = Math.sin(st.yaw), out: number[] = []
+  for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const lx = (u * st.w) / 2, lz = (v * st.d) / 2; out.push(st.x + lx * c + lz * n, st.z - lx * n + lz * c) }
+  return out
+}
+/** (x, z) inside the polygon or within m of its edges */
+function polyNear(c: number[], x: number, z: number, m: number): boolean {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+  for (let i = 0; i + 1 < c.length; i += 2) { x0 = Math.min(x0, c[i]); x1 = Math.max(x1, c[i]); z0 = Math.min(z0, c[i + 1]); z1 = Math.max(z1, c[i + 1]) }
+  if (x < x0 - m || x > x1 + m || z < z0 - m || z > z1 + m) return false
+  let o = false
+  for (let i = 0, j = c.length - 2; i < c.length; j = i, i += 2) {
+    if ((c[i + 1] > z) !== (c[j + 1] > z) && x < ((c[j] - c[i]) * (z - c[i + 1])) / (c[j + 1] - c[i + 1]) + c[i]) o = !o
+    const ax = c[j], az = c[j + 1], dx = c[i] - ax, dz = c[i + 1] - az, L = dx * dx + dz * dz
     const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
-    if (Math.hypot(x - ax - t * dx, z - az - t * dz) < m) return true
+    if (Math.hypot(x - ax - dx * t, z - az - dz * t) < m) return true
   }
-  return false
+  return o
+}
+
+/** distance from (x, z) to a polyline x,z,... */
+function lineDist(p: number[], x: number, z: number): number {
+  let m = Infinity
+  for (let i = 0; i + 3 < p.length; i += 2) {
+    const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az, L = dx * dx + dz * dz
+    const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+    m = Math.min(m, Math.hypot(x - ax - dx * t, z - az - dz * t))
+  }
+  return m
 }
