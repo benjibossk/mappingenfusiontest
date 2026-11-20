@@ -2,7 +2,7 @@
 // the river carrying on from the downstream foot.
 // The vanilla game has NO large dam prefab: only GravelDam_01 (19 x 1.67 x 4.47 m gravel weir) and the
 // FloodGate_01 sluice parts. So the dam body is sculpted into the relief (embankment, only raises the ground)
-// and GravelDam_01 pieces are laid end to end along the crest as its upstream facing / wave wall.
+// a crash-barrier parapet runs along both crest edges (wall generator polylines).
 
 import type { Grid } from './island'
 import type { ProjectEntity, ProjectShape } from '../project'
@@ -15,6 +15,8 @@ import { roadShape } from './gen-common'
 export const GRAVEL_DAM = { prefab: '{64E482C4598F3E45}Prefabs/Structures/Infrastructure/Waterworks/GravelDam_01/GravelDam_01.et', w: 18.99, d: 1.67, h: 4.47 }
 /** flat crest length past each crest end, m (keys the wall ends into the valley sides) */
 export const DAM_END = 12
+/** crest parapet: Everon crash barrier wall generator (roads.ts BARRIERS.everon) */
+export const DAM_PARAPET = '{3058725A52981080}Prefabs/WEGenerators/Walls/Crashbarrier/WG_CrashBarrier_E_01.et'
 const DIRT_ROAD = '{8E83BBD5CEC42A11}Prefabs/WEGenerators/Roads/Dirt/RG_Road_Dirt_01.et'
 
 export interface DamOptions {
@@ -279,11 +281,9 @@ export function damZone(d: Dam, o: Partial<DamOptions> = {}, mods?: string[]): Z
   const O = { ...DAM_DEFAULTS, ...o }
   const tx = d.bx - d.ax, tz = d.bz - d.az, L = Math.hypot(tx, tz) || 1, ux = tx / L, uz = tz / L
   const ends = DAM_END // the crest runs into the hillsides
-  const len = L + 2 * ends, n = Math.max(1, Math.ceil(len / GRAVEL_DAM.w))
+  const len = L + 2 * ends
   const entities: ProjectEntity[] = []
   const yaw = (Math.atan2(uz, ux) * 180) / Math.PI
-  // upstream crest edge: the wall faces the water, its top ~1 m above the crest
-  const off = -(O.crestHalf - GRAVEL_DAM.d / 2)
   const mod = modDamPieces(mods)
   if (mod) {
     const W = mod[0].d[0] + mod[1].d[0], m = Math.max(1, Math.ceil(len / W))
@@ -291,9 +291,18 @@ export function damZone(d: Dam, o: Partial<DamOptions> = {}, mods?: string[]): Z
       const s = -len / 2 + (i + 0.5) * (len / m)
       for (const [k, r] of mod.entries()) entities.push({ id: `${d.id}_CONC_${i + 1}_${k + 1}`, prefab: modRef(r), x: d.cx + ux * s, z: d.cz + uz * s, yaw, ycm: Math.round(d.crest * 100) })
     }
-  } else for (let i = 0; i < n; i++) {
-    const s = -len / 2 + (i + 0.5) * (len / n)
-    entities.push({ id: `${d.id}_WALL_${i + 1}`, prefab: GRAVEL_DAM.prefab, x: d.cx + ux * s + d.nx * off, z: d.cz + uz * s + d.nz * off, yaw, ycm: Math.round((d.crest + 1 - GRAVEL_DAM.h) * 100) })
+  }
+  // vanilla crest: a parapet (Everon crash barrier wall generator) on both edges, 0.6 m in from the crest edge so
+  // it stands on the flat top. GravelDam_01 is a sloping weir wedge, not a wall: sunk to the crest and yawed on
+  // a single point each, it showed as isolated tilted stones (seed 21 Workbench check)
+  const parapets: ProjectShape[] = []
+  if (!mod) for (const side of [-1, 1]) {
+    const e = side * (O.crestHalf - 0.6), ox = d.nx * e, oz = d.nz * e
+    const a: [number, number] = [d.ax - ux * ends + ox, d.az - uz * ends + oz], b: [number, number] = [d.bx + ux * ends + ox, d.bz + uz * ends + oz]
+    const pts: number[] = []
+    const k = Math.max(1, Math.ceil(len / 10))
+    for (let j = 0; j <= k; j++) pts.push(a[0] + ((b[0] - a[0]) * j) / k, a[1] + ((b[1] - a[1]) * j) / k)
+    parapets.push({ id: `${d.id}_PARAPET_${side < 0 ? 'UP' : 'DOWN'}`, kind: 'polyline', closed: false, points: pts.map((v) => Math.round(v * 100) / 100), generator: DAM_PARAPET })
   }
   // spline with AdjustHeightMap 0 like every road (roadShape): a bare 2-point polyline let the road generator reshape
   // the crest itself (seed 21 live audit: the whole crest built 2.2 m above the sent 20.9 m)
@@ -305,7 +314,7 @@ export function damZone(d: Dam, o: Partial<DamOptions> = {}, mods?: string[]): Z
   return {
     id: d.id, kind: 'site', sub: 'dam', x: d.cx, z: d.cz, yaw: Math.atan2(uz, ux), seed: 0,
     boxes: [{ corners: half(len / 2, O.crestHalf, d.cx, d.cz), role: 'dam', h: 0.1 }],
-    shapes: [road], entities, flat: [], plat: [], roads: [], warnings: [],
+    shapes: [road, ...parapets], entities, flat: [], plat: [], roads: [], warnings: [],
     // the embankment itself: applyZones (zones.ts) sculpts it into every recompose, so the heightmap sent to
     // the Workbench holds the dam and its reservoir basin (main.ts rebuilds the relief from the island)
     dam: { d, crestHalf: O.crestHalf, slope: O.slope },
