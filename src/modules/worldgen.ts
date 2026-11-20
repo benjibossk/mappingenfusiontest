@@ -28,6 +28,7 @@ import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, insertPoint, maxGrade, nearestOn, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
+import { parcelShareOf } from './parcelTemplates'
 import { pastureFences, pastureDensity, pastureStyles } from './pastures'
 import { addProdForests, lotFences, makeBlocker, townLots, type FenceLot } from './worldextras'
 import { generateTown } from './town'
@@ -663,7 +664,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     }
     if (!ks.length) continue
     const V = WORLD.villages[kind]
-    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density * settlementDensityMul(p.biome), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm', farmyards: kind === 'farm' }, settlement.placed)
+    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density * settlementDensityMul(p.biome), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm', parcels: p.villageTemplates, parcelShare: parcelShareOf(p.biome), farmyards: kind === 'farm' }, settlement.placed)
     settlement.placed = vr.placed
     settlement.tried = (settlement.tried ?? 0) + (vr.tried ?? 0); settlement.housed = (settlement.housed ?? 0) + (vr.housed ?? 0)
     settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)
@@ -727,7 +728,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     if (!zs.length) return
     countryside.push(...zs)
     const near = (x: number, z: number) => Math.hypot(x - s.x, z - s.z) < ring + 60
-    const obst = [...roadObstacles(allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) })), 3, near), ...settlement.placed.filter((b) => near(b.x, b.z)).map((b) => pointObstacle(b.x, b.z, 14)),
+    const obst = [...roadObstacles(allRoads.map((rd) => ({ pts: rd.pts, half: roadHalf(rd) })), 3, near), // radius from the footprint: a 20 m farmhouse reaches past 14 m (pre-send seeds 21 / 42: farmhouses on field tracks)
+      ...settlement.placed.filter((b) => near(b.x, b.z)).map((b) => { const c = (b as { corners?: number[] }).corners; let r = 14; if (c) for (let i = 0; i < c.length; i += 2) r = Math.max(r, Math.hypot(c[i] - b.x, c[i + 1] - b.z) + 7); return pointObstacle(b.x, b.z, r) }),
       // site zones (cemetery, parking, vanilla stamps): no field track through them (pre-send: 21 cemetery objects on tracks, seed 42)
       ...zones.filter((zn) => zn.kind === 'site' && zn.entities.length && near(zn.x, zn.z)).map((zn) => { const d = zoneDisc(zn); return pointObstacle(d.x, d.z, d.r + 4) })]
     zs.forEach((zone, zi) => {

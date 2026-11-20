@@ -12,6 +12,7 @@ import { refHeights, type RefMap } from '../../src/modules/refMap'
 import { ROAD_TYPES, centreLine, roadHalf, type Road, type RoadType } from '../../src/modules/roads'
 import { roadTypeOf } from '../../src/atelier/networks/roads'
 import { settleVillages, villageOblique } from '../../src/modules/village'
+import { parcelShareOf, setParcelHoldout } from '../../src/modules/parcelTemplates'
 import { generateTown } from '../../src/modules/town'
 import { WORLD } from '../../src/data/worldParams'
 import { lotFences, makeBlocker, townLots, type FenceLot } from '../../src/modules/worldextras'
@@ -26,6 +27,8 @@ const args = process.argv.slice(2)
 const mapId = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--'))) ?? 'everon'
 const opt = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined }
 const TILE = 250
+// --parcel-holdout: farmstead parcels harvested on this map are not used (held-out score)
+if (args.includes('--parcel-holdout')) setParcelHoldout(mapId)
 const BIOME = mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined
 const SEED = Number(opt('--seed') ?? 21)
 const noPower = !args.includes('--power') // whole-map power planning takes > 25 min on Everon: opt-in
@@ -101,7 +104,7 @@ for (const kind of ['town', 'village', 'hamlet'] as const) {
   }
   if (!ks.length) continue
   const V = WORLD.villages[kind]
-  const vr = settleVillages(ks, roads, waters, heights, grid, { seed: SEED, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, oblique: villageOblique(BIOME) }, placed as never)
+  const vr = settleVillages(ks, roads, waters, heights, grid, { seed: SEED, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, parcelShare: opt('--pshare') !== undefined ? Number(opt('--pshare')) : parcelShareOf(BIOME), oblique: villageOblique(BIOME) }, placed as never)
   placed = vr.placed
   lots.push(...vr.lots)
 }
@@ -186,6 +189,23 @@ const villages = {
 }
 const villageScore = +((villages.tileCount + villages.total + villages.setback + villages.orient + villages.spacing) / 5).toFixed(1)
 
+// ---- farmsteads (reported apart, not in the village score): each outbuilding vs its nearest house within 35 m,
+// distance and squareness (fold90 of the yaw difference), plus the outbuildings-per-house ratio
+const yard = (v: { x: number; z: number; yaw: number }[], isOut: (i: number) => boolean) => {
+  const hs = v.filter((_, i) => !isOut(i)), dist: number[] = [], ang: number[] = []
+  let n = 0
+  v.forEach((b, i) => {
+    if (!isOut(i)) return
+    n++
+    let best = 35, h: { yaw: number } | null = null
+    for (const q of hs) { const d = Math.hypot(q.x - b.x, q.z - b.z); if (d < best) { best = d; h = q } }
+    if (h) { dist.push(best); ang.push(fold90(b.yaw - h.yaw)) }
+  })
+  return { dist, ang, perHouse: n / Math.max(1, hs.length) }
+}
+const yv = yard(vanillaB, (i) => (vanillaB[i] as { cls?: string }).cls === 'shed'), yg = yard(placed, (i) => placed[i].cat === 'shed' || placed[i].cat === 'annex')
+const farmsteads = { score: +((ksScore(yv.dist, yg.dist) + ksScore(yv.ang, yg.ang) + 100 * Math.min(yv.perHouse, yg.perHouse) / Math.max(yv.perHouse, yg.perHouse, 1e-6)) / 3).toFixed(1),
+  dist: +ksScore(yv.dist, yg.dist).toFixed(1), square: +ksScore(yv.ang, yg.ang).toFixed(1), perHouse: [+yv.perHouse.toFixed(2), +yg.perHouse.toFixed(2)], median: [med(yv.dist), med(yg.dist)].map((x) => +x.toFixed(1)) }
 // ---- rural fences (pastures, paddocks) outside every site disc: vanilla pole / wooden / dry stone pieces vs ours
 const SITE_R: Record<string, number> = { town: 300, village: 170, hamlet: 80 }
 const inDisc = (x: number, z: number) => sites.some((s) => Math.hypot(x - s.x, z - s.z) < SITE_R[s.kind])
@@ -262,7 +282,7 @@ for (const kind of ['village', 'hamlet'] as const) {
   const ks = vSites.filter((s) => s.kind === kind)
   if (!ks.length) continue
   const V = WORLD.villages[kind]
-  const vr = settleVillages(ks, stripped, waters, heights, grid, { seed: SEED, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, oblique: villageOblique(BIOME) }, sPlaced as never)
+  const vr = settleVillages(ks, stripped, waters, heights, grid, { seed: SEED, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, oblique: villageOblique(BIOME), parcelShare: opt('--pshare') !== undefined ? Number(opt('--pshare')) : parcelShareOf(BIOME) }, sPlaced as never)
   sPlaced = vr.placed as never
   sLanes.push(...vr.lanes)
 }
@@ -294,6 +314,7 @@ void polyLen
 
 const report = {
   map: m.name, genSec, sites: sites.length,
+  farmsteads,
   villages: { score: villageScore, ...villages, counts: { vanilla: vanillaB.length, ours: placed.length }, byKind: { town: kindRatio('town'), village: kindRatio('village'), hamlet: kindRatio('hamlet') },
     median: { setback: [med(dv.setback), med(dg.setback)].map((x) => +x.toFixed(1)), orient: [med(dv.orient), med(dg.orient)].map((x) => +x.toFixed(1)), nn: [med(dv.nn), med(dg.nn)].map((x) => +x.toFixed(1)) },
     worstSites: siteScore.map((s) => ({ ...s, err: Math.abs(s.g - s.v) })).sort((a, b) => b.err - a.err).slice(0, 8) },
@@ -301,7 +322,7 @@ const report = {
   streets: streetInfo,
   ruralFences: ruralInfo,
   power,
-  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, power: power?.tilePoles ?? null },
+  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, power: power?.tilePoles ?? null },
   powerRef: { nearRoad10: Object.fromEntries(kindsP.map((k) => [k, nearShare(vPoles, k)])), lvMedianSpan: +med(spans('lv')).toFixed(1), mvMedianSpan: +med(spans('mv')).toFixed(1), hvMedianSpan: +med(spans('hv')).toFixed(1) },
 }
 console.log(JSON.stringify(report, null, 1))
