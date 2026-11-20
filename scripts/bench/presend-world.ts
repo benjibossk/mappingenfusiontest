@@ -87,6 +87,7 @@ if (process.argv.includes('--list')) for (const i of issues.slice(0, 40)) consol
     }
   }
   console.log(`surfaces: SeaBed > 30 % on land > 2 m: ${dry} cells; road centre pixels on a clutter surface: ${(100 * lost / Math.max(1, tot)).toFixed(1)} % of ${tot}`)
+}
 // vegetation / poles vs road corridors (roadClip.ts): every road, lane, zone street and power access track
 {
   const { Corridors, hedgesOnRoad, ringOnRoad } = await import('../../src/modules/roadClip')
