@@ -4472,7 +4472,11 @@ function powerShapes() {
   const fromPlant = (pts: number[]) => pts.length >= 2 && plants.some((q) => Math.hypot(pts[0] - q.x, pts[1] - q.z) < 60)
   return [...mergePowerLines(powerLines, 15, poleClearOfBuildings).map((l) => {
     const sh = powerLineShape(l, l.id)
-    return fromPlant(sh.points) ? { ...sh, powerSource: true } : sh
+    if (fromPlant(sh.points)) return { ...sh, powerSource: true }
+    // line arriving at the plant: reversed so the source is always point 0
+    const rev: number[] = []
+    for (let i = sh.points.length - 2; i >= 0; i -= 2) rev.push(sh.points[i], sh.points[i + 1])
+    return fromPlant(rev) && !sh.lift ? { ...sh, points: rev, powerSource: true } : sh
   }), ...accessShapes(powerAccess)]
 }
 function powerInfo() {
