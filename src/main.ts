@@ -13,16 +13,16 @@ import { Collab, type CollabEvents, type CollabTransport, type Op } from './coll
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
-import { cemeteryPathMasks, parcelGroundMasks } from './modules/parcelground'
-import { POWER_DEFAULTS, mergePowerLines, tieJunctions, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
+import { cemeteryPathMasks, parcelGroundMasks, yardSurfaceMasks } from './modules/parcelground'
+import { POWER_DEFAULTS, mergePowerLines, powerCorridorMasks, powerCorridorTest, tieJunctions, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
 import { accessShapes, gridTopology, planGrid, stationEntities, type PowerDistrib, type GridSite, type Station } from './modules/powergrid'
-import { FOREST_AVOID, GENERATORS, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
+import { FOREST_AVOID, GENERATORS, forestAvoidMissing, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
-import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
+import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
@@ -110,6 +110,9 @@ const toWb = async (p: Project) => {
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   // Workbench layer per type and 2 km square, small props / fences tilted on the slope (VANILLA_PLACEMENT_OPTIM.md)
   if (p.entities?.length) { const ents = withWbLayers(p.entities); p = { ...p, entities: island ? withSlopeTilt(ents, islandHeightAt) : ents } }
+  // every forest generator must avoid objects / roads / power lines (withAvoid forces it): 0 expected
+  const noAvoid = forestAvoidMissing(p.shapes)
+  if (noAvoid.length) throw new Error(`${noAvoid.length} forest shape(s) without obstacle / road avoidance: ${noAvoid.slice(0, 5).map((sh) => sh.id).join(', ')}`)
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
   const msg = await sendToWorkbench({ ...p, ffBiome: ffBiomeValue(currentBiome), remove: removed.filter(go).flatMap((r) => [r.x, r.z]), comments: wbComments(),
@@ -123,7 +126,7 @@ import { harbourPatch } from './modules/harbour'
 import { ffBiomeName, ffBiomeValue } from './ffbiome'
 import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
-import { applyFixes, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
+import { applyFixes, bridgeChecks, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
 import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
@@ -1303,7 +1306,7 @@ function zoneHabitation(zone: number[], n: number) {
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   const before = settled.length
   const res = settleVillages([site], allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: Number($<HTMLSelectElement>('zoneDens').value) || 1, variant: 'auto', maxSlope: 0.2, polygon: zone, reach, blocked, biome: currentBiome }, settled)
-  settled = res.placed
+  settled = offBridges(res.placed)
   setLanes = [...setLanes, ...res.lanes]
   setSquares = [...setSquares, ...res.squares]
   setGardens = [...setGardens, ...res.gardens]
@@ -1334,7 +1337,7 @@ function zoneScattered(zone: number[], n: number) {
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   const res = scatterBuildings(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, haPerGroup: Math.max(2, num('zoneHa') || 8), maxSlope: ZONE_MAX_SLOPE.scattered, blocked, prefix: sid }, settled)
   const made = res.placed.length - settled.length
-  settled = res.placed
+  settled = offBridges(res.placed)
   setLanes = [...setLanes, ...res.lanes]
   finishZone('scattered', zone, res.groups ? t('log.zoneScattered', { g: res.groups, n: made, s: res.lanes.length }) : t('err.zoneNoHouse'), res.yards)
 }
@@ -1350,7 +1353,7 @@ function zoneTown(zone: number[], n: number) {
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   const res = generateTown(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: num('setDensity') || 1, maxSlope: ZONE_MAX_SLOPE.town, blocked, prefix: sid }, settled)
   const made = res.placed.length - settled.length
-  settled = res.placed
+  settled = offBridges(res.placed)
   setLanes = [...setLanes, ...res.lanes]
   setSquares = [...setSquares, ...res.squares]
   // the town's parking and church blocks are dressed by the site generators (sitezones.ts): parking bays, and the
@@ -1561,6 +1564,7 @@ function parcelGround() {
   for (const z of zones) if (z.kind === 'site' && z.sub === 'cemetery') out.push(...cemeteryPathMasks(z.boxes.filter((b) => b.role === 'grave').map((b) => b.corners), z.shapes.find((sh) => sh.id.endsWith('_aisle'))?.points, seed))
   const yards = settled.filter((b) => b.role === 'farmyard').map((b) => ({ corners: b.corners.map((v, i) => (i % 2 ? b.z : b.x) + (v - (i % 2 ? b.z : b.x)) * 1.8) }))
   out.push(...parcelGroundMasks([...setGardens, ...yards], settled, seed))
+  for (const z of zones) if (z.rpRole === 'sawmill' && z.sub?.startsWith('parcel:')) out.push(...yardSurfaceMasks(z.boxes[0]?.corners ?? [], seed)) // worn gravel yard under the vanilla sawmill
   return out
 }
 let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences
@@ -1648,7 +1652,19 @@ function paintSink(x: number, z: number, v: number) {
 
 //! fine heights from the macro, rivers if live; surfaces only when final (end of stroke)
 // 2 m patches over the harbours, sent with the relief (heightpatch.txt)
-const heightPatches = () => (island ? zones.flatMap((zn) => (zn.harbour ? [harbourPatch(island!.heights, island!.grid, zn.harbour)] : [])) : [])
+const heightPatches = () => (island ? [...zones.flatMap((zn) => (zn.harbour ? [harbourPatch(island!.heights, island!.grid, zn.harbour)] : [])), ...bridgeRampPatches(riverBridgePlans(), island.heights, island.grid)] : [])
+// river bridges of the current roads / waters (same gaps and widths as the export, waterAndRoads)
+function riverBridgePlans() {
+  if (!island) return []
+  const ids = new Set(roads.map((r) => r.id))
+  const hb = (id: string) => { const r = roads.find((q) => q.id === id); return r ? { half: roadHalf(r), dirt: DIRT_ROADS.has(r.type) } : undefined }
+  return riverBridges(roadGaps().filter((g) => ids.has(g.id) && !noBridge.has(gapKey(g))), island.heights, island.grid, hb).plans
+}
+//! generated buildings closer than 5 m to a river bridge deck are left out (touching the deck end otherwise)
+function offBridges<B extends { x: number; z: number; corners: number[] }>(list: B[]): B[] {
+  const plans = riverBridgePlans()
+  return plans.length ? list.filter((b) => !plans.some((p) => nearBridge(p, b))) : list
+}
 function recompose(final: boolean) {
   if (!island || !sculpt) return
   const g = island.grid
@@ -2502,7 +2518,7 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
 
 /** the mask body of every export (and of the preview's final masks, preview/finalMasks.ts) */
 function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
-  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()] }
+  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()] }
 }
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
 const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => {
@@ -3853,7 +3869,7 @@ $<HTMLButtonElement>('setGen').addEventListener('click', () => void track((async
     : settle(sites, allRoads, waters, island.heights, island.grid, { seed: num('setSeed'), density: num('setDensity') }, { square: chk('setSquare'), lanes: chk('setLanes'), paths: chk('setPaths'), pool, blocked })
   setGardens = 'gardens' in res ? (res.gardens as typeof setGardens) : []
   setParcels = 'parcels' in res ? ((res.parcels as VillageParcel[] | undefined) ?? []) : []
-  settled = res.placed
+  settled = offBridges(res.placed)
   setLanes = res.lanes
   setPaths = res.paths
   setSquares = res.squares
@@ -4139,6 +4155,20 @@ function openAreaMenu(e: MouseEvent) {
   return true
 }
 /** forest shapes sent to the Workbench: with progressive edges (forestEdge.ts) a dense core + 1-2 sparser bands */
+/** (x, z) => inside one of the forest areas (bbox then ray test), for the power corridor ground */
+function forestAreaTest(): (x: number, z: number) => boolean {
+  const rings = areas.filter((a) => a.kind === 'forest' && a.pts.length >= 6).map((a) => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i + 1 < a.pts.length; i += 2) { x0 = Math.min(x0, a.pts[i]); x1 = Math.max(x1, a.pts[i]); z0 = Math.min(z0, a.pts[i + 1]); z1 = Math.max(z1, a.pts[i + 1]) }
+    return { p: a.pts, b: [x0, z0, x1, z1] }
+  })
+  return (x, z) => rings.some(({ p, b }) => {
+    if (x < b[0] || x > b[2] || z < b[1] || z > b[3]) return false
+    let ins = false
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
+    return ins
+  })
+}
 function forestShapesOut(f: MapArea[]): ProjectShape[] {
   if (!$<HTMLInputElement>('forestEdge').checked) return f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
   return forestEdgeShapes(forestEdges(f.map((a) => ({ id: a.id, pts: a.pts, leaf: a.leaf, generator: forestGenOf(a), noEdge: a.stage === 'juvenile' || a.stage === 'clearcut' }))))
@@ -4453,7 +4483,7 @@ function waterAndRoads(): Project {
     entities: [
       ...(furn ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []),
       ...(island && preWater ? riverBanks(waters, preWater, island.grid) : []),
-      ...(island && preWater ? bridges(split.gaps.filter((g) => !noBridge.has(gapKey(g))), preWater, island.grid, half) : []),
+      ...(island ? bridges(split.gaps.filter((g) => !noBridge.has(gapKey(g))), island.heights, island.grid, half) : []), // final relief: the abutments meet the road beds
     ],
   }
 }
@@ -4651,6 +4681,13 @@ function runChecks() {
       .filter(({ r }) => r.pts.length >= 4).map(({ r, zone }) => ({ id: r.id, half: roadHalf(r), line: centreLine(r.pts, 4), zone })),
   })]
   issues = [...issues, ...heightRangeCheck(island.heights, g0)]
+  // river bridges: deck vs road bed at both ends, one common pitch, houses kept off the deck
+  {
+    const hb = (id: string) => { const r = roads.find((q) => q.id === id); return r ? { half: roadHalf(r), dirt: DIRT_ROADS.has(r.type) } : undefined }
+    const rb = riverBridges(roadGaps().filter((g) => ids.has(g.id) && !noBridge.has(gapKey(g))), island.heights, g0, hb)
+    const at = patchedAt(island.heights, g0, bridgeRampPatches(rb.plans, island.heights, g0)) // ramps of the capped decks included
+    issues = [...issues, ...bridgeChecks({ plans: rb.plans, entities: rb.entities, roadY: at, settled })]
+  }
   $('checkDensity').textContent = t('check.density', { n: Math.round(density.total), max: PLATFORM_BUDGETS[budgetPlatform()].total })
   const list = $<HTMLUListElement>('checkList')
   list.innerHTML = ''
@@ -5235,7 +5272,7 @@ function applyWorld(w: WorldResult) {
   powerStations = w.powerStations ?? []; powerAccess = w.powerAccess ?? []
   areas = w.areas.map((a) => ({ id: a.id, kind: a.kind, leaf: a.leaf, pts: a.pts, ...(a.tall && { tall: a.tall }), ...(a.stage && { stage: a.stage }), ...(a.logs && { logs: a.logs }) }))
   result = w.campaign ?? null
-  settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
+  settled = offBridges(w.settlement.placed); setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
   setGardens = []
   setParcels = [...(w.settlement.parcels ?? []), ...(w.settlement.fences ?? [])]
   zones = w.zones
@@ -5459,6 +5496,8 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
     for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
     return ins
   })
+  // power lines cut a cleared corridor (Clearance on the generator, m_bAvoidPowerLines on the forest): no tree in it
+  const inCorridor = powerCorridorTest(mergePowerLines(powerLines))
   forests.forEach((a, n) => {
     const [x0, z0, x1, z1] = bb[n], p = a.pts
     const young = a.stage === 'juvenile', st = young ? sp * 0.6 : sp // production forest: young plantation = dense, short
@@ -5472,7 +5511,7 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
         const u = Math.max(0, Math.min(1, ((px - p[j]) * ex + (pz - p[j + 1]) * ez) / l2)), qx = p[j] + u * ex - px, qz = p[j + 1] + u * ez - pz
         d2 = Math.min(d2, qx * qx + qz * qz)
       }
-      if (!inside || inLake(px, pz) || inField(px, pz)) continue
+      if (!inside || inLake(px, pz) || inField(px, pz) || inCorridor(px, pz)) continue
       if (young) { out.push(px, pz, 0.25 + rnd() * 0.3); kind.push(a.leaf === 'broad' ? 0 : 1); continue } // 3-8 m saplings
       if (a.stage) { out.push(px, pz, a.stage === 'thinned' ? 1 + rnd() * 0.3 : 0.9 + rnd() * 0.35); kind.push(a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < 0.85) ? 1 : 0); continue } // managed: even stand, no clearings
       const d = Math.sqrt(d2), nz = noise(px, pz), r = rnd()
