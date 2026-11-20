@@ -4470,14 +4470,22 @@ function poleClearOfBuildings(x: number, z: number) {
 function powerShapes() {
   const plants = powerStations.filter((q) => q.kind === 'plant')
   const fromPlant = (pts: number[]) => pts.length >= 2 && plants.some((q) => Math.hypot(pts[0] - q.x, pts[1] - q.z) < 60)
-  return [...mergePowerLines(powerLines, 15, poleClearOfBuildings).map((l) => {
+  const out = mergePowerLines(powerLines, 15, poleClearOfBuildings).map((l) => {
     const sh = powerLineShape(l, l.id)
     if (fromPlant(sh.points)) return { ...sh, powerSource: true }
     // line arriving at the plant: reversed so the source is always point 0
     const rev: number[] = []
     for (let i = sh.points.length - 2; i >= 0; i -= 2) rev.push(sh.points[i], sh.points[i + 1])
     return fromPlant(rev) ? { ...sh, points: rev, ...(sh.lift ? { lift: sh.lift.slice().reverse() } : {}), powerSource: true } : sh
-  }), ...accessShapes(powerAccess)]
+  })
+  // branch points (POWERGRID_LOGIC §5): an inner vertex of a line where another same-generator line starts or ends
+  for (const sh of out) {
+    const ends = out.filter((o) => o !== sh && o.generator === sh.generator).flatMap((o) => [[o.points[0], o.points[1]], [o.points[o.points.length - 2], o.points[o.points.length - 1]]])
+    const j: number[] = []
+    for (let i = 2; i + 3 < sh.points.length; i += 2) if (ends.some(([x, z]) => Math.hypot(x - sh.points[i], z - sh.points[i + 1]) < 0.1)) j.push(i / 2)
+    if (j.length) sh.junctions = j
+  }
+  return [...out, ...accessShapes(powerAccess)]
 }
 function powerInfo() {
   const km = powerLines.reduce((n, l) => n + l.length, 0) / 1000

@@ -18,6 +18,9 @@ export interface ProjectShape {
   /** power line leaving a power plant: its first point is the grid source (Workbench side: SCR_PowerlineGeneratorPointData
    *  on point 0 with m_JunctionData.m_bPowerSource = true, POWERGRID_LOGIC.md) */
   powerSource?: boolean
+  /** point indices where another line of the same kind branches off: Workbench side, m_JunctionData on that point
+   *  (generator m_DefaultJunctionPole = PowerLine_01_pole_small_hook_junction for LV) */
+  junctions?: number[]
   /** obstacle avoidance of an area generator (ForestGeneratorEntity / SCR_AreaGeneratorBaseEntity):
    *  expanded by withAvoid() into m_bAvoid* generator params before sending */
   avoid?: AvoidSpec
