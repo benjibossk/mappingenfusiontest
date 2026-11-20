@@ -53,6 +53,7 @@ import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industr
 import { pickTemplate, fitPort, type VanillaTemplate } from './vanillaSites'
 import { placeRpPlaces } from './rpPlaces'
 import { buildHarbour, harbourTier, PORT_SEA_RX } from './harbour'
+import { streetLights, type StreetLamp } from './streetLights'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
 
 export interface WorldParams {
@@ -80,6 +81,8 @@ export interface WorldParams {
   powerDistrib?: 'auto' | 'overhead' | 'underground' // power distribution inside settlements (powergrid.ts), default auto
   /** per-layer seed overrides (layers.ts); absent layer = global seed */
   layerSeeds?: Partial<Record<LayerId, number>>
+  /** street lamps in the settlements (streetLights.ts), default on */
+  streetLights?: boolean
   biome?: string // BiomeId (docs/BIOMES_LIBRARY.md): forests and village parcels; default Everon = unchanged
 }
 export const WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { size: 4096, towns: 1, villages: 1, hamlets: 1, industry: 1, military: 1, airfield: true, power: true, forests: 1 }
@@ -114,6 +117,8 @@ export interface WorldResult {
   bridges?: ProjectEntity[]
   /** riparian band (reeds + willows) along the rivers and lake shores (riparian.ts) */
   riparian?: RiparianPatch[]
+  /** street lamps (streetLights.ts), also sent as the STREETLIGHTS zone: ids kept for a future power topology */
+  streetLights?: StreetLamp[]
 }
 
 /** 32-bit hash of the seed and a stage name (+ index): the sub-seed of one stage / zone */
@@ -883,6 +888,31 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       zn.entities = zn.entities.filter((_, i) => keep[i])
     }
   }
+  // 10d. street lamps along the settlement streets (streetLights.ts), last: the roads, lanes, fences, poles and
+  // every zone object are final; lamps keep clear of them
+  const lamps: StreetLamp[] = []
+  if (p.streetLights !== false) {
+    const objs = new Map<number, [number, number][]>()
+    const put = (x: number, z: number) => { const k = Math.floor(x / 8) * 100003 + Math.floor(z / 8); (objs.get(k) ?? objs.set(k, []).get(k)!).push([x, z]) }
+    for (const zn of zones) for (const e of zn.entities) put(e.x, e.z)
+    const wallPts = (pts: number[]) => { for (let i = 0; i + 3 < pts.length; i += 2) { const n = Math.max(1, Math.ceil(Math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1]) / 1.5)); for (let k = 0; k <= n; k++) put(pts[i] + ((pts[i + 2] - pts[i]) * k) / n, pts[i + 1] + ((pts[i + 3] - pts[i + 1]) * k) / n) } }
+    for (const fp of settlement.fences ?? []) for (const f of fp.fences) wallPts(f.pts)
+    for (const zn of zones) for (const sh of zn.shapes) if (sh.kind === 'polyline' && !/RG_Road/i.test(sh.generator)) wallPts(sh.points)
+    for (const fp of settlement.parcels ?? []) for (const a of fp.items) put(a.x, a.z)
+    const near = (x: number, z: number, r: number) => { const cx = Math.floor(x / 8), cz = Math.floor(z / 8); for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (const q of objs.get((cx + dx) * 100003 + cz + dz) ?? []) if (Math.hypot(q[0] - x, q[1] - z) < r) return true; return false }
+    lamps.push(...streetLights({
+      roads: [...roads, ...settlement.lanes, ...zones.flatMap((z) => z.roads)].filter((r) => r.pts.length >= 4),
+      sites: sites.filter((s) => !s.id.startsWith('FARM_')),
+      buildings: settlement.placed.map((q) => ({ corners: q.corners, x: q.x, z: q.z, site: q.site })),
+      footprints: zones.flatMap((z) => z.sub === 'scatter' || z.sub === 'fieldtrees' ? [] : z.boxes.map((b) => b.corners)),
+      poles: power.flatMap((l) => l.poles),
+      blocked: (x, z) => isLakeOrSea(x, z) || near(x, z, 1.5),
+      seed: ss('settlements', 'lamps'), biome: p.biome,
+    }))
+    if (lamps.length) zones.push({ id: 'STREETLIGHTS', kind: 'site', sub: 'streetlights', x: g.minX + ((g.cols - 1) * g.step) / 2, z: g.minZ + ((g.cols - 1) * g.step) / 2, yaw: 0, seed: ss('settlements', 'lamps'), shapes: [], flat: [], plat: [], roads: [], warnings: [],
+      entities: lamps.map((l) => ({ id: l.id, prefab: l.prefab, x: l.x, z: l.z, yaw: l.yaw })),
+      boxes: lamps.map((l) => ({ corners: [l.x - 0.4, l.z - 0.4, l.x + 0.4, l.z - 0.4, l.x + 0.4, l.z + 0.4, l.x - 0.4, l.z + 0.4], role: 'lamp', h: 5 })) })
+  }
   // 11. surfaces (5 per block at most)
   await step('surfaces')
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas, ...cropCover(camp)]), settlementMask(g, settlement.placed.map((q) => q.corners)))
@@ -918,7 +948,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       })
     }
   }
-  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
+  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }), ...(lamps.length && { streetLights: lamps }) }
 }
 
 /** station footprint corners (x, z centre, yaw radians, w x d) */
