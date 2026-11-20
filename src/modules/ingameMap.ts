@@ -17,12 +17,14 @@ export interface IngameMapInput {
   roads?: MapRoad[]
   buildings?: MapRect[]
   contourStep?: number        // metres, default 10; major every 5x
+  /** opt-in slope shading (idea from giorbev MapGeneratorPro V8.4): land steeper than this (deg, e.g. 25/30/35) is tinted grey-brown */
+  slopeShadeDeg?: number
 }
 export interface RgbaImage { width: number; height: number; data: Uint8ClampedArray }
 
 export const MAP_COLOURS = {
   sea: [92, 150, 200], land: [238, 232, 214], forest: [168, 204, 140], contour: [176, 132, 92],
-  contourMajor: [140, 96, 60], building: [60, 56, 54], paved: [210, 70, 50], dirt: [150, 110, 70],
+  contourMajor: [140, 96, 60], steep: [150, 138, 122], building: [60, 56, 54], paved: [210, 70, 50], dirt: [150, 110, 70],
 } as const
 
 const roadStyle = (t: string): { c: readonly number[]; w: number } =>
@@ -58,6 +60,10 @@ export function renderIngameMap(inp: IngameMapInput): RgbaImage {
     const nl = Math.hypot(dx, dy, 1), shade = (dx * -0.577 + dy * -0.577 + 0.577) / nl // dot with light (-x, -y screen=north, up)
     const k = 0.75 + 0.35 * shade
     set(px, py, MAP_COLOURS.land.map(c => Math.min(255, c * k)))
+    if (inp.slopeShadeDeg != null) {
+      const deg = Math.atan(Math.hypot(dx, dy)) * 180 / Math.PI
+      if (deg >= inp.slopeShadeDeg) set(px, py, MAP_COLOURS.steep, Math.min(0.75, 0.45 + (deg - inp.slopeShadeDeg) / 40))
+    }
   }
   const fillPoly = (pts: number[], c: readonly number[], a = 1) => {
     const n = pts.length / 2; if (n < 3) return
