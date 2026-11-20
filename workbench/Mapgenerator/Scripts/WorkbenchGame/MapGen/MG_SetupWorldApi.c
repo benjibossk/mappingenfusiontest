@@ -70,6 +70,23 @@ class MG_SetupWorld : NetApiHandler
 		"Prefabs/Sounds/Environment/AmbientSounds_Everon.et"
 	};
 
+	//! same order as MANAGERS: entity classes that already fill the role (a hand-placed light, fog,
+	//! probe or camera manager is not from the prefab: a 2nd global probe crashed the WB on load)
+	static const ref array<string> MANAGER_CLASSES = {
+		"GenericWorldLightEntity",
+		"GenericWorldFogEntity",
+		"GenericWorldPPEffect",
+		"TimeAndWeatherManagerEntity",
+		"EnvironmentProbeEntity|GameEnvironmentProbeEntity",
+		"SCR_DestructionManager",
+		"SCR_MPDestructionManager",
+		"CameraManager|SCR_CameraManager",
+		"BasePreloadManager|SCR_PreloadManager",
+		"",
+		"SoundWorld",
+		""
+	};
+
 	protected ref map<string, ResourceName> m_mFound = new map<string, ResourceName>();
 
 	override JsonApiStruct GetRequest()
@@ -187,13 +204,17 @@ class MG_SetupWorld : NetApiHandler
 		{
 			int def = LayerId(api, "default", false);
 			int count = api.GetEditorEntityCount();
-			foreach (string p : MANAGERS)
+			foreach (int mi, string p : MANAGERS)
 			{
+				array<string> classes = {};
+				MANAGER_CLASSES[mi].Split("|", classes, true);
 				bool have = false;
 				for (int i = 0; i < count && !have; i++)
 				{
 					IEntitySource e = api.GetEditorEntity(i);
-					if (e && IsPrefab(e, p))
+					if (!e)
+						continue;
+					if (IsPrefab(e, p) || classes.Contains(e.GetClassName()))
 						have = true;
 				}
 				if (have)
