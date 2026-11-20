@@ -6,6 +6,7 @@ param(
   [int]$TimeoutSec = 300,
   [switch]$NoSave,
   [switch]$NoTerrainFix,
+  [switch]$NoNormalMap,
   [switch]$Probe
 )
 $ErrorActionPreference = 'Stop'
@@ -135,7 +136,7 @@ if (-not $NoTerrainFix -and -not $script:importFailed) {
   $mt = Find (WE) 'Manage' 'TabItem'
   if ($mt) {
     (Pat $mt ([System.Windows.Automation.SelectionItemPattern])).Select(); Start-Sleep -Milliseconds 700
-    foreach ($bn in 'Fix block borders', 'Generate normal/vegetation map...') {
+    foreach ($bn in @('Fix block borders') + @(if (-not $NoNormalMap) { 'Generate normal/vegetation map...' })) {
       $b = Find (WE) $bn 'Button'
       if (-not $b) { "terrain fix: '$bn' not found, skipped"; continue }
       $script:before = @(Dialogs | ForEach-Object { $_.Current.NativeWindowHandle })
