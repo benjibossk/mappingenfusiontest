@@ -45,7 +45,7 @@ import { dropCoveredPosts, extraGuardrails } from './modules/guardrails'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp', 'desire'] as const
+const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp', 'desire', 'lights'] as const
 const hiddenLayers = new Set<string>()
 let density: DensityGrid | null = null // object count per cell for the platform budget (platformBudget.ts)
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
@@ -4787,6 +4787,16 @@ refreshStatus()
 function drawZones() {
   ctx.lineCap = 'round'
   for (const zn of zones) {
+    if (zn.sub === 'streetlights') {
+      // street lamps (streetLights.ts): a yellow dot each, own layer toggle
+      if (!layer('lights')) continue
+      ctx.fillStyle = ZONE_FILL.lamp
+      ctx.strokeStyle = '#000a'
+      ctx.lineWidth = 1
+      const r = Math.max(1.5, 1.2 / view.mpp)
+      for (const e of zn.entities) { const [sx, sy] = toScreen(e.x, e.z); ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
+      continue
+    }
     for (const b of zn.boxes) {
       ctx.beginPath()
       for (let i = 0; i + 1 < b.corners.length; i += 2) { const [sx, sy] = toScreen(b.corners[i], b.corners[i + 1]); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }

@@ -22,6 +22,7 @@ import type { Site } from '../../src/modules/network'
 import type { Water } from '../../src/modules/water'
 import { GROW_VILLAGE } from '../../src/modules/villageStreets'
 import { pastureFences, pastureDensity, pastureStyles } from '../../src/modules/pastures'
+import { streetLights } from '../../src/modules/streetLights'
 import { localStreets, streetStats, polyLen, STREET_REACH } from './streets'
 
 const args = process.argv.slice(2)
@@ -90,6 +91,7 @@ const vanillaB = vb.filter((_, i) => inSites.has(i))
 // ---- run the generators ---------------------------------------------------------------------------
 const t0 = Date.now()
 const lots: FenceLot[] = []
+const benchLanes: Road[] = [] // village / town lanes (street lamps)
 let placed: { x: number; z: number; yaw: number; cat: string; prefab: string }[] = []
 for (const kind of ['town', 'village', 'hamlet'] as const) {
   const ks = sites.filter((s) => s.kind === kind)
@@ -101,6 +103,7 @@ for (const kind of ['town', 'village', 'hamlet'] as const) {
       const tr = generateTown(ring, roads, waters, heights, grid, { seed: SEED, density: WORLD.villages.town.density, prefix: s.id }, placed as never)
       if (tr.placed.length - placed.length < 30) { ks.push(s); continue }
       placed = tr.placed
+      benchLanes.push(...tr.lanes)
     }
   }
   if (!ks.length) continue
@@ -108,6 +111,7 @@ for (const kind of ['town', 'village', 'hamlet'] as const) {
   const vr = settleVillages(ks, roads, waters, heights, grid, { seed: SEED, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, parcelShare: opt('--pshare') !== undefined ? Number(opt('--pshare')) : parcelShareOf(BIOME), oblique: villageOblique(BIOME) }, placed as never)
   placed = vr.placed
   lots.push(...vr.lots)
+  benchLanes.push(...vr.lanes)
 }
 const kinds = new Map<string, string>(sites.map((q) => [q.id, q.kind]))
 if (!args.includes('--no-town-lots')) lots.push(...townLots(placed as never, (id) => kinds.get(id) === 'town'))
@@ -357,6 +361,22 @@ const streetInfo = { score: streetScore, ...streets,
   houses: [sHousesV.length, sHousesG.length], medSetback: [+med(dsv.setback).toFixed(1), +med(dsg.setback).toFixed(1)], medOrient: [+med(dsv.orient).toFixed(1), +med(dsg.orient).toFixed(1)] }
 void polyLen
 
+// ---- street lamps (streetLights.ts) vs the vanilla street lamps (scripts/bench/vanilla-lamps.json, PakTools lamps_dump.py):
+// count inside the site reach, nearest-lamp spacing, offset from the nearest road edge
+const vLampAll: [number, number, number, string][] = (JSON.parse(readFileSync(new URL('./vanilla-lamps.json', import.meta.url), 'utf8')) as Record<string, [number, number, number, string][]>)[mapId] ?? []
+const LREACH: Record<string, number> = { town: 300, village: 170, hamlet: 90 }
+const inLampReach = (x: number, z: number) => sites.some((s) => Math.hypot(s.x - x, s.z - z) < (LREACH[s.kind] ?? 90))
+const gLamps = streetLights({ roads: [...roads, ...benchLanes], sites, buildings: (placed as never as { corners: number[]; x: number; z: number; site?: string }[]), seed: SEED, biome: BIOME })
+const vL = vLampAll.filter((l) => inLampReach(l[0], l[1])).map((l) => ({ x: l[0], z: l[1] })), gL = gLamps.filter((l) => inLampReach(l.x, l.z))
+const lampNN = (L: { x: number; z: number }[]) => L.map((a) => { let b = Infinity; for (const o of L) if (o !== a && Math.abs(o.x - a.x) < 120 && Math.abs(o.z - a.z) < 120) b = Math.min(b, Math.hypot(o.x - a.x, o.z - a.z)); return b }).filter((d) => d < 120)
+const lampLines = [...roads, ...benchLanes].filter((r) => r.pts.length >= 4).map((r) => ({ l: centreLine(r.pts, 4), h: roadHalf(r) }))
+const lampOff = (L: { x: number; z: number }[]) => L.map((p) => { let b = Infinity; for (const q of lampLines) for (let i = 2; i < q.l.length; i += 2) { const ax = q.l[i - 2], az = q.l[i - 1]; if (Math.abs(ax - p.x) > 60 || Math.abs(az - p.z) > 60) continue; const dx = q.l[i] - ax, dz = q.l[i + 1] - az, L2 = dx * dx + dz * dz, t = L2 ? Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.z - az) * dz) / L2)) : 0; b = Math.min(b, Math.hypot(p.x - ax - t * dx, p.z - az - t * dz) - q.h) } return b }).filter((d) => d < 30)
+const lampCount = +(100 * Math.min(vL.length, gL.length) / Math.max(1, vL.length, gL.length)).toFixed(1)
+const lampSpacing = +ksScore(lampNN(vL), lampNN(gL)).toFixed(1), lampOffset = +ksScore(lampOff(vL), lampOff(gL)).toFixed(1)
+const streetLightScore = +((lampCount + lampSpacing + lampOffset) / 3).toFixed(1)
+const streetLightInfo = { score: streetLightScore, count: lampCount, spacing: lampSpacing, offset: lampOffset, n: [vL.length, gL.length],
+  medNN: [+med(lampNN(vL)).toFixed(1), +med(lampNN(gL)).toFixed(1)], medOffset: [+med(lampOff(vL)).toFixed(1), +med(lampOff(gL)).toFixed(1)] }
+
 const report = {
   map: m.name, genSec, sites: sites.length,
   farmsteads,
@@ -367,8 +387,9 @@ const report = {
   streets: streetInfo,
   ruralFences: ruralInfo,
   power,
+  streetLights: streetLightInfo,
   powerWindows: powerWin.length ? { score: powerWindowScore, windows: powerWin } : null,
-  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, power: power?.tilePoles ?? null, powerWindow: powerWindowScore },
+  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, streetLights: streetLightScore, power: power?.tilePoles ?? null, powerWindow: powerWindowScore },
   powerRef: { nearRoad10: Object.fromEntries(kindsP.map((k) => [k, nearShare(vPoles, k)])), lvMedianSpan: +med(spans('lv')).toFixed(1), mvMedianSpan: +med(spans('mv')).toFixed(1), hvMedianSpan: +med(spans('hv')).toFixed(1) },
 }
 console.log(JSON.stringify(report, null, 1))
