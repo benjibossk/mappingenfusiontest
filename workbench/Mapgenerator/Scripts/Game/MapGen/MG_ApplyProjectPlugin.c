@@ -41,6 +41,8 @@ class MG_ProjectEntity : JsonApiStruct
 	string layer;		//!< "<type>_<ix>_<iz>" (web tool, 2 km squares) -> layer MG_<layer>; empty = MG_RoadSigns
 	int pitch;			//!< degrees, tilt on the slope (small props / fences); 0 = upright
 	int roll;
+	int pitchcd;		//!< centi-degrees, exact tilt of pitched bridge decks (wins over pitch / roll)
+	int rollcd;
 
 	void MG_ProjectEntity()
 	{
@@ -53,6 +55,8 @@ class MG_ProjectEntity : JsonApiStruct
 		RegV("layer");
 		RegV("pitch");
 		RegV("roll");
+		RegV("pitchcd");
+		RegV("rollcd");
 	}
 }
 
@@ -362,6 +366,8 @@ class MG_ProjectApplier
 				string rot = "0 " + ent.yaw.ToString() + " 0";
 				if (ent.pitch != 0 || ent.roll != 0) // small props / fences tilted on the slope (web tool, SlopeAngles convention)
 					rot = ent.pitch.ToString() + " " + ent.yaw.ToString() + " " + ent.roll.ToString();
+				if (ent.pitchcd != 0 || ent.rollcd != 0) // bridge deck on its common pitched line (web tool water.ts)
+					rot = (ent.pitchcd * 0.01).ToString() + " " + ent.yaw.ToString() + " " + (ent.rollcd * 0.01).ToString();
 				if (ent.id.Contains("_BANK_")) // banks follow the slope; buildings stay upright (height sent by the site)
 					rot = SlopeAngles(api, ent.x, ent.z, ent.yaw);
 				api.SetVariableValue(made, null, "angles", rot);
