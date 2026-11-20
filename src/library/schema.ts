@@ -39,7 +39,7 @@ export interface AssetPack {
 }
 
 /** one child of a composition, relative to the composition centre (model frame, +Z = street front) */
-export interface CompoItem { prefab: string; x: number; y: number; z: number; yaw: number; scale?: number }
+export interface CompoItem { prefab: string; x: number; y: number; z: number; yaw: number; scale?: number; pitch?: number; roll?: number }
 /** a ready-made parcel: a Workbench composition prefab (parent + children) flattened to items */
 export interface Composition {
   id: string
@@ -60,8 +60,8 @@ export interface Composition {
   where?: (string | number)[]
 }
 
-export type ParcelCategory = 'garden' | 'farm' | 'cemetery' | 'industrial' | 'fuel' | 'roadside' | 'allotment' | 'sport' | 'custom'
-export const PARCEL_CATEGORIES: ParcelCategory[] = ['garden', 'farm', 'cemetery', 'industrial', 'fuel', 'roadside', 'allotment', 'sport', 'custom']
+export type ParcelCategory = 'garden' | 'farm' | 'cemetery' | 'industrial' | 'fuel' | 'roadside' | 'allotment' | 'sport' | 'harbour' | 'custom'
+export const PARCEL_CATEGORIES: ParcelCategory[] = ['garden', 'farm', 'cemetery', 'industrial', 'fuel', 'roadside', 'allotment', 'sport', 'harbour', 'custom']
 
 export const GUID_RE = /^\{[0-9A-F]{16}\}[^\s{}]+\.et$/
 const ADDON_RE = /^[0-9A-F]{16}$/

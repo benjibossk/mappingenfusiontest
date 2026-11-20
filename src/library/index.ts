@@ -5,12 +5,15 @@ import { validatePack, type Asset, type AssetKind, type AssetPack, type Composit
 import { VANILLA_PACK } from './seed.ts'
 import COMPO_JSON from '../../library/compositions-vanilla.json' with { type: 'json' }
 import PARCELS_JSON from '../../library/parcels-vanilla.json' with { type: 'json' }
+import HARBOURS_JSON from '../../library/parcels-harbour.json' with { type: 'json' }
 
 /** base-game composition prefabs flattened to parcels (library/compositions-vanilla.json) */
 export const COMPOSITIONS_PACK = COMPO_JSON as unknown as AssetPack
 /** whole plots harvested from the vanilla worlds (library/parcels-vanilla.json, PakTools/parcel_lib_harvest.py):
  *  gardens, farmsteads, cemeteries, industrial yards, fuel stations, roadside, allotments, sport. See parcelLib.ts */
 export const PARCELS_PACK = PARCELS_JSON as unknown as AssetPack
+/** whole vanilla harbours with heights (library/parcels-harbour.json, PakTools/harbour_harvest.py), category harbour */
+export const HARBOURS_PACK = HARBOURS_JSON as unknown as AssetPack
 
 export * from './schema.ts'
 export { VANILLA_PACK }
