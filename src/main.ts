@@ -4776,7 +4776,7 @@ function drawIssues() {
   }
 }
 // gameplay score (src/modules/gameplay.ts, PakTools/analyses/GAMEPLAY_MAPPING.md): sub-scores + the worst spots on the map
-let gpReport: GameplayReport | null = null
+var gpReport: GameplayReport | null = null // var: read by draw() before this line runs (TDZ)
 function runGameplay() {
   const out = $<HTMLDivElement>('gameplayOut')
   if (!island) { gpReport = null; out.textContent = t('gp.none'); return }
