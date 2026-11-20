@@ -14,11 +14,11 @@ import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
 import { cemeteryPathMasks, parcelGroundMasks, yardSurfaceMasks } from './modules/parcelground'
-import { POWER_DEFAULTS, mergePowerLines, tieJunctions, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
+import { POWER_DEFAULTS, mergePowerLines, powerCorridorMasks, powerCorridorTest, tieJunctions, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
 import { accessShapes, gridTopology, planGrid, stationEntities, type PowerDistrib, type GridSite, type Station } from './modules/powergrid'
-import { FOREST_AVOID, GENERATORS, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
+import { FOREST_AVOID, GENERATORS, forestAvoidMissing, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
@@ -110,6 +110,9 @@ const toWb = async (p: Project) => {
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   // Workbench layer per type and 2 km square, small props / fences tilted on the slope (VANILLA_PLACEMENT_OPTIM.md)
   if (p.entities?.length) { const ents = withWbLayers(p.entities); p = { ...p, entities: island ? withSlopeTilt(ents, islandHeightAt) : ents } }
+  // every forest generator must avoid objects / roads / power lines (withAvoid forces it): 0 expected
+  const noAvoid = forestAvoidMissing(p.shapes)
+  if (noAvoid.length) throw new Error(`${noAvoid.length} forest shape(s) without obstacle / road avoidance: ${noAvoid.slice(0, 5).map((sh) => sh.id).join(', ')}`)
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
   const msg = await sendToWorkbench({ ...p, ffBiome: ffBiomeValue(currentBiome), remove: removed.filter(go).flatMap((r) => [r.x, r.z]), comments: wbComments(),
@@ -2515,7 +2518,7 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
 
 /** the mask body of every export (and of the preview's final masks, preview/finalMasks.ts) */
 function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
-  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()] }
+  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()] }
 }
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
 const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => {
@@ -4152,6 +4155,20 @@ function openAreaMenu(e: MouseEvent) {
   return true
 }
 /** forest shapes sent to the Workbench: with progressive edges (forestEdge.ts) a dense core + 1-2 sparser bands */
+/** (x, z) => inside one of the forest areas (bbox then ray test), for the power corridor ground */
+function forestAreaTest(): (x: number, z: number) => boolean {
+  const rings = areas.filter((a) => a.kind === 'forest' && a.pts.length >= 6).map((a) => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i + 1 < a.pts.length; i += 2) { x0 = Math.min(x0, a.pts[i]); x1 = Math.max(x1, a.pts[i]); z0 = Math.min(z0, a.pts[i + 1]); z1 = Math.max(z1, a.pts[i + 1]) }
+    return { p: a.pts, b: [x0, z0, x1, z1] }
+  })
+  return (x, z) => rings.some(({ p, b }) => {
+    if (x < b[0] || x > b[2] || z < b[1] || z > b[3]) return false
+    let ins = false
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
+    return ins
+  })
+}
 function forestShapesOut(f: MapArea[]): ProjectShape[] {
   if (!$<HTMLInputElement>('forestEdge').checked) return f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
   return forestEdgeShapes(forestEdges(f.map((a) => ({ id: a.id, pts: a.pts, leaf: a.leaf, generator: forestGenOf(a), noEdge: a.stage === 'juvenile' || a.stage === 'clearcut' }))))
@@ -5479,6 +5496,8 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
     for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
     return ins
   })
+  // power lines cut a cleared corridor (Clearance on the generator, m_bAvoidPowerLines on the forest): no tree in it
+  const inCorridor = powerCorridorTest(mergePowerLines(powerLines))
   forests.forEach((a, n) => {
     const [x0, z0, x1, z1] = bb[n], p = a.pts
     const young = a.stage === 'juvenile', st = young ? sp * 0.6 : sp // production forest: young plantation = dense, short
@@ -5492,7 +5511,7 @@ function forestTrees(): { pts: Float32Array; needle: Uint8Array } {
         const u = Math.max(0, Math.min(1, ((px - p[j]) * ex + (pz - p[j + 1]) * ez) / l2)), qx = p[j] + u * ex - px, qz = p[j + 1] + u * ez - pz
         d2 = Math.min(d2, qx * qx + qz * qz)
       }
-      if (!inside || inLake(px, pz) || inField(px, pz)) continue
+      if (!inside || inLake(px, pz) || inField(px, pz) || inCorridor(px, pz)) continue
       if (young) { out.push(px, pz, 0.25 + rnd() * 0.3); kind.push(a.leaf === 'broad' ? 0 : 1); continue } // 3-8 m saplings
       if (a.stage) { out.push(px, pz, a.stage === 'thinned' ? 1 + rnd() * 0.3 : 0.9 + rnd() * 0.35); kind.push(a.leaf === 'needle' || (a.leaf !== 'broad' && rnd() < 0.85) ? 1 : 0); continue } // managed: even stand, no clearings
       const d = Math.sqrt(d2), nz = noise(px, pz), r = rnd()

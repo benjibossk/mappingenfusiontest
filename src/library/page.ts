@@ -4,7 +4,7 @@
 
 import './page.css'
 import { BIOMES, biome, type Biome, type BiomeId } from '../data/biomes.ts'
-import { ASSET_KINDS, buildLibrary, COMPOSITIONS_PACK, PARCELS_PACK, importPack, search, tagCounts, VANILLA_PACK, type Asset, type AssetKind, type AssetPack, type Composition, type Library } from './index.ts'
+import { ASSET_KINDS, buildLibrary, COMPOSITIONS_PACK, HARBOURS_PACK, PARCELS_PACK, importPack, search, tagCounts, VANILLA_PACK, type Asset, type AssetKind, type AssetPack, type Composition, type Library } from './index.ts'
 import { compoId, importComposition } from './composition.ts'
 import { parcelsByCategory, savedToComposition, PARCEL_CATEGORIES, type ParcelCategory, type SavedParcel } from './parcelLib.ts'
 import { BRIDGE_URL } from '../bridge.ts'
@@ -24,7 +24,7 @@ const AVAIL = { vanilla: tr('lib.vanilla'), partial: tr('lib.partial'), mods: tr
 const repoPacks: AssetPack[] = []
 const loadErrors: string[] = []
 for (const [path, raw] of Object.entries(import.meta.glob('/library/*.json', { eager: true, query: '?raw', import: 'default' }))) {
-  if (path.endsWith('/compositions-vanilla.json') || path.endsWith('/parcels-vanilla.json')) continue // already built in (COMPOSITIONS_PACK, PARCELS_PACK)
+  if (path.endsWith('/compositions-vanilla.json') || path.endsWith('/parcels-vanilla.json') || path.endsWith('/parcels-harbour.json')) continue // already built in (COMPOSITIONS_PACK, PARCELS_PACK)
   // other data files live in /library too (prefabs-catalogue, prefabs-captions): only files that declare a pack format are packs
   try { const j = JSON.parse(raw as string) as { format?: unknown }; if (typeof j !== 'object' || j === null || !('format' in j)) continue } catch { /* not JSON: let importPack report it */ }
   try { repoPacks.push(importPack(raw as string)) } catch (e) { loadErrors.push(`${path}: ${(e as Error).message.split('\n')[0]}`) }
@@ -37,8 +37,8 @@ const userCompos: Composition[] = []
 const userPack = (): AssetPack => ({ format: 'reforger-mapper.assetpack', version: 1, id: 'my-compositions', name: FR ? 'Mes compositions' : 'My compositions', author: 'local', licence: 'CC-BY-4.0', source: 'vanilla', assets: [], compositions: userCompos })
 const wbCompos: Composition[] = [] // saved in the Workbench (MG_SaveParcelPlugin, bridge GET /parcels)
 const wbPack = (): AssetPack => ({ format: 'reforger-mapper.assetpack', version: 1, id: 'workbench-parcels', name: FR ? 'Parcelles du Workbench' : 'Workbench parcels', author: 'local', licence: 'CC-BY-4.0', source: 'vanilla', assets: [], compositions: wbCompos })
-const rebuild = () => buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, PARCELS_PACK, ...(wbCompos.length ? [wbPack()] : []), ...repoPacks, ...localPacks, ...(userCompos.length ? [userPack()] : [])])
-let lib: Library = buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, PARCELS_PACK, ...repoPacks])
+const rebuild = () => buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, PARCELS_PACK, HARBOURS_PACK, ...(wbCompos.length ? [wbPack()] : []), ...repoPacks, ...localPacks, ...(userCompos.length ? [userPack()] : [])])
+let lib: Library = buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, PARCELS_PACK, HARBOURS_PACK, ...repoPacks])
 
 const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '', compos: false, compo: '', src: '', view: 'parcels' as 'parcels' | 'prefabs', pcat: '' as ParcelCategory | '' }
 

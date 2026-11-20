@@ -259,12 +259,61 @@ export function routePowerLine(heights: ArrayLike<number>, grid: Grid, ax: numbe
   return { kind: opts.kind, spacing, path, poles: placePoles(path, spacing), length }
 }
 
+/** Half-width (m) of the cleared corridor along a line: `Clearance` on SCR_PowerlineGeneratorEntity, read by
+ *  SCR_ObstacleDetector so a forest generator with m_bAvoidPowerLines leaves no tree closer than that to the
+ *  wires. Vanilla prefabs: EHV_01 10, HV_01_Concrete 3, WoodenSmall 3, HV_02_Metal 0 (unset = no corridor at all,
+ *  the trees grew right through the pylons). Set explicitly per voltage: EHV 24 m, HV 20 m, MV 12 m, LV 6 m wide. */
+export const POWER_CLEARANCE: Record<PowerKind, number> = { ehv: 12, hv: 10, mv: 6, lv: 3 }
+
+/** (x, z) => true within the cleared corridor of one of the lines (POWER_CLEARANCE half-width) */
+export function powerCorridorTest(lines: Pick<PowerLine, 'kind' | 'path'>[]): (x: number, z: number) => boolean {
+  const segs: number[] = [] // x0 z0 x1 z1 r
+  for (const l of lines) {
+    const r = POWER_CLEARANCE[l.kind] ?? 3
+    for (let i = 0; i + 3 < l.path.length; i += 2) segs.push(l.path[i], l.path[i + 1], l.path[i + 2], l.path[i + 3], r)
+  }
+  return (x, z) => {
+    for (let k = 0; k < segs.length; k += 5) {
+      const ax = segs[k], az = segs[k + 1], bx = segs[k + 2], bz = segs[k + 3], r = segs[k + 4]
+      if (x < Math.min(ax, bx) - r || x > Math.max(ax, bx) + r || z < Math.min(az, bz) - r || z > Math.max(az, bz) + r) continue
+      const ex = bx - ax, ez = bz - az, l2 = ex * ex + ez * ez || 1
+      const u = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2)), qx = ax + u * ex - x, qz = az + u * ez - z
+      if (qx * qx + qz * qz < r * r) return true
+    }
+    return false
+  }
+}
+
+/** Ground of the corridor where it crosses a forest: same mask format as roadMasks, `core` (grass) painted over
+ *  the forest floor, so the 2D surfaces show the clearing the forest generator cuts in 3D. One stroke per run of
+ *  the line inside a forest ring (sampled every 4 m). */
+export function powerCorridorMasks(lines: Pick<PowerLine, 'kind' | 'path'>[], inForest: (x: number, z: number) => boolean, core = 'Grass_01') {
+  const out: { points: number[]; half: number; edge: number; core: string }[] = []
+  for (const l of lines) {
+    const half = POWER_CLEARANCE[l.kind] ?? 3
+    let run: number[] = []
+    const flush = () => { if (run.length >= 4) out.push({ points: run, half, edge: 2, core }); run = [] }
+    for (let i = 0; i + 3 < l.path.length; i += 2) {
+      const ax = l.path[i], az = l.path[i + 1], bx = l.path[i + 2], bz = l.path[i + 3]
+      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 4))
+      for (let k = i ? 1 : 0; k <= n; k++) {
+        const x = ax + ((bx - ax) * k) / n, z = az + ((bz - az) * k) / n
+        // a little past the edge on both sides, so the strip meets the open ground
+        if (inForest(x, z) || inForest(x + (bx - ax) / n * 2, z + (bz - az) / n * 2) || inForest(x - (bx - ax) / n * 2, z - (bz - az) / n * 2)) run.push(x, z)
+        else flush()
+      }
+    }
+    flush()
+  }
+  return out
+}
+
 /** Project shape for the native generator. The generator itself spaces poles every m_fDistance along
  *  the polyline (plus one on start / end / each corner it needs), so the shape carries the corners of
  *  the route and m_fDistance is set to our spacing: the preview poles match what Workbench builds. */
 export function powerLineShape(line: PowerLine, id: string): ProjectShape {
   const spacing = line.spacing ?? POWER_DEFAULTS[line.kind].spacing
-  return { id, kind: 'polyline', closed: false, points: simplifyPath(line.path, 1), generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance', 'm_bNextPointMeasurementXZ'], paramValues: [String(spacing), '1'] }
+  return { id, kind: 'polyline', closed: false, points: simplifyPath(line.path, 1), generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance', 'm_bNextPointMeasurementXZ', 'Clearance'], paramValues: [String(spacing), '1', String(POWER_CLEARANCE[line.kind])] }
 }
 
 const KIND_RANK: Record<PowerKind, number> = { ehv: 0, hv: 1, mv: 2, lv: 3 }
