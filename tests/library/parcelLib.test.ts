@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { PARCELS_PACK, validatePack } from '../../src/library/index.ts'
 import { addParcels, allParcels, parcelCorners, parcelsByCategory, pickParcel, roadClearance, savedToComposition, suggestParcelSpots, yawToRoad } from '../../src/library/parcelLib.ts'
 import { makeLibraryParcel } from '../../src/modules/zones.ts'
+import { isLooseWallPiece } from '../../src/modules/wallRuns.ts'
 
 test('vanilla parcels pack is valid and covers every harvested category', () => {
   assert.deepEqual(validatePack(PARCELS_PACK), [])
@@ -56,7 +57,9 @@ test('a library parcel stamps as a site zone with every object', () => {
   const heights = new Array(2500).fill(12)
   const c = parcelsByCategory().get('cemetery')![0]
   const zn = makeLibraryParcel(heights, g, { id: 'SITE_1', parcel: c, x: 10, z: 20, yaw: 90 })!
-  assert.equal(zn.entities.length, c.items.length)
+  const walls = c.items.filter((q) => isLooseWallPiece(q.prefab)).length // wall pieces become WG shapes (wallRuns.ts)
+  assert.equal(zn.entities.length, c.items.length - walls)
+  assert.ok(!walls || zn.shapes.length > 0)
   assert.equal(zn.sub, `parcel:${c.id}`)
   assert.ok(zn.entities.every((e) => e.id.startsWith('SITE_1_')))
   assert.equal(zn.flat[0].h0, 12)
