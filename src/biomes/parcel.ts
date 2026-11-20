@@ -119,7 +119,7 @@ export function generateParcel(lib: Library, biomeId: BiomeId, tpl: LotTemplate,
   function placeCompositions() {
     const want = tpl.compositions ?? DEFAULT_COMPOS[tpl.id] ?? { tags: ['garden'], count: [1, 2] as Range }
     const ids = biomeChain(b!.id, true).concat(assetBiome(b!).id)
-    const pool = (lib.compositions ?? []).filter((c) => c.biomes.some((x) => ids.includes(x)) && c.tags.some((t) => want.tags.includes(t)) && c.size.w <= lot.w - 2 && c.size.d <= lot.d - 2)
+    const pool = (lib.compositions ?? []).filter((c) => !c.category && c.biomes.some((x) => ids.includes(x)) && c.tags.some((t) => want.tags.includes(t)) && c.size.w <= lot.w - 2 && c.size.d <= lot.d - 2)
     if (!pool.length) { out.warnings.push(`no composition (${want.tags.join('/')}) for ${b!.id}`); return }
     const rr = rng(seed ^ 0x9e3779b9) // own stream: the rest of the parcel does not move
     const a0 = (yaw * Math.PI) / 180, c0 = Math.cos(a0), s0 = Math.sin(a0)

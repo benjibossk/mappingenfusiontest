@@ -52,7 +52,16 @@ export interface Composition {
   source: 'vanilla' | string
   author: string
   licence: string
+  /** whole plot of the parcel library (parcelLib.ts): house + fence + trees, cemetery, yard... absent = small sub-composition */
+  category?: ParcelCategory
+  /** 'front': the plot's +Z side faces its access road (aligned to the nearest road when placed); 'none': free */
+  road?: 'front' | 'none'
+  /** where it was harvested: [map, x, z] */
+  where?: (string | number)[]
 }
+
+export type ParcelCategory = 'garden' | 'farm' | 'cemetery' | 'industrial' | 'fuel' | 'roadside' | 'allotment' | 'sport' | 'custom'
+export const PARCEL_CATEGORIES: ParcelCategory[] = ['garden', 'farm', 'cemetery', 'industrial', 'fuel', 'roadside', 'allotment', 'sport', 'custom']
 
 export const GUID_RE = /^\{[0-9A-F]{16}\}[^\s{}]+\.et$/
 const ADDON_RE = /^[0-9A-F]{16}$/
@@ -79,6 +88,7 @@ export function validateComposition(c: unknown, where = 'composition'): string[]
   if (x.source !== 'vanilla' && !(typeof x.source === 'string' && ADDON_RE.test(x.source))) e.push(`${where}: source must be "vanilla" or a 16-hex addon GUID`)
   if (typeof x.author !== 'string' || !x.author.trim()) e.push(`${where}: author required`)
   if (typeof x.licence !== 'string' || !x.licence.trim()) e.push(`${where}: licence required`)
+  if (x.category !== undefined && !PARCEL_CATEGORIES.includes(x.category)) e.push(`${where}: unknown category ${String(x.category)}`)
   return e
 }
 

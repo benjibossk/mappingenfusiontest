@@ -4,8 +4,10 @@
 
 import './page.css'
 import { BIOMES, biome, type Biome, type BiomeId } from '../data/biomes.ts'
-import { ASSET_KINDS, buildLibrary, COMPOSITIONS_PACK, importPack, search, tagCounts, VANILLA_PACK, type Asset, type AssetKind, type AssetPack, type Composition, type Library } from './index.ts'
+import { ASSET_KINDS, buildLibrary, COMPOSITIONS_PACK, PARCELS_PACK, importPack, search, tagCounts, VANILLA_PACK, type Asset, type AssetKind, type AssetPack, type Composition, type Library } from './index.ts'
 import { compoId, importComposition } from './composition.ts'
+import { parcelsByCategory, savedToComposition, PARCEL_CATEGORIES, type ParcelCategory, type SavedParcel } from './parcelLib.ts'
+import { BRIDGE_URL } from '../bridge.ts'
 import { LOT_TEMPLATES, demoLot, generateParcel, lotTemplate, type Parcel3D } from '../biomes/parcel.ts'
 import { getLang, t as tr, type Key } from '../i18n.ts'
 import type { Viewer } from './viewer3d.ts'
@@ -22,7 +24,7 @@ const AVAIL = { vanilla: tr('lib.vanilla'), partial: tr('lib.partial'), mods: tr
 const repoPacks: AssetPack[] = []
 const loadErrors: string[] = []
 for (const [path, raw] of Object.entries(import.meta.glob('/library/*.json', { eager: true, query: '?raw', import: 'default' }))) {
-  if (path.endsWith('/compositions-vanilla.json')) continue // already built in (COMPOSITIONS_PACK)
+  if (path.endsWith('/compositions-vanilla.json') || path.endsWith('/parcels-vanilla.json')) continue // already built in (COMPOSITIONS_PACK, PARCELS_PACK)
   // other data files live in /library too (prefabs-catalogue, prefabs-captions): only files that declare a pack format are packs
   try { const j = JSON.parse(raw as string) as { format?: unknown }; if (typeof j !== 'object' || j === null || !('format' in j)) continue } catch { /* not JSON: let importPack report it */ }
   try { repoPacks.push(importPack(raw as string)) } catch (e) { loadErrors.push(`${path}: ${(e as Error).message.split('\n')[0]}`) }
@@ -33,10 +35,12 @@ repoPacks.push(...modPacks)
 const localPacks: AssetPack[] = []
 const userCompos: Composition[] = []
 const userPack = (): AssetPack => ({ format: 'reforger-mapper.assetpack', version: 1, id: 'my-compositions', name: FR ? 'Mes compositions' : 'My compositions', author: 'local', licence: 'CC-BY-4.0', source: 'vanilla', assets: [], compositions: userCompos })
-const rebuild = () => buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...repoPacks, ...localPacks, ...(userCompos.length ? [userPack()] : [])])
-let lib: Library = buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, ...repoPacks])
+const wbCompos: Composition[] = [] // saved in the Workbench (MG_SaveParcelPlugin, bridge GET /parcels)
+const wbPack = (): AssetPack => ({ format: 'reforger-mapper.assetpack', version: 1, id: 'workbench-parcels', name: FR ? 'Parcelles du Workbench' : 'Workbench parcels', author: 'local', licence: 'CC-BY-4.0', source: 'vanilla', assets: [], compositions: wbCompos })
+const rebuild = () => buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, PARCELS_PACK, ...(wbCompos.length ? [wbPack()] : []), ...repoPacks, ...localPacks, ...(userCompos.length ? [userPack()] : [])])
+let lib: Library = buildLibrary([VANILLA_PACK, COMPOSITIONS_PACK, PARCELS_PACK, ...repoPacks])
 
-const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '', compos: false, compo: '', src: '' }
+const st = { biome: 'temperate_everon' as BiomeId, kind: '' as AssetKind | '', text: '', tags: [] as string[], fallback: true, mode: 'parcel' as 'parcel' | 'asset', tpl: LOT_TEMPLATES[1].id, seed: 1, sel: '', compos: false, compo: '', src: '', view: 'parcels' as 'parcels' | 'prefabs', pcat: '' as ParcelCategory | '' }
 
 const app = document.getElementById('lib-app')!
 app.innerHTML = `
@@ -48,7 +52,9 @@ app.innerHTML = `
     <label>${tr('lib.biome')}<select id="f-biome">${BIOMES.map((b) => `<option value="${b.id}">${lab(b.label)} · ${AVAIL[b.availability]}</option>`).join('')}</select></label>
     <p id="b-desc" class="lb-desc"></p>
     <label class="lb-check"><input type="checkbox" id="f-fb" checked> ${tr('lib.include_fallback_biome')}</label>
-    <label>${tr('lib.kind')}<select id="f-kind"><option value="">${tr('lib.all')}</option>${ASSET_KINDS.map((k) => `<option value="${k}">${kindLabel(k)}</option>`).join('')}</select></label>
+    <div class="lb-tabs"><button id="v-parcels" class="on">${tr('lib.view_parcels')}</button><button id="v-prefabs">${tr('lib.view_prefabs')}</button></div>
+    <label id="l-pcat">${tr('lbl.plCat')}<select id="f-pcat"><option value="">${tr('lib.pcat_all')}</option>${PARCEL_CATEGORIES.map((k) => `<option value="${k}">${tr(('lib.pcat.' + k) as Key)}</option>`).join('')}</select></label>
+    <label id="l-kind">${tr('lib.kind')}<select id="f-kind"><option value="">${tr('lib.all')}</option>${ASSET_KINDS.map((k) => `<option value="${k}">${kindLabel(k)}</option>`).join('')}</select></label>
     <label>Source<select id="f-src"><option value="">${tr('lib.all')}</option><option value="vanilla">vanilla</option>${modPacks.map((m) => `<option value="${m.source}">${m.name.replace(/s+/g, '')}</option>`).join('')}</select></label>
     <label>${tr('lib.search')}<input id="f-text" type="search" placeholder="FarmHouse, pinus, ussr…"></label>
     <div class="lb-tags" id="f-tags"></div>
@@ -104,11 +110,41 @@ function render() {
   const res = results()
   const tags = tagCounts(search(lib, { biome: st.biome, kind: st.kind || undefined, fallback: st.fallback })).slice(0, 24)
   $('f-tags').innerHTML = tags.map(([t, n]) => `<button class="tag${st.tags.includes(t) ? ' on' : ''}" data-tag="${esc(t)}">${esc(t)} <small>${n}</small></button>`).join('')
+  $('v-parcels').classList.toggle('on', st.view === 'parcels'); $('v-prefabs').classList.toggle('on', st.view === 'prefabs')
+  $('l-pcat').style.display = st.view === 'parcels' ? '' : 'none'; $('l-kind').style.display = st.view === 'parcels' ? 'none' : ''
+  if (st.view === 'parcels') { renderParcels(); void preview(); return }
   $('count').textContent = `${res.length} ${tr('lib.assets')}`
   $('list').innerHTML = res.slice(0, 300).map((a) => `<li data-guid="${esc(a.guid)}" class="${a.guid === st.sel ? 'sel' : ''}">
     <span class="k k-${a.kind}">${kindLabel(a.kind)}</span><span class="n">${esc(a.name ?? a.guid)}</span>
     <span class="t">${a.tags.slice(0, 4).map(esc).join(' · ')}</span></li>`).join('')
   void preview()
+}
+
+/** parcels view: the library plots grouped by category, each with a small top-view thumbnail */
+function parcelResults(): Composition[] {
+  const words = st.text.toLowerCase().split(/\s+/).filter(Boolean)
+  return lib.compositions.filter((c) => c.category && (!st.pcat || c.category === st.pcat)
+    && (st.fallback || c.biomes.includes(st.biome))
+    && words.every((w) => `${c.name} ${c.tags.join(' ')} ${c.items.map((i) => i.prefab).join(' ')}`.toLowerCase().includes(w)))
+}
+function thumb(c: Composition): string {
+  const k = 44 / Math.max(c.size.w, c.size.d, 4)
+  const dots = c.items.slice(0, 80).map((i, n) => {
+    const x = 24 + i.x * k, y = 24 - i.z * k
+    const col = n === 0 ? '#c9573a' : /Vegetation/.test(i.prefab) ? '#5c9c3c' : /Fence|Wall|Gate/i.test(i.prefab) ? '#d8d0b0' : /Structures/.test(i.prefab) ? '#e8955a' : '#9aa'
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${n === 0 ? 2.6 : 1.3}" fill="${col}"/>`
+  }).join('')
+  return `<svg class="lb-thumb" viewBox="0 0 48 48" width="48" height="48"><rect x="${(24 - c.size.w * k / 2).toFixed(1)}" y="${(24 - c.size.d * k / 2).toFixed(1)}" width="${(c.size.w * k).toFixed(1)}" height="${(c.size.d * k).toFixed(1)}" fill="#2f3b2a" stroke="#9bc25b" stroke-dasharray="2 1"/><rect x="0" y="0" width="48" height="2" fill="#777"/>${dots}</svg>`
+}
+function renderParcels() {
+  const res = parcelResults()
+  if (!st.compo && res[0]) st.compo = res[0].id
+  $('f-tags').innerHTML = ''
+  $('count').textContent = `${res.length} ${tr('lib.parcels')}`
+  const groups = parcelsByCategory(res)
+  $('list').innerHTML = [...groups].map(([k, v]) => `<li class="lb-group"><b>${tr(('lib.pcat.' + k) as Key)}</b> <small>${v.length}</small></li>`
+    + v.slice(0, 150).map((c) => `<li data-compo="${esc(c.id)}" class="lb-parcel${c.id === st.compo ? ' sel' : ''}">${thumb(c)}<span class="n">${esc(c.name)}</span>
+    <span class="t">${c.size.w.toFixed(0)}×${c.size.d.toFixed(0)} m · ${c.items.length} ${tr('lib.items')}</span></li>`).join('')).join('')
 }
 
 async function preview() {
@@ -187,6 +223,26 @@ $('list').onclick = (e) => {
   if (!g) return
   st.sel = g; st.mode = 'asset'; render()
 }
+$('list').addEventListener('click', (e) => {
+  const id = (e.target as HTMLElement).closest<HTMLElement>('[data-compo]')?.dataset.compo
+  if (!id) return
+  st.compo = id; st.mode = 'parcel'; render()
+})
+$('v-parcels').onclick = () => { st.view = 'parcels'; render() }
+$('v-prefabs').onclick = () => { st.view = 'prefabs'; render() }
+$<HTMLSelectElement>('f-pcat').onchange = (e) => { st.pcat = (e.target as HTMLSelectElement).value as ParcelCategory | ''; render() }
+// parcels saved in the Workbench (bridge on): shown under "My parcels (Workbench)"
+void (async () => {
+  try {
+    const r = await fetch(BRIDGE_URL + '/parcels')
+    if (!r.ok) return
+    for (const p of (await r.json()) as SavedParcel[]) { const c = savedToComposition(p); if (c && !wbCompos.some((x) => x.id === c.id)) wbCompos.push(c) }
+    if (!wbCompos.length) return
+    lib = rebuild()
+    $('msg').textContent = `${tr('lib.wb_parcels')} : ${wbCompos.length}`
+    renderPacks(); render()
+  } catch { /* bridge off */ }
+})()
 $<HTMLInputElement>('f-import').onchange = async (e) => {
   const f = (e.target as HTMLInputElement).files?.[0]
   if (!f) return
