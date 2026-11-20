@@ -64,6 +64,13 @@ function pushComments(list) {
   return callWorkbench("MG_SetComments", { file: "$profile:MapGen/comments.txt" }, 15_000);
 }
 
+// MG_SetupWorld request: every step on unless explicitly false; menu paths "Menu/Item" (empty = skipped)
+function setupWorldParams(o, size) {
+  const b = o && typeof o === "object" ? o : {};
+  return { size: Number(size) || 0, managers: b.managers !== false, bounds: b.bounds !== false, save: b.save !== false,
+    normalMenu: String(b.normalMenu ?? ""), bordersMenu: String(b.bordersMenu ?? "") };
+}
+
 function callWorkbench(apiFunc, params = {}, timeoutMs = 120_000) {
   const version = Buffer.alloc(4);
   version.writeInt32LE(1);
@@ -271,11 +278,24 @@ const server = createServer(async (req, res) => {
       rmSync(join(PROFILE_DIR, "MapGen", "built.txt"), { force: true });
       const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" }, 600_000); // big worlds take minutes
       if (Array.isArray(project.comments)) await pushComments(project.comments).catch((e) => console.log("[apply] comments: " + e.message));
+      // opt-in post-Apply world setup (MG_SetupWorldApi.c): managers, world-bounds rocks, save
+      if (project.setupWorld && result.status !== "error") {
+        const w = await callWorkbench("MG_SetupWorld", setupWorldParams(project.setupWorld, project.terrainSize ?? project.size), 300_000).catch((e) => ({ status: "error", message: e.message }));
+        console.log("[apply] setup world: " + w.message);
+        if (typeof result.message === "string") result.message += "\nsetup world: " + w.message;
+      }
       const diff = compareBuilt(project, sent.warnings);
       writeFileSync(join(PROFILE_DIR, "MapGen", "report.txt"), diff.lines.join("\n"), "utf-8");
       console.log("[apply] " + diff.summary);
       if (result && typeof result.message === "string") result.message += "\n" + diff.summary;
       return send(res, result.status === "error" ? 500 : 200, result);
+    }
+
+    // post-Apply world setup on its own: body = {size, managers?, bounds?, save?, normalMenu?, bordersMenu?}
+    if (req.method === "POST" && req.url === "/setup-world") {
+      const b = JSON.parse((await readBody(req)) || "{}");
+      const r = await callWorkbench("MG_SetupWorld", setupWorldParams(b, b.size), 300_000);
+      return send(res, r.status === "error" ? 500 : 200, r);
     }
 
     // the open world as a whole (heights + ground materials), to load a map already in progress
