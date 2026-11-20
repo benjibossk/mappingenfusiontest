@@ -331,6 +331,41 @@ export function ringOverlap(p: number[]): number[] {
 }
 
 //! spline shapes for the Workbench (points every ~25 m: few, regular points as the wiki advises)
+/** road spline points safe for the Workbench road generator ("invalid segments on the road", seed 21 crash
+ *  2026-11-20): no point closer than `minSeg` to the previous one (a short last segment moves the previous point
+ *  out instead), no turn sharper than `maxTurn` degrees (the vertex is dropped), long straight spans split every
+ *  `maxSeg` m so the spline follows the relief. Open lines only (x,z pairs). */
+export function sanitizeRoadLine(pts: number[], minSeg = 3, maxTurn = 100, maxSeg = 20): number[] {
+  let P: number[][] = []
+  for (let i = 0; i + 1 < pts.length; i += 2) P.push([pts[i], pts[i + 1]])
+  if (P.length < 2) return pts
+  // hairpins first (a Catmull-Rom overshoot at a short first span ran 11 m backwards), then close points, until stable
+  for (let pass = 0; pass < 6; pass++) {
+    const n0 = P.length
+    for (let k = 1; k + 1 < P.length;) {
+      const [a, b, c] = [P[k - 1], P[k], P[k + 1]]
+      const ux = b[0] - a[0], uz = b[1] - a[1], vx = c[0] - b[0], vz = c[1] - b[1]
+      const cs = (ux * vx + uz * vz) / (Math.hypot(ux, uz) * Math.hypot(vx, vz) || 1)
+      if ((Math.acos(Math.max(-1, Math.min(1, cs))) * 180) / Math.PI > maxTurn) P.splice(k, 1); else k++
+    }
+    const Q: number[][] = [P[0]]
+    for (let k = 1; k < P.length; k++) {
+      const q = P[k], l = Q[Q.length - 1]
+      if (Math.hypot(q[0] - l[0], q[1] - l[1]) >= minSeg) Q.push(q)
+      else if (k === P.length - 1 && Q.length > 1) Q[Q.length - 1] = q // keep the true end
+    }
+    P = Q
+    if (P.length === n0 || P.length < 3) break
+  }
+  const out: number[] = []
+  for (let k = 0; k < P.length; k++) {
+    if (k) { const [a, b] = [P[k - 1], P[k]], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / maxSeg)
+      for (let j = 1; j < n; j++) out.push(Math.round((a[0] + ((b[0] - a[0]) * j) / n) * 100) / 100, Math.round((a[1] + ((b[1] - a[1]) * j) / n) * 100) / 100) }
+    out.push(P[k][0], P[k][1])
+  }
+  return out
+}
+
 export function roadShapes(roads: Road[]): ProjectShape[] {
   return roads.filter((r) => r.pts.length >= 4).map((r) => ({
     id: r.id,
@@ -338,7 +373,7 @@ export function roadShapes(roads: Road[]): ProjectShape[] {
     // a ring (first point = last, e.g. a roundabout): the road generator ignores IsClosed and leaves a gap at
     // the seam (seen in the Workbench), so the open spline runs on past its start over two more points
     closed: false,
-    points: ringOverlap(centreLine(r.pts, 10)).map((v) => Math.round(v * 100) / 100),
+    points: sanitizeRoadLine(ringOverlap(centreLine(r.pts, 10)).map((v) => Math.round(v * 100) / 100), Math.max(3, roadHalf(r))),
     generator: ROAD_TYPES[r.type].generator,
     // the site already shapes the relief: the generator must not reshape it again
     // width always sent: the generated road and the painted surface stay the same width

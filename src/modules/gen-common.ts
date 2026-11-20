@@ -1,6 +1,7 @@
 // Shared helpers for the pure site generators (military.ts, airfield.ts): seeded RNG, oriented boxes,
 // terrain sampling and terrain flatten requests. No DOM, no i18n: usable from node tests.
 
+import { sanitizeRoadLine } from './roads'
 import type { Grid } from './island'
 import type { ProjectEntity, ProjectShape } from '../project'
 
@@ -147,7 +148,7 @@ export const wallShape = (id: string, points: number[], generator: string, close
 
 /** road generator spline with an explicit width (same params as roads.ts roadShapes) */
 export const roadShape = (id: string, points: number[], generator: string, width: number): ProjectShape =>
-  ({ id, kind: 'spline', closed: false, points: points.map(round), generator, paramKeys: ['AdjustHeightMap', 'RoadWidth'], paramValues: ['0', String(width)] })
+  ({ id, kind: 'spline', closed: false, points: sanitizeRoadLine(points.map(round), 3), generator, paramKeys: ['AdjustHeightMap', 'RoadWidth'], paramValues: ['0', String(width)] })
 
 /** keep-out disc (villages, other sites) */
 export interface Disc { x: number; z: number; r: number }

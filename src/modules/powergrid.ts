@@ -21,6 +21,7 @@
 import type { Grid } from './island'
 import type { ProjectEntity, ProjectShape } from '../project'
 import { attachPoint, smoothPath } from './powersmooth'
+import { sanitizeRoadLine } from './roads'
 import { CLEAR, PowerObstacles, clearSpans, fixPoles, followRoads, type PowerWorld } from './powerroads'
 import { buildPowerCost, placePoles, routePowerLine, POWER_STYLE, type KeepOut, type PowerKind, type PowerLine, type PowerStyle } from './power'
 
@@ -625,6 +626,9 @@ export function stationEntities(stations: Station[]): ProjectEntity[] {
 }
 /** access tracks as dirt road shapes */
 export function accessShapes(access: number[][], prefix = 'PSTA_ROAD'): ProjectShape[] {
-  return access.map((pts, i) => ({ id: `${prefix}_${i + 1}`, kind: 'polyline', closed: false, points: pts, generator: ACCESS_ROAD_GEN }))
+  // same spline params as roads.ts roadShapes: 2-point tracks up to 180 m with the generator's own heightmap
+  // adjustment were sent before (seed 21 crash right after "invalid segments on the road")
+  return access.map((pts, i) => ({ id: `${prefix}_${i + 1}`, kind: 'spline', closed: false, points: sanitizeRoadLine(pts, 3), generator: ACCESS_ROAD_GEN,
+    paramKeys: ['AdjustHeightMap', 'RoadWidth', 'AdjustHeightMapPriority'], paramValues: ['0', '4', '5'] }))
 }
 
