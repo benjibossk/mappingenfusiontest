@@ -379,3 +379,43 @@ function freeEnds(p: number[], ok: (x: number, z: number) => boolean): number[] 
   }
   return q
 }
+
+/** Branch points for the Workbench junction poles (POWERGRID_LOGIC §5): a line end lying on another line of the same
+ *  generator (within `tol` m) is snapped onto it, a vertex is inserted there when needed, and that vertex index is
+ *  listed in `junctions` of the parent shape (m_JunctionData, LV: PowerLine_01_pole_small_hook_junction). In place. */
+export function tieJunctions(shapes: ProjectShape[], tol = 2): void {
+  for (const sh of shapes) {
+    if (sh.kind !== 'polyline') continue
+    for (const k of [0, -1]) {
+      const n = sh.points.length, ix = k === 0 ? 0 : n - 2, px = sh.points[ix], pz = sh.points[ix + 1]
+      let best: { o: ProjectShape; i: number; t: number; d: number } | null = null
+      for (const o of shapes) {
+        if (o === sh || o.generator !== sh.generator || o.kind !== 'polyline') continue
+        const p = o.points
+        for (let i = 0; i + 3 < p.length; i += 2) {
+          const dx = p[i + 2] - p[i], dz = p[i + 3] - p[i + 1], L = dx * dx + dz * dz || 1
+          const t = Math.max(0, Math.min(1, ((px - p[i]) * dx + (pz - p[i + 1]) * dz) / L))
+          const d = Math.hypot(p[i] + t * dx - px, p[i + 1] + t * dz - pz)
+          if (d < tol && (!best || d < best.d)) best = { o, i, t, d }
+        }
+      }
+      if (!best) continue
+      const { o, i } = best, p = o.points
+      // nearest existing vertex within 1 m, else a new one on the segment
+      let vi: number
+      const at = (j: number) => Math.hypot(p[j] - px, p[j + 1] - pz)
+      if (at(i) < 1) vi = i / 2
+      else if (at(i + 2) < 1) vi = i / 2 + 1
+      else {
+        const x = p[i] + best.t * (p[i + 2] - p[i]), z = p[i + 1] + best.t * (p[i + 3] - p[i + 1])
+        p.splice(i + 2, 0, x, z)
+        if (o.lift) o.lift.splice(i / 2 + 1, 0, (o.lift[i / 2] + (o.lift[i / 2 + 1] ?? o.lift[i / 2])) / 2)
+        o.junctions = (o.junctions ?? []).map((j) => (j > i / 2 ? j + 1 : j))
+        vi = i / 2 + 1
+      }
+      if (vi === 0 || vi === p.length / 2 - 1) continue // end to end: the generator reconnects extremities itself
+      sh.points[ix] = p[vi * 2]; sh.points[ix + 1] = p[vi * 2 + 1]
+      if (!(o.junctions ?? []).includes(vi)) o.junctions = [...(o.junctions ?? []), vi].sort((a, b) => a - b)
+    }
+  }
+}
