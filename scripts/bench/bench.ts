@@ -56,7 +56,9 @@ const waters: Water[] = [
 // settlement sites = clusters of vanilla civil buildings (single link, 45 m)
 const CIVIL = new Set(['house', 'shed', 'civic', 'church', 'farm'])
 // graves, calvaries, castle walls are not buildings a village generator places (cemetery = its own site)
-export const NOT_BUILDING = /Grave|Calvary|Castle|Fence|Wall|Monument|Statue|Ruin/i
+// + props the refmap classes as house / civic (2026-11-20, Kolguyev "houses" < 10 m apart: 41 FactoryHallWIP pillars,
+// 34 block piles, fuel tanks...; Everon: house furniture, fuel-station addons): not a parcel's house
+export const NOT_BUILDING = /Grave|Calvary|Castle|Fence|Wall|Monument|Statue|Ruin|Pillar|Pile_|FuelStorage|GuardTower|PortableCabin|WIP|Furniture|HouseAddons\/|BuildingAddons|Tombstone|Booth|Fountain/i
 const vb = m.buildings.items.filter((b) => CIVIL.has(b[4]) && !NOT_BUILDING.test(m.buildings.prefabs[b[0]])).map(([, x, z, yaw, cls]) => ({ x, z, yaw, cls }))
 function clusters(pts: { x: number; z: number }[], link: number): number[][] {
   const cell = new Map<string, number[]>(), key = (x: number, z: number) => `${Math.floor(x / link)},${Math.floor(z / link)}`
