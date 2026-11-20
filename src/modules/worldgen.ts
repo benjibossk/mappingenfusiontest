@@ -11,6 +11,7 @@ import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
 import { DENSITY, scaledCount, worldCounts } from '../data/densities'
 import { featheredBelt, scatterLayers } from './vegLayers'
+import { cliffRocks } from './cliffRocks'
 import { VEG } from '../data/biomes'
 import { fr } from '../i18n'
 import { computeSurfaces, settlementMask, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
@@ -844,6 +845,12 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     })
     if (scat.length) zones.push({ id: 'VEG_SCATTER', kind: 'site', sub: 'scatter', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'scatter'), shapes: [], entities: scat, flat: [], plat: [], roads: [], warnings: [],
       boxes: scat.map((t) => ({ corners: [t.x - 1, t.z - 1, t.x + 1, t.z - 1, t.x + 1, t.z + 1, t.x - 1, t.z + 1], role: 'tree', h: 0.1 })) })
+    // rocks / cliff faces on ground past ~37 deg (cliffRocks.ts), 8 m clear of roads, houses, zones and water
+    const nearRoad = (x: number, z: number) => onRoad(x, z) || onRoad(x + 8, z) || onRoad(x - 8, z) || onRoad(x, z + 8) || onRoad(x, z - 8)
+    const cliffs = cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, seed: ss('forests', 'cliffs'), max: Math.round(60 * landKm2),
+      ok: (x, z) => !isLakeOrSea(x, z) && !nearRoad(x, z) && !houseNear(x, z) && !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r + 8 }) })
+    if (cliffs.length) zones.push({ id: 'CLIFF_ROCKS', kind: 'site', sub: 'cliffs', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'cliffs'), shapes: [], entities: cliffs, flat: [], plat: [], roads: [], warnings: [],
+      boxes: cliffs.map((t) => ({ corners: [t.x - 3, t.z - 3, t.x + 3, t.z - 3, t.x + 3, t.z + 3, t.x - 3, t.z + 3], role: 'rock', h: 2 })) })
   }
   // 10c. pasture / paddock fences along the country roads near farms and villages (pastures.ts), outside the
   // settlement discs, forests, fields' trees and zones

@@ -59,6 +59,11 @@ export interface ProjectEntity {
   ycm?: number // absolute height in cm (bridges); absent = on the terrain
   /** essential (gameplay/cover) / pc (PC-only detail) / clutter (decoration); absent = roleOf() default (src/modules/roles.ts) */
   role?: 'essential' | 'pc' | 'clutter'
+  /** Workbench layer "<type>_<ix>_<iz>" (src/modules/layers.ts withWbLayers); absent = the plugin's default layer */
+  layer?: string
+  /** degrees, tilt on the terrain slope for small props / fences (src/modules/slopeAlign.ts); absent = upright */
+  pitch?: number
+  roll?: number
 }
 
 export interface Project {

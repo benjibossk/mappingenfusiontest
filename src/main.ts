@@ -107,6 +107,8 @@ const toWb = async (p: Project) => {
   const before = p.shapes.reduce((n, sh) => n + sh.points.length, 0), count = p.shapes.length
   p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).map((sh) => (sh.kind === 'polyline' && sh.closed && !sh.lift?.length ? { ...sh, points: splitLongLegs(sh.points, 200, true) } : sh)).filter((sh) => sh.points.length >= 4) }
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
+  // Workbench layer per type and 2 km square, small props / fences tilted on the slope (VANILLA_PLACEMENT_OPTIM.md)
+  if (p.entities?.length) { const ents = withWbLayers(p.entities); p = { ...p, entities: island ? withSlopeTilt(ents, islandHeightAt) : ents } }
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
   const msg = await sendToWorkbench({ ...p, ffBiome: ffBiomeValue(currentBiome), remove: removed.filter(go).flatMap((r) => [r.x, r.z]), comments: wbComments(),
@@ -136,7 +138,8 @@ import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly, type IndustrialT
 import { suggestMilitary, type MilitaryKind } from './modules/military'
 import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
-import { LAYERS as GEN_LAYERS, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
+import { withSlopeTilt } from './modules/slopeAlign'
+import { LAYERS as GEN_LAYERS, withWbLayers, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
 import { applyPads, layPads } from './modules/pads'
 import { buildingFootprints, Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
@@ -3795,6 +3798,15 @@ async function loadParcels() {
   return all
 }
 $<HTMLButtonElement>('parcelLib').addEventListener('click', () => openParcels(loadCaptured))
+//! bilinear height of the generated island (0 without one): slope measurements finer than a grid cell
+function islandHeightAt(x: number, z: number): number {
+  if (!island) return 0
+  const { cols, rows, step, minX, minZ } = island.grid, H = island.heights
+  const fx = Math.min(Math.max((x - minX) / step, 0), cols - 1), fz = Math.min(Math.max((z - minZ) / step, 0), rows - 1)
+  const c = Math.min(cols - 2, Math.floor(fx)), r = Math.min(rows - 2, Math.floor(fz)), tx = fx - c, tz = fz - r
+  const a = H[r * cols + c], b = H[r * cols + c + 1], d = H[(r + 1) * cols + c], e = H[(r + 1) * cols + c + 1]
+  return (a * (1 - tx) + b * tx) * (1 - tz) + (d * (1 - tx) + e * tx) * tz
+}
 const groundAt = (x: number, z: number) => {
   if (!island) return 0
   const { cols, rows, step, minX, minZ } = island.grid
