@@ -84,13 +84,14 @@ while ((Get-Date) -lt $deadline) {
   if ($new.Count -eq 0) { $quiet++; if ($quiet -ge 8 -and (WE).Current.IsEnabled) { break }; continue }
   $quiet = 0
   foreach ($d in $new) {
-    DescribeDialog $d
+    $desc = DescribeDialog $d; $desc
+    if ($desc -match 'import(ed)? failed') { $script:importFailed = $true }
     $ok = $null; foreach ($n in 'OK', 'Ok', 'Yes', 'Import', 'Continue', 'Apply', 'Close') { $ok = Find $d $n 'Button'; if ($ok) { break } }
     if ($ok) { (Pat $ok ([System.Windows.Automation.InvokePattern])).Invoke(); "  -> $($ok.Current.Name)" }
     else { "  -> no OK button, leaving it"; $before += $d.Current.NativeWindowHandle }
   }
 }
-'import finished'
+if ($script:importFailed) { 'IMPORT FAILED: see TERRAIN (E) lines in console.log (often "Too many layers" in a block)' } else { 'import finished' }
 if (-not $NoSave) {
   MenuInvoke 'File' 'Save World'
   Start-Sleep -Seconds 3
