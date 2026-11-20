@@ -71,3 +71,34 @@ export function markBuilt(map: LayerMap, id: LayerId): LayerMap {
 }
 
 export const staleLayers = (map: LayerMap): LayerId[] => LAYERS.filter((l) => map[l]?.stale)
+
+// ---- Workbench layer split (VANILLA_PLACEMENT_OPTIM.md §2): vanilla edits its worlds in layers per region
+// and per type (Vegetation_X, Roads, Settlement_...). One .layer holding tens of thousands of trees is slow to
+// save / open in the World Editor, so every object sent carries a layer name "<type>_<ix>_<iz>" (2 km squares).
+// Workbench side (MG_ApplyProjectPlugin.c) reads the optional `layer` field and creates "MG_<layer>"; an older
+// plugin ignores the unknown key (like `role`) and keeps its single layer.
+
+/** side of a layer square in metres */
+export const WB_LAYER_CELL = 2000
+
+/** layer type of an object from its id and prefab */
+export function wbLayerType(id: string, prefab: string): LayerId {
+  const s = id.toUpperCase()
+  if (/^ROAD_|^SIGN|^LAMP|^GUARD|^RAIL_/.test(s) || /Infrastructure\/Roads|\/Signs\/|Guardrail|StreetLight|Lamp/i.test(prefab)) return 'roads'
+  if (/^POWER_|^PYLON|^STATION/.test(s) || /Power|Pylon|Transformer/i.test(prefab)) return 'power'
+  if (/WATER|_BANK_|^BANK|HARB|^DAM|PIER|BRIDGE|CULVERT/.test(s)) return 'water'
+  if (/^CLIFF_/.test(s) || /Prefabs\/Rocks\//i.test(prefab)) return 'relief'
+  if (/^SCAT_|^BELT_|^TREE|FOREST|^PROD|^VEG/.test(s) || /\/Vegetation\//i.test(prefab)) return 'forests'
+  if (/FIELD|PAST|^FARM/.test(s)) return 'fields'
+  return 'settlements'
+}
+
+/** "<type>_<ix>_<iz>": type + index of the 2 km square holding (x, z) */
+export function wbLayerName(type: LayerId, x: number, z: number, cell = WB_LAYER_CELL): string {
+  return `${type}_${Math.max(0, Math.floor(x / cell))}_${Math.max(0, Math.floor(z / cell))}`
+}
+
+/** sets `layer` on objects that have none (explicit layers are kept) */
+export function withWbLayers<T extends { id: string; prefab: string; x: number; z: number; layer?: string }>(es: T[], cell = WB_LAYER_CELL): T[] {
+  return es.map((e) => (e.layer ? e : { ...e, layer: wbLayerName(wbLayerType(e.id, e.prefab), e.x, e.z, cell) }))
+}

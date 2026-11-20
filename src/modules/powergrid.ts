@@ -97,6 +97,8 @@ export interface GridOptions {
 export type PowerDistrib = 'auto' | 'overhead' | 'underground'
 /** longest LV drop to a farm before an MV spur + pole transformer is preferred (POWERGRID_LOGIC.md) */
 const FARM_LV = 300
+/** LV star (POWERGRID_LOGIC §4): feeder radius cap and village radius per extra feeder */
+const LV_STAR_R = 450, LV_STAR_STEP = 60
 export const GRID_DEFAULTS: GridOptions = { style: 'eden', ehv: 'auto', hv: true, mv: true, lv: true, mvMax: 4000, lvMax: 900, farmMax: 600, plants: 'auto', distrib: 'auto', ugMin: 25 }
 
 export interface GridInput {
@@ -495,6 +497,20 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       const st = trafo.get(s.id)
       if (!st || s.kind === 'industry' || ug(s)) continue
       // overhead: 'auto' = one short run down the main street (to <= 0.6 r past the centre), 'overhead' = two runs to the far side
+      // POWERGRID_LOGIC §4: LV star, 1 to 4 feeders by village size, none longer than LV_STAR_R from the kiosk
+      const star = Math.max(1, Math.min(4, Math.round(s.r / LV_STAR_STEP)))
+      if (star > 1 && opt.distrib !== 'overhead') {
+        // one feeder per angular sector around the kiosk, to the farthest road point of the sector
+        const best: ([number, number, number] | null)[] = new Array(star).fill(null)
+        for (const p of roads) for (let i = 0; i + 1 < p.length; i += 2) {
+          const x = p[i], z = p[i + 1], dc = Math.hypot(x - s.x, z - s.z), dk = Math.hypot(x - st.x, z - st.z)
+          if (dc > s.r * 0.85 || dk > LV_STAR_R || dk < s.r * 0.4) continue
+          const k = Math.floor(((Math.atan2(z - st.z, x - st.x) + Math.PI) / (2 * Math.PI)) * star) % star
+          if (!best[k] || dk > best[k]![2]) best[k] = [x, z, dk]
+        }
+        const picked = best.filter((b): b is [number, number, number] => !!b).map((b) => verge(b[0], b[1]))
+        if (picked.length > 1) { for (const e of picked) route('lv', st, e, s.id); continue }
+      }
       const runs = opt.distrib === 'overhead' ? 2 : 1, reach = opt.distrib === 'overhead' ? 0.85 : 0.6
       const ends: [number, number][] = []
       for (const p of roads) for (let i = 0; i + 1 < p.length; i += 2) {

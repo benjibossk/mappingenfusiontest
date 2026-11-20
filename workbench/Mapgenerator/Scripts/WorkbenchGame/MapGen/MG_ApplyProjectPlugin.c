@@ -36,6 +36,9 @@ class MG_ProjectEntity : JsonApiStruct
 	float z;
 	int yaw;			//!< degrees (int: JsonApiStruct leaves a float field at 0 when the JSON value is an integer)
 	int ycm;			//!< absolute height in cm (bridges); 0 = on the terrain
+	string layer;		//!< "<type>_<ix>_<iz>" (web tool, 2 km squares) -> layer MG_<layer>; empty = MG_RoadSigns
+	int pitch;			//!< degrees, tilt on the slope (small props / fences); 0 = upright
+	int roll;
 
 	void MG_ProjectEntity()
 	{
@@ -45,6 +48,9 @@ class MG_ProjectEntity : JsonApiStruct
 		RegV("z");
 		RegV("yaw");
 		RegV("ycm");
+		RegV("layer");
+		RegV("pitch");
+		RegV("roll");
 	}
 }
 
@@ -314,6 +320,7 @@ class MG_ProjectApplier
 		int layer = -1;
 		if (project.entities.Count() > 0)
 			layer = Layer(api, "MG_RoadSigns");
+		map<string, int> layerIds = new map<string, int>(); //!< MG_<layer> name -> id, created once
 		int nEnts = project.entities.Count();
 		int doneE;
 		foreach (MG_ProjectEntity ent : project.entities)
@@ -328,7 +335,17 @@ class MG_ProjectApplier
 			pos[1] = api.GetTerrainSurfaceY(ent.x, ent.z);
 			if (ent.ycm != 0)
 				pos[1] = ent.ycm * 0.01;
-			IEntitySource made = api.CreateEntity(prefab, ent.id, layer, null, pos, vector.Zero);
+			int entLayer = layer;
+			if (ent.layer != "")
+			{
+				string layerName = "MG_" + ent.layer;
+				if (!layerIds.Find(layerName, entLayer))
+				{
+					entLayer = Layer(api, layerName);
+					layerIds.Set(layerName, entLayer);
+				}
+			}
+			IEntitySource made = api.CreateEntity(prefab, ent.id, entLayer, null, pos, vector.Zero);
 			if (rep)
 			{
 				string est = "FAIL";
@@ -341,6 +358,8 @@ class MG_ProjectApplier
 				// the angles argument of CreateEntity is ignored here: set the yaw explicitly.
 				// StaticModelEntity (e.g. eroded banks) has no "angles": it uses angleX/Y/Z
 				string rot = "0 " + ent.yaw.ToString() + " 0";
+				if (ent.pitch != 0 || ent.roll != 0) // small props / fences tilted on the slope (web tool, SlopeAngles convention)
+					rot = ent.pitch.ToString() + " " + ent.yaw.ToString() + " " + ent.roll.ToString();
 				if (ent.id.Contains("_BANK_")) // banks follow the slope; buildings stay upright (height sent by the site)
 					rot = SlopeAngles(api, ent.x, ent.z, ent.yaw);
 				api.SetVariableValue(made, null, "angles", rot);
