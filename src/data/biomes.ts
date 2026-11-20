@@ -74,6 +74,8 @@ export const FENCES = {
   wood4: '{0CC5E987AE1787C6}Prefabs/WEGenerators/Walls/Wooden/WG_WoodenFence_04.et',
   woodOld: '{893BD1EB126A1C01}Prefabs/WEGenerators/Walls/Wooden/WG_WoodenFenceOld_01.et',
   woodRural: '{8F597EE22331F6D3}Prefabs/WEGenerators/Walls/Wooden/WG_WoodenRural_01.et',
+  pole1: '{5B6E89F5F31C58DE}Prefabs/WEGenerators/Walls/Pole/WG_PoleFence_01.et', // pasture fences (pastures.ts)
+  pole2: '{56EB3E90ED6D70D6}Prefabs/WEGenerators/Walls/Pole/WG_PoleFence_02.et',
   stone1: '{AFBC8775A67A25AB}Prefabs/WEGenerators/Walls/Stone/WG_StoneWall_01.et',
   stone2: '{750314043E7EA87C}Prefabs/WEGenerators/Walls/Stone/WG_StoneWall_02.et',
   brick1: '{1D54F9B155264349}Prefabs/WEGenerators/Walls/Brick/WG_BrickWall_01.et',

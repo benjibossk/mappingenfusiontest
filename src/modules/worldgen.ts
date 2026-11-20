@@ -28,6 +28,7 @@ import { GENERATORS, type ProjectEntity } from '../project'
 import { SITE_RADIUS, buildNetwork, insertPoint, maxGrade, nearestOn, routeLink, worstGrade, type Site, type SiteKind } from './network'
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
+import { pastureFences, pastureDensity, pastureStyles } from './pastures'
 import { addProdForests, lotFences, makeBlocker, townLots, type FenceLot } from './worldextras'
 import { generateTown } from './town'
 import { makeSiteZone } from './sitezones'
@@ -748,6 +749,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
           if (Math.hypot(qx - pts[e], qz - pts[e + 1]) > 2.5) continue
           pts[e] = qx; pts[e + 1] = qz; insertPoint(ring, qx, qz); break
         }
+        // a track through a house or farm building of a settlement is dropped (pre-send seed 21: field tracks over village houses)
+        if (centreLine(pts, 2).some((v, i, a) => i % 2 === 0 && settlement.placed.some((q) => Math.abs(q.x - v) < 40 && Math.abs(q.z - a[i + 1]) < 40 && footNear(q.corners, v, a[i + 1], 3.5)))) continue
         const tr: Road = { id: `ROAD_FIELD_${id}_${j + 1}`, type: 'dirt', pts, auto: true }
         roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too
       }
@@ -794,11 +797,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const sl = (x: number, z: number) => (Math.hypot(hAt(x + 4, z) - hAt(x - 4, z), hAt(x, z + 4) - hAt(x, z - 4)) / 16)
     const houseNear = (x: number, z: number) => settlement.placed.some((b) => Math.abs(b.x - x) < 15 && Math.abs(b.z - z) < 15)
     const inForest = (x: number, z: number) => areas.some((a) => (a.kind === 'forest' || a.kind === 'field') && pointInPoly(a.pts, x, z))
-    // no bush / rock on a carriageway (pre-send check flagged ~100 belt bushes on roads, seed 42): 2 m cells within half + 1.5 m
+    // no bush / rock on a carriageway (pre-send check flagged ~100 belt bushes on roads, seed 42): 2 m cells within half + 2.5 m (1.5: a belt bush 0.7 m on a prod track, seed 21)
     const onRoadCells = new Set<number>()
     for (const r of [...allRoads, ...settlement.lanes]) {
       if (r.pts.length < 4) continue
-      const c = centreLine(r.pts, 2), R = roadHalf(r) + 1.5, n = Math.ceil(R / 2)
+      const c = centreLine(r.pts, 2), R = roadHalf(r) + 2.5, n = Math.ceil(R / 2)
       for (let i = 0; i < c.length; i += 2) {
         const cx = Math.floor(c[i] / 2), cz = Math.floor(c[i + 1] / 2)
         for (let dx = -n; dx <= n; dx++) for (let dz = -n; dz <= n; dz++) if (Math.hypot(dx * 2, dz * 2) <= R + 1) onRoadCells.add((cx + dx) * 100003 + (cz + dz))
@@ -820,6 +823,22 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     if (scat.length) zones.push({ id: 'VEG_SCATTER', kind: 'site', sub: 'scatter', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'scatter'), shapes: [], entities: scat, flat: [], plat: [], roads: [], warnings: [],
       boxes: scat.map((t) => ({ corners: [t.x - 1, t.z - 1, t.x + 1, t.z - 1, t.x + 1, t.z + 1, t.x - 1, t.z + 1], role: 'tree', h: 0.1 })) })
   }
+  // 10c. pasture / paddock fences along the country roads near farms and villages (pastures.ts), outside the
+  // settlement discs, forests, fields' trees and zones
+  {
+    const DISC: Record<string, number> = { town: 300, village: 170, hamlet: 80 }
+    const treeCells = new Set<number>()
+    for (const zn of zones) if (zn.sub === 'scatter' || zn.sub === 'fieldtrees') for (const e of zn.entities) treeCells.add(Math.floor(e.x / 3) * 100003 + Math.floor(e.z / 3))
+    const nearTree = (x: number, z: number) => { const cx = Math.floor(x / 3), cz = Math.floor(z / 3); for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (treeCells.has((cx + dx) * 100003 + cz + dz)) return true; return false }
+    const siteZones = zones.filter((zn) => zn.sub !== 'scatter' && zn.sub !== 'fieldtrees').map(zoneDisc)
+    const gentle = (x: number, z: number) => Math.hypot(hAt(x + 5, z) - hAt(x - 5, z), hAt(x, z + 5) - hAt(x, z - 5)) / 10 < 0.3
+    const inWood = (x: number, z: number) => areas.some((a) => a.kind === 'forest' && pointInPoly(a.pts, x, z))
+    const lines = [...allRoads, ...settlement.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) }))
+    const pf = pastureFences({ seed: ss('settlements', 'pastures'), roads: allRoads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) })), buildings: settlement.placed, density: pastureDensity(p.biome), styles: pastureStyles(p.biome),
+      ok: (x, z) => !isLakeOrSea(x, z) && gentle(x, z) && !sites.some((s) => Math.hypot(x - s.x, z - s.z) < (DISC[s.kind] ?? 40) * 0.6) && !siteZones.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 10) && !inWood(x, z) && !nearTree(x, z),
+      blocked: makeBlocker(settlement.placed.map((q) => q.corners), lines) })
+    if (pf.length) settlement.fences = [...(settlement.fences ?? []), ...pf]
+  }
   // tracks and trails through the woods take the forest styles (and open-ground trails gravel); the late
   // tracks (fields, production forests) may not cross the motorway either: cut back there
   styleTracks(roads, (x, z) => forestRings.some((p) => pointInPoly(p, x, z)))
@@ -827,6 +846,31 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   { const keep = new Set(dropOrphanRings(roads)); for (let k = roads.length - 1; k >= 0; k--) if (!keep.has(roads[k])) roads.splice(k, 1) }
   // every road / lane end on another road runs 1.75 m into it: overlapping meshes, no hole at the junction
   { const all = [...roads, ...settlement.lanes]; overlapJunctions(roads, all); overlapJunctions(settlement.lanes, all) }
+  // last word on the vegetation scatter: the roads moved since (cuts, junction overlaps, late tracks), so a bush or
+  // tree within the carriageway + 1 m of a final road or lane goes (pre-send seed 21: a belt bush 0.7 m on a prod track)
+  {
+    const cells = new Map<number, { pts: number[]; h: number }[]>()
+    for (const r of [...roads, ...settlement.lanes, ...zones.flatMap((z) => z.roads)]) {
+      if (r.pts.length < 4) continue
+      const l = { pts: centreLine(r.pts, 4), h: roadHalf(r) + 1 }
+      const seen = new Set<number>()
+      for (let i = 0; i < l.pts.length; i += 2) { const k = Math.floor(l.pts[i] / 20) * 100003 + Math.floor(l.pts[i + 1] / 20); if (!seen.has(k)) { seen.add(k); (cells.get(k) ?? cells.set(k, []).get(k)!).push(l) } }
+    }
+    const hit = (x: number, z: number) => {
+      const cx = Math.floor(x / 20), cz = Math.floor(z / 20)
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (const l of cells.get((cx + dx) * 100003 + cz + dz) ?? []) {
+        const p = l.pts
+        for (let i = 2; i < p.length; i += 2) { const ax = p[i - 2], az = p[i - 1], ex = p[i] - ax, ez = p[i + 1] - az, L = ex * ex + ez * ez, u = L ? Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / L)) : 0; if (Math.hypot(x - ax - u * ex, z - az - u * ez) < l.h) return true }
+      }
+      return false
+    }
+    for (const zn of zones) if (zn.sub === 'scatter' || zn.sub === 'fieldtrees') {
+      const keep = zn.entities.map((e) => !hit(e.x, e.z))
+      if (keep.every(Boolean)) continue
+      if (zn.boxes && zn.boxes.length === zn.entities.length) zn.boxes = zn.boxes.filter((_, i) => keep[i])
+      zn.entities = zn.entities.filter((_, i) => keep[i])
+    }
+  }
   // 11. surfaces (5 per block at most)
   await step('surfaces')
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas, ...cropCover(camp)]), settlementMask(g, settlement.placed.map((q) => q.corners)))
@@ -836,4 +880,15 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // with lost points): merge them here so what is sent is what is built
   for (const a of areas) a.pts = dedupeRing(a.pts, 0.75)
   return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
+}
+
+/** point inside a 4-corner footprint grown by `m` metres */
+function footNear(c: number[], x: number, z: number, m: number): boolean {
+  if (pointInPoly(c, x, z)) return true
+  for (let i = 0; i < 8; i += 2) {
+    const ax = c[i], az = c[i + 1], bx = c[(i + 2) % 8], bz = c[(i + 3) % 8], dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz
+    const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+    if (Math.hypot(x - ax - t * dx, z - az - t * dz) < m) return true
+  }
+  return false
 }

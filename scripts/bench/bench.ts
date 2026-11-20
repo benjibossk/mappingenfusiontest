@@ -11,18 +11,23 @@ import { join } from 'node:path'
 import { refHeights, type RefMap } from '../../src/modules/refMap'
 import { ROAD_TYPES, centreLine, roadHalf, type Road, type RoadType } from '../../src/modules/roads'
 import { roadTypeOf } from '../../src/atelier/networks/roads'
-import { settleVillages } from '../../src/modules/village'
+import { settleVillages, villageOblique } from '../../src/modules/village'
 import { generateTown } from '../../src/modules/town'
 import { WORLD } from '../../src/data/worldParams'
 import { lotFences, makeBlocker, townLots, type FenceLot } from '../../src/modules/worldextras'
 import { worldPowerGrid, powerWorld } from '../../src/modules/worldpower'
 import type { Site } from '../../src/modules/network'
 import type { Water } from '../../src/modules/water'
+import { GROW_VILLAGE } from '../../src/modules/villageStreets'
+import { pastureFences, pastureDensity, pastureStyles } from '../../src/modules/pastures'
+import { localStreets, streetStats, polyLen, STREET_REACH } from './streets'
 
 const args = process.argv.slice(2)
 const mapId = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--'))) ?? 'everon'
 const opt = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined }
 const TILE = 250
+const BIOME = mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined
+const SEED = Number(opt('--seed') ?? 21)
 const noPower = !args.includes('--power') // whole-map power planning takes > 25 min on Everon: opt-in
 const m: RefMap = JSON.parse(readFileSync(new URL(`../../public/refmaps/${mapId}.json`, import.meta.url), 'utf8'))
 const hb = m.heights!
@@ -74,6 +79,7 @@ cl.forEach((c, k) => {
 for (let i = sites.length - 1; i >= 0; i--) if (sites.some((o) => o !== sites[i] && o.n > sites[i].n && Math.hypot(o.x - sites[i].x, o.z - sites[i].z) < 220)) sites.splice(i, 1)
 // experiment overrides: --set village.density=0.8
 for (let i = 0; i < args.length; i++) if (args[i] === '--set') { const [k, v] = args[i + 1].split('='), [a, b] = k.split('.'); (WORLD.villages as never as Record<string, Record<string, number>>)[a][b] = Number(v) }
+for (let i = 0; i < args.length; i++) if (args[i] === '--grow') { const [k, v] = args[i + 1].split('='); (GROW_VILLAGE as never as Record<string, number>)[k] = Number(v) }
 const inSites = new Set(cl.filter((c) => c.length >= 3).flat())
 const vanillaB = vb.filter((_, i) => inSites.has(i))
 
@@ -88,44 +94,47 @@ for (const kind of ['town', 'village', 'hamlet'] as const) {
     for (const s of ks.splice(0)) {
       const ring: number[] = []
       for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; ring.push(s.x + Math.cos(a) * 300, s.z + Math.sin(a) * 300) }
-      const tr = generateTown(ring, roads, waters, heights, grid, { seed: 21, density: WORLD.villages.town.density, prefix: s.id }, placed as never)
+      const tr = generateTown(ring, roads, waters, heights, grid, { seed: SEED, density: WORLD.villages.town.density, prefix: s.id }, placed as never)
       if (tr.placed.length - placed.length < 30) { ks.push(s); continue }
       placed = tr.placed
     }
   }
   if (!ks.length) continue
   const V = WORLD.villages[kind]
-  const vr = settleVillages(ks, roads, waters, heights, grid, { seed: 21, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true }, placed as never)
+  const vr = settleVillages(ks, roads, waters, heights, grid, { seed: SEED, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, oblique: villageOblique(BIOME) }, placed as never)
   placed = vr.placed
   lots.push(...vr.lots)
 }
 const kinds = new Map<string, string>(sites.map((q) => [q.id, q.kind]))
 if (!args.includes('--no-town-lots')) lots.push(...townLots(placed as never, (id) => kinds.get(id) === 'town'))
-const fenceParcels = lots.length ? lotFences(lots, { seed: 21, ...(opt("--fence-share") ? { share: Number(opt("--fence-share")) } : {}), ...(opt("--garden") ? { garden: Number(opt("--garden")) } : {}), kindOf: (id) => kinds.get(id) as never, blocked: makeBlocker((placed as never as { corners: number[] }[]).map((q) => q.corners), roads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) }))) }) : []
-const genFences = fenceParcels.flatMap((fp) => fp.fences.map((f) => f.pts))
+const fenceParcels = lots.length ? lotFences(lots, { seed: SEED, ...(opt("--fence-share") ? { share: Number(opt("--fence-share")) } : {}), ...(opt("--garden") ? { garden: Number(opt("--garden")) } : {}), ...(opt("--back") ? { back: Number(opt("--back")) } : {}), kindOf: (id) => kinds.get(id) as never, blocked: makeBlocker((placed as never as { corners: number[] }[]).map((q) => q.corners), roads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) }))) }) : []
+let genFences = fenceParcels.flatMap((fp) => fp.fences.map((f) => f.pts))
 const isWater = (x: number, z: number) => { const c = Math.round((x - grid.minX) / grid.step), r = Math.round((z - grid.minZ) / grid.step); return (heights[Math.min(grid.rows - 1, Math.max(0, r)) * grid.cols + Math.min(grid.cols - 1, Math.max(0, c))] ?? 0) <= 0 }
 const pw = noPower ? null : worldPowerGrid(heights, grid, sites, [], roads.map((r) => r.pts), isWater, m.size, 'eden', powerWorld(roads, (placed as never as { corners: number[] }[]).map((q) => q.corners), lots.filter((l) => l.used).map((l) => l.corners), []), 'auto')
 const genSec = (Date.now() - t0) / 1000
 placed = placed.filter((b) => !NOT_BUILDING.test(b.prefab))
 
 // ---- metrics ---------------------------------------------------------------------------------------
-const lines = roads.filter((r) => r.pts.length >= 4).map((r) => { const pts = centreLine(r.pts, 4); let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (let i = 0; i < pts.length; i += 2) { a = Math.min(a, pts[i]); b = Math.min(b, pts[i + 1]); c = Math.max(c, pts[i]); d = Math.max(d, pts[i + 1]) } return { pts, half: roadHalf(r), a, b, c, d } })
-const lcell = new Map<string, number[]>()
-lines.forEach((l, i) => { for (let x = Math.floor((l.a - 60) / 100); x <= Math.floor((l.c + 60) / 100); x++) for (let z = Math.floor((l.b - 60) / 100); z <= Math.floor((l.d + 60) / 100); z++) (lcell.get(`${x},${z}`) ?? lcell.set(`${x},${z}`, []).get(`${x},${z}`)!).push(i) })
-/** distance to the nearest road edge (<= 60 m) and the road heading there (degrees) */
-function nearRoad(x: number, z: number): { d: number; dir: number } {
-  let best = 60, dir = NaN
-  for (const i of lcell.get(`${Math.floor(x / 100)},${Math.floor(z / 100)}`) ?? []) {
-    const l = lines[i], p = l.pts
-    for (let k = 2; k < p.length; k += 2) {
-      const ax = p[k - 2], az = p[k - 1], dx = p[k] - ax, dz = p[k + 1] - az, L = dx * dx + dz * dz
-      const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
-      const d = Math.hypot(x - ax - t * dx, z - az - t * dz) - l.half
-      if (d < best) { best = d; dir = (Math.atan2(-dz, dx) * 180) / Math.PI }
+function roadIndex(rs: Road[]) {
+  const lines = rs.filter((r) => r.pts.length >= 4).map((r) => { const pts = centreLine(r.pts, 4); let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (let i = 0; i < pts.length; i += 2) { a = Math.min(a, pts[i]); b = Math.min(b, pts[i + 1]); c = Math.max(c, pts[i]); d = Math.max(d, pts[i + 1]) } return { pts, half: roadHalf(r), a, b, c, d } })
+  const lcell = new Map<string, number[]>()
+  lines.forEach((l, i) => { for (let x = Math.floor((l.a - 60) / 100); x <= Math.floor((l.c + 60) / 100); x++) for (let z = Math.floor((l.b - 60) / 100); z <= Math.floor((l.d + 60) / 100); z++) (lcell.get(`${x},${z}`) ?? lcell.set(`${x},${z}`, []).get(`${x},${z}`)!).push(i) })
+  /** distance to the nearest road edge (<= 60 m) and the road heading there (degrees) */
+  return function nearRoad(x: number, z: number): { d: number; dir: number } {
+    let best = 60, dir = NaN
+    for (const i of lcell.get(`${Math.floor(x / 100)},${Math.floor(z / 100)}`) ?? []) {
+      const l = lines[i], p = l.pts
+      for (let k = 2; k < p.length; k += 2) {
+        const ax = p[k - 2], az = p[k - 1], dx = p[k] - ax, dz = p[k + 1] - az, L = dx * dx + dz * dz
+        const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+        const d = Math.hypot(x - ax - t * dx, z - az - t * dz) - l.half
+        if (d < best) { best = d; dir = (Math.atan2(-dz, dx) * 180) / Math.PI }
+      }
     }
+    return { d: Math.max(0, best), dir }
   }
-  return { d: Math.max(0, best), dir }
 }
+const nearRoad = roadIndex(roads)
 const fold90 = (a: number) => { let r = ((a % 90) + 90) % 90; if (r > 45) r = 90 - r; return r }
 function nn(pts: { x: number; z: number }[]): number[] {
   const cell = new Map<string, number[]>()
@@ -146,8 +155,8 @@ function ksScore(a: number[], b: number[]): number {
   return 100 * (1 - d)
 }
 const med = (a: number[]) => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN }
-const desc = (v: { x: number; z: number; yaw: number }[]) => {
-  const r = v.map((b) => nearRoad(b.x, b.z))
+const desc = (v: { x: number; z: number; yaw: number }[], nr = nearRoad) => {
+  const r = v.map((b) => nr(b.x, b.z))
   return { setback: r.map((q) => q.d), orient: v.map((b, i) => (Number.isNaN(r[i].dir) ? NaN : fold90(b.yaw - r[i].dir))).filter((x) => !Number.isNaN(x)), nn: nn(v) }
 }
 const dv = desc(vanillaB), dg = desc(placed)
@@ -176,6 +185,41 @@ const villages = {
   spacing: +ksScore(dv.nn, dg.nn).toFixed(1),
 }
 const villageScore = +((villages.tileCount + villages.total + villages.setback + villages.orient + villages.spacing) / 5).toFixed(1)
+
+// ---- rural fences (pastures, paddocks) outside every site disc: vanilla pole / wooden / dry stone pieces vs ours
+const SITE_R: Record<string, number> = { town: 300, village: 170, hamlet: 80 }
+const inDisc = (x: number, z: number) => sites.some((s) => Math.hypot(x - s.x, z - s.z) < SITE_R[s.kind])
+const RURAL_RE = /Walls\/(Pole|Wooden|Stone)\//i, NOT_RURAL = /Retaining|Gate|Castle/i
+const farmC = cl.filter((c) => c.length < 3).map((c) => ({ x: c.reduce((a, i) => a + vb[i].x, 0) / c.length, z: c.reduce((a, i) => a + vb[i].z, 0) / c.length })).filter((q) => !inDisc(q.x, q.z))
+const fBox = m.forests.map((f) => { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (let i = 0; i < f.pts.length; i += 2) { a = Math.min(a, f.pts[i]); b = Math.min(b, f.pts[i + 1]); c = Math.max(c, f.pts[i]); d = Math.max(d, f.pts[i + 1]) } return [a, b, c, d] })
+const inPoly = (p: number[], x: number, z: number) => { let s = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) s = !s; return s }
+const inForest = (x: number, z: number) => m.forests.some((f, i) => x >= fBox[i][0] && x <= fBox[i][2] && z >= fBox[i][1] && z <= fBox[i][3] && inPoly(f.pts, x, z))
+const hAt = (x: number, z: number) => { const c = Math.min(grid.cols - 1, Math.max(0, Math.round((x - grid.minX) / grid.step))), r = Math.min(grid.rows - 1, Math.max(0, Math.round((z - grid.minZ) / grid.step))); return heights[r * grid.cols + c] ?? 0 }
+const gentle = (x: number, z: number) => Math.hypot(hAt(x + 5, z) - hAt(x - 5, z), hAt(x, z + 5) - hAt(x, z - 5)) / 10 < 0.3
+const rLines = roads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) }))
+const PDISC = Number(opt('--pdisc') ?? 0.6) // pastures may reach the outer 40 % of a site disc (vanilla: pole fences at the village edge)
+const tP = Date.now()
+const pastures = args.includes('--no-pastures') ? [] : pastureFences({ seed: SEED, roads: rLines, buildings: [...placed, ...farmC], density: Number(opt('--pmul') ?? 1) * pastureDensity(BIOME), styles: pastureStyles(BIOME),
+  ok: (x, z) => !isWater(x, z) && !sites.some((s) => Math.hypot(x - s.x, z - s.z) < SITE_R[s.kind] * PDISC) && gentle(x, z) && !inForest(x, z), blocked: makeBlocker((placed as never as { corners: number[] }[]).map((q) => q.corners), rLines) })
+const pSec = (Date.now() - tP) / 1000
+genFences = [...genFences, ...pastures.flatMap((pc) => pc.fences.map((f) => f.pts))]
+const vRural = m.fences.items.filter(([pi, x, z]) => RURAL_RE.test(m.fences.prefabs[pi]) && !NOT_RURAL.test(m.fences.prefabs[pi]) && !inDisc(x, z)).map(([, x, z, yaw, len]) => ({ x, z, yaw, len }))
+// ours cut into ~4 m pieces (vanilla pieces: 2-8 m), yaw from the piece heading
+const gRural: { x: number; z: number; yaw: number; len: number }[] = []
+for (const pc of pastures) for (const f of pc.fences) for (let i = 2; i < f.pts.length; i += 2) { const ax = f.pts[i - 2], az = f.pts[i - 1], dx = f.pts[i] - ax, dz = f.pts[i + 1] - az; gRural.push({ x: ax + dx / 2, z: az + dz / 2, yaw: (Math.atan2(-dz, dx) * 180) / Math.PI, len: Math.hypot(dx, dz) }) }
+const rv = new Float64Array(T * T), rg = new Float64Array(T * T)
+for (const q of vRural) rv[ti(q.x, q.z)] += q.len
+for (const q of gRural) rg[ti(q.x, q.z)] += q.len
+let rn = 0, rdn = 0
+for (let k = 0; k < T * T; k++) { rn += Math.min(rv[k], rg[k]); rdn += Math.max(rv[k], rg[k]) }
+const rdesc = (a: typeof vRural) => { const r = a.map((q) => nearRoad(q.x, q.z)); return { d: r.map((q) => q.d), o: a.map((q, i) => (Number.isNaN(r[i].dir) ? NaN : fold90(q.yaw - r[i].dir))).filter((x) => !Number.isNaN(x)) } }
+// weight by length: repeat each piece per started 2 m
+const wt = (a: typeof vRural) => a.flatMap((q) => Array(Math.max(1, Math.round(q.len / 2))).fill(q))
+const rdv = rdesc(wt(vRural)), rdg = rdesc(wt(gRural))
+const kmV = vRural.reduce((a, q) => a + q.len, 0) / 1000, kmG = gRural.reduce((a, q) => a + q.len, 0) / 1000
+const rural = { tileKm: +(100 * rn / Math.max(1, rdn)).toFixed(1), total: +(100 * Math.min(kmV, kmG) / Math.max(1e-6, kmV, kmG)).toFixed(1), roadDist: +ksScore(rdv.d, rdg.d).toFixed(1), orient: +ksScore(rdv.o, rdg.o).toFixed(1) }
+const ruralScore = +((rural.tileKm + rural.total + rural.roadDist + rural.orient) / 4).toFixed(1)
+const ruralInfo = { score: ruralScore, ...rural, km: [+kmV.toFixed(1), +kmG.toFixed(1)], medRoadDist: [+med(rdv.d).toFixed(1), +med(rdg.d).toFixed(1)], near30: [+(rdv.d.filter((d) => d < 30).length / Math.max(1, rdv.d.length)).toFixed(2), +(rdg.d.filter((d) => d < 30).length / Math.max(1, rdg.d.length)).toFixed(2)], paddocks: pastures.length, sec: pSec }
 
 // ---- fences: length per site disc (vanilla pieces vs our lot fences)
 const fenceLen = (pl: number[]) => { let L = 0; for (let i = 2; i < pl.length; i += 2) L += Math.hypot(pl[i] - pl[i - 2], pl[i + 1] - pl[i - 1]); return L }
@@ -206,14 +250,58 @@ const power = noPower ? null : {
 // ---- power: pole spans of the vanilla lines (reference only, our routing is fed by the same sites)
 const spans = (kind: string) => m.power.filter((l) => (l as { kind?: string }).kind === kind).flatMap((l) => { const o: number[] = []; for (let i = 2; i < l.pts.length; i += 2) o.push(Math.hypot(l.pts[i] - l.pts[i - 2], l.pts[i + 1] - l.pts[i - 1])); return o })
 
+// ---- village streets: strip the vanilla local streets of villages / hamlets, let settleVillages grow its own,
+// compare the street shapes and the houses vs their street (both sides measured against their own road set)
+const vSites = sites.filter((s) => STREET_REACH[s.kind])
+const loc = localStreets(roads.map((r) => r.pts), vSites)
+const locSet = new Set(loc.map((l) => l.idx))
+const stripped = roads.filter((_, i) => !locSet.has(i))
+if (args.includes("--loc-info")) { const by: Record<string, number> = {}; for (const l of loc) { const k = vSites[l.site].kind + " " + m.roads[l.idx].gen.split("/").pop()!; by[k] = (by[k] ?? 0) + Math.round(polyLen(roads[l.idx].pts)) } console.error(JSON.stringify(Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 14))) }
+let sPlaced: typeof placed = [], sLanes: Road[] = []
+for (const kind of ['village', 'hamlet'] as const) {
+  const ks = vSites.filter((s) => s.kind === kind)
+  if (!ks.length) continue
+  const V = WORLD.villages[kind]
+  const vr = settleVillages(ks, stripped, waters, heights, grid, { seed: SEED, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, oblique: villageOblique(BIOME) }, sPlaced as never)
+  sPlaced = vr.placed as never
+  sLanes.push(...vr.lanes)
+}
+sPlaced = sPlaced.filter((b) => !NOT_BUILDING.test(b.prefab))
+const inReach = (x: number, z: number) => vSites.some((s) => Math.hypot(x - s.x, z - s.z) < STREET_REACH[s.kind])
+const vStreets = loc.map((l) => roads[l.idx].pts), gStreets = sLanes.map((r) => r.pts).filter((p) => p.length >= 4)
+const svs = streetStats(vStreets, stripped.map((r) => r.pts)), sgs = streetStats(gStreets, stripped.map((r) => r.pts))
+const perSite = (ps: number[][]) => vSites.map((s) => ps.reduce((a, p) => { const R = STREET_REACH[s.kind]; let L = 0; for (let i = 2; i < p.length; i += 2) if (Math.hypot(p[i] - s.x, p[i + 1] - s.z) < R) L += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]); return a + L }, 0))
+const lv = perSite(vStreets), lg = perSite(gStreets)
+if (args.includes('--site-info')) console.error(vSites.map((s, i) => `${s.kind[0]}${s.n}:${Math.round(lv[i])}/${Math.round(lg[i])}`).join(' '))
+const sHousesV = vanillaB.filter((b) => inReach(b.x, b.z)), sHousesG = sPlaced.filter((b) => inReach(b.x, b.z))
+const dsv = desc(sHousesV), dsg = desc(sHousesG, roadIndex([...stripped, ...sLanes]))
+const dead = (s: typeof svs) => s.ends ? s.deadEnds / s.ends : 0
+const streets = {
+  siteLength: +(100 * lv.reduce((a, v, i) => a + Math.min(v, lg[i]), 0) / Math.max(1, lv.reduce((a, v, i) => a + Math.max(v, lg[i]), 0))).toFixed(1),
+  pieceLen: +ksScore(svs.pieces, sgs.pieces).toFixed(1),
+  angle: +ksScore(svs.angles, sgs.angles).toFixed(1),
+  deadEnd: +(100 * (1 - Math.abs(dead(svs) - dead(sgs)))).toFixed(1),
+  houseSetback: +ksScore(dsv.setback, dsg.setback).toFixed(1),
+  houseOrient: +ksScore(dsv.orient, dsg.orient).toFixed(1),
+  houseCount: +(100 * Math.min(sHousesV.length, sHousesG.length) / Math.max(1, sHousesV.length, sHousesG.length)).toFixed(1),
+}
+const streetScore = +(Object.values(streets).reduce((a, b) => a + b, 0) / Object.values(streets).length).toFixed(1)
+const streetInfo = { score: streetScore, ...streets,
+  km: [+(svs.total / 1000).toFixed(1), +(sgs.total / 1000).toFixed(1)], n: [vStreets.length, gStreets.length], pieces: [svs.pieces.length, sgs.pieces.length],
+  medPiece: [+med(svs.pieces).toFixed(0), +med(sgs.pieces).toFixed(0)], medAngle: [+med(svs.angles).toFixed(0), +med(sgs.angles).toFixed(0)], deadShare: [+dead(svs).toFixed(2), +dead(sgs).toFixed(2)],
+  houses: [sHousesV.length, sHousesG.length], medSetback: [+med(dsv.setback).toFixed(1), +med(dsg.setback).toFixed(1)], medOrient: [+med(dsv.orient).toFixed(1), +med(dsg.orient).toFixed(1)] }
+void polyLen
+
 const report = {
   map: m.name, genSec, sites: sites.length,
   villages: { score: villageScore, ...villages, counts: { vanilla: vanillaB.length, ours: placed.length }, byKind: { town: kindRatio('town'), village: kindRatio('village'), hamlet: kindRatio('hamlet') },
     median: { setback: [med(dv.setback), med(dg.setback)].map((x) => +x.toFixed(1)), orient: [med(dv.orient), med(dg.orient)].map((x) => +x.toFixed(1)), nn: [med(dv.nn), med(dg.nn)].map((x) => +x.toFixed(1)) },
     worstSites: siteScore.map((s) => ({ ...s, err: Math.abs(s.g - s.v) })).sort((a, b) => b.err - a.err).slice(0, 8) },
   fences,
+  streets: streetInfo,
+  ruralFences: ruralInfo,
   power,
-  scores: { villages: villageScore, fences: fenceScore, power: power?.tilePoles ?? null },
+  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, power: power?.tilePoles ?? null },
   powerRef: { nearRoad10: Object.fromEntries(kindsP.map((k) => [k, nearShare(vPoles, k)])), lvMedianSpan: +med(spans('lv')).toFixed(1), mvMedianSpan: +med(spans('mv')).toFixed(1), hvMedianSpan: +med(spans('hv')).toFixed(1) },
 }
 console.log(JSON.stringify(report, null, 1))

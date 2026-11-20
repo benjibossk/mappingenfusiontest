@@ -50,7 +50,7 @@ export const WORLD = {
     town: { density: 1.25, maxStreets: 16 as number | undefined },
     // reconstruction bench (scripts/bench, Everon sites + roads): 1.15 / 7 / 0.6 built 2.3x the vanilla buildings per site;
     // 0.3 / 4 / 0.2 gives 1.01x (villages) and 1.07x (hamlets), score 62.8 -> 75.5
-    village: { density: 0.3, maxStreets: 4 as number | undefined },
+    village: { density: 0.29, maxStreets: 5 as number | undefined },
     hamlet: { density: 0.2, maxStreets: undefined as number | undefined },
     farm: { density: 0.15, maxStreets: 0 as number | undefined }, // farmsteads: 1-3 buildings
   },
