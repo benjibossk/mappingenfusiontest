@@ -45,7 +45,7 @@ import { dropCoveredPosts, extraGuardrails } from './modules/guardrails'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
-const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp'] as const
+const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp', 'desire'] as const
 const hiddenLayers = new Set<string>()
 let density: DensityGrid | null = null // object count per cell for the platform budget (platformBudget.ts)
 const layer = (l: (typeof LAYERS)[number]) => !hiddenLayers.has(l)
@@ -113,6 +113,7 @@ import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, yardMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
+import { desirePaths, type MaskBand } from './modules/desirePaths'
 import { settleVillages, type VillageParcel, type VillageVariant } from './modules/village'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, nextZoneId, zoneBlocked, zoneDisc, type ZoneItem, type ZoneKind } from './modules/zones'
 import { rpPlacesOf } from './modules/rpPlaces'
@@ -924,6 +925,7 @@ function draw() {
   if (layer('power')) drawPower()
   if (layer('buildings')) drawSettlements()
   if (layer('existing') && view.mpp < 4) drawFences()
+  if (layer('desire') && layer('buildings') && view.mpp < 2) drawDesire()
   if (layer('zones')) drawZones()
   drawSatPreview()
   if (layer('sites')) drawSites()
@@ -2433,7 +2435,7 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
       terrainSize: num('tSize'),
       surfaces: island.surfaces,
       colours: { ...island.colours, ...ROAD_COLOURS },
-      roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' })
   }),
@@ -3398,7 +3400,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.sat', { file: r.satellite?.file ?? '—' }))
     out.push(t('test.rest'))
@@ -4286,7 +4288,7 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      surfaces: island.surfaces, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     out.push(t('test.masks', { dir: r.dir }), t('test.rest'))
     return out.join('\n')
@@ -4521,6 +4523,26 @@ function existingRoads(): Road[] {
     .map((s, i) => ({ id: `EXIST_${i}`, type: 'asphalt' as RoadType, pts: s.points.flat() }))
 }
 /** fence and wall pieces (generator 'Fence', reference maps): drawn above the forest and the buildings */
+/** desire paths (desirePaths.ts): worn-ground mask bands from the doors to the nearest road, memoised per world */
+let desireMemo: { key: string; bands: MaskBand[] } | null = null
+function desireMasks(): MaskBand[] {
+  const rs = [...roads, ...existingRoads(), ...setLanes, ...setPaths].filter((r) => r.pts.length >= 4)
+  const key = `${settled.length}|${settled[0]?.id}|${settled[settled.length - 1]?.x}|${rs.length}|${setParcels.length}`
+  if (desireMemo?.key === key) return desireMemo.bands
+  const bands = desirePaths(settled, rs.map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) })), setParcels.flatMap((p) => p.fences.map((f) => f.pts)))
+  desireMemo = { key, bands }
+  return bands
+}
+function drawDesire() {
+  ctx.save(); ctx.strokeStyle = 'rgba(150,118,80,0.75)'; ctx.lineCap = 'round'
+  for (const b of desireMasks()) {
+    ctx.lineWidth = Math.max(1, (b.half * 2) / view.mpp)
+    ctx.beginPath()
+    for (let i = 0; i + 1 < b.points.length; i += 2) { const [sx, sy] = toScreen(b.points[i], b.points[i + 1]); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy) }
+    ctx.stroke()
+  }
+  ctx.restore()
+}
 function drawFences() {
   ctx.beginPath()
   for (const s of existing.shapes) {
@@ -4880,7 +4902,7 @@ $<HTMLButtonElement>('satSend').addEventListener('click', () =>
     if (!s || !island) throw new Error(t('sat.none'))
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), terrainSize: num('tSize'),
-      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
+      surfaces: s, colours: { ...island.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround()],
     })
     return t('test.masks', { dir: r.dir })
   }),
