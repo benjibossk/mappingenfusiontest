@@ -202,7 +202,7 @@ export function colourCrops(fields: Ring[], o: { seed: number; centre?: (x: numb
     const [cx, cz] = ringCentroid(fields[i]), near = o.centre ? o.centre(cx, cz) : 1
     const r = rand()
     const pref: Crop[] = near < 0.12 ? (r < 0.5 ? ['orchard', 'meadow', 'ploughed', 'wheat'] : ['meadow', 'orchard', 'wheat', 'ploughed'])
-      : r < 0.45 ? ['wheat', 'ploughed', 'meadow'] : r < 0.75 ? ['ploughed', 'wheat', 'meadow'] : ['meadow', 'wheat', 'ploughed']
+      : r < 0.5 ? ['wheat', 'ploughed', 'meadow'] : r < 0.62 ? ['ploughed', 'wheat', 'meadow'] : ['meadow', 'wheat', 'ploughed']
     crops[i] = [...pref, ...CROPS].find((c) => !used.has(c)) ?? pref[0]
   }
   return crops as Crop[]

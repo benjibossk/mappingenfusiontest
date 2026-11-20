@@ -5,6 +5,7 @@ param(
   [string]$Folder = "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\profile\MapGen\masks\MG_Test",
   [int]$TimeoutSec = 300,
   [switch]$NoSave,
+  [switch]$NoTerrainFix,
   [switch]$Probe
 )
 $ErrorActionPreference = 'Stop'
@@ -112,6 +113,38 @@ for ($i = 0; $i -lt 15; $i++) {
   if ($hit) { break }
 }
 if ($script:importFailed) { 'IMPORT FAILED: see TERRAIN (E) lines in console.log (often "Too many layers" in a block)' } else { 'import finished' }
+# Terrain Tool > Manage: "Fix block borders" (else no grass on Grass_01 blocks) then
+# "Generate normal/vegetation map..." (lighting after the heights). Both buttons found by a UIA
+# probe on 2026-11-20; boxes they open are acknowledged like the import ones.
+function AckDialogs($sec) {
+  $pre = $script:before; $end = (Get-Date).AddSeconds($sec); $q = 0
+  while ((Get-Date) -lt $end) {
+    Start-Sleep -Seconds 2
+    $new = @(Dialogs | Where-Object { $pre -notcontains $_.Current.NativeWindowHandle })
+    if ($new.Count -eq 0) { $q++; if ($q -ge 4 -and (WE).Current.IsEnabled) { break }; continue }
+    $q = 0
+    foreach ($d in $new) {
+      DescribeDialog $d
+      $ok = $null; foreach ($n in 'Generate', 'OK', 'Ok', 'Yes', 'Continue', 'Apply', 'Close') { $ok = Find $d $n 'Button'; if ($ok) { break } }
+      if ($ok) { (Pat $ok ([System.Windows.Automation.InvokePattern])).Invoke(); "  -> $($ok.Current.Name)" }
+      else { '  -> no OK button, leaving it'; $pre += $d.Current.NativeWindowHandle }
+    }
+  }
+}
+if (-not $NoTerrainFix -and -not $script:importFailed) {
+  $mt = Find (WE) 'Manage' 'TabItem'
+  if ($mt) {
+    (Pat $mt ([System.Windows.Automation.SelectionItemPattern])).Select(); Start-Sleep -Milliseconds 700
+    foreach ($bn in 'Fix block borders', 'Generate normal/vegetation map...') {
+      $b = Find (WE) $bn 'Button'
+      if (-not $b) { "terrain fix: '$bn' not found, skipped"; continue }
+      $script:before = @(Dialogs | ForEach-Object { $_.Current.NativeWindowHandle })
+      (Pat $b ([System.Windows.Automation.InvokePattern])).Invoke(); "terrain fix: '$bn' invoked"
+      AckDialogs 600
+    }
+    $pt = Find (WE) 'Paint' 'TabItem'; if ($pt) { (Pat $pt ([System.Windows.Automation.SelectionItemPattern])).Select() }
+  } else { 'terrain fix: Manage tab not found, skipped' }
+}
 if (-not $NoSave) {
   # save: menu Invoke once, else Ctrl+S
   $saved = $false

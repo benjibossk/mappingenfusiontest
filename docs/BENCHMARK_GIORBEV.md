@@ -80,31 +80,34 @@ The tool **measures neither the game's FPS nor its draw calls**. It samples the 
 
 # MapGeneratorPro v8.4 (veille du 2026-11-20)
 
-Lecture seule du depot public `giorbev/Map-generator` (clone a jour dans `tools/third_party/giorbev-map-generator`, tag `V8.4.0`). Rien execute, aucun contact.
+Lecture seule du dépôt public `giorbev/Map-generator` (clone à jour dans `tools/third_party/giorbev-map-generator`, tag `V8.4.0`). Rien exécuté, aucun contact.
 
 ## Licence
 
-Le depot est sous **licence MIT** (`LICENSE`, (c) 2026 [otea] Giorbev). L'adaptation est permise avec mention. Nous avons quand meme **reimplemente a partir des notes de version** (aucun code copie), mention dans `NOTICE` et en tete des fichiers.
+Le dépôt est sous **licence MIT** (`LICENSE`, © 2026 [otea] Giorbev). L'adaptation est permise avec mention. Nous avons quand même **réimplémenté à partir des notes de version** (aucun code copié), mention dans `NOTICE` et en tête des fichiers.
 
-## Nouveautes v8.4
+## Nouveautés v8.4
 
-- 6 biomes climatiques (tempere oceanique par defaut, montagnard, mediterraneen, boreal, desertique, glaciaire). Chaque biome pose ses classes de sol a partir de l'altitude, la pente, l'ensoleillement, creux/cretes, ecoulement, humidite, distance a la cote. Le moteur classique (13 masques temperes) est supprime.
-- Onglets Biome / Reglages / Textures / Cuisson ; 2 a 4 reglages par biome + taille de zone, bouton Reinitialiser, **auto-calibrage depuis la heightmap**.
-- Textures : proposition automatique classe vers texture du projet, classes partageant une texture fusionnees, chaque bloc ramene au budget du projet, classe sans texture marquee **manquant** sans bloquer l'export.
-- Masques exportes **dans l'ordre d'import** (`01_mer__SeaBed_01.png`...) + `00_LISEZMOI_import.txt` FR/EN (ordre, texture, part de carte, etapes pour les manquants).
-- Les biomes respectent le masque d'exclusion (zone B gardee).
-- Fond carte en jeu : pentes fortes ombrees gris-brun (seuil 25/30/35 deg, 30 par defaut) a la place des hachures ; murs et clotures plus dessines (le jeu dessine ceux du .topo) ; case « masquer les murs .topo ».
-- Fonds satellite : plus d'eau sous les quais, quais vus de dessus (beton, escaliers, digues, jetees).
-- Atlas metrique : cache d'analyse invalide quand la taille de cellule ne correspond plus a la heightmap.
+- 6 biomes climatiques (tempéré océanique par défaut, montagnard, méditerranéen, boréal, désertique, glaciaire). Chaque biome pose ses classes de sol à partir de l'altitude, la pente, l'ensoleillement, creux et crêtes, l'écoulement, l'humidité et la distance à la côte. Le moteur classique (13 masques tempérés) est supprimé.
+- Onglets Biome / Réglages / Textures / Cuisson ; 2 à 4 réglages par biome + taille de zone, bouton Réinitialiser, **auto-calibrage depuis la heightmap**.
+- Textures : proposition automatique classe vers texture du projet, classes partageant une texture fusionnées, chaque bloc ramené au budget du projet, classe sans texture marquée « manquant » sans bloquer l'export.
+- Masques exportés **dans l'ordre d'import** (`01_mer__SeaBed_01.png`…) + `00_LISEZMOI_import.txt` FR/EN (ordre, texture, part de la carte, étapes pour les manquants).
+- Les biomes respectent le masque d'exclusion (zone B gardée).
+- Fond de carte en jeu : pentes fortes ombrées gris-brun (seuil 25/30/35°, 30 par défaut) à la place des hachures ; murs et clôtures plus dessinés (le jeu dessine ceux du .topo) ; case « masquer les murs .topo ».
+- Fonds satellite : plus d'eau sous les quais, quais vus de dessus (béton, escaliers, digues, jetées).
+- Atlas métrique : cache d'analyse invalidé quand la taille de cellule ne correspond plus à la heightmap.
 
-## Ce qu'on avait deja
+## Ce qu'on avait déjà
 
-- `src/biomes/climate.ts` : temperature/pluie/humidite par cellule vers BiomeId (choix du biome, pas des sols).
-- `src/biomes/surfaces.ts` + `src/shared/maskPaint.mjs` : regles de surfaces au sol par biome FF, masques par texture, budget de couches par bloc deja gere cote peinture.
-- `src/modules/ingameMap.ts` : carte en jeu avec ombrage de relief et courbes de niveau.
+- `src/biomes/climate.ts` : température, pluie et humidité par cellule vers BiomeId (choix du biome, pas des sols).
+- `src/biomes/surfaces.ts` + `src/shared/maskPaint.mjs` : règles de surfaces au sol par biome FF, masques par texture, budget de couches par bloc déjà géré à la peinture.
+- `src/modules/ingameMap.ts` : carte en jeu avec ombrage du relief et courbes de niveau.
 
-## Ecarts et ce qui a ete fait (branche cal/giorbev84)
+## Écarts et ce qui a été fait (branche cal/giorbev84)
 
-- **Fait** `src/biomes/groundClasses.ts` (module autonome, opt-in, non branche sur surfaces.ts pour ne pas croiser cal/bench) : derivees de terrain (pente, ensoleillement, TPI creux/cretes, accumulation D8, indice d'humidite TWI, distance a la cote), 6 biomes et leurs classes, reglages par biome + `autoCalibrate`, masque d'exclusion, proposition de textures avec drapeau manquant, fusion par texture, budget par bloc, noms de masques dans l'ordre d'import et texte `00_LISEZMOI_import.txt` FR/EN.
-- **Fait** ombrage des pentes fortes dans la carte en jeu : option `slopeShadeDeg` (25/30/35) de `renderIngameMap`, desactivee par defaut.
-- **Reste** : brancher le module dans l'UI (choix du biome, reglages, tableau textures) et dans l'envoi des masques (ecrire les PNG + LISEZMOI dans le bridge) ; quais vus de dessus ; invalidation de cache par taille de cellule (a verifier dans notre atlas) ; option « masquer murs .topo ».
+- **Fait** `src/biomes/groundClasses.ts` (module autonome) : dérivées du terrain (pente, ensoleillement, TPI creux/crêtes, accumulation D8, indice d'humidité TWI, distance à la côte), 6 biomes et leurs classes, réglages par biome + `autoCalibrate`, masque d'exclusion, proposition de textures avec drapeau manquant, fusion par texture, budget par bloc, noms de masques dans l'ordre d'import et texte `00_LISEZMOI_import.txt` FR/EN.
+- **Fait** `src/biomes/groundMasks.ts` + panneau « Classes de sol climatiques » (onglet Workbench, sous les étapes) : case d'activation (désactivée par défaut, la sortie actuelle ne change pas), choix du climat, réglages, auto-calibrage, réinitialiser, tableau classe / texture / part avec « manquant » en rouge et choix manuel de la texture. À l'export, le sol généré est remplacé par une surface par texture ; routes, cours, eau restent tamponnées ; le budget par bloc reste celui de `maskPaint.mjs`.
+- **Fait** bridge `writeMasks` : options `fileNames` (noms ordonnés `NN_classe__texture`) et `readme` (`00_LISEZMOI_import.txt`). Sans ces options, sortie identique.
+- **Fait** ombrage des pentes fortes de la carte en jeu : option `slopeShadeDeg` + sélecteur 25/30/35/non et bouton « Carte en jeu » (relief seul, vers `ingamemap.png`).
+- **Fait** (suite) : réglages et choix de textures du panneau enregistrés dans le projet (`groundBiome`) ; dossier d'import des masques avec les noms de surface simples (l'import Workbench associe par nom de surface, `wb-import-masks.ps1` inchangé, classes manquantes non écrites), copie ordonnée `NN_classe__texture.png` + `00_LISEZMOI_import.txt` dans `<monde>_ordre_import` ; carte en jeu avec routes, forêts, bâtiments, lacs et rivières ; biome tempéré calibré sur Everon (forêt 13 % dont 72 % de conifères, éboulis + roche 21 % dont roche nue 1,4 %, réglage « pente de roche nue » ajouté).
+- **Reste** : calibrer les autres biomes (Arland, Kolguyev pour le boréal) ; quais vus de dessus ; invalidation de cache par taille de cellule ; option « masquer murs .topo ».

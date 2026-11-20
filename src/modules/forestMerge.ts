@@ -20,8 +20,26 @@ export function mergeForestPatches<T extends { leaf?: string; pts: number[] }>(p
   }
   const out: T[] = []
   for (const w of woods) {
+    w.f = noHoles(w.f)
     const polys = w.f.geometry.type === 'Polygon' ? [w.f.geometry.coordinates] : w.f.geometry.coordinates
     for (const pc of polys) out.push({ ...w.src, pts: pc[0].slice(0, -1).flat() })
   }
   return out
+}
+
+/** an area is one outer ring: a hole (a wood of another species inside, a union around a gap) would be dropped
+ *  and the outline drawn over what it held. Each hole is opened by a 1 m slit cut north to the outline. */
+function noHoles(f: Feature<Polygon | MultiPolygon>): Feature<Polygon | MultiPolygon> {
+  for (let it = 0; it < 12; it++) {
+    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates
+    const hole = polys.find((pc) => pc.length > 1)?.[1]
+    if (!hole) return f
+    let cx = 0, cz = 0, top = -Infinity
+    for (const [x, z] of hole) { cx += x; cz += z }
+    cx /= hole.length; cz /= hole.length
+    for (const pc of polys) for (const [, z] of pc[0]) top = Math.max(top, z)
+    const slit = turf.polygon([[[cx - 0.5, cz], [cx + 0.5, cz], [cx + 0.5, top + 1], [cx - 0.5, top + 1], [cx - 0.5, cz]]])
+    try { const d = turf.difference(turf.featureCollection([f, slit])); if (!d) return f; f = d } catch { return f }
+  }
+  return f
 }
