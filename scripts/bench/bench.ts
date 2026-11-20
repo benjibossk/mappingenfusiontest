@@ -16,6 +16,7 @@ import { generateTown } from '../../src/modules/town'
 import { WORLD } from '../../src/data/worldParams'
 import { lotFences, makeBlocker, townLots, type FenceLot } from '../../src/modules/worldextras'
 import { worldPowerGrid, powerWorld } from '../../src/modules/worldpower'
+import { parallelOverlap } from '../../src/modules/powergrid'
 import type { Site } from '../../src/modules/network'
 import type { Water } from '../../src/modules/water'
 import { GROW_VILLAGE } from '../../src/modules/villageStreets'
@@ -286,7 +287,7 @@ function powerInWindow(w: PWin) {
     window: [Math.round(w.x), Math.round(w.z), w.s], sec: +((Date.now() - t) / 1000).toFixed(1), sites: sw.length,
     poles: [vp.length, gp.length], spanMedian: [+med(vs).toFixed(1), +med(gs).toFixed(1)], lineKm: [+(vl.reduce((a, b) => a + b, 0) / 1000).toFixed(1), +(gl.reduce((a, b) => a + b, 0) / 1000).toFixed(1)],
     lines: [vl.length, gl.length], lineMedian: [Math.round(med(vl)), Math.round(med(gl))], nearRoad10: [share(vr, 10), share(gr, 10)], nearRoad30: [share(vr, 30), share(gr, 30)],
-    roadDistMedian: [+med(vr).toFixed(1), +med(gr).toFixed(1)], stations: { ours: p.stations.length, byKind: p.stations.reduce((a, s) => { a[s.kind] = (a[s.kind] ?? 0) + 1; return a }, {} as Record<string, number>) },
+    roadDistMedian: [+med(vr).toFixed(1), +med(gr).toFixed(1)], parallelLvMv: Math.round(parallelOverlap(p.lines)), stations: { ours: p.stations.length, byKind: p.stations.reduce((a, s) => { a[s.kind] = (a[s.kind] ?? 0) + 1; return a }, {} as Record<string, number>) },
     byKind: Object.fromEntries([...new Set([...vp, ...gp].map((q) => q.k))].map((k) => [k, [vp.filter((q) => q.k === k).length, gp.filter((q) => q.k === k).length]])),
     spanByKind: Object.fromEntries([...new Set(p.lines.map((l) => l.kind))].map((k) => [k, +med(p.lines.filter((l) => l.kind === k).flatMap((l) => spanOf(l.poles))).toFixed(1)])),
     scores: sc, score: +((sc.tiles + sc.spanKS + sc.roadKS + sc.lenKS + sc.count) / 5).toFixed(1),

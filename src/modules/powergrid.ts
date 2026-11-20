@@ -22,7 +22,7 @@ import type { Grid } from './island'
 import type { ProjectEntity, ProjectShape } from '../project'
 import { attachPoint, smoothPath } from './powersmooth'
 import { sanitizeRoadLine } from './roads'
-import { CLEAR, PowerObstacles, clearSpans, fixPoles, followRoads, type PowerWorld } from './powerroads'
+import { CLEAR, PowerObstacles, clearSpans, fixPoles, followRoads, segDist, type PowerWorld } from './powerroads'
 import { buildPowerCost, placePoles, routePowerLine, POWER_STYLE, type KeepOut, type PowerKind, type PowerLine, type PowerStyle } from './power'
 
 export type StationKind = 'plant' | 'ehv' | 'hv' | 'mvlv' | 'ind'
@@ -616,7 +616,79 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     })
     lines.splice(k, 1, ...parts)
   }
+  // 5. one corridor per road stretch: an LV run alongside an MV / HV line (< 25 m over >= 60 m) is dropped there;
+  //    the part past the shared stretch is fed by a pole-mounted transformer on the nearest MV pole instead
+  //    (seed 21: concrete MV and wooden LV side by side along the same road)
+  if (opt.lv) {
+    const kiosk = STATION_PREFABS.eden.mvlv
+    const nearHigh = (x: number, z: number) => higherDist(lines, x, z) < PARALLEL_D
+    for (let k = lines.length - 1; k >= 0; k--) {
+      const l = lines[k]
+      if (l.kind !== 'lv') continue
+      const P = l.poles, n = P.length / 2
+      const near = Array.from({ length: n }, (_, i) => nearHigh(P[i * 2], P[i * 2 + 1]))
+      // shared stretches: runs of near poles whose spans add up to >= 60 m
+      const cut = new Array<boolean>(n).fill(false)
+      for (let i = 0; i < n;) {
+        if (!near[i]) { i++; continue }
+        let j = i, L = 0
+        while (j + 1 < n && near[j + 1]) { L += Math.hypot(P[j * 2 + 2] - P[j * 2], P[j * 2 + 3] - P[j * 2 + 1]); j++ }
+        if (L >= PARALLEL_MIN) for (let q = i; q <= j; q++) cut[q] = true
+        i = j + 1
+      }
+      if (!cut.some(Boolean)) continue
+      const parts: GridLine[] = []
+      let cur: number[] = [], fedFromStart = true, part = 0
+      const flush = () => {
+        if (cur.length >= 4) {
+          let pts = cur
+          if (!fedFromStart) {
+            // feed: pole kiosk beside the MV pole nearest the first pole of the piece
+            const m = nearestPoleOf(lines, pts[0], pts[1])
+            if (m) {
+              const a = Math.atan2(pts[0] - m.x, pts[1] - m.z), tx = m.x + Math.sin(a) * 6, tz = m.z + Math.cos(a) * 6
+              stations.push({ id: `PSTA_POLE_${++nid}`, kind: 'mvlv', site: l.to, x: tx, z: tz, yaw: a, w: kiosk.w, d: kiosk.d, h: kiosk.h, y: hAt(h, g, tx, tz), prefab: kiosk.prefab })
+              pts = [tx, tz, ...pts]
+            }
+          }
+          let length = 0
+          for (let i = 0; i + 3 < pts.length; i += 2) length += Math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1])
+          parts.push({ ...l, path: pts, poles: pts, length, id: part ? `${l.id}_C${part + 1}` : l.id })
+          part++
+        }
+        cur = []
+      }
+      for (let i = 0; i < n; i++) {
+        if (cut[i]) { if (cur.length) flush(); fedFromStart = false; continue }
+        cur.push(P[i * 2], P[i * 2 + 1])
+      }
+      flush()
+      lines.splice(k, 1, ...parts)
+    }
+  }
   return { lines, stations, access, failed, unfed, entrances, farms }
+}
+
+const PARALLEL_D = 25, PARALLEL_MIN = 60
+const HIGH = new Set(['mv', 'hv', 'ehv'])
+function higherDist(lines: { kind: string; poles: number[] }[], x: number, z: number): number {
+  let b = Infinity
+  for (const l of lines) if (HIGH.has(l.kind)) for (let i = 0; i + 3 < l.poles.length; i += 2) b = Math.min(b, segDist(x, z, l.poles[i], l.poles[i + 1], l.poles[i + 2], l.poles[i + 3]))
+  return b
+}
+function nearestPoleOf(lines: { kind: string; poles: number[] }[], x: number, z: number) {
+  let r: { x: number; z: number } | null = null, b = Infinity
+  for (const l of lines) if (l.kind === 'mv') for (let i = 0; i + 1 < l.poles.length; i += 2) { const d = Math.hypot(l.poles[i] - x, l.poles[i + 1] - z); if (d < b) { b = d; r = { x: l.poles[i], z: l.poles[i + 1] } } }
+  return b < 80 ? r : null
+}
+/** metres of LV span running within `d` m of a line of another voltage (both span ends near it): the
+ *  "parallel lines of different voltage" check of the pre-send and the bench */
+export function parallelOverlap(lines: { kind: string; poles: number[] }[], d = PARALLEL_D): number {
+  let L = 0
+  for (const l of lines) if (l.kind === 'lv') for (let i = 0; i + 3 < l.poles.length; i += 2) {
+    if (higherDist(lines, l.poles[i], l.poles[i + 1]) < d && higherDist(lines, l.poles[i + 2], l.poles[i + 3]) < d) L += Math.hypot(l.poles[i + 2] - l.poles[i], l.poles[i + 3] - l.poles[i + 1])
+  }
+  return L
 }
 
 /** station entities for the export (EHV-end stations are made by their generator) */

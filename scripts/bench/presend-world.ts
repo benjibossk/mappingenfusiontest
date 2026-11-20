@@ -16,3 +16,9 @@ for (const i of issues) { const k = `${i.kind} ${pre(i.id)}${i.value !== undefin
 console.log(`seed ${seed} size ${size}: ${issues.length} issues`)
 for (const [k, n] of [...by].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(n, k)
 if (process.argv.includes('--list')) for (const i of issues.slice(0, 40)) console.log(JSON.stringify(i))
+// parallel lines of different voltage: LV spans within 25 m of an MV / HV line (one corridor per road stretch)
+{
+  const { parallelOverlap } = await import('../../src/modules/powergrid')
+  const L = parallelOverlap(w.power as never)
+  console.log(`parallel LV/MV within 25 m: ${Math.round(L)} m`)
+}
