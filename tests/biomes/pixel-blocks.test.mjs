@@ -38,3 +38,18 @@ test('enforcePixelBlocks: random 8-surface noise leaves 0 overfull block and kee
     for (let i = 0; i < side * side; i++) assert.ok(bytes.some((a) => a[i] > 2), 'pixel ' + i + ' lost its weight')
   }
 })
+
+test('enforcePixelBlocks: a surface under 1 % of a block is merged away (no odd-coloured residue block)', () => {
+  const side = 63 + 1
+  const a = new Uint8Array(side * side).fill(200)
+  const b = new Uint8Array(side * side)
+  for (let i = 0; i < 20; i++) { b[i] = 40; a[i] = 160 } // 800 / ~0.8M = 0.1 %
+  enforcePixelBlocks([a, b], side)
+  assert.equal(b.reduce((s, v) => s + v, 0), 0)
+  assert.equal(a[0], 200) // weight given back to the kept surface
+  const c = new Uint8Array(side * side)
+  for (let i = 0; i < side * 20; i++) c[i] = 100 // ~30 %: kept
+  const d = new Uint8Array(side * side).fill(150)
+  enforcePixelBlocks([d, c], side)
+  assert.ok(c.reduce((s, v) => s + v, 0) > 0)
+})

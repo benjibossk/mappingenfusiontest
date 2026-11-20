@@ -1,0 +1,7 @@
+reforger-mapper includes ideas adapted from third-party projects:
+
+MapGeneratorPro (https://github.com/giorbev/Map-generator), MIT License,
+Copyright (c) 2026 [otea] Giorbev (otea.fr).
+Ideas from V8.4.0 (climate biome ground classes, texture merge / missing classes, mask import order and
+summary, slope shading of the in-game map) were reimplemented in src/biomes/groundClasses.ts and
+src/modules/ingameMap.ts. No source code was copied.

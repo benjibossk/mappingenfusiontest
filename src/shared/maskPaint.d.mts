@@ -7,4 +7,4 @@ export function roadLayers(side: number, mPerPx: number, roads: MaskRoad[]): Map
 export function sampler(s: MaskSurface): (x: number, z: number) => number
 export function paintMasks(side: number, terrainSize: number, surfaces: MaskSurface[], roads?: MaskRoad[], colours?: MaskColours, blockPx?: number, margin?: number): { names: string[]; bytes: Uint8Array[] }
 export function limitPixelBlocks(bytes: Uint8Array[], side: number, blockPx?: number, max?: number, margin?: number, cols?: ([number, number, number] | null)[] | null): void
-export function enforcePixelBlocks(bytes: Uint8Array[], side: number, blockPx?: number, max?: number, margin?: number, cols?: ([number, number, number] | null)[] | null, tiny?: number): void
+export function enforcePixelBlocks(bytes: Uint8Array[], side: number, blockPx?: number, max?: number, margin?: number, cols?: ([number, number, number] | null)[] | null, tiny?: number, minShare?: number): void

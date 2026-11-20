@@ -68,6 +68,20 @@ function buildMats(prefix, names) {
 // path without GUID: "{37DC7E40C529A95A}Terrains/x.emat" -> "Terrains/x.emat"
 const bare = (n) => n.replace(/^\{[0-9A-F]{16}\}/i, "");
 
+//! Registration order of NEW surfaces (community mapping docs): hard / dirt materials before
+//! grass, so the parallax of the grass layer blends over the ground ones. Stable inside a rank.
+//! Existing MATS entries are never reordered (painted layers reference them by index).
+const PARALLAX_RANK = [/rock|stone|cliff|gravel|scree/i, /dirt|soil|mud|sand|earth|ground|forest|field|crop|asphalt|concrete/i];
+export function parallaxOrder(names) {
+  const rank = (n) => {
+    const b = bare(n).split("/").pop();
+    if (/grass|meadow|moss|lawn/i.test(b)) return 3;
+    const k = PARALLAX_RANK.findIndex((r) => r.test(b));
+    return k < 0 ? 2 : k;
+  };
+  return names.map((n, i) => [rank(n), i, n]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((e) => e[2]);
+}
+
 /**
  * Adds the surfaces missing from the terrain and initialises the surface map if needed.
  * Writes <terr>.bak first. Returns a short report.
@@ -80,7 +94,7 @@ export function prepareTerrain(terrPath, surfaces, surfaceBits = 8) {
 
   const { prefix, names } = parseMats(mats.body);
   const have = new Set(names.map(bare));
-  const added = surfaces.filter((s) => s && !have.has(bare(s)));
+  const added = parallaxOrder(surfaces.filter((s) => s && !have.has(bare(s))));
   mats.body = buildMats(prefix, [...names, ...added]);
 
   texs.body = Buffer.from(texs.body);

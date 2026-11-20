@@ -18,6 +18,7 @@ import { boxed, footprint, hash, inside, lineDist, overlap, rng, sampler, sample
 import { GROW_TOWN, GROW_VILLAGE, growStreets, nearestOn, polyGrade, type GrowOptions, type StreetSeed } from './villageStreets'
 import { lotCorners, lotPoint, splitLot, streetBlocks, type Lot } from './villageLots'
 import { pickTemplate, stampTemplate } from './villageTemplates'
+import { parcelTemplates, placeParcel } from './parcelTemplates'
 import { clipDepth, lotTarget, subdivideBlock } from './lotSubdivision'
 import { zoneGridSpacing, zoneStreetGrid } from './zoneStreets'
 import { gardenParcel, type PlacedAsset, type PlacedFence } from '../biomes/parcel'
@@ -46,6 +47,8 @@ export interface VillageOptions {
   polygon?: number[] // Zone tool: flat X/Z ring every street, lot, building and garden must stay inside
   reach?: number // overrides the site reach (m), Zone tool: the polygon size
   organic?: boolean // Bohemia-measured orientation / outbuilding rules (default true; false = the old strict street-facing grid)
+  parcelShare?: number // share of the farm-ring lots trying a harvested farmstead (default PARCEL_P; biomes/parcelShare)
+  parcels?: boolean // harvested vanilla farmsteads (data/parcelTemplates.json) on farm lots (implied by template)
   template?: boolean // stamp a real Bohemia village row (data/villageTemplates.json) along the main road before the lots
 }
 export interface VillageSite { site: string; variant: 'village' | 'town' | 'hamlet'; coastal: boolean; church?: string; streets: number; lots: number; archetype?: VillageArchetype; template?: string }
@@ -85,6 +88,9 @@ const SQUARE_R: Record<SiteKind, number> = { town: 24, village: 15, hamlet: 0 }
 const ROAD_MARGIN = 1.5
 const WATER_MARGIN = 5
 const GAP = 1
+// harvested farmsteads (parcelTemplates), calibrated on the bench (CAL_parcels.md): share of the middle / outer lots
+// that try one, items kept per parcel (house + 2, the U courtyard count), lot size slack (m), lots left empty per extra building
+const PARCEL_P = 0.6, PARCEL_MAX = 3, PARCEL_SLACK = 12, PARCEL_PAY = 1
 const MAX_DROP: Record<BuildingCat, number> = { houseS: 1.2, houseM: 1.2, houseL: 1.0, farm: 1.5, civic: 1.0, block: 1.0, annex: 0.6, shed: 0.6 }
 
 interface Params { lotMin: [number, number, number]; lotMax: [number, number, number]; depth: [number, number, number]; setback: [number, number]; fill: [number, number, number]; grow: GrowOptions; chunk: number }
@@ -171,6 +177,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     const info: VillageSite = { site: site.id, variant, coastal: false, streets: 0, lots: 0 }
     // own streams: the archetype / orientation draws do not shift the layout rng
     const orand = rng(hash(`${site.id}/organic`, o.seed))
+    const prand = rng(hash(`${site.id}/parcel`, o.seed)) // harvested farmsteads: own stream too
     const organic = o.organic !== false
     if (variant === 'village' && organic) info.archetype = pickArchetype(orand())
     res.sites.push(info)
@@ -459,6 +466,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       }
       if (n) info.template = tpl.id
     }
+    let parcelDebt = 0 // extra buildings of the harvested farmsteads, paid back by leaving later lots empty
     for (const { lot, f, row } of lots) {
       const k = f < 0.3 ? 0 : f < 0.6 ? 1 : 2
       const rec: VillageResult['lots'][number] = { site: site.id, corners: lotCorners(lot), used: false }
@@ -467,6 +475,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       // Zone tool: the fill follows the chosen density everywhere in the polygon (not the centre / edge rings)
       const fill = o.polygon ? Math.min(0.95, 0.25 + 0.3 * o.density) * (row ? 0.85 : 1) : P.fill[k] * o.density
       if (rand() > fill) continue
+      if (parcelDebt >= 1) { parcelDebt -= 1; rec.used = true; continue } // the paid-back lot stays a fenced yard
       // a lot already covered by a building of a crossing street (corner lots overlap) is not a free lot
       if (placed.some((q) => Math.abs(q.x - lot.cx) < 60 && Math.abs(q.z - lot.cz) < 60 && overlap(rec.corners, q.corners, 0) && inside(rec.corners, q.x, q.z))) continue
       {
@@ -482,6 +491,35 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       const sized = (b: Building, gm = garden) => { const r = putFacing(b, fx0, fz0, fx, fz, setback); return r.width <= lot.w + (k === 0 ? 2 : 0) && setback + r.depth + gm <= lot.d }
       if (!pool(['houseS', 'houseM']).some((b) => sized(b, 1))) continue // too small a lot for any house
       res.tried = (res.tried ?? 0) + 1
+
+      // harvested vanilla farmstead (data/parcelTemplates.json): house + its barn / sheds as Bohemia laid them
+      if ((o.template || o.parcels) && o.farms !== false && variant !== 'town' && (k >= 1 || o.farmyards) && prand() < (o.parcelShare ?? PARCEL_P)) {
+        const lib = parcelTemplates().filter((t) => t.width <= lot.w + PARCEL_SLACK && t.depth <= lot.d + PARCEL_SLACK)
+        let ok = false
+        for (let tr = 0; tr < 3 && lib.length && !ok; tr++) {
+          const t = lib[Math.floor(prand() * lib.length)]
+          const poses = placeParcel(t, lot, 2, prand() < 0.5).slice(0, PARCEL_MAX)
+          const got: { b: Building; r: { x: number; z: number; yaw: number; corners: number[] }; role: PlacedRole }[] = []
+          for (const [i, p] of poses.entries()) {
+            const cs = pool([p.item.cat as BuildingCat])
+            const same = cs.filter((b) => b.prefab.includes('/' + p.item.prefab + '.et'))
+            const order = [...same, ...cs.filter((b) => !same.includes(b)).sort(() => prand() - 0.5)].slice(0, 5)
+            let put = false
+            for (const b of order) {
+              const corners = footprint(b, p.x, p.z, p.yaw)
+              if (roadDist(p.x, p.z) < ROAD_MARGIN + 2 || !fits(b, corners) || got.some((g2) => overlap(g2.r.corners, corners, GAP))) continue
+              got.push({ b, r: { x: p.x, z: p.z, yaw: p.yaw, corners }, role: i === 0 ? 'farmhouse' : 'farmyard' }); put = true
+              break
+            }
+            if (!put && i === 0) break
+          }
+          if (got.length < 2) continue
+          for (const g2 of got) add(id(g2.role === 'farmhouse' ? 'F' : 'Y'), site.id, g2.b, g2.r, g2.role)
+          parcelDebt += (got.length - 1) * PARCEL_PAY
+          ok = true
+        }
+        if (ok) { rec.used = true; res.housed = (res.housed ?? 0) + 1; continue }
+      }
 
       // farm courtyard (U): farmhouse at the back, two wings facing the court, open to the street
       if (o.farms !== false && (k === 2 || o.farmyards) && lot.w >= (o.farmyards ? 20 : 24) && variant !== 'town' && (o.farmyards || rand() < 0.7)) {

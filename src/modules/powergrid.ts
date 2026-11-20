@@ -588,6 +588,14 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       const head = along ? [src.x, src.z, ...along] : routed ? routed.path : [src.x, src.z, rx, rz]
       const path = fx !== rx || fz !== rz ? [...head, fx, fz] : head
       const poles = path.length <= 4 && src.d < sp * 0.5 ? path : fixPoles(ob, clearSpans(ob, fixPoles(ob, placePoles(path, sp)), sp))
+      // the last pole (village entrance / farm yard) is never moved by fixPoles: off a house when one is that close
+      // (seed 21 live audit: POWER_LV_9 end pole inside a house AABB)
+      { const n = poles.length - 2
+        if (bld && ob.bldDist(poles[n], poles[n + 1], 3) < 2.5) for (const r of [2, 4, 6, 8]) {
+          let done = false
+          for (let a = 0; a < 8 && !done; a++) { const x = poles[n] + Math.cos(a * Math.PI / 4) * r, z = poles[n + 1] + Math.sin(a * Math.PI / 4) * r; if (ob.poleOk(x, z)) { poles[n] = x; poles[n + 1] = z; done = true } }
+          if (done) break
+        } }
       let length = 0
       for (let i = 0; i + 3 < poles.length; i += 2) length += Math.hypot(poles[i + 2] - poles[i], poles[i + 3] - poles[i + 1])
       lines.push({ kind: 'lv', spacing: sp, path: poles, poles, length, style, id: `POWER_LV_${++lid}`, from, to: s.id })
