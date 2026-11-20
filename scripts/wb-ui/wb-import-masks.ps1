@@ -30,7 +30,11 @@ function MenuInvoke($menu, $item) {
   "menu: $menu > $item"
 }
 # Dialogs: any top-level of the pid other than the two main windows.
-function Dialogs { Tops | Where-Object { $_.Current.Name -notmatch '^(World Editor - |Enfusion Workbench - )' } }
+# top-level boxes AND modal windows parented inside the World Editor (the import confirmation is one of those)
+function Dialogs {
+  Tops | Where-Object { $_.Current.Name -notmatch '^(World Editor - |Enfusion Workbench - )' }
+  $we = WE; if ($we) { $we.FindAll('Children', (New-Object $P($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))) }
+}
 function DescribeDialog($d) {
   $txt = ($d.FindAll('Descendants', [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join ' | '
   "dialog '$($d.Current.Name)' cls=$($d.Current.ClassName): $txt"
@@ -77,11 +81,11 @@ $deadline = (Get-Date).AddSeconds($TimeoutSec); $quiet = 0
 while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds 2
   $new = @(Dialogs | Where-Object { $before -notcontains $_.Current.NativeWindowHandle })
-  if ($new.Count -eq 0) { $quiet++; if ($quiet -ge 3 -and (WE).Current.IsEnabled) { break }; continue }
+  if ($new.Count -eq 0) { $quiet++; if ($quiet -ge 8 -and (WE).Current.IsEnabled) { break }; continue }
   $quiet = 0
   foreach ($d in $new) {
     DescribeDialog $d
-    $ok = $null; foreach ($n in 'OK', 'Ok', 'Yes', 'Close') { $ok = Find $d $n 'Button'; if ($ok) { break } }
+    $ok = $null; foreach ($n in 'OK', 'Ok', 'Yes', 'Import', 'Continue', 'Apply', 'Close') { $ok = Find $d $n 'Button'; if ($ok) { break } }
     if ($ok) { (Pat $ok ([System.Windows.Automation.InvokePattern])).Invoke(); "  -> $($ok.Current.Name)" }
     else { "  -> no OK button, leaving it"; $before += $d.Current.NativeWindowHandle }
   }
