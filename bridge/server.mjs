@@ -247,6 +247,8 @@ const server = createServer(async (req, res) => {
       if (!Array.isArray(project.shapes)) return send(res, 400, { error: "project.shapes missing" });
 
       mkdirSync(join(PROFILE_DIR, "MapGen"), { recursive: true });
+      // power grid topology (nodes / edges / feeders / consumers) next to mapgen.json, never sent to the Workbench reader
+      if (project.powerTopology) { writeFileSync(join(PROFILE_DIR, "MapGen", "powergrid.topology.json"), JSON.stringify(project.powerTopology, null, 1)); delete project.powerTopology; }
       // the Workbench JSON reader gives up silently on big files (4.7 MB: 0 shapes read), so the project is
       // cut into parts of ~300 KB: mapgen.json (version, remove, first part), then mapgen.1.json, mapgen.2.json...
       // part size: body field partSize > env MG_PART_SIZE > 300 KB (lower it if the Workbench runs out of memory)

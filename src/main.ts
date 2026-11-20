@@ -16,7 +16,7 @@ import { cemeteryPathMasks, parcelGroundMasks } from './modules/parcelground'
 import { POWER_DEFAULTS, mergePowerLines, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
-import { accessShapes, planGrid, stationEntities, type PowerDistrib, type GridSite, type Station } from './modules/powergrid'
+import { accessShapes, gridTopology, planGrid, stationEntities, type PowerDistrib, type GridSite, type Station } from './modules/powergrid'
 import { FOREST_AVOID, GENERATORS, withAvoid, type Project, type ProjectEntity, type ProjectShape } from './project'
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
@@ -97,7 +97,9 @@ const toWb = async (p: Project) => {
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
-  const msg = await sendToWorkbench({ ...p, ffBiome: ffBiomeValue(currentBiome), remove: removed.filter(go).flatMap((r) => [r.x, r.z]), comments: wbComments() } as Project)
+  const msg = await sendToWorkbench({ ...p, ffBiome: ffBiomeValue(currentBiome), remove: removed.filter(go).flatMap((r) => [r.x, r.z]), comments: wbComments(),
+    // who feeds whom, written by the bridge as MapGen/powergrid.topology.json (POWERGRID_LOGIC.md §6)
+    ...(powerLines.length && p.shapes.some((sh) => sh.id.startsWith('POWER_')) ? { powerTopology: gridTopology({ lines: powerLines as never, stations: powerStations }) } : {}) } as Project)
   removed = removed.filter((r) => !go(r))
   autosave()
   return (lostPts > 0 || crumbs ? t('log.cleaned', { pts: lostPts, crumbs }) + '\n' : '') + msg
