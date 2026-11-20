@@ -4467,7 +4467,14 @@ function poleClearOfBuildings(x: number, z: number) {
     if (x > x0 - 2.5 && x < x1 + 2.5 && z > z0 - 2.5 && z < z1 + 2.5) return false }
   return true
 }
-function powerShapes() { return [...mergePowerLines(powerLines, 15, poleClearOfBuildings).map((l) => powerLineShape(l, l.id)), ...accessShapes(powerAccess)] }
+function powerShapes() {
+  const plants = powerStations.filter((q) => q.kind === 'plant')
+  const fromPlant = (pts: number[]) => pts.length >= 2 && plants.some((q) => Math.hypot(pts[0] - q.x, pts[1] - q.z) < 60)
+  return [...mergePowerLines(powerLines, 15, poleClearOfBuildings).map((l) => {
+    const sh = powerLineShape(l, l.id)
+    return fromPlant(sh.points) ? { ...sh, powerSource: true } : sh
+  }), ...accessShapes(powerAccess)]
+}
 function powerInfo() {
   const km = powerLines.reduce((n, l) => n + l.length, 0) / 1000
   const poles = powerLines.reduce((n, l) => n + l.poles.length / 2, 0)
