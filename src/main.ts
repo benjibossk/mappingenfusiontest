@@ -13,7 +13,7 @@ import { Collab, type CollabEvents, type CollabTransport, type Op } from './coll
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
-import { cemeteryPathMasks, parcelGroundMasks } from './modules/parcelground'
+import { cemeteryPathMasks, parcelGroundMasks, yardSurfaceMasks } from './modules/parcelground'
 import { POWER_DEFAULTS, mergePowerLines, powerCorridorMasks, powerCorridorTest, tieJunctions, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
@@ -22,7 +22,7 @@ import { FOREST_AVOID, GENERATORS, forestAvoidMissing, withAvoid, type Project, 
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
-import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
+import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
@@ -126,7 +126,7 @@ import { harbourPatch } from './modules/harbour'
 import { ffBiomeName, ffBiomeValue } from './ffbiome'
 import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
-import { applyFixes, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
+import { applyFixes, bridgeChecks, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
 import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
@@ -1564,6 +1564,7 @@ function parcelGround() {
   for (const z of zones) if (z.kind === 'site' && z.sub === 'cemetery') out.push(...cemeteryPathMasks(z.boxes.filter((b) => b.role === 'grave').map((b) => b.corners), z.shapes.find((sh) => sh.id.endsWith('_aisle'))?.points, seed))
   const yards = settled.filter((b) => b.role === 'farmyard').map((b) => ({ corners: b.corners.map((v, i) => (i % 2 ? b.z : b.x) + (v - (i % 2 ? b.z : b.x)) * 1.8) }))
   out.push(...parcelGroundMasks([...setGardens, ...yards], settled, seed))
+  for (const z of zones) if (z.rpRole === 'sawmill' && z.sub?.startsWith('parcel:')) out.push(...yardSurfaceMasks(z.boxes[0]?.corners ?? [], seed)) // worn gravel yard under the vanilla sawmill
   return out
 }
 let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences
@@ -4470,7 +4471,7 @@ function waterAndRoads(): Project {
     entities: [
       ...(furn ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []),
       ...(island && preWater ? riverBanks(waters, preWater, island.grid) : []),
-      ...(island && preWater ? bridges(split.gaps.filter((g) => !noBridge.has(gapKey(g))), preWater, island.grid, half) : []),
+      ...(island ? bridges(split.gaps.filter((g) => !noBridge.has(gapKey(g))), island.heights, island.grid, half) : []), // final relief: the abutments meet the road beds
     ],
   }
 }
@@ -4668,6 +4669,13 @@ function runChecks() {
       .filter(({ r }) => r.pts.length >= 4).map(({ r, zone }) => ({ id: r.id, half: roadHalf(r), line: centreLine(r.pts, 4), zone })),
   })]
   issues = [...issues, ...heightRangeCheck(island.heights, g0)]
+  // river bridges: deck vs road bed at both ends, one common pitch, houses kept off the deck
+  {
+    const hb = (id: string) => { const r = roads.find((q) => q.id === id); return r ? { half: roadHalf(r), dirt: DIRT_ROADS.has(r.type) } : undefined }
+    const rb = riverBridges(roadGaps().filter((g) => ids.has(g.id) && !noBridge.has(gapKey(g))), island.heights, g0, hb)
+    const hs = island.heights, at = (x: number, z: number) => hs[Math.min(g0.rows - 1, Math.max(0, Math.round((z - g0.minZ) / g0.step))) * g0.cols + Math.min(g0.cols - 1, Math.max(0, Math.round((x - g0.minX) / g0.step)))]
+    issues = [...issues, ...bridgeChecks({ plans: rb.plans, entities: rb.entities, roadY: at, settled })]
+  }
   $('checkDensity').textContent = t('check.density', { n: Math.round(density.total), max: PLATFORM_BUDGETS[budgetPlatform()].total })
   const list = $<HTMLUListElement>('checkList')
   list.innerHTML = ''

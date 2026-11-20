@@ -13,7 +13,7 @@ import { pointInPoly } from '../modules/industrial'
 /** street lamp prefabs (streetLights.ts): exempt from onRoad as road furniture, checked on their own */
 export const STREET_LAMP = /LampStreet_E_0[123]_(4m|6m|single)|LampIndustrial_05\.et/
 
-export type PreKind = 'bldgOverlap' | 'onRoad' | 'entOutside' | 'shapeOnRoad' | 'heightRange' | 'lampOnRoad' | 'lampInBuilding'
+export type PreKind = 'bldgOverlap' | 'onRoad' | 'entOutside' | 'shapeOnRoad' | 'heightRange' | 'lampOnRoad' | 'lampInBuilding' | 'bridgeStep' | 'bridgePitch' | 'bridgeHouse'
 export type Fix = { op: 'drop'; ref: Ref } | { op: 'move'; ref: Ref; dx: number; dz: number }
 /** building index in `settled`, or entity index in zone `zone` */
 export type Ref = { list: 'settled'; i: number } | { list: 'zone'; zone: number; i: number }
@@ -188,4 +188,47 @@ export function heightRangeCheck(heights: ArrayLike<number>, grid: { cols: numbe
   if (over <= 0) return []
   const x = (grid.minX ?? 0) + (at % grid.cols) * grid.step, z = (grid.minZ ?? 0) + Math.floor(at / grid.cols) * grid.step
   return [{ kind: 'heightRange', id: `${Math.round(lo)}..${Math.round(hi)} m`, x, z, value: Math.round(over) }]
+}
+
+//! River bridges (water.ts riverBridges): bridgeStep = the deck end stands more than 0.15 m off the road bed
+//! at an abutment (pitch capped, or a bad sample); bridgePitch = the deck pieces do not share one tilt or
+//! leave the common straight line (a kink); bridgeHouse = a building closer than 5 m to the deck (its
+//! buried ends included). `roadY` = the final relief (road beds), sampled like riverBridges does.
+export interface BridgeLine { id: string; a: [number, number, number]; b: [number, number, number]; slope: number; deckIds: string[] }
+export function bridgeChecks(o: { plans: BridgeLine[]; entities: { id: string; x: number; z: number; ycm?: number; pitchcd?: number; rollcd?: number }[]; roadY: (x: number, z: number) => number; settled: Bldg[]; over?: number; clear?: number }): PreIssue[] {
+  const out: PreIssue[] = []
+  const over = o.over ?? 8, clear = o.clear ?? 5
+  const byId = new Map(o.entities.map((e) => [e.id, e]))
+  for (const p of o.plans) {
+    const dx = p.b[0] - p.a[0], dz = p.b[1] - p.a[1], L = Math.hypot(dx, dz) || 1, ex = dx / L, ez = dz / L
+    const ends: [number, number, number, number][] = [[p.a[0] - ex * 3, p.a[1] - ez * 3, p.a[2], 0], [p.b[0] + ex * 3, p.b[1] + ez * 3, p.b[2], 1]]
+    for (const [x, z, y] of ends) {
+      const step = Math.abs(y - 0.05 - o.roadY(x, z))
+      if (step > 0.15) out.push({ kind: 'bridgeStep', id: p.id, x, z, value: Math.round(step * 100) / 100 })
+    }
+    const decks = p.deckIds.map((id) => byId.get(id)).filter((e): e is NonNullable<typeof e> => !!e)
+    if (decks.length > 1) {
+      const t0 = `${decks[0].pitchcd ?? 0}/${decks[0].rollcd ?? 0}`
+      const e0 = decks[0]
+      const kink = decks.some((e) => {
+        if (`${e.pitchcd ?? 0}/${e.rollcd ?? 0}` !== t0) return true
+        const run = (e.x - e0.x) * ex + (e.z - e0.z) * ez // horizontal distance along the bridge
+        return Math.abs(((e.ycm ?? 0) - (e0.ycm ?? 0)) / 100 - p.slope * run) > 0.05
+      })
+      if (kink) out.push({ kind: 'bridgePitch', id: p.id, x: (p.a[0] + p.b[0]) / 2, z: (p.a[1] + p.b[1]) / 2 })
+    }
+    // buildings by the deck: distance to the deck axis, buried ends included
+    const ax = p.a[0] - ex * over, az = p.a[1] - ez * over, len = L + 2 * over
+    const near = (x: number, z: number) => {
+      const t = Math.max(0, Math.min(len, (x - ax) * ex + (z - az) * ez))
+      return Math.hypot(x - ax - ex * t, z - az - ez * t) < clear + 3.5 // + deck half width
+    }
+    o.settled.forEach((b, i) => {
+      if (b.ycm != null) return
+      let hit = near(b.x, b.z)
+      for (let k = 0; !hit && k + 1 < b.corners.length; k += 2) hit = near(b.corners[k], b.corners[k + 1])
+      if (hit) out.push({ kind: 'bridgeHouse', id: `${b.id} / ${p.id}`, x: b.x, z: b.z, fix: { op: 'drop', ref: { list: 'settled', i } } })
+    })
+  }
+  return out
 }
