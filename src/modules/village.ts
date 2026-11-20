@@ -110,6 +110,7 @@ export function farmRows(biome?: string): number { return biome && /kolguyev|nor
 
 export function yardProfile(biome?: string): { p: number; push: number; second: number } {
   if (biome && /kolguyev|nordic/i.test(biome)) return { p: 3, push: 10, second: 0.8 }
+  if (biome && /arland/i.test(biome)) return { p: 1.6, push: 10, second: 0.5 } // Arland: tour Bohemia 3 seeds +15.9 (farmsteads 55 -> 60)
   return { p: 1, push: 0, second: 0 }
 }
 
