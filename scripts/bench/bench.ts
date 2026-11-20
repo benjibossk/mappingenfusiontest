@@ -257,7 +257,7 @@ const vf = m.fences.items.map(([, x, z, , len]) => ({ x, z, len })), gf = genFen
 const fenceSites = sites.map((q) => { const R = q.kind === 'town' ? 300 : q.kind === 'village' ? 170 : 80; const s2 = (a: { x: number; z: number; len: number }[]) => a.reduce((t, f) => t + (Math.hypot(f.x - q.x, f.z - q.z) < R ? f.len : 0), 0); return { v: s2(vf), g: s2(gf) } })
 const fv = fenceSites.reduce((a, q) => a + q.v, 0), fg = fenceSites.reduce((a, q) => a + q.g, 0)
 const fenceScore = +(100 * fenceSites.reduce((a, q) => a + Math.min(q.v, q.g), 0) / Math.max(1, fenceSites.reduce((a, q) => a + Math.max(q.v, q.g), 0))).toFixed(1)
-const fences = { score: fenceScore, perSiteKm: { vanilla: +(fv / 1000).toFixed(1), ours: +(fg / 1000).toFixed(1) }, ratio: +(fg / Math.max(1, fv)).toFixed(2) }
+const fences = { score: fenceScore, perSiteKm: { vanilla: +(fv / 1000).toFixed(1), ours: +(fg / 1000).toFixed(1) }, ratio: +(fg / Math.max(1, fv)).toFixed(2), bySite: fenceSites.map((q, i) => ({ kind: sites[i].kind, v: Math.round(q.v), g: Math.round(q.g) })) }
 
 // ---- power: poles per tile + spans per kind
 const vPoles: { x: number; z: number; k: string }[] = [], gPoles: typeof vPoles = []

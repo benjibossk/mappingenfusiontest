@@ -185,7 +185,7 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
     // Kolguyev farmstead rows (ensembles bench 2026-11-20: vanilla 41 houses x 2.95 outbuildings, 199 m of fence each;
     // ours 162 x 0.49): every village / hamlet lot is a big farm lot (farmyard params, courtyard or harvested farmstead)
     const fm = farmRows(o.yards ?? o.biome)
-    const farmy = !!o.farmyards || (fm > 0 && variant !== 'town')
+    const farmy = !!o.farmyards || (fm > 0 && variant === 'village')
     const P: Params = farmy && (variant === 'hamlet' || fm > 0) ? { ...VARIANT.hamlet, lotMin: [26, 28, 30], lotMax: [38, 42, 46], depth: [46, 48, 52], fill: [0.9, 0.8, 0.6] } : VARIANT[variant]
     const reach = o.reach ?? Math.max(REACH[site.kind], SITE_RADIUS[site.kind]) * (variant === 'town' && site.kind !== 'town' ? 1.3 : 1)
     const pre = `SET_${site.id}_`
