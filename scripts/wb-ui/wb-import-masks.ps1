@@ -143,6 +143,16 @@ if (-not $NoTerrainFix -and -not $script:importFailed) {
       AckDialogs 600
     }
     $pt = Find (WE) 'Paint' 'TabItem'; if ($pt) { (Pat $pt ([System.Windows.Automation.SelectionItemPattern])).Select() }
+    # The normal/vegetation generation runs asynchronously: Ctrl+S during it crashed the Workbench
+    # in nvtt (2026-11-20 13:45). Wait for 'Reimporting Done' in the live console.log before saving.
+    $logDir = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $clog = Join-Path $logDir.FullName 'console.log'; $done = $false
+    for ($i = 0; $i -lt 180 -and -not $done; $i++) {
+      Start-Sleep -Seconds 2
+      $tail = Get-Content $clog -Tail 400 -ErrorAction SilentlyContinue
+      if ($tail -match 'Reimporting Done') { $done = $true }
+    }
+    if ($done) { 'terrain fix: generation finished'; Start-Sleep -Seconds 5 } else { 'terrain fix: generation not confirmed after 6 min, save skipped'; $NoSave = $true }
   } else { 'terrain fix: Manage tab not found, skipped' }
 }
 if (-not $NoSave) {
