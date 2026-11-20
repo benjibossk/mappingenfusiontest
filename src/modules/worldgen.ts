@@ -36,6 +36,7 @@ import { addProdForests, lotFences, makeBlocker, townLots, type FenceLot } from 
 import { generateTown } from './town'
 import { makeSiteZone } from './sitezones'
 import { fieldTrees } from './fieldtrees'
+import { gameplayCover } from './gameplayCover'
 import type { Placed, Square } from './settlements'
 import type { PowerLine } from './power'
 import type { LayerId } from './layers'
@@ -75,6 +76,8 @@ export interface WorldParams {
   villageTemplates?: boolean
   power: boolean
   forests: number
+  /** gameplay cover rules (gameplayCover.ts): village belts, wooded strips, copses on exposed ground; default on */
+  gameplayCover?: boolean
   /** isolated trees, corner clumps and hedgerow trees in the countryside (#8): 0 = none, 1 = default, 2 = dense */
   fieldTrees?: number
   roadsV2?: boolean // road network V2 finish (docs/ROAD_NETWORK_V2.md), default true
@@ -788,6 +791,20 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     points: [...sites.map((q) => ({ x: q.x, z: q.z, r: SITE_RADIUS[q.kind] })), ...discs.map((d) => ({ x: d.x, z: d.z, r: d.r + 10 })), ...bridgesOut.map((b) => ({ x: b.x, z: b.z, r: 20 })), ...settlement.placed.map((b) => ({ x: b.x, z: b.z, r: 12 }))],
   })
   { const cut = cutForests(areas, riparian); areas.splice(0, areas.length, ...cut) }
+  // 10c-bis. gameplay cover (gameplayCover.ts, GAMEPLAY_MAPPING.md): village belts with one open side, wooded strips
+  // from the massifs to bare villages, copses where the open ground is > 200 m from cover (1-2 armour plains kept)
+  if ((p.gameplayCover ?? true) && Math.min(0.9, WORLD.vegetation.forestCover * p.forests) * forestTuning(p.biome).coverMul >= 0.03) {
+    const other = areas.filter((a) => a.kind !== 'forest').map((a) => a.pts)
+    const gc = gameplayCover({ heights: cur.heights, grid: g, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts), houses: settlement.placed,
+      sites: sites.map((s) => ({ x: s.x, z: s.z, kind: s.kind, r: SITE_RADIUS[s.kind] })),
+      roads: [...allRoads, ...settlement.lanes].filter((rd) => rd.pts.length >= 4).map((rd) => ({ pts: centreLine(rd.pts, 4), half: roadHalf(rd) })),
+      blocked: (x, z) => isLakeOrSea(x, z) || discs.some((d) => Math.hypot(x - d.x, z - d.z) < d.r + 10) || sites.some((s) => Math.hypot(x - s.x, z - s.z) < SITE_RADIUS[s.kind])
+        || settlement.placed.some((b) => Math.abs(b.x - x) < 18 && Math.abs(b.z - z) < 18) || other.some((q) => pointInPoly(q, x, z))
+        || (pw?.stations ?? []).some((st) => Math.hypot(st.x - x, st.z - z) < 30),
+      avoid: camp.fields.map((f) => ({ x: f.reduce((a, q) => a + q[0], 0) / f.length, z: f.reduce((a, q) => a + q[1], 0) / f.length })),
+      seed: ss('forests', 'gameplay') })
+    ;([['BELT', gc.belts], ['STRIP', gc.strips], ['COPSE', gc.copses]] as const).forEach(([tag, list]) => list.forEach((pts, j) => areas.push({ id: `FOREST_GP_${tag}_${j + 1}`, kind: 'forest', leaf: groveLeaf, pts })))
+  }
   // 10d. trees of the open countryside: isolated field trees, corner clumps, hedgerow trees (fieldtrees.ts),
   // one 'site' zone of single vanilla tree entities (drawn, saved and sent like any zone)
   const ftd = (p.fieldTrees ?? 1) * Math.min(1, forestTuning(p.biome).coverMul)
@@ -927,7 +944,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   }
   // 11. surfaces (5 per block at most)
   await step('surfaces')
-  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas, ...cropCover(camp)]), settlementMask(g, settlement.placed.map((q) => q.corners)))
+  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas.filter((a) => !a.id.startsWith('FOREST_GP_')), ...cropCover(camp)]) /* gameplay copses / belts: trees on grass, like vanilla hedge woods */, settlementMask(g, settlement.placed.map((q) => q.corners)))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, power, refusedGaps: [], heights: cur.heights, grid: g })
   // the Workbench drops outline points closer than 0.5 m to the previous one (seed 21 report: 55 forest outlines

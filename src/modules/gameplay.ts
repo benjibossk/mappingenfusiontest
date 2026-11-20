@@ -1,6 +1,6 @@
 // Gameplay metrics on a land raster (GAMEPLAY_MAPPING.md, PakTools/analyses): how much of the map an infantryman
 // crosses in the open, how much cover the approaches to a settlement give, how much ground the high points see.
-// Pure functions, same code for the vanilla refmaps and our worlds (scripts/bench/gameplay.ts).
+// Pure functions, same code for the vanilla refmaps and our worlds (scripts/bench/gameplay.ts, app Gameplay panel, worldgen gameplayCover.ts).
 
 export interface Raster { step: number; cols: number; rows: number; minX: number; minZ: number }
 /** land: 1 = dry land; cover: 1 = forest / built-up cell (hard cover + concealment for infantry) */
@@ -133,4 +133,107 @@ export function summitViewshed(h: ArrayLike<number>, m: CoverMap, opt: { peaks?:
   for (let i = 0; i < seen.length; i++) if (inDisc[i]) { disc++; if (!seen[i]) dead++ }
   return { peaks: peaks.length, peakHeights: peaks.map((i) => Math.round(h[i])), visiblePct: +(vis.reduce((a, b) => a + b, 0) / Math.max(1, vis.length)).toFixed(1),
     deadPct: +(100 * dead / Math.max(1, disc)).toFixed(1) }
+}
+
+// ---- cover map from a world, settlements -----------------------------------------------------------------
+const NOT_BUILDING = /Grave|Calvary|Castle|Fence|Wall|Monument|Statue|Ruin/i
+export { NOT_BUILDING as GAMEPLAY_NOT_BUILDING }
+/** m: a house covers its yard (walls, sheds, hedges around it) */
+export const HOUSE_COVER = 12
+
+/** settlements = single-link clusters (45 m) of >= `min` buildings, centroid + count */
+export function settlementClusters(pts: { x: number; z: number }[], link = 45, min = 8) {
+  const cell = new Map<string, number[]>(), key = (x: number, z: number) => `${Math.floor(x / link)},${Math.floor(z / link)}`
+  pts.forEach((p, i) => { const k = key(p.x, p.z); (cell.get(k) ?? cell.set(k, []).get(k)!).push(i) })
+  const lab = new Uint8Array(pts.length), out: { x: number; z: number; n: number }[] = []
+  for (let i = 0; i < pts.length; i++) {
+    if (lab[i]) continue
+    const c = [i]; lab[i] = 1
+    for (let t = 0; t < c.length; t++) {
+      const p = pts[c[t]], cx = Math.floor(p.x / link), cz = Math.floor(p.z / link)
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (const j of cell.get(`${cx + dx},${cz + dz}`) ?? [])
+        if (!lab[j] && Math.hypot(pts[j].x - p.x, pts[j].z - p.z) < link) { lab[j] = 1; c.push(j) }
+    }
+    if (c.length >= min) out.push({ x: c.reduce((a, j) => a + pts[j].x, 0) / c.length, z: c.reduce((a, j) => a + pts[j].z, 0) / c.length, n: c.length })
+  }
+  return out
+}
+
+export interface GameplayInput {
+  heights: ArrayLike<number>; grid: Raster
+  forests: { pts: number[]; holes?: number[][] }[]; houses: { x: number; z: number }[]
+}
+export function coverMap(inp: GameplayInput): CoverMap {
+  const { grid } = inp, n = grid.cols * grid.rows, land = new Uint8Array(n), cover = new Uint8Array(n)
+  for (let i = 0; i < n; i++) land[i] = inp.heights[i] > 0 ? 1 : 0
+  for (const f of inp.forests) { fillPolygon(grid, cover, f.pts, 1); for (const hole of f.holes ?? []) fillPolygon(grid, cover, hole, 0) }
+  stampPoints(grid, cover, inp.houses, HOUSE_COVER)
+  for (let i = 0; i < n; i++) if (!land[i]) cover[i] = 0
+  return { step: grid.step, cols: grid.cols, rows: grid.rows, minX: grid.minX, minZ: grid.minZ, land, cover }
+}
+
+/** coarser copy (max of cover, any land) so the 8 m vanilla grid and a 2 m world grid cost the same */
+export function coarsen(inp: GameplayInput, step: number): GameplayInput {
+  const g = inp.grid, f = Math.max(1, Math.round(step / g.step))
+  if (f === 1) return inp
+  const cols = Math.ceil(g.cols / f), rows = Math.ceil(g.rows / f), h = new Float32Array(cols * rows)
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) h[r * cols + c] = inp.heights[Math.min(g.rows - 1, r * f) * g.cols + Math.min(g.cols - 1, c * f)]
+  return { ...inp, heights: h, grid: { step: g.step * f, cols, rows, minX: g.minX, minZ: g.minZ } }
+}
+
+// ---- score ------------------------------------------------------------------------------------------------
+/** vanilla bands (Everon / Arland / Kolguyev, GAMEPLAY_MAPPING.md): inside the band 80..95 (95 at its centre),
+ *  outside it falls from 80 to 0 over `tol` */
+export const GAMEPLAY_BANDS = {
+  exposure: { lo: 4, hi: 9, tol: 15 },          // % land > 150 m from cover
+  coverP90: { lo: 125, hi: 165, tol: 250 },     // m, p90 distance to cover in the open
+  approach: { lo: 20, hi: 46, tol: 20 },        // % cover median in the 150-450 m ring of the settlements
+  bare: { lo: 0, hi: 8, tol: 30 },              // % settlements with < 10 % approach cover
+  view: { lo: 14, hi: 33, tol: 14 },            // % of its 2 km disc a summit sees
+  open: { lo: 58, hi: 72, tol: 20 },            // % open land
+  plain: { lo: 450, hi: 900, tol: 400 },        // m, farthest point from cover: one real armour plain exists
+} as const
+export type GameplayKey = keyof typeof GAMEPLAY_BANDS
+export function bandScore(v: number, b: { lo: number; hi: number; tol: number }): number {
+  if (!Number.isFinite(v)) return 0
+  if (v >= b.lo && v <= b.hi) { const c = (b.lo + b.hi) / 2, half = Math.max(1e-9, (b.hi - b.lo) / 2); return Math.round(95 - 15 * Math.abs(v - c) / half) }
+  const d = v < b.lo ? b.lo - v : v - b.hi
+  return Math.max(0, Math.round(80 * (1 - d / b.tol)))
+}
+
+export interface GameplaySpot { x: number; z: number; r: number; kind: 'exposed' | 'bare' }
+export interface GameplayReport {
+  score: number
+  sub: Record<GameplayKey, { value: number; score: number }>
+  open: ReturnType<typeof openGround>; approach: ReturnType<typeof approachCover>; viewshed: ReturnType<typeof summitViewshed>
+  settlements: number; spots: GameplaySpot[]
+}
+
+/** exposed spots: centres of the cells farther than `min` m from cover, merged on a `merge` m grid (the worst first) */
+export function exposedSpots(m: CoverMap, d: Float32Array, min = 200, merge = 300, max = 40): GameplaySpot[] {
+  const best = new Map<number, { x: number; z: number; d: number }>(), mc = Math.max(1, Math.round(merge / m.step))
+  for (let i = 0; i < d.length; i++) {
+    if (!m.land[i] || m.cover[i] || d[i] <= min) continue
+    const c = i % m.cols, r = (i / m.cols) | 0, k = Math.floor(r / mc) * 100003 + Math.floor(c / mc), o = best.get(k)
+    if (!o || d[i] > o.d) best.set(k, { x: m.minX + (c + 0.5) * m.step, z: m.minZ + (r + 0.5) * m.step, d: d[i] })
+  }
+  return [...best.values()].sort((a, b) => b.d - a.d).slice(0, max).map((s) => ({ x: s.x, z: s.z, r: Math.round(s.d), kind: 'exposed' as const }))
+}
+
+/** the whole gameplay report of a map (vanilla or generated), on a <= 16 m grid */
+export function gameplayReport(inp0: GameplayInput, step = 16): GameplayReport {
+  const inp = inp0.grid.step < step ? coarsen(inp0, step) : inp0
+  const m = coverMap(inp), objs = settlementClusters(inp0.houses)
+  const open = openGround(m), approach = approachCover(m, objs), viewshed = summitViewshed(inp.heights, m)
+  const val: Record<GameplayKey, number> = { exposure: open.beyond150Pct, coverP90: open.toCoverM.p90, approach: approach.pct.med, bare: approach.barePct,
+    view: viewshed.visiblePct, open: open.openPct, plain: open.toCoverM.max }
+  const sub = Object.fromEntries(Object.entries(GAMEPLAY_BANDS).map(([k, b]) => [k, { value: val[k as GameplayKey], score: bandScore(val[k as GameplayKey], b) }])) as GameplayReport['sub']
+  // the approaches weigh double: they decide whether a village can be taken on foot
+  const w: Record<GameplayKey, number> = { exposure: 2, coverP90: 1, approach: 2, bare: 1, view: 1, open: 1, plain: 1 }
+  let s = 0, ws = 0; for (const k of Object.keys(sub) as GameplayKey[]) { s += sub[k].score * w[k]; ws += w[k] }
+  const spots: GameplaySpot[] = exposedSpots(m, distanceToCover(m))
+  // bare approaches: the settlements whose ring has < 10 % cover
+  const one = { ...m }
+  for (const o of objs) if (approachCover(one, [o]).pct.med < 10) spots.push({ x: o.x, z: o.z, r: 450, kind: 'bare' })
+  return { score: Math.round(s / ws), sub, open, approach, viewshed, settlements: objs.length, spots }
 }

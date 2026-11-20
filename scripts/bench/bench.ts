@@ -23,6 +23,7 @@ import type { Water } from '../../src/modules/water'
 import { GROW_VILLAGE } from '../../src/modules/villageStreets'
 import { pastureFences, pastureDensity, pastureStyles } from '../../src/modules/pastures'
 import { streetLights } from '../../src/modules/streetLights'
+import { gameplayReport, GAMEPLAY_NOT_BUILDING } from '../../src/modules/gameplay'
 import { localStreets, streetStats, polyLen, STREET_REACH } from './streets'
 
 const args = process.argv.slice(2)
@@ -377,8 +378,14 @@ const streetLightScore = +((lampCount + lampSpacing + lampOffset) / 3).toFixed(1
 const streetLightInfo = { score: streetLightScore, count: lampCount, spacing: lampSpacing, offset: lampOffset, n: [vL.length, gL.length],
   medNN: [+med(lampNN(vL)).toFixed(1), +med(lampNN(gL)).toFixed(1)], medOffset: [+med(lampOff(vL)).toFixed(1), +med(lampOff(gL)).toFixed(1)] }
 
+// gameplay score (src/modules/gameplay.ts): the vanilla map, and its forests + relief with our buildings in place of vanilla's
+const gpIn = { heights, grid, forests: m.forests ?? [] }
+const gpV = gameplayReport({ ...gpIn, houses: m.buildings.items.filter((b) => !GAMEPLAY_NOT_BUILDING.test(m.buildings.prefabs[b[0]])).map(([, x, z]) => ({ x, z })) })
+const gpO = gameplayReport({ ...gpIn, houses: placed.map((b) => ({ x: b.x, z: b.z })) })
+const gpBrief = (r: typeof gpV) => ({ score: r.score, sub: Object.fromEntries(Object.entries(r.sub).map(([k, v]) => [k, v.score])) })
 const report = {
   map: m.name, genSec, sites: sites.length,
+  gameplay: { vanilla: gpBrief(gpV), ours: gpBrief(gpO) },
   farmsteads,
   villages: { score: villageScore, ...villages, counts: { vanilla: vanillaB.length, ours: placed.length }, byKind: { town: kindRatio('town'), village: kindRatio('village'), hamlet: kindRatio('hamlet') },
     median: { setback: [med(dv.setback), med(dg.setback)].map((x) => +x.toFixed(1)), orient: [med(dv.orient), med(dg.orient)].map((x) => +x.toFixed(1)), nn: [med(dv.nn), med(dg.nn)].map((x) => +x.toFixed(1)) },

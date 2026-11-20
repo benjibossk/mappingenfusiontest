@@ -1,4 +1,5 @@
 import { dedupeLines, densify } from './modules/fenceDedupe'
+import { gameplayReport, type GameplayReport, type GameplayKey } from './modules/gameplay'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
@@ -786,6 +787,11 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="checkFixAll" type="button" class="secondary" hidden></button>
         <ul id="checkList" class="issues"></ul>
       </details>
+      <details class="adv" id="gameplayBox"><summary>${t('legend.gameplay')}</summary>
+        ${hint('hint.gameplay')}
+        <button id="gameplayRun" type="button" class="secondary">${t('btn.gameplay')}</button>
+        <div id="gameplayOut" class="hint"></div>
+      </details>
       <details class="adv" id="wbProject"><summary>${t('wb.project')}</summary>
       <div class="form">
         <label>${t('lbl.tAddon')} <input id="tAddon" value="Mapgenerator"></label>
@@ -1002,6 +1008,7 @@ function draw() {
   if (layer('bridges')) drawWorldDecks()
   if (layer('density') && density) drawDensityHeat(ctx, density, PLATFORM_BUDGETS[budgetPlatform()].perKm2, toScreen)
   if (layer('issues')) drawIssues()
+  if (gpReport && $<HTMLDetailsElement>('gameplayBox')?.open) drawGameplay()
   if (!draping) drawComments()
   if (collab && !draping) drawPeers()
   drawWbCamera()
@@ -4768,6 +4775,25 @@ function drawIssues() {
     ctx.fillText('!', x, y + 1)
   }
 }
+// gameplay score (src/modules/gameplay.ts, PakTools/analyses/GAMEPLAY_MAPPING.md): sub-scores + the worst spots on the map
+let gpReport: GameplayReport | null = null
+function runGameplay() {
+  const out = $<HTMLDivElement>('gameplayOut')
+  if (!island) { gpReport = null; out.textContent = t('gp.none'); return }
+  gpReport = gameplayReport({ heights: island.heights, grid: island.grid, forests: areas.filter((a) => a.kind === 'forest'), houses: settled.map((b) => ({ x: b.x, z: b.z })) })
+  const r = gpReport, bar = (v: number) => `<span style="display:inline-block;width:${Math.round(v * 0.6)}px;height:6px;background:${v >= 80 ? '#4caf50' : v >= 50 ? '#e0a030' : '#d04030'}"></span>`
+  out.innerHTML = `<b>${t('gp.total', { s: r.score })}</b><ul class="issues">${(Object.keys(r.sub) as GameplayKey[]).map((k) => `<li>${bar(r.sub[k].score)} ${r.sub[k].score} · ${t(('gp.' + k) as K, { v: r.sub[k].value })}</li>`).join('')}</ul>`
+  draw()
+}
+function drawGameplay() {
+  for (const sp of gpReport!.spots) {
+    const [x, y] = toScreen(sp.x, sp.z), rr = Math.max(6, Math.abs(toScreen(sp.x + (sp.kind === 'bare' ? sp.r : 120), sp.z)[0] - x))
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2)
+    ctx.strokeStyle = sp.kind === 'bare' ? 'rgba(255,150,0,0.95)' : 'rgba(220,40,40,0.95)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([])
+  }
+}
+$<HTMLButtonElement>('gameplayRun').addEventListener('click', runGameplay)
+$<HTMLDetailsElement>('gameplayBox').addEventListener('toggle', () => draw())
 $<HTMLSelectElement>('checkPlatform').addEventListener('change', () => { if (issues.length || density) runChecks() })
 $<HTMLButtonElement>('checkRun').addEventListener('click', () => {
   const n = runChecks().length
