@@ -3,10 +3,11 @@
 //   onRoad       a building / zone object stands on a road carriageway
 //   entOutside   a zone object lies outside the map
 //   shapeOnRoad  a zone's own street / fence runs along or across another road (>= 6 m inside its carriageway)
+//   heightRange  the relief spans more than the terrain's 16-bit height range (silently clipped by the engine)
 // Each issue can carry a fix: drop the object, or nudge it off the road.
 import { polyOverlap } from '../modules/validate'
 
-export type PreKind = 'bldgOverlap' | 'onRoad' | 'entOutside' | 'shapeOnRoad'
+export type PreKind = 'bldgOverlap' | 'onRoad' | 'entOutside' | 'shapeOnRoad' | 'heightRange'
 export type Fix = { op: 'drop'; ref: Ref } | { op: 'move'; ref: Ref; dx: number; dz: number }
 /** building index in `settled`, or entity index in zone `zone` */
 export type Ref = { list: 'settled'; i: number } | { list: 'zone'; zone: number; i: number }
@@ -144,4 +145,22 @@ export function zoneLines(zn: { roads: { id: string; pts: number[]; width?: numb
     ...zn.shapes.filter((s) => s.kind === 'polyline' && /fence|wall/i.test(s.id) && !roadIds.has(s.id) && (s.points?.length ?? 0) >= 4)
       .map((s) => ({ id: s.id, pts: s.closed ? [...s.points!, s.points![0], s.points![1]] : s.points!, half: 0.3 })),
   ]
+}
+
+/** Enfusion terrain heights are u16 * heightScale + heightOffset: 65535 steps. Default "Height scale"
+ *  of the Create terrain dialog is 0.03125 m (~2048 m available). */
+export const DEFAULT_HEIGHT_SCALE = 0.03125
+
+/** Relief vs the terrain's available height range. `range` (absolute min / max in m) when the target
+ *  terrain is known, else only the span is checked against 65535 * `scale`. One issue, at the
+ *  highest point, value = metres over the range. */
+export function heightRangeCheck(heights: ArrayLike<number>, grid: { cols: number; step: number; minX?: number; minZ?: number }, scale = DEFAULT_HEIGHT_SCALE, range?: { min: number; max: number }): PreIssue[] {
+  let lo = Infinity, hi = -Infinity, at = 0
+  for (let i = 0; i < heights.length; i++) { const h = heights[i]; if (h < lo) lo = h; if (h > hi) { hi = h; at = i } }
+  if (!(hi >= lo)) return []
+  let over = hi - lo - 65535 * scale
+  if (range) over = Math.max(over, range.min - lo, hi - range.max)
+  if (over <= 0) return []
+  const x = (grid.minX ?? 0) + (at % grid.cols) * grid.step, z = (grid.minZ ?? 0) + Math.floor(at / grid.cols) * grid.step
+  return [{ kind: 'heightRange', id: `${Math.round(lo)}..${Math.round(hi)} m`, x, z, value: Math.round(over) }]
 }

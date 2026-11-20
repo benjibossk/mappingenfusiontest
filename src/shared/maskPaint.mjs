@@ -190,7 +190,10 @@ export function limitPixelBlocks(bytes, side, blockPx = 63, max = 5, margin = 3,
 //! the removed weight goes to its strongest allowed surface (else the closest-coloured / strongest
 //! of the block). Pixels whose regions share no surface get a common "glue" surface forced into
 //! those regions (as limitPerBlock in island.ts). Weights <= `tiny` are dropped first (insignificant).
-export function enforcePixelBlocks(bytes, side, blockPx = 63, max = 4, margin = 3, cols = null, tiny = 2) {
+//! A surface under `minShare` of a block's total weight is dropped from that block too: a 0.x %
+//! residue still counts as a block material and shows as an odd-coloured block in the engine
+//! (community mapping docs, "Info & Diags" merge advice).
+export function enforcePixelBlocks(bytes, side, blockPx = 63, max = 4, margin = 3, cols = null, tiny = 2, minShare = 0.01) {
   const n = bytes.length;
   if (!n || max < 1) return;
   const nb = Math.ceil((side - 1) / blockPx);
@@ -208,7 +211,9 @@ export function enforcePixelBlocks(bytes, side, blockPx = 63, max = 4, margin = 
     const r0 = Math.max(0, by * blockPx - margin), r1 = Math.min(side - 1, by * blockPx + blockPx + margin);
     const c0 = Math.max(0, bx * blockPx - margin), c1 = Math.min(side - 1, bx * blockPx + blockPx + margin);
     const t = bytes.map((a) => { let s = 0; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) s += a[r * side + c]; return s; });
-    ranked.push(t.map((v, k) => [v, k]).filter(([v]) => v > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, k]) => k));
+    const floor = t.reduce((a, b) => a + b, 0) * minShare;
+    const r = t.map((v, k) => [v, k]).filter(([v]) => v > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+    ranked.push(r.filter(([v], j) => j === 0 || v >= floor).map(([, k]) => k));
   }
   const keep = ranked.map((l) => new Set(l.slice(0, max)));
   const single = new Map();
