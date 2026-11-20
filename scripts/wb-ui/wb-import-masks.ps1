@@ -91,6 +91,11 @@ while ((Get-Date) -lt $deadline) {
     else { "  -> no OK button, leaving it"; $before += $d.Current.NativeWindowHandle }
   }
 }
+# late boxes (e.g. "Some surface masks were imported, however some were missing") can sit deep in the editor tree: sweep for them
+Start-Sleep -Seconds 3
+$late = @(WE).FindAll('Descendants', (New-Object $P($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))) | Where-Object { $_.Current.Name -match 'mask import' }
+foreach ($d in $late) { $desc = DescribeDialog $d; $desc; if ($desc -match 'import(ed)? failed') { $script:importFailed = $true }; $ok = Find $d 'OK' 'Button'; if ($ok) { (Pat $ok ([System.Windows.Automation.InvokePattern])).Invoke(); '  -> OK' } }
+foreach ($d in @(Dialogs | Where-Object { $_.Current.Name -match 'mask import' })) { $ok = Find $d 'OK' 'Button'; if ($ok) { DescribeDialog $d; (Pat $ok ([System.Windows.Automation.InvokePattern])).Invoke(); '  -> OK' } }
 if ($script:importFailed) { 'IMPORT FAILED: see TERRAIN (E) lines in console.log (often "Too many layers" in a block)' } else { 'import finished' }
 if (-not $NoSave) {
   MenuInvoke 'File' 'Save World'
