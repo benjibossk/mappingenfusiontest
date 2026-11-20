@@ -4363,7 +4363,15 @@ $<HTMLInputElement>('wRipa').addEventListener('change', (e) => {
 // roads (and their barriers) cut where they cross water: the gap is left for a bridge
 // --- power lines (step Routes): HV between the main sites, LV from the grid into each village along roads ---
 const POWER_COLOUR: Record<PowerKind, string> = { ehv: '#5ec8ff', hv: '#ffd24a', mv: '#ff8a3a', lv: '#e8e2c8' }
-function powerShapes() { return [...mergePowerLines(powerLines).map((l) => powerLineShape(l, l.id)), ...accessShapes(powerAccess)] }
+// merged pieces' new tie / cut-end poles kept >= 2.5 m off the settlement buildings (bounding-box test)
+function poleClearOfBuildings(x: number, z: number) {
+  for (const b of settled) { const c = (b as { corners?: number[] }).corners; if (!c || Math.abs(b.x - x) > 40 || Math.abs(b.z - z) > 40) continue
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i + 1 < c.length; i += 2) { x0 = Math.min(x0, c[i]); x1 = Math.max(x1, c[i]); z0 = Math.min(z0, c[i + 1]); z1 = Math.max(z1, c[i + 1]) }
+    if (x > x0 - 2.5 && x < x1 + 2.5 && z > z0 - 2.5 && z < z1 + 2.5) return false }
+  return true
+}
+function powerShapes() { return [...mergePowerLines(powerLines, 15, poleClearOfBuildings).map((l) => powerLineShape(l, l.id)), ...accessShapes(powerAccess)] }
 function powerInfo() {
   const km = powerLines.reduce((n, l) => n + l.length, 0) / 1000
   const poles = powerLines.reduce((n, l) => n + l.poles.length / 2, 0)
