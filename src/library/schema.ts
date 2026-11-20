@@ -62,8 +62,8 @@ export interface Composition {
   where?: (string | number)[]
 }
 
-export type ParcelCategory = 'garden' | 'farm' | 'cemetery' | 'industrial' | 'fuel' | 'roadside' | 'allotment' | 'sport' | 'custom'
-export const PARCEL_CATEGORIES: ParcelCategory[] = ['garden', 'farm', 'cemetery', 'industrial', 'fuel', 'roadside', 'allotment', 'sport', 'custom']
+export type ParcelCategory = 'garden' | 'farm' | 'cemetery' | 'industrial' | 'fuel' | 'roadside' | 'allotment' | 'sport' | 'harbour' | 'custom'
+export const PARCEL_CATEGORIES: ParcelCategory[] = ['garden', 'farm', 'cemetery', 'industrial', 'fuel', 'roadside', 'allotment', 'sport', 'harbour', 'custom']
 
 export const GUID_RE = /^\{[0-9A-F]{16}\}[^\s{}]+\.et$/
 const ADDON_RE = /^[0-9A-F]{16}$/
