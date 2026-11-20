@@ -1,0 +1,3596 @@
+{
+"parcels": [
+{
+"id": "everon-3875-6917",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 41,
+"depth": 30,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 13.8,
+"rel": 0,
+"prefab": "FarmHouse_E_1L01"
+},
+{
+"cat": "shed",
+"u": -10.2,
+"d": 23.4,
+"rel": 180,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -33.0,
+"d": 23.5,
+"rel": -179,
+"prefab": "Shed_02_big_V2"
+}
+]
+},
+{
+"id": "everon-7109-5980",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 35,
+"depth": 49,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 29.1,
+"rel": 134,
+"prefab": "House_Town_E_2I02_v2"
+},
+{
+"cat": "annex",
+"u": -6.8,
+"d": 18.3,
+"rel": 134,
+"prefab": "HouseAddon_Garage_E_01"
+},
+{
+"cat": "shed",
+"u": 7.9,
+"d": 42.6,
+"rel": -49,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": -19.2,
+"d": 26.6,
+"rel": 134,
+"prefab": "Shed_02_big_V2"
+}
+]
+},
+{
+"id": "everon-10927-11651",
+"map": "everon",
+"road": "RG_TrailDirt_01",
+"width": 39,
+"depth": 43,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 20.1,
+"rel": 81,
+"prefab": "House_Village_E_1I01"
+},
+{
+"cat": "shed",
+"u": 3.8,
+"d": 4.7,
+"rel": -5,
+"prefab": "Shed_02_big_V2"
+},
+{
+"cat": "shed",
+"u": -11.7,
+"d": 31.8,
+"rel": -75,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -10.7,
+"d": 36.8,
+"rel": -77,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "annex",
+"u": 19.5,
+"d": 24.5,
+"rel": -101,
+"prefab": "HouseAddon_Shed_E_01"
+}
+]
+},
+{
+"id": "everon-5278-5286",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 33,
+"depth": 39,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 5.9,
+"rel": 179,
+"prefab": "House_Village_E_1I04t_red"
+},
+{
+"cat": "annex",
+"u": -24.7,
+"d": 3.9,
+"rel": 178,
+"prefab": "HouseAddon_Garage_E_01"
+},
+{
+"cat": "shed",
+"u": -7.1,
+"d": 32.5,
+"rel": 176,
+"prefab": "Shed_02_big_V2"
+},
+{
+"cat": "shed",
+"u": -12.1,
+"d": 32.8,
+"rel": -92,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "everon-1213-6052",
+"map": "everon",
+"road": "RG_Road_Cobblestone_01",
+"width": 37,
+"depth": 48,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 24.1,
+"rel": -179,
+"prefab": "House_Village_E_1I04sr"
+},
+{
+"cat": "shed",
+"u": 12.5,
+"d": 28.9,
+"rel": 93,
+"prefab": "Shed_02_big_V2"
+},
+{
+"cat": "shed",
+"u": -8.3,
+"d": 41.6,
+"rel": 91,
+"prefab": "Shed_01"
+},
+{
+"cat": "annex",
+"u": 20.8,
+"d": 12.7,
+"rel": 180,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-7542-4619",
+"map": "everon",
+"road": "RG_TrailDirt_01",
+"width": 39,
+"depth": 41,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 18.2,
+"rel": -2,
+"prefab": "House_Mountain_E_1I01"
+},
+{
+"cat": "shed",
+"u": -2.8,
+"d": 34.8,
+"rel": -173,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "shed",
+"u": 28.3,
+"d": 7.5,
+"rel": -3,
+"prefab": "Shed_02_big_V2"
+}
+]
+},
+{
+"id": "everon-8466-3635",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 16,
+"depth": 46,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 13.4,
+"rel": 90,
+"prefab": "FarmHouse_E_1L01_Green"
+},
+{
+"cat": "shed",
+"u": -5.4,
+"d": 25.0,
+"rel": -179,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -8.0,
+"d": 40.0,
+"rel": 93,
+"prefab": "Shed_02_big_V2"
+}
+]
+},
+{
+"id": "everon-4870-10585",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 39,
+"depth": 68,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 37.1,
+"rel": 39,
+"prefab": "House_Village_E_1I01"
+},
+{
+"cat": "annex",
+"u": -22.6,
+"d": 26.7,
+"rel": -57,
+"prefab": "HouseAddon_Workshop_E_01"
+},
+{
+"cat": "shed",
+"u": -31.3,
+"d": 39.8,
+"rel": 129,
+"prefab": "Shed_02_big_V2"
+},
+{
+"cat": "annex",
+"u": -20.6,
+"d": 62.1,
+"rel": 129,
+"prefab": "HouseAddon_Shed_E_01"
+},
+{
+"cat": "annex",
+"u": -27.2,
+"d": 55.3,
+"rel": -51,
+"prefab": "Barn_E_01"
+}
+]
+},
+{
+"id": "everon-6572-3101",
+"map": "everon",
+"road": "RG_TrailDirt_01",
+"width": 30,
+"depth": 29,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 23.4,
+"rel": -111,
+"prefab": "FarmHouse_E_1L01"
+},
+{
+"cat": "shed",
+"u": -21.5,
+"d": 7.9,
+"rel": -100,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": -20.7,
+"d": 2.8,
+"rel": -100,
+"prefab": "Shed_02_big_V2"
+}
+]
+},
+{
+"id": "everon-4606-10529",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 37,
+"depth": 39,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 13.6,
+"rel": -78,
+"prefab": "House_Village_E_1I01"
+},
+{
+"cat": "shed",
+"u": 2.3,
+"d": 33.0,
+"rel": 163,
+"prefab": "Shed_02_big_V2"
+},
+{
+"cat": "annex",
+"u": 28.8,
+"d": 6.6,
+"rel": -4,
+"prefab": "Barn_E_03_open"
+}
+]
+},
+{
+"id": "everon-2969-6531",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 38,
+"depth": 32,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 16.3,
+"rel": -83,
+"prefab": "House_Wooden_E_1I01_panels"
+},
+{
+"cat": "shed",
+"u": -5.0,
+"d": 18.1,
+"rel": 97,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -20.6,
+"d": 26.1,
+"rel": 92,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "annex",
+"u": -30.0,
+"d": 17.4,
+"rel": 2,
+"prefab": "Barn_E_01_white"
+}
+]
+},
+{
+"id": "everon-6990-5092",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 51,
+"depth": 57,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 28.2,
+"rel": -89,
+"prefab": "House_Mountain_E_1I01"
+},
+{
+"cat": "shed",
+"u": 4.0,
+"d": 14.6,
+"rel": 1,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": -16.9,
+"d": 38.3,
+"rel": 91,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "shed",
+"u": 25.9,
+"d": 51.1,
+"rel": 21,
+"prefab": "Shed_02_square"
+}
+]
+},
+{
+"id": "everon-6341-9672",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 39,
+"depth": 33,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 16.8,
+"rel": -97,
+"prefab": "FarmHouse_E_1L01"
+},
+{
+"cat": "shed",
+"u": -17.1,
+"d": 27.2,
+"rel": 86,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "shed",
+"u": -31.1,
+"d": 9.3,
+"rel": 3,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-7129-6069",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 22,
+"depth": 53,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 28.2,
+"rel": 179,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "shed",
+"u": -11.0,
+"d": 46.8,
+"rel": 83,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "annex",
+"u": -14.5,
+"d": 45.8,
+"rel": 173,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-10925-11744",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 19,
+"depth": 43,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 24.1,
+"rel": 176,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "annex",
+"u": -7.4,
+"d": 22.9,
+"rel": 173,
+"prefab": "HouseAddon_Garage_E_01"
+},
+{
+"cat": "shed",
+"u": 3.2,
+"d": 37.2,
+"rel": 173,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "everon-1298-6065",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 41,
+"depth": 29,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 23.3,
+"rel": 10,
+"prefab": "House_Town_E_2I01"
+},
+{
+"cat": "shed",
+"u": 6.7,
+"d": 16.1,
+"rel": -170,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "shed",
+"u": -26.7,
+"d": 17.9,
+"rel": 100,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "everon-7623-5479",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 31,
+"depth": 33,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 13.1,
+"rel": 165,
+"prefab": "House_Village_E_1I08t"
+},
+{
+"cat": "shed",
+"u": 4.5,
+"d": 27.2,
+"rel": -104,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "shed",
+"u": -18.3,
+"d": 15.6,
+"rel": -83,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-7458-4709",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 16,
+"depth": 28,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 3.6,
+"rel": -177,
+"prefab": "House_Village_E_1I04t_red"
+},
+{
+"cat": "shed",
+"u": 0.1,
+"d": 10.6,
+"rel": -176,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 8.3,
+"d": 21.6,
+"rel": -94,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "everon-5129-4043",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 28,
+"depth": 46,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 7.5,
+"rel": -180,
+"prefab": "House_Town_E_2I02_v2"
+},
+{
+"cat": "shed",
+"u": -7.0,
+"d": 26.8,
+"rel": 89,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "annex",
+"u": 13.2,
+"d": 33.1,
+"rel": -179,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "shed",
+"u": -2.9,
+"d": 40.3,
+"rel": 3,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "everon-5203-6165",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 44,
+"depth": 32,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 19.9,
+"rel": -97,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "shed",
+"u": -0.9,
+"d": 26.1,
+"rel": 173,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -13.7,
+"d": 11.5,
+"rel": -5,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "shed",
+"u": 22.8,
+"d": 6.6,
+"rel": -16,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "everon-7163-2429",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 23,
+"depth": 33,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 14.5,
+"rel": -90,
+"prefab": "House_Wooden_E_1I01_panels"
+},
+{
+"cat": "shed",
+"u": -2.6,
+"d": 27.2,
+"rel": -176,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "shed",
+"u": -14.6,
+"d": 13.9,
+"rel": 93,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-7150-2245",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 38,
+"depth": 27,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 8.4,
+"rel": -83,
+"prefab": "House_Wooden_E_1I01"
+},
+{
+"cat": "shed",
+"u": 16.6,
+"d": 10.1,
+"rel": 70,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "shed",
+"u": -13.8,
+"d": 21.4,
+"rel": 118,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-4444-10671",
+"map": "everon",
+"road": "RG_Road_Cobblestone_01",
+"width": 58,
+"depth": 38,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 7.6,
+"rel": 179,
+"prefab": "House_Town_E_2I03"
+},
+{
+"cat": "shed",
+"u": -18.2,
+"d": 21.8,
+"rel": 1,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "shed",
+"u": 3.4,
+"d": 31.5,
+"rel": 85,
+"prefab": "Shed_03"
+},
+{
+"cat": "annex",
+"u": 31.8,
+"d": 7.3,
+"rel": 87,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 31.6,
+"d": 11.8,
+"rel": 87,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 32.1,
+"d": 2.7,
+"rel": 87,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-4638-10831",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 25,
+"depth": 44,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 11.2,
+"rel": 153,
+"prefab": "House_Village_E_1I06"
+},
+{
+"cat": "shed",
+"u": -9.4,
+"d": 34.4,
+"rel": -153,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -16.8,
+"d": 38.1,
+"rel": -161,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "everon-4442-10938",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 30,
+"depth": 40,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 12.2,
+"rel": -87,
+"prefab": "Villa_E_2I01"
+},
+{
+"cat": "shed",
+"u": 15.5,
+"d": 27.0,
+"rel": -92,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "annex",
+"u": -6.2,
+"d": 34.0,
+"rel": -178,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-4429-10860",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 40,
+"depth": 28,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 6.4,
+"rel": 179,
+"prefab": "House_Village_E_1I05t"
+},
+{
+"cat": "shed",
+"u": -11.3,
+"d": 21.7,
+"rel": 89,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "annex",
+"u": -26.8,
+"d": 12.7,
+"rel": -179,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": -31.7,
+"d": 12.8,
+"rel": -179,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-4359-10718",
+"map": "everon",
+"road": "RG_Road_Cobblestone_01",
+"width": 33,
+"depth": 33,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 10.6,
+"rel": 179,
+"prefab": "Villa_E_2I01"
+},
+{
+"cat": "shed",
+"u": -9.0,
+"d": 27.4,
+"rel": 178,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "annex",
+"u": -24.9,
+"d": 20.4,
+"rel": -179,
+"prefab": "HouseAddon_Garage_E_01"
+}
+]
+},
+{
+"id": "everon-5787-7019",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 20,
+"depth": 58,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 20.1,
+"rel": 25,
+"prefab": "House_Village_E_1L03t"
+},
+{
+"cat": "annex",
+"u": -12.4,
+"d": 26.3,
+"rel": 24,
+"prefab": "HouseAddon_Shed_E_01"
+},
+{
+"cat": "shed",
+"u": -1.0,
+"d": 51.9,
+"rel": -157,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-7582-5586",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 39,
+"depth": 45,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 13.7,
+"rel": -148,
+"prefab": "House_Village_E_1I05t"
+},
+{
+"cat": "annex",
+"u": -12.5,
+"d": 21.6,
+"rel": 32,
+"prefab": "HouseAddon_Shed_E_01"
+},
+{
+"cat": "shed",
+"u": 18.8,
+"d": 25.0,
+"rel": -61,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "annex",
+"u": -4.4,
+"d": 39.4,
+"rel": 150,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-4778-6898",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 28,
+"depth": 23,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 12.1,
+"rel": 160,
+"prefab": "House_Village_E_1I04sr"
+},
+{
+"cat": "shed",
+"u": -8.5,
+"d": 16.1,
+"rel": 160,
+"prefab": "Shed_03"
+},
+{
+"cat": "annex",
+"u": 11.6,
+"d": 16.6,
+"rel": 160,
+"prefab": "HouseAddon_Shed_E_01"
+}
+]
+},
+{
+"id": "everon-4942-9012",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 38,
+"depth": 34,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 8.3,
+"rel": 10,
+"prefab": "House_Village_E_1L02t"
+},
+{
+"cat": "annex",
+"u": 11.8,
+"d": 6.2,
+"rel": -169,
+"prefab": "HouseAddon_Shed_E_01"
+},
+{
+"cat": "shed",
+"u": -17.9,
+"d": 27.7,
+"rel": -81,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-1314-5870",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 34,
+"depth": 44,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 17.5,
+"rel": -179,
+"prefab": "House_Village_E_1I05t"
+},
+{
+"cat": "annex",
+"u": -16.2,
+"d": 17.1,
+"rel": -179,
+"prefab": "HouseAddon_Garage_E_01"
+},
+{
+"cat": "shed",
+"u": 8.6,
+"d": 34.5,
+"rel": -2,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -16.9,
+"d": 30.5,
+"rel": -178,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "shed",
+"u": 8.4,
+"d": 38.3,
+"rel": 178,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-4399-10599",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 37,
+"depth": 22,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 15.8,
+"rel": 0,
+"prefab": "House_Village_E_1L02t"
+},
+{
+"cat": "annex",
+"u": -13.3,
+"d": 14.9,
+"rel": -179,
+"prefab": "HouseAddon_Garage_E_01"
+},
+{
+"cat": "annex",
+"u": -28.8,
+"d": 10.1,
+"rel": 4,
+"prefab": "Barn_E_02"
+}
+]
+},
+{
+"id": "everon-5219-6395",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 32,
+"depth": 42,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 20.3,
+"rel": -88,
+"prefab": "House_Village_E_1I06"
+},
+{
+"cat": "shed",
+"u": 6.7,
+"d": 36.2,
+"rel": 3,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "annex",
+"u": 24.4,
+"d": 16.6,
+"rel": 5,
+"prefab": "Barn_E_03_open"
+}
+]
+},
+{
+"id": "everon-3328-5124",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 27,
+"depth": 36,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 10.4,
+"rel": 91,
+"prefab": "FarmHouse_E_1L01_Wood"
+},
+{
+"cat": "annex",
+"u": 14.9,
+"d": 21.7,
+"rel": -174,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "shed",
+"u": -4.5,
+"d": 29.6,
+"rel": -175,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-7139-5941",
+"map": "everon",
+"road": "RG_Road_Dirt_02",
+"width": 28,
+"depth": 39,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 19.1,
+"rel": -22,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "shed",
+"u": 6.4,
+"d": 23.5,
+"rel": 159,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 7.8,
+"d": 20.0,
+"rel": -20,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -12.5,
+"d": 32.6,
+"rel": 69,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-6994-5997",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 16,
+"depth": 28,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 6.0,
+"rel": 0,
+"prefab": "House_Village_E_1I01"
+},
+{
+"cat": "shed",
+"u": 5.8,
+"d": 6.7,
+"rel": -90,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -2.5,
+"d": 21.5,
+"rel": 91,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-6377-9624",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 20,
+"depth": 51,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 16.0,
+"rel": 102,
+"prefab": "House_Wooden_E_1I02"
+},
+{
+"cat": "shed",
+"u": -5.3,
+"d": 41.1,
+"rel": 5,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "annex",
+"u": 6.8,
+"d": 45.2,
+"rel": -169,
+"prefab": "Barn_E_02"
+}
+]
+},
+{
+"id": "everon-8807-2740",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 18,
+"depth": 38,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 10.1,
+"rel": -178,
+"prefab": "House_Town_E_2I01"
+},
+{
+"cat": "annex",
+"u": -10.0,
+"d": 28.3,
+"rel": -90,
+"prefab": "HouseAddon_Workshop_E_01"
+},
+{
+"cat": "shed",
+"u": -2.5,
+"d": 31.7,
+"rel": 179,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-5681-7058",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 28,
+"depth": 28,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 22.2,
+"rel": 180,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "annex",
+"u": -9.7,
+"d": 10.6,
+"rel": 88,
+"prefab": "HouseAddon_Workshop_E_01"
+},
+{
+"cat": "shed",
+"u": 9.9,
+"d": 4.3,
+"rel": -6,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-11124-11592",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 21,
+"depth": 50,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 14.3,
+"rel": -79,
+"prefab": "FarmHouse_E_1L01_Wood"
+},
+{
+"cat": "shed",
+"u": 3.8,
+"d": 22.2,
+"rel": 99,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -9.3,
+"d": 43.6,
+"rel": -178,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-5577-5238",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 30,
+"depth": 48,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 13.0,
+"rel": 85,
+"prefab": "House_Wooden_E_1I01"
+},
+{
+"cat": "shed",
+"u": 21.5,
+"d": 32.2,
+"rel": -97,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": 8.2,
+"d": 42.4,
+"rel": 177,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-5329-5430",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 24,
+"depth": 32,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 8.3,
+"rel": 172,
+"prefab": "House_Village_E_1I04sf_green"
+},
+{
+"cat": "annex",
+"u": 14.5,
+"d": 10.0,
+"rel": 82,
+"prefab": "HouseAddon_Workshop_E_01"
+},
+{
+"cat": "shed",
+"u": -2.0,
+"d": 26.4,
+"rel": 174,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-1215-6011",
+"map": "everon",
+"road": "RG_Road_Cobblestone_01",
+"width": 18,
+"depth": 49,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 26.7,
+"rel": -180,
+"prefab": "House_Town_E_2I01"
+},
+{
+"cat": "shed",
+"u": 9.7,
+"d": 37.4,
+"rel": -178,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "shed",
+"u": 4.3,
+"d": 42.7,
+"rel": -178,
+"prefab": "Shed_02_square"
+}
+]
+},
+{
+"id": "everon-2641-5339",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 28,
+"depth": 49,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 18.8,
+"rel": 158,
+"prefab": "House_Village_E_1I01"
+},
+{
+"cat": "annex",
+"u": -7.0,
+"d": 28.8,
+"rel": -112,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "shed",
+"u": 7.4,
+"d": 42.2,
+"rel": 67,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "shed",
+"u": -12.6,
+"d": 43.0,
+"rel": -113,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "everon-7576-4660",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 38,
+"depth": 26,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 16.5,
+"rel": 86,
+"prefab": "House_Wooden_E_1I02"
+},
+{
+"cat": "shed",
+"u": 28.9,
+"d": 10.9,
+"rel": -86,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "shed",
+"u": 29.6,
+"d": 20.0,
+"rel": -85,
+"prefab": "Shed_03_wide"
+}
+]
+},
+{
+"id": "everon-5088-3881",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 38,
+"depth": 40,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 5.9,
+"rel": -176,
+"prefab": "House_Village_E_1I08t"
+},
+{
+"cat": "shed",
+"u": -11.5,
+"d": 6.9,
+"rel": 6,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": 18.5,
+"d": 34.2,
+"rel": 9,
+"prefab": "Shed_02_big_V1"
+}
+]
+},
+{
+"id": "everon-11679-2178",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 34,
+"depth": 38,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 7.5,
+"rel": -90,
+"prefab": "House_Wooden_E_1I01_panels"
+},
+{
+"cat": "shed",
+"u": 15.6,
+"d": 17.8,
+"rel": 97,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "shed",
+"u": -10.8,
+"d": 32.2,
+"rel": 176,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "everon-5768-10232",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 30,
+"depth": 28,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 9.8,
+"rel": 178,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "shed",
+"u": 7.1,
+"d": 22.1,
+"rel": -178,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "shed",
+"u": -15.2,
+"d": 19.0,
+"rel": -91,
+"prefab": "Shed_03_wide"
+}
+]
+},
+{
+"id": "everon-7165-2353",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 32,
+"depth": 38,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 14.9,
+"rel": -179,
+"prefab": "House_Town_E_2I03"
+},
+{
+"cat": "shed",
+"u": 11.7,
+"d": 13.2,
+"rel": -87,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 7.9,
+"d": 23.7,
+"rel": -87,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "shed",
+"u": 11.9,
+"d": 18.4,
+"rel": -88,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -11.2,
+"d": 30.0,
+"rel": -177,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": 12.4,
+"d": 32.5,
+"rel": 94,
+"prefab": "Shed_02_square"
+}
+]
+},
+{
+"id": "everon-7061-5457",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 32,
+"depth": 39,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 18.6,
+"rel": -37,
+"prefab": "House_Wooden_E_1I01"
+},
+{
+"cat": "shed",
+"u": -1.6,
+"d": 8.9,
+"rel": 144,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "annex",
+"u": 22.1,
+"d": 33.3,
+"rel": 51,
+"prefab": "Barn_E_02"
+}
+]
+},
+{
+"id": "everon-7074-6067",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 45,
+"depth": 42,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 11.9,
+"rel": -4,
+"prefab": "House_Village_E_1L03t"
+},
+{
+"cat": "shed",
+"u": 6.5,
+"d": 36.1,
+"rel": -93,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": -30.2,
+"d": 27.2,
+"rel": -2,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "everon-8787-2785",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 27,
+"depth": 40,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 13.2,
+"rel": -91,
+"prefab": "House_Town_E_2I03"
+},
+{
+"cat": "shed",
+"u": 18.5,
+"d": 31.7,
+"rel": -179,
+"prefab": "Shed_01"
+},
+{
+"cat": "shed",
+"u": 18.6,
+"d": 34.3,
+"rel": 2,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "everon-5816-7078",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 21,
+"depth": 41,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 21.5,
+"rel": -167,
+"prefab": "House_Village_E_1I04sr_green"
+},
+{
+"cat": "shed",
+"u": 12.7,
+"d": 35.3,
+"rel": -79,
+"prefab": "Shed_01"
+},
+{
+"cat": "shed",
+"u": 5.3,
+"d": 2.3,
+"rel": 7,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "everon-10951-11704",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 36,
+"depth": 47,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 19.2,
+"rel": -168,
+"prefab": "FarmHouse_E_1L01_Green"
+},
+{
+"cat": "shed",
+"u": -1.6,
+"d": 32.7,
+"rel": 95,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "annex",
+"u": 26.5,
+"d": 40.8,
+"rel": 9,
+"prefab": "Barn_E_01"
+}
+]
+},
+{
+"id": "everon-5192-5339",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 38,
+"depth": 37,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 12.0,
+"rel": -177,
+"prefab": "House_Village_E_1I08t"
+},
+{
+"cat": "shed",
+"u": -6.7,
+"d": 23.2,
+"rel": -87,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": -6.2,
+"d": 31.0,
+"rel": 90,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": 23.5,
+"d": 27.2,
+"rel": 96,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "everon-7576-5377",
+"map": "everon",
+"road": "RG_Road_Dirt_02",
+"width": 24,
+"depth": 56,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 28.8,
+"rel": 142,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "shed",
+"u": 15.6,
+"d": 37.4,
+"rel": -125,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "shed",
+"u": 3.2,
+"d": 50.0,
+"rel": 143,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-6959-8289",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 34,
+"depth": 23,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 13.2,
+"rel": -14,
+"prefab": "House_Wooden_E_1I01"
+},
+{
+"cat": "shed",
+"u": -4.6,
+"d": 17.0,
+"rel": 74,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "annex",
+"u": -25.5,
+"d": 13.0,
+"rel": 16,
+"prefab": "Barn_E_02"
+}
+]
+},
+{
+"id": "everon-4804-7122",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 42,
+"depth": 54,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 31.5,
+"rel": 175,
+"prefab": "House_Town_E_2I03_v2"
+},
+{
+"cat": "shed",
+"u": -20.2,
+"d": 48.4,
+"rel": 85,
+"prefab": "Shed_02_small"
+},
+{
+"cat": "shed",
+"u": -33.5,
+"d": 37.9,
+"rel": -92,
+"prefab": "Shed_03_wide"
+}
+]
+},
+{
+"id": "everon-7741-2324",
+"map": "everon",
+"road": "RG_TrailGravel_01",
+"width": 29,
+"depth": 22,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 13.6,
+"rel": -177,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "shed",
+"u": -5.9,
+"d": 13.2,
+"rel": 93,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 15.3,
+"d": 15.7,
+"rel": -175,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "everon-6948-5958",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 37,
+"depth": 29,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 7.3,
+"rel": 175,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "shed",
+"u": -7.5,
+"d": 8.1,
+"rel": 179,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -7.2,
+"d": 4.3,
+"rel": -1,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 21.5,
+"d": 23.1,
+"rel": -96,
+"prefab": "Shed_01"
+}
+]
+},
+{
+"id": "everon-6748-5670",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 26,
+"depth": 39,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 17.3,
+"rel": 21,
+"prefab": "House_Village_E_1L02t"
+},
+{
+"cat": "annex",
+"u": -16.2,
+"d": 23.6,
+"rel": -159,
+"prefab": "Barn_E_01"
+},
+{
+"cat": "shed",
+"u": -17.9,
+"d": 33.4,
+"rel": 112,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-6311-9643",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 26,
+"depth": 41,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 13.9,
+"rel": 177,
+"prefab": "House_Wooden_E_1I01_panels"
+},
+{
+"cat": "shed",
+"u": 12.2,
+"d": 27.9,
+"rel": -5,
+"prefab": "Shed_03"
+},
+{
+"cat": "annex",
+"u": -5.5,
+"d": 35.2,
+"rel": 173,
+"prefab": "Barn_E_02"
+}
+]
+},
+{
+"id": "everon-11327-11226",
+"map": "everon",
+"road": "RG_TrailDirt_01",
+"width": 31,
+"depth": 45,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 13.0,
+"rel": -1,
+"prefab": "FarmHouse_E_1L01"
+},
+{
+"cat": "shed",
+"u": 23.0,
+"d": 33.7,
+"rel": -89,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 23.4,
+"d": 38.6,
+"rel": -93,
+"prefab": "Shed_01"
+}
+]
+},
+{
+"id": "everon-1220-6104",
+"map": "everon",
+"road": "RG_Road_Cobblestone_01",
+"width": 23,
+"depth": 26,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 12.9,
+"rel": -180,
+"prefab": "House_Village_E_1I04sf_green"
+},
+{
+"cat": "shed",
+"u": -0.1,
+"d": 19.9,
+"rel": 180,
+"prefab": "Shed_03"
+},
+{
+"cat": "annex",
+"u": 14.6,
+"d": 13.0,
+"rel": 90,
+"prefab": "HouseAddon_Workshop_E_01"
+}
+]
+},
+{
+"id": "everon-7375-4733",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 39,
+"depth": 31,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 3.4,
+"rel": 2,
+"prefab": "House_Village_E_1L03t"
+},
+{
+"cat": "shed",
+"u": -13.2,
+"d": 20.0,
+"rel": 92,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 18.0,
+"d": 25.4,
+"rel": 1,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-7770-4584",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 24,
+"depth": 48,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 36.9,
+"rel": 178,
+"prefab": "FarmHouse_E_1L01"
+},
+{
+"cat": "shed",
+"u": -16.2,
+"d": 41.5,
+"rel": 91,
+"prefab": "Shed_01"
+},
+{
+"cat": "shed",
+"u": -4.0,
+"d": 5.3,
+"rel": -170,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-4862-7000",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 20,
+"depth": 40,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 9.7,
+"rel": -175,
+"prefab": "House_Village_E_1I04sr_green"
+},
+{
+"cat": "shed",
+"u": 12.2,
+"d": 7.9,
+"rel": -85,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 6.2,
+"d": 34.4,
+"rel": -175,
+"prefab": "Shed_02_square"
+}
+]
+},
+{
+"id": "everon-4877-7012",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 42,
+"depth": 42,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 10.7,
+"rel": -179,
+"prefab": "House_Village_E_1I08t_white"
+},
+{
+"cat": "annex",
+"u": -22.2,
+"d": 11.4,
+"rel": 4,
+"prefab": "HouseAddon_Workshop_E_01"
+},
+{
+"cat": "shed",
+"u": 11.5,
+"d": 36.0,
+"rel": 90,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-5079-3953",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 20,
+"depth": 41,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 11.1,
+"rel": -167,
+"prefab": "House_Village_E_1I04t_green"
+},
+{
+"cat": "shed",
+"u": 12.0,
+"d": 7.8,
+"rel": -76,
+"prefab": "Shed_03"
+},
+{
+"cat": "annex",
+"u": 0.6,
+"d": 35.0,
+"rel": -166,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-9364-286",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 37,
+"depth": 48,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 32.0,
+"rel": 172,
+"prefab": "FarmHouse_E_1L01_Wood"
+},
+{
+"cat": "shed",
+"u": 19.1,
+"d": 41.5,
+"rel": 173,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": 28.4,
+"d": 31.1,
+"rel": 13,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 29.2,
+"d": 34.9,
+"rel": -167,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-4423-10881",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 36,
+"depth": 45,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 6.8,
+"rel": 179,
+"prefab": "House_Village_E_1I04t_red"
+},
+{
+"cat": "annex",
+"u": 19.5,
+"d": 10.6,
+"rel": 91,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 19.6,
+"d": 15.4,
+"rel": 91,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 19.6,
+"d": 20.1,
+"rel": 91,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "shed",
+"u": -8.3,
+"d": 38.7,
+"rel": 91,
+"prefab": "Shed_03"
+}
+]
+},
+{
+"id": "everon-4666-10577",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 21,
+"depth": 36,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 6.0,
+"rel": -3,
+"prefab": "House_Wooden_E_1I01"
+},
+{
+"cat": "shed",
+"u": -2.7,
+"d": 11.0,
+"rel": 177,
+"prefab": "Shed_03"
+},
+{
+"cat": "annex",
+"u": 10.2,
+"d": 29.9,
+"rel": -6,
+"prefab": "Barn_E_02"
+}
+]
+},
+{
+"id": "everon-2889-6374",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 41,
+"depth": 60,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 30.5,
+"rel": 177,
+"prefab": "House_Village_E_1I04sr_green"
+},
+{
+"cat": "shed",
+"u": -10.4,
+"d": 45.7,
+"rel": -99,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -9.7,
+"d": 54.4,
+"rel": 83,
+"prefab": "Shed_01"
+},
+{
+"cat": "annex",
+"u": 22.8,
+"d": 12.2,
+"rel": -53,
+"prefab": "HouseAddon_Workshop_E_01"
+}
+]
+},
+{
+"id": "everon-1247-5965",
+"map": "everon",
+"road": "RG_Road_Cobblestone_01",
+"width": 28,
+"depth": 29,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 11.9,
+"rel": -177,
+"prefab": "House_Village_E_1I04sr_green"
+},
+{
+"cat": "shed",
+"u": -1.7,
+"d": 22.9,
+"rel": -178,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "annex",
+"u": 18.0,
+"d": 10.8,
+"rel": -177,
+"prefab": "Barn_E_01"
+}
+]
+},
+{
+"id": "everon-7501-4680",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 32,
+"depth": 43,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 10.4,
+"rel": -14,
+"prefab": "House_Village_E_1I01"
+},
+{
+"cat": "shed",
+"u": 10.8,
+"d": 9.0,
+"rel": -16,
+"prefab": "Shed_01"
+},
+{
+"cat": "annex",
+"u": -13.2,
+"d": 36.9,
+"rel": 161,
+"prefab": "Barn_E_01"
+}
+]
+},
+{
+"id": "everon-4575-9515",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 18,
+"depth": 53,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 13.9,
+"rel": -178,
+"prefab": "House_Village_E_1I04t_red"
+},
+{
+"cat": "shed",
+"u": 8.8,
+"d": 27.6,
+"rel": -90,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "annex",
+"u": -1.6,
+"d": 47.2,
+"rel": 178,
+"prefab": "Barn_E_01"
+}
+]
+},
+{
+"id": "everon-4897-9087",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 35,
+"depth": 20,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 14.1,
+"rel": 94,
+"prefab": "House_Village_E_1I05t"
+},
+{
+"cat": "annex",
+"u": 22.4,
+"d": 9.5,
+"rel": -179,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 27.3,
+"d": 9.3,
+"rel": -179,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-4418-9459",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 15,
+"depth": 33,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 7.7,
+"rel": -180,
+"prefab": "House_Village_E_1I08t"
+},
+{
+"cat": "annex",
+"u": -7.4,
+"d": 23.4,
+"rel": -157,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "shed",
+"u": -1.6,
+"d": 27.3,
+"rel": 114,
+"prefab": "Shed_01"
+}
+]
+},
+{
+"id": "everon-6219-7479",
+"map": "everon",
+"road": "RG_Road_Dirt_01",
+"width": 28,
+"depth": 48,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 20.5,
+"rel": -108,
+"prefab": "House_Mountain_E_1I01_short"
+},
+{
+"cat": "annex",
+"u": -2.8,
+"d": 26.6,
+"rel": -108,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "shed",
+"u": -16.8,
+"d": 41.8,
+"rel": -99,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": -20.5,
+"d": 41.2,
+"rel": 81,
+"prefab": "Shed_03_wide"
+}
+]
+},
+{
+"id": "everon-5079-4011",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 32,
+"depth": 38,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 9.2,
+"rel": -177,
+"prefab": "House_Town_E_2I01"
+},
+{
+"cat": "annex",
+"u": 9.9,
+"d": 5.6,
+"rel": 93,
+"prefab": "HouseAddon_Workshop_E_01"
+},
+{
+"cat": "annex",
+"u": 5.8,
+"d": 21.5,
+"rel": -84,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 6.3,
+"d": 26.2,
+"rel": -84,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "shed",
+"u": 24.4,
+"d": 32.4,
+"rel": -178,
+"prefab": "Shed_01"
+}
+]
+},
+{
+"id": "everon-4659-10756",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 29,
+"depth": 28,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 13.2,
+"rel": -11,
+"prefab": "House_Village_E_1L02t"
+},
+{
+"cat": "annex",
+"u": 11.4,
+"d": 19.5,
+"rel": 168,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 16.0,
+"d": 20.5,
+"rel": 168,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 20.7,
+"d": 21.6,
+"rel": 168,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-9787-1438",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 42,
+"depth": 41,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 9.4,
+"rel": -178,
+"prefab": "House_Town_E_2I02"
+},
+{
+"cat": "shed",
+"u": 10.6,
+"d": 10.9,
+"rel": 93,
+"prefab": "Shed_01"
+},
+{
+"cat": "annex",
+"u": -14.1,
+"d": 34.5,
+"rel": -180,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": -19.0,
+"d": 34.5,
+"rel": -180,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": -23.9,
+"d": 34.6,
+"rel": -180,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-9657-1555",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 22,
+"depth": 29,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 10.1,
+"rel": -180,
+"prefab": "House_Town_E_2I02"
+},
+{
+"cat": "annex",
+"u": 13.4,
+"d": 13.1,
+"rel": 91,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 14.0,
+"d": 17.9,
+"rel": 91,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": 14.3,
+"d": 22.7,
+"rel": 91,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "everon-7204-2392",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 50,
+"depth": 43,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 17.5,
+"rel": -89,
+"prefab": "House_Village_E_1I06"
+},
+{
+"cat": "annex",
+"u": 20.2,
+"d": 11.5,
+"rel": -90,
+"prefab": "HouseAddon_Workshop_E_01"
+},
+{
+"cat": "shed",
+"u": -21.3,
+"d": 17.4,
+"rel": 88,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "annex",
+"u": 20.6,
+"d": 36.7,
+"rel": -89,
+"prefab": "Barn_E_03_closed"
+}
+]
+},
+{
+"id": "everon-9432-1658",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 42,
+"depth": 32,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 10.9,
+"rel": -179,
+"prefab": "House_Village_E_1I05s"
+},
+{
+"cat": "shed",
+"u": 11.5,
+"d": 26.4,
+"rel": -179,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "annex",
+"u": 34.2,
+"d": 7.5,
+"rel": -177,
+"prefab": "Barn_E_03_closed"
+}
+]
+},
+{
+"id": "everon-2869-4865",
+"map": "everon",
+"road": "RG_Road_Dirt_02",
+"width": 44,
+"depth": 37,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 12.1,
+"rel": 1,
+"prefab": "House_Mountain_E_1I01"
+},
+{
+"cat": "shed",
+"u": 4.4,
+"d": 30.5,
+"rel": -177,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": -3.4,
+"d": 30.8,
+"rel": -178,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "annex",
+"u": -31.4,
+"d": 16.7,
+"rel": 0,
+"prefab": "Barn_E_02"
+}
+]
+},
+{
+"id": "everon-7439-4718",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 23,
+"depth": 40,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 3.6,
+"rel": 177,
+"prefab": "House_Village_E_1I04sf_green"
+},
+{
+"cat": "shed",
+"u": 7.7,
+"d": 14.9,
+"rel": -95,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "annex",
+"u": -7.6,
+"d": 34.1,
+"rel": 86,
+"prefab": "HouseAddon_Workshop_E_01"
+}
+]
+},
+{
+"id": "everon-4581-9389",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_02",
+"width": 50,
+"depth": 56,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 25.8,
+"rel": -118,
+"prefab": "House_Village_E_1I06"
+},
+{
+"cat": "shed",
+"u": -18.5,
+"d": 14.2,
+"rel": -116,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": 23.9,
+"d": 28.4,
+"rel": 116,
+"prefab": "Shed_01"
+},
+{
+"cat": "shed",
+"u": -14.2,
+"d": 49.9,
+"rel": 151,
+"prefab": "Shed_01"
+}
+]
+},
+{
+"id": "everon-9099-2343",
+"map": "everon",
+"road": "RG_TrailDirt_01",
+"width": 37,
+"depth": 36,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 13.6,
+"rel": -7,
+"prefab": "FarmHouse_E_1L01_Green"
+},
+{
+"cat": "shed",
+"u": -11.1,
+"d": 30.1,
+"rel": -9,
+"prefab": "Shed_01"
+},
+{
+"cat": "shed",
+"u": -25.0,
+"d": 7.7,
+"rel": -98,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": -28.7,
+"d": 7.2,
+"rel": 82,
+"prefab": "Shed_03_wide"
+}
+]
+},
+{
+"id": "everon-1256-5948",
+"map": "everon",
+"road": "RG_Road_Cobblestone_01",
+"width": 18,
+"depth": 45,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 13.5,
+"rel": 4,
+"prefab": "House_Village_E_1L02t"
+},
+{
+"cat": "shed",
+"u": 6.4,
+"d": 39.1,
+"rel": 95,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": 10.2,
+"d": 38.8,
+"rel": -85,
+"prefab": "Shed_03_wide"
+}
+]
+},
+{
+"id": "everon-9253-2052",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_01_DashedLine",
+"width": 33,
+"depth": 34,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 11.8,
+"rel": -178,
+"prefab": "House_Wooden_E_1I01_panels"
+},
+{
+"cat": "shed",
+"u": -14.1,
+"d": 2.1,
+"rel": 6,
+"prefab": "Shed_01"
+},
+{
+"cat": "shed",
+"u": 11.2,
+"d": 28.2,
+"rel": 93,
+"prefab": "Shed_01"
+}
+]
+},
+{
+"id": "everon-5739-7047",
+"map": "everon",
+"road": "RG_Road_Asphalt_E_03",
+"width": 27,
+"depth": 40,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 4.1,
+"rel": 0,
+"prefab": "House_Wooden_E_1I01"
+},
+{
+"cat": "annex",
+"u": -18.7,
+"d": 10.8,
+"rel": 19,
+"prefab": "Barn_E_02"
+},
+{
+"cat": "shed",
+"u": -8.1,
+"d": 34.0,
+"rel": 104,
+"prefab": "Shed_01"
+}
+]
+},
+{
+"id": "kolguyev-7627-9235",
+"map": "kolguyev",
+"road": "RG_Road_Dirt_02",
+"width": 57,
+"depth": 24,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 17.8,
+"rel": -176,
+"prefab": "FarmHouse_USSR_1L01_Wood"
+},
+{
+"cat": "shed",
+"u": 13.6,
+"d": 7.7,
+"rel": -178,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -17.1,
+"d": 12.6,
+"rel": -178,
+"prefab": "Shed_06_grey"
+},
+{
+"cat": "shed",
+"u": 32.3,
+"d": 15.0,
+"rel": -91,
+"prefab": "Shed_02_big_V2"
+}
+]
+},
+{
+"id": "kolguyev-8678-10162",
+"map": "kolguyev",
+"road": "RG_Road_Dirt_02",
+"width": 61,
+"depth": 26,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 10.2,
+"rel": -179,
+"prefab": "House_Wooden_E_1I01"
+},
+{
+"cat": "shed",
+"u": 26.5,
+"d": 10.9,
+"rel": -78,
+"prefab": "Shed_02_big_V2"
+},
+{
+"cat": "shed",
+"u": -26.7,
+"d": 19.9,
+"rel": 52,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "kolguyev-8647-10141",
+"map": "kolguyev",
+"road": "RG_Road_Dirt_02",
+"width": 58,
+"depth": 36,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 17.9,
+"rel": -77,
+"prefab": "FarmHouse_USSR_1L01_Green"
+},
+{
+"cat": "shed",
+"u": -0.2,
+"d": 30.2,
+"rel": 16,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": 17.3,
+"d": 4.2,
+"rel": 106,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "shed",
+"u": -32.5,
+"d": 13.9,
+"rel": 15,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "kolguyev-3774-3799",
+"map": "kolguyev",
+"road": "RG_Road_Dirt_02",
+"width": 42,
+"depth": 25,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 11.3,
+"rel": 180,
+"prefab": "House_Wooden_E_1I01_panels"
+},
+{
+"cat": "shed",
+"u": 17.9,
+"d": 4.3,
+"rel": 1,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": 34.1,
+"d": 19.1,
+"rel": -174,
+"prefab": "Shed_02_line"
+}
+]
+},
+{
+"id": "kolguyev-6860-4429",
+"map": "kolguyev",
+"road": "RG_Road_Dirt_02",
+"width": 34,
+"depth": 27,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 20.9,
+"rel": 5,
+"prefab": "FarmHouse_USSR_1L01_Wood"
+},
+{
+"cat": "shed",
+"u": -18.9,
+"d": 21.0,
+"rel": 93,
+"prefab": "Shed_02_line"
+},
+{
+"cat": "shed",
+"u": -18.9,
+"d": 15.7,
+"rel": 93,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": -25.5,
+"d": 9.1,
+"rel": -174,
+"prefab": "Shed_06_grey"
+}
+]
+},
+{
+"id": "kolguyev-6807-4427",
+"map": "kolguyev",
+"road": "RG_Road_Dirt_02",
+"width": 26,
+"depth": 44,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 17.7,
+"rel": 178,
+"prefab": "House_Wooden_E_1I01"
+},
+{
+"cat": "shed",
+"u": 18.0,
+"d": 12.1,
+"rel": -94,
+"prefab": "Shed_02_big_V1"
+},
+{
+"cat": "shed",
+"u": 0.0,
+"d": 38.0,
+"rel": 172,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "kolguyev-3786-3772",
+"map": "kolguyev",
+"road": "RG_Road_Dirt_02",
+"width": 28,
+"depth": 38,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 13.0,
+"rel": 96,
+"prefab": "FarmHouse_USSR_1L01_Wood"
+},
+{
+"cat": "shed",
+"u": -11.7,
+"d": 2.3,
+"rel": -2,
+"prefab": "Shed_02_square"
+},
+{
+"cat": "shed",
+"u": -19.5,
+"d": 31.8,
+"rel": 2,
+"prefab": "Shed_02_square"
+}
+]
+},
+{
+"id": "kolguyev-4374-8119",
+"map": "kolguyev",
+"road": "RG_Road_Dirt_02",
+"width": 31,
+"depth": 44,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 16.0,
+"rel": 90,
+"prefab": "FarmHouse_USSR_1L01_Wood"
+},
+{
+"cat": "shed",
+"u": -17.4,
+"d": 17.8,
+"rel": 91,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "shed",
+"u": 5.4,
+"d": 37.7,
+"rel": -180,
+"prefab": "Shed_02_square"
+}
+]
+},
+{
+"id": "arland-2869-1702",
+"map": "arland",
+"road": "RG_Road_Dirt_01",
+"width": 35,
+"depth": 59,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 28.5,
+"rel": -88,
+"prefab": "FarmHouse_E_1L01"
+},
+{
+"cat": "shed",
+"u": 1.3,
+"d": 52.6,
+"rel": -175,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": 27.0,
+"d": 38.7,
+"rel": 85,
+"prefab": "Shed_02_big_V2"
+}
+]
+},
+{
+"id": "arland-3096-2836",
+"map": "arland",
+"road": "RG_Road_Asphalt_E_02",
+"width": 24,
+"depth": 27,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 12.2,
+"rel": -173,
+"prefab": "House_Village_E_1I05t"
+},
+{
+"cat": "annex",
+"u": 15.6,
+"d": 9.8,
+"rel": 97,
+"prefab": "HouseAddon_Workshop_E_01"
+},
+{
+"cat": "shed",
+"u": 16.4,
+"d": 21.1,
+"rel": 7,
+"prefab": "Shed_02_big_V2"
+}
+]
+},
+{
+"id": "arland-3097-2699",
+"map": "arland",
+"road": "RG_Road_Asphalt_E_03",
+"width": 26,
+"depth": 23,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 5.0,
+"rel": 179,
+"prefab": "House_Village_E_1I08t_white"
+},
+{
+"cat": "annex",
+"u": -11.4,
+"d": 4.8,
+"rel": -1,
+"prefab": "HouseAddon_Shed_E_01"
+},
+{
+"cat": "shed",
+"u": 7.0,
+"d": 16.8,
+"rel": -95,
+"prefab": "Shed_01"
+}
+]
+},
+{
+"id": "arland-3174-2755",
+"map": "arland",
+"road": "RG_Road_Dirt_01",
+"width": 36,
+"depth": 30,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 11.3,
+"rel": -94,
+"prefab": "House_Village_E_1I04sr_red"
+},
+{
+"cat": "shed",
+"u": 16.1,
+"d": 3.2,
+"rel": -3,
+"prefab": "Shed_01"
+},
+{
+"cat": "shed",
+"u": 27.5,
+"d": 23.5,
+"rel": 170,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "arland-2300-1239",
+"map": "arland",
+"road": "RG_Road_Dirt_02",
+"width": 24,
+"depth": 39,
+"items": [
+{
+"cat": "farm",
+"u": 0.0,
+"d": 24.8,
+"rel": -86,
+"prefab": "FarmHouse_E_1L01"
+},
+{
+"cat": "shed",
+"u": -5.3,
+"d": 9.5,
+"rel": 0,
+"prefab": "Shed_03"
+},
+{
+"cat": "shed",
+"u": -16.5,
+"d": 33.2,
+"rel": 180,
+"prefab": "Shed_02_small"
+}
+]
+},
+{
+"id": "arland-2790-1647",
+"map": "arland",
+"road": "RG_Road_Asphalt_E_02",
+"width": 30,
+"depth": 49,
+"items": [
+{
+"cat": "houseL",
+"u": 0.0,
+"d": 17.0,
+"rel": 171,
+"prefab": "House_Town_E_2I01_orange"
+},
+{
+"cat": "shed",
+"u": 0.7,
+"d": 41.6,
+"rel": -99,
+"prefab": "Shed_03"
+},
+{
+"cat": "annex",
+"u": -17.4,
+"d": 34.7,
+"rel": -117,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": -19.4,
+"d": 38.9,
+"rel": -117,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "annex",
+"u": -21.5,
+"d": 43.2,
+"rel": -117,
+"prefab": "Garage_E_01"
+}
+]
+},
+{
+"id": "arland-3182-2835",
+"map": "arland",
+"road": "RG_Road_Asphalt_E_03",
+"width": 55,
+"depth": 20,
+"items": [
+{
+"cat": "houseM",
+"u": 0.0,
+"d": 11.8,
+"rel": -88,
+"prefab": "Villa_E_2I01"
+},
+{
+"cat": "annex",
+"u": -19.8,
+"d": 11.0,
+"rel": -177,
+"prefab": "Garage_E_01"
+},
+{
+"cat": "shed",
+"u": 27.0,
+"d": 14.5,
+"rel": -83,
+"prefab": "Shed_02_square"
+}
+]
+},
+{
+"id": "arland-3206-2820",
+"map": "arland",
+"road": "RG_Road_Asphalt_E_03",
+"width": 54,
+"depth": 44,
+"items": [
+{
+"cat": "houseS",
+"u": 0.0,
+"d": 8.0,
+"rel": -103,
+"prefab": "House_Village_E_1I01_beige"
+},
+{
+"cat": "annex",
+"u": -16.7,
+"d": 25.4,
+"rel": 91,
+"prefab": "Barn_E_02"
+},
+{
+"cat": "shed",
+"u": 1.4,
+"d": 37.7,
+"rel": -127,
+"prefab": "Shed_03_wide"
+},
+{
+"cat": "annex",
+"u": 28.8,
+"d": 22.0,
+"rel": 140,
+"prefab": "Garage_E_01"
+}
+]
+}
+]
+}
