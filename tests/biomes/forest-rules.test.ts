@@ -14,7 +14,7 @@ test('valleys and slopes are preferred over ridges and flats', () => {
   assert.ok(forestBias(0.4, 0.1, 0) > forestBias(0.9, 0.1, 0))
 })
 test('conifers higher, broadleaf lower', () => {
-  assert.equal(leafOf(0.8), 'needle'); assert.equal(leafOf(0.1), 'broad')
+  assert.equal(leafOf(0.8), 'needle'); assert.equal(leafOf(0.05), 'broad')
 })
 
 // #7 forests by altitude and slope
@@ -42,9 +42,9 @@ test('a wood climbing a hill changes species with altitude, each forest in one b
 import { zoneForestLeaf, forestGeneratorFor } from '../../src/biomes/vegetation.ts'
 test('zone forest species: explicit choice kept, auto from altitude then biome', () => {
   assert.equal(zoneForestLeaf('broad', 0.9), 'broad')
-  assert.equal(zoneForestLeaf('auto', 0.1), 'broad')
+  assert.equal(zoneForestLeaf('auto', 0.05), 'broad')
   assert.equal(zoneForestLeaf('auto', 0.8), 'needle')
-  assert.equal(zoneForestLeaf('auto', 0.4), 'mixed')
+  assert.equal(zoneForestLeaf('auto', 0.25), 'mixed')
   assert.equal(zoneForestLeaf('auto', undefined, 'winter_tundra'), zoneForestLeaf('auto', undefined, 'winter_tundra'))
   assert.notEqual(zoneForestLeaf('auto', undefined, 'tropical'), 'needle')
   // conifer biomes lean needle earlier than Everon at the same height

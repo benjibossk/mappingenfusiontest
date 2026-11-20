@@ -718,7 +718,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const camp: CampaignResult = { fields: [], hedges: [], shapes: [] }
   // field groves are low-ground woods: broadleaf in Everon, mixed in the conifer biomes (#7)
   // low-ground probe 0.1: below Everon's broad threshold (0.15 since 46cec76; 0.2 had silently turned them mixed)
-  const groveLeaf = leafOf(0.1, forestTuning(p.biome).needleShift)
+  const groveLeaf = leafOf(0.05, forestTuning(p.biome).needleShift)
   const seen = new Set<string>(), laid: Feature<Polygon>[] = [], countryside: number[][] = []
   const fieldSite: { x: number; z: number; f: number; r: number }[] = [] // the town of each plot (crop colouring)
   sites.forEach((s, k) => {
