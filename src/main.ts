@@ -13,7 +13,7 @@ import { Collab, type CollabEvents, type CollabTransport, type Op } from './coll
 import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
-import { cemeteryPathMasks, parcelGroundMasks } from './modules/parcelground'
+import { cemeteryPathMasks, parcelGroundMasks, yardSurfaceMasks } from './modules/parcelground'
 import { POWER_DEFAULTS, mergePowerLines, tieJunctions, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
@@ -1561,6 +1561,7 @@ function parcelGround() {
   for (const z of zones) if (z.kind === 'site' && z.sub === 'cemetery') out.push(...cemeteryPathMasks(z.boxes.filter((b) => b.role === 'grave').map((b) => b.corners), z.shapes.find((sh) => sh.id.endsWith('_aisle'))?.points, seed))
   const yards = settled.filter((b) => b.role === 'farmyard').map((b) => ({ corners: b.corners.map((v, i) => (i % 2 ? b.z : b.x) + (v - (i % 2 ? b.z : b.x)) * 1.8) }))
   out.push(...parcelGroundMasks([...setGardens, ...yards], settled, seed))
+  for (const z of zones) if (z.rpRole === 'sawmill' && z.sub?.startsWith('parcel:')) out.push(...yardSurfaceMasks(z.boxes[0]?.corners ?? [], seed)) // worn gravel yard under the vanilla sawmill
   return out
 }
 let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences

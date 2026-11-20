@@ -108,3 +108,21 @@ export function parcelGroundMasks(parcels: { corners: number[] }[], buildings: {
   }
   return out
 }
+
+/** Working yard (vanilla sawmill...): the whole box painted with a worn gravel / dirt surface, parallel soft bands
+ *  inset `inset` m from the box edge (corners = 4 corners in order, c1 - c0 = width, c3 - c0 = depth). */
+export function yardSurfaceMasks(corners: number[], seed = 1, core = 'Dirt_03', inset = 2): GroundMask[] {
+  if (corners.length < 8) return []
+  const [x0, z0, x1, z1, , , x3, z3] = corners
+  const W = Math.hypot(x1 - x0, z1 - z0), D = Math.hypot(x3 - x0, z3 - z0)
+  if (W < 2 * inset + 2 || D < 2 * inset + 2) return []
+  const ux = (x1 - x0) / W, uz = (z1 - z0) / W, vx = (x3 - x0) / D, vz = (z3 - z0) / D
+  const rand = rng(hash(x0, z0, seed)), out: GroundMask[] = [], step = 3.5
+  for (let v = inset + 1.5; v <= D - inset - 1.5 + 1e-6; v += step) {
+    const a = inset + rand() * 1.5, b = W - inset - rand() * 1.5
+    const line = wobbly(a, v, b, v, 0.6, rand), w: number[] = []
+    for (let k = 0; k < line.length; k += 2) w.push(x0 + ux * line[k] + vx * line[k + 1], z0 + uz * line[k] + vz * line[k + 1])
+    out.push({ points: w, half: 2 + rand() * 0.4, edge: 1.2 + rand() * 0.6, core })
+  }
+  return out
+}

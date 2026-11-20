@@ -39,7 +39,7 @@ export interface AssetPack {
 }
 
 /** one child of a composition, relative to the composition centre (model frame, +Z = street front) */
-export interface CompoItem { prefab: string; x: number; y: number; z: number; yaw: number; scale?: number }
+export interface CompoItem { prefab: string; x: number; y: number; z: number; yaw: number; scale?: number; pitch?: number; roll?: number }
 /** a ready-made parcel: a Workbench composition prefab (parent + children) flattened to items */
 export interface Composition {
   id: string
@@ -54,6 +54,8 @@ export interface Composition {
   licence: string
   /** whole plot of the parcel library (parcelLib.ts): house + fence + trees, cemetery, yard... absent = small sub-composition */
   category?: ParcelCategory
+  /** finer kind inside the category (industrial: 'sawmill'); a pick without subtype skips subtyped parcels */
+  subtype?: string
   /** 'front': the plot's +Z side faces its access road (aligned to the nearest road when placed); 'none': free */
   road?: 'front' | 'none'
   /** where it was harvested: [map, x, z] */
