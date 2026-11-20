@@ -792,24 +792,64 @@ const PILLAR_DROP = 835
 const WOOD_LEN = 50.3 // PierWooden_02_bridge length (Z -25..25.3)
 const BRIDGE_OVER = 8 // metres of deck buried in each bank
 
-//! one bridge per road gap: deck pieces end to end along the road, level with the higher bank,
-//! a pillar under every joint. `half(id)` = road half width (undefined: not a road, e.g. barriers)
+/** [M] steepest deck allowed (rise / run): above it the higher bank sets the deck and the lower end is flagged */
+export const BRIDGE_MAX_PITCH = 0.08
+export interface RiverBridge { id: string; a: [number, number, number]; b: [number, number, number]; slope: number; capped: boolean; deckIds: string[] }
+
+//! one bridge per road gap: deck pieces end to end along ONE straight 3D line from the road height on bank A
+//! to the road height on bank B (every piece and pillar on that line, same tilt; capped at BRIDGE_MAX_PITCH).
+//! `heights` = the FINAL relief (road beds carved): the abutments meet the road, not the raw terrain.
+//! `half(id)` = road half width (undefined: not a road, e.g. barriers)
 export function bridges(gaps: { id: string; from: [number, number]; to: [number, number] }[], heights: ArrayLike<number>, grid: Grid, half: (id: string) => { half: number; dirt: boolean } | undefined): ProjectEntity[] {
+  return riverBridges(gaps, heights, grid, half).entities
+}
+export function riverBridges(gaps: { id: string; from: [number, number]; to: [number, number] }[], heights: ArrayLike<number>, grid: Grid, half: (id: string) => { half: number; dirt: boolean } | undefined): { entities: ProjectEntity[]; plans: RiverBridge[] } {
   const at = sampler(heights, grid)
-  const out: ProjectEntity[] = []
+  const out: ProjectEntity[] = [], plans: RiverBridge[] = []
   const r2 = (v: number) => Math.round(v * 100) / 100
+  const cd = (deg: number) => Math.round(deg * 100) // centi-degrees (int field, MG_ProjectEntity pitchcd / rollcd)
   gaps.forEach((g, k) => {
     const road = half(g.id)
     if (!road) return
     const h = road.half
     const dx = g.to[0] - g.from[0], dz = g.to[1] - g.from[1], L = Math.hypot(dx, dz)
     if (L < 2 || L > 200) return
+    // the common line: abutment heights from the road bed, slope capped (the higher bank wins)
+    // sampled 3 m back on the road side of each end: the bed there, not the river bank carved at the gap edge
+    const ex = dx / L, ez = dz / L
+    let hA = at(g.from[0] - ex * 3, g.from[1] - ez * 3) + 0.05, hB = at(g.to[0] + ex * 3, g.to[1] + ez * 3) + 0.05
+    let slope = (hB - hA) / L, capped = false
+    if (Math.abs(slope) > BRIDGE_MAX_PITCH) {
+      capped = true
+      slope = Math.sign(slope) * BRIDGE_MAX_PITCH
+      if (hA > hB) hB = hA + slope * L
+      else hA = hB - slope * L
+    }
+    const hMid = (hA + hB) / 2
+    const cx = (g.from[0] + g.to[0]) / 2, cz = (g.from[1] + g.to[1]) / 2
+    const lineY = (s: number) => hMid + slope * s // s: metres from the gap centre towards `to`
+    const base = `${g.id}_BRIDGE_${k}`
+    const deckIds: string[] = []
+    const tilt = (Math.atan(slope) * 180) / Math.PI
+    if (road.dirt) {
+      // wooden bridge: +Z along the road, pivot in the middle, deck surface at the pivot height
+      const wy = Math.round((Math.atan2(dx, dz) * 180) / Math.PI)
+      const wx = Math.sin((wy * Math.PI) / 180), wz = Math.cos((wy * Math.PI) / 180)
+      const n = Math.max(1, Math.ceil((L + 4) / WOOD_LEN))
+      for (let j = 0; j < n; j++) {
+        const o = (j - (n - 1) / 2) * WOOD_LEN
+        const id = `${base}_WOOD_${j}`
+        deckIds.push(id)
+        // nose up along +Z = negative editor X angle (SlopeAngles convention)
+        out.push({ id, prefab: BRIDGE.wooden, x: r2(cx + wx * o), z: r2(cz + wz * o), yaw: wy, ycm: Math.round(lineY(o) * 100), ...(cd(tilt) ? { pitchcd: -cd(tilt) } : {}) })
+      }
+      plans.push({ id: base, a: [g.from[0], g.from[1], hA], b: [g.to[0], g.to[1], hB], slope, capped, deckIds })
+      return
+    }
     // +X of the model along the road: yaw turns +Z towards (sin, cos), so +X goes to (cos, -sin).
     // The yaw sent is whole degrees: lay the pieces along that rounded direction, else they drift sideways
     const yaw = Math.round((Math.atan2(-dz, dx) * 180) / Math.PI)
     const ux = Math.cos((yaw * Math.PI) / 180), uz = -Math.sin((yaw * Math.PI) / 180)
-    const top = Math.max(at(g.from[0], g.from[1]), at(g.to[0], g.to[1])) + 0.05
-    const ycm = Math.round((top - 0.13) * 100)
     const need = L + 2 * BRIDGE_OVER // the ends go into the banks
     let pieces: { prefab: string; len: number }[]
     if (h <= 2.4 && need <= 13) pieces = [{ prefab: BRIDGE.small, len: 13 }]
@@ -820,29 +860,24 @@ export function bridges(gaps: { id: string; from: [number, number]; to: [number,
       if (rest > 13) pieces.push({ prefab: BRIDGE.narrowLong, len: 26 })
       else if (rest > 0) pieces.push({ prefab: BRIDGE.narrow, len: 13 })
     }
-    if (road.dirt) {
-      // wooden bridge: +Z along the road, deck surface assumed at the pivot height (to check in game)
-      const wy = Math.round((Math.atan2(dx, dz) * 180) / Math.PI)
-      const wx = Math.sin((wy * Math.PI) / 180), wz = Math.cos((wy * Math.PI) / 180)
-      const n = Math.max(1, Math.ceil((L + 4) / WOOD_LEN))
-      const cx = (g.from[0] + g.to[0]) / 2, cz = (g.from[1] + g.to[1]) / 2
-      for (let j = 0; j < n; j++) {
-        const o = (j - (n - 1) / 2) * WOOD_LEN
-        out.push({ id: `${g.id}_BRIDGE_${k}_WOOD_${j}`, prefab: BRIDGE.wooden, x: r2(cx + wx * o), z: r2(cz + wz * o), yaw: wy, ycm: Math.round(top * 100) })
-      }
-      return
-    }
     const total = pieces.reduce((s, p) => s + p.len, 0)
-    const cx = (g.from[0] + g.to[0]) / 2, cz = (g.from[1] + g.to[1]) / 2
-    let s = -total / 2
-    const base = `${g.id}_BRIDGE_${k}`
+    // pivots are measured along the horizontal; along the tilted deck a piece covers len*cos: shrink the
+    // horizontal step so consecutive pieces meet end to end on the line (no gap, no kink)
+    const c = Math.cos(Math.atan(slope))
+    let s = (-total * c) / 2
+    // a deck rising along +X = negative editor Z angle (roll), SlopeAngles convention
+    const rollcd = -cd(tilt)
     pieces.forEach((p, j) => {
       const x = cx + ux * s, z = cz + uz * s
-      out.push({ id: `${base}_DECK_${j}`, prefab: p.prefab, x: r2(x), z: r2(z), yaw, ycm })
+      const y = lineY(s) - 0.13 * c // pivot under the deck top, along the deck normal
+      const id = `${base}_DECK_${j}`
+      deckIds.push(id)
+      out.push({ id, prefab: p.prefab, x: r2(x), z: r2(z), yaw, ycm: Math.round(y * 100), ...(rollcd ? { rollcd } : {}) })
       if (j > 0 && p.prefab !== BRIDGE.small)
-        out.push({ id: `${base}_PILLAR_${j}`, prefab: p.prefab === BRIDGE.wide ? BRIDGE.pillar : BRIDGE.pillarNarrow, x: r2(x), z: r2(z), yaw, ycm: ycm - PILLAR_DROP })
-      s += p.len
+        out.push({ id: `${base}_PILLAR_${j}`, prefab: p.prefab === BRIDGE.wide ? BRIDGE.pillar : BRIDGE.pillarNarrow, x: r2(x), z: r2(z), yaw, ycm: Math.round(y * 100) - PILLAR_DROP })
+      s += p.len * c
     })
+    plans.push({ id: base, a: [g.from[0], g.from[1], hA], b: [g.to[0], g.to[1], hB], slope, capped, deckIds })
   })
-  return out
+  return { entities: out, plans }
 }

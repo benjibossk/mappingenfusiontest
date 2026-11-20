@@ -82,3 +82,15 @@ if (process.argv.includes('--list')) for (const i of issues.slice(0, 40)) consol
   }
   console.log(`power vs roads (MV+LV): poles < 10 m from a road ${Math.round((100 * near) / Math.max(1, poles))} % (vanilla 87 %), length within 15 m ${Math.round((100 * follow) / Math.max(1, len))} %, crossings ${(cross / Math.max(0.001, len / 1000)).toFixed(1)}/km (${Math.round((100 * steep) / Math.max(1, cross))} % at >= 60 deg)`)
 }
+// harbours (harbour.ts, HARBOUR_VANILLA.md): pieces floating / sunk vs sea level, misaligned quay pieces, isolated
+// breakwater pieces, land props in the water, sea parts on dry ground
+{
+  const { harbourIssues } = await import('../../src/modules/harbour')
+  const g = w.grid, H = w.heights, at = (x: number, z: number) => H[Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))]
+  for (const z of w.zones.filter((q) => q.harbour)) {
+    const is = harbourIssues(z.entities, at), by: Record<string, number> = {}
+    for (const i of is) by[i.kind] = (by[i.kind] ?? 0) + 1
+    console.log(`harbour ${z.id} ${z.harbour!.compo} (${z.entities.length} objects): ${is.length ? Object.entries(by).map(([k, n]) => `${k} ${n}`).join(', ') : 'ok'}`)
+    if (process.argv.includes('--list')) for (const i of is.slice(0, 15)) console.log(' ', JSON.stringify({ ...i, prefab: z.entities.find((e) => e.id === i.id)?.prefab.split('/').pop() }))
+  }
+}

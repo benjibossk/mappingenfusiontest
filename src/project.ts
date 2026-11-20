@@ -39,13 +39,27 @@ const AVOID_KEYS: [keyof AvoidSpec, string][] = [
   ['objects', 'm_bAvoidObjects'], ['roads', 'm_bAvoidRoads'], ['rivers', 'm_bAvoidRivers'], ['powerLines', 'm_bAvoidPowerLines'],
   ['tracks', 'm_bAvoidTracks'], ['lakes', 'm_bAvoidLakes'], ['regenerate', 'm_bRegenerateByObstacleChanges'],
 ]
+/** forest / brushland area generator (ForestGeneratorEntity) on a closed shape */
+export const isForestGenShape = (sh: Pick<ProjectShape, 'kind' | 'closed' | 'generator'>): boolean =>
+  sh.kind === 'polyline' && !!sh.closed && /Prefabs\/WEGenerators\/(Forest|Brushland)\//i.test(sh.generator ?? '')
+const FOREST_MUST: AvoidSpec = { objects: true, roads: true, powerLines: true, tracks: true }
+const MUST_KEYS = ['m_bAvoidObjects', 'm_bAvoidRoads', 'm_bAvoidPowerLines', 'm_bAvoidTracks']
+/** forest generator shapes (after withAvoid) missing one of the mandatory avoid flags set to "1": must be 0 */
+export const forestAvoidMissing = (shapes: ProjectShape[]): ProjectShape[] => shapes.filter((sh) => isForestGenShape(sh) &&
+  MUST_KEYS.some((k) => { const i = sh.paramKeys?.indexOf(k) ?? -1; return i < 0 || sh.paramValues?.[i] !== '1' }))
 /** avoid -> paramKeys/paramValues ("1"/"0"), set on the generator by MG_ShapeBuilder; explicit params win */
 export const withAvoid = (sh: ProjectShape): ProjectShape => {
+  // every forest / brushland area generator (FOREST_GEN, _PROD, _GROVE, _GP_BELT/STRIP/COPSE, riparian, hedges...)
+  // ALWAYS keeps clear of objects, roads and power lines, whatever the caller set: trees never grow on a road
+  const forest = isForestGenShape(sh)
+  if (forest) sh = { ...sh, avoid: { ...FOREST_AVOID, ...sh.avoid, ...FOREST_MUST } }
   if (!sh.avoid) return sh
   const keys = [...(sh.paramKeys ?? [])], values = [...(sh.paramValues ?? [])]
   for (const [k, name] of AVOID_KEYS) {
     const v = sh.avoid[k]
-    if (v === undefined || keys.includes(name)) continue
+    const at = keys.indexOf(name)
+    if (v === undefined) continue
+    if (at >= 0) { if (forest && MUST_KEYS.includes(name)) values[at] = '1'; continue }
     keys.push(name); values.push(v ? '1' : '0')
   }
   const { avoid: _a, ...rest } = sh
@@ -67,6 +81,9 @@ export interface ProjectEntity {
   /** degrees, tilt on the terrain slope for small props / fences (src/modules/slopeAlign.ts); absent = upright */
   pitch?: number
   roll?: number
+  /** centi-degrees, exact tilt of pitched bridge decks (water.ts riverBridges); wins over pitch / roll */
+  pitchcd?: number
+  rollcd?: number
 }
 
 export interface Project {

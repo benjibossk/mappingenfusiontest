@@ -58,9 +58,11 @@ import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
 import { suggestMilitary, type MilitaryKind } from './military'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
-import { pickTemplate, fitPort, type VanillaTemplate } from './vanillaSites'
+import { fitPort, type VanillaTemplate } from './vanillaSites'
 import { placeRpPlaces } from './rpPlaces'
-import { buildHarbour, harbourTier, PORT_SEA_RX } from './harbour'
+import { buildHarbour, harbourTier, pickHarbour, type HarbourTier } from './harbour'
+import { parcelTemplate } from '../library/parcelLib'
+import type { Composition } from '../library/schema'
 import { lampConsumers, streetLights, type StreetLamp } from './streetLights'
 import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite, zoneBlocked, zoneDisc, type ZoneItem } from './zones'
 
@@ -597,9 +599,13 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         const off = roadHalf(rd) + setback
         const x = ax + dx * t + nx * off, z = az + dz * t + nz * off
         if (isWater(x, z) || (near && !near(x, z)) || !free(x, z, r0, 'vanilla:' + type, gap)) continue
-        let sx = x, sz = z, syaw = (Math.atan2(-nx, -nz) * 180) / Math.PI, tpl: VanillaTemplate | undefined, fit0: ReturnType<typeof fitPort> = null
+        let sx = x, sz = z, syaw = (Math.atan2(-nx, -nz) * 180) / Math.PI, tpl: VanillaTemplate | undefined, fit0: ReturnType<typeof fitPort> = null, compo: Composition | undefined, tier0: HarbourTier = 'fishing'
         if (type === 'port') { // sea side to the sea, breakwaters / piers in the water, sheds ashore, no road through the footprint
-          tpl = pickTemplate('port', ss('settlements', 'vanilla-port', k + tries), (t) => t.radius <= 160) ?? undefined
+          // a whole vanilla harbour from the parcel library (harbour.ts): exact pieces, heights, chaining
+          const near0 = sites.reduce<Site | null>((b, s) => (!b || Math.hypot(s.x - x, s.z - z) < Math.hypot(b.x - x, b.z - z) ? s : b), null)
+          tier0 = harbourTier(near0 && Math.hypot(near0.x - x, near0.z - z) < 1500 ? near0.kind : undefined)
+          compo = pickHarbour(tier0, ss('settlements', 'vanilla-port', k + tries)) ?? undefined
+          tpl = compo ? parcelTemplate(compo) : undefined
           const lines = allRoadLines(), pads = [...roads.map((r) => (isPaved(r.type) ? 40 : 8)), ...zones.flatMap((zn) => zn.roads.map(() => 8))]
           const fit = tpl && fitPort(tpl, hAt, x, z, lines, { roadPads: pads })
           if (!tpl || !fit || !free(fit.x, fit.z, tpl.radius * 0.6, 'vanilla:' + type, gap)) continue
@@ -607,13 +613,10 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         }
         const zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x: sx, z: sz, yaw: syaw, seed: ss('settlements', 'vanilla-' + type, k), template: tpl })
         if (!zn || (type !== 'port' && zoneWet(zn))) continue
-        if (type === 'port') { // harbour around the template core (harbour.ts): basin, apron, arms, jetties, buoys, quay street
-          const near = sites.reduce<Site | null>((b, s) => (!b || Math.hypot(s.x - sx, s.z - sz) < Math.hypot(b.x - sx, b.z - sz) ? s : b), null)
-          const tier = harbourTier(near && Math.hypot(near.x - sx, near.z - sz) < 1500 ? near.kind : undefined)
-          const hb = buildHarbour({ id: zn.id, tier, x: sx, z: sz, seed: ss('settlements', 'harbour', k), hAt, core: zn.entities, isSea: (q) => PORT_SEA_RX.test(q), roads: allRoadLines(), avoid: zones.map(zoneDisc) })
-          if (!hb) continue
-          zn.harbour = hb.plan; zn.entities.push(...hb.entities); zn.roads.push(...hb.roads); zn.boxes.push(...hb.boxes)
-          zn.warnings.push(`harbour ${tier}${fit0 && !fit0.deep ? ' (template heads shallow before dredging)' : ''}`)
+        if (type === 'port') { // the vanilla harbour itself, every object at its height; terrain sculpted from its samples
+          const hb = buildHarbour({ id: zn.id, tier: tier0, x: sx, z: sz, yaw: syaw, compo: compo!, roads: allRoadLines(), avoid: zones.map(zoneDisc) })
+          zn.harbour = hb.plan; zn.entities = hb.entities; zn.roads.push(...hb.roads); zn.boxes.push(...hb.boxes)
+          zn.warnings.push(`harbour ${tier0} ${compo!.name}${fit0 && !fit0.deep ? ' (shallow before dredging)' : ''}`)
         }
         zn.sub = `vanilla:${type}:${zn.sub?.slice(8) ?? ''}`
         zones.push(zn)
