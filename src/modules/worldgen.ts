@@ -806,7 +806,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const onRoadCells = new Set<number>()
     for (const r of [...allRoads, ...settlement.lanes]) {
       if (r.pts.length < 4) continue
-      const c = centreLine(r.pts, 2), R = roadHalf(r) + 1.5, n = Math.ceil(R / 2)
+      const c0 = centreLine(r.pts, 2), R = roadHalf(r) + 1.5, n = Math.ceil(R / 2)
+      // both ends run 1.75 m further later (overlapJunctions, step below): extend them here too
+      const ext = (x: number, z: number, px: number, pz: number) => { const L = Math.hypot(x - px, z - pz) || 1; return [x + ((x - px) / L) * 2, z + ((z - pz) / L) * 2] }
+      const k = c0.length
+      const c = k >= 4 ? [...ext(c0[0], c0[1], c0[2], c0[3]), ...c0, ...ext(c0[k - 2], c0[k - 1], c0[k - 4], c0[k - 3])] : c0
       for (let i = 0; i < c.length; i += 2) {
         const cx = Math.floor(c[i] / 2), cz = Math.floor(c[i + 1] / 2)
         for (let dx = -n; dx <= n; dx++) for (let dz = -n; dz <= n; dz++) if (Math.hypot(dx * 2, dz * 2) <= R + 1) onRoadCells.add((cx + dx) * 100003 + (cz + dz))
