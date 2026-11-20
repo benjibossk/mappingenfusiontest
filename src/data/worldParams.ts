@@ -87,6 +87,6 @@ export const WORLD = {
   // 1.8-2.7 km per km² of LAND (see docs/MAP_KNOWLEDGE_BASE.md "Calibration du générateur")
   vegetation: {
     /** forest cover of the land at slider 1: [enfumap] green (forest + meadow) median 44 % [visual]; [KB§11] forest 35-50 % */
-    forestCover: 0.35,
+    forestCover: 0.5,
   },
 } as const
