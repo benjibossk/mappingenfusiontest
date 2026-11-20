@@ -13,7 +13,7 @@ import { P2PCollab, newRoom } from './p2p'
 import { APP_VERSION, CHANGELOG } from './data/changelog'
 import { loadTrace, saveTrace, traceDataUrl } from './traceStore'
 import { cemeteryPathMasks, parcelGroundMasks } from './modules/parcelground'
-import { POWER_DEFAULTS, mergePowerLines, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
+import { POWER_DEFAULTS, mergePowerLines, tieJunctions, placePoles, poleDirtMasks, powerLineShape, type PowerKind, type PowerLine, type PowerStyle } from './modules/power'
 import { powerKindOf } from './modules/osmImport'
 import { powerWorld } from './modules/worldpower'
 import { accessShapes, gridTopology, planGrid, stationEntities, type PowerDistrib, type GridSite, type Station } from './modules/powergrid'
@@ -1979,7 +1979,9 @@ async function camTo(x: number, z: number) {
   if (!(await setCamera({ x, y: ground + 60, z: z - back, yaw: 0, pitch: -35 })) && !camWarned) { camWarned = true; toast(t('cv.noWb'), 'info', undefined, 2500) }
 }
 function gotoComment(x: number, z: number) { panTo(x, z); void camTo(x, z) }
-const wbComments = (): WbComment[] => threads().filter((th) => Number.isFinite(th.c.x)).map((th) => ({ x: th.c.x!, z: th.c.z!, n: th.n, text: th.c.text ?? '', resolved: th.resolved }))
+// a comment kept from another project / a bigger map (live: MG_COM_0 at 9483, 9436 on a 4096 m world) is not sent
+const inWorld = (x: number, z: number) => { const g = island?.grid; return !g || (x >= g.minX && z >= g.minZ && x <= g.minX + (g.cols - 1) * g.step && z <= g.minZ + (g.rows - 1) * g.step) }
+const wbComments = (): WbComment[] => threads().filter((th) => Number.isFinite(th.c.x) && inWorld(th.c.x!, th.c.z!)).map((th) => ({ x: th.c.x!, z: th.c.z!, n: th.n, text: th.c.text ?? '', resolved: th.resolved }))
 let comTimer = 0, comSig = ''
 function syncComments() {
   clearTimeout(comTimer)
@@ -4505,13 +4507,7 @@ function powerShapes() {
     for (let i = sh.points.length - 2; i >= 0; i -= 2) rev.push(sh.points[i], sh.points[i + 1])
     return fromPlant(rev) ? { ...sh, points: rev, ...(sh.lift ? { lift: sh.lift.slice().reverse() } : {}), powerSource: true } : sh
   })
-  // branch points (POWERGRID_LOGIC §5): an inner vertex of a line where another same-generator line starts or ends
-  for (const sh of out) {
-    const ends = out.filter((o) => o !== sh && o.generator === sh.generator).flatMap((o) => [[o.points[0], o.points[1]], [o.points[o.points.length - 2], o.points[o.points.length - 1]]])
-    const j: number[] = []
-    for (let i = 2; i + 3 < sh.points.length; i += 2) if (ends.some(([x, z]) => Math.hypot(x - sh.points[i], z - sh.points[i + 1]) < 0.1)) j.push(i / 2)
-    if (j.length) sh.junctions = j
-  }
+  tieJunctions(out) // branch points (POWERGRID_LOGIC §5)
   return [...out, ...accessShapes(powerAccess)]
 }
 function powerInfo() {

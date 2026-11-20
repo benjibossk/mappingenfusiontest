@@ -51,3 +51,12 @@ test('topology: plant is the power source, edges join known nodes, every transfo
   for (const n of t.nodes) if (n.kind === 'mvlv') assert.ok(fed.has(n.id), `${n.id} on no feeder`)
   assert.deepEqual(gridTopology(p), t) // stable
 })
+
+test('tieJunctions: a branch ending mid-segment of a line gets a vertex + junction index there', async () => {
+  const { tieJunctions } = await import('../../src/modules/power')
+  const main = { id: 'A', kind: 'polyline', closed: false, generator: 'G', points: [0, 0, 100, 0] } as never as import('../../src/project').ProjectShape
+  const br = { id: 'B', kind: 'polyline', closed: false, generator: 'G', points: [40, 50, 41, 1.5] } as never as import('../../src/project').ProjectShape
+  tieJunctions([main, br])
+  assert.deepEqual(main.points, [0, 0, 41, 0, 100, 0]); assert.deepEqual(main.junctions, [1])
+  assert.deepEqual(br.points.slice(2), [41, 0])
+})
