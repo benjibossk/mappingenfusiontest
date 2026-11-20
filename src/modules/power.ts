@@ -340,10 +340,13 @@ export function simplifyPath(p: number[], tol: number): number[] {
 
 //! disturbed ground under each pole / pylon, same mask format as roadMasks (bridge paints the bands).
 //! An irregular blob = a few short overlapping stubs with seeded jitter around the pole (never a
-//! perfect circle), soft edge. Radius ~1.2 m for LV/MV wooden poles, ~4 m for HV/EHV pylons.
-export const POLE_PATCH_RADIUS: Record<PowerKind, number> = { lv: 1.2, mv: 1.2, hv: 4, ehv: 4 }
+//! perfect circle), soft edge. Radius ~2 m for LV/MV wooden poles, ~5 m for HV/EHV pylons (1.2 m was
+//! under the 1 m mask pixel + bilinear blur and the block limiter dropped it as a tiny share: never seen
+//! in game, seed 21 x 2512 z 3108). Partial weight (`peak`, disturbed soil mixed with the grass) and a
+//! block-limiter priority (`prio`) so the patch survives.
+export const POLE_PATCH_RADIUS: Record<PowerKind, number> = { lv: 2, mv: 2, hv: 5, ehv: 5 }
 export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed = 1, core = 'Dirt_01') {
-  const out: { points: number[]; half: number; edge: number; core: string }[] = []
+  const out: { points: number[]; half: number; edge: number; core: string; peak: number; prio: number }[] = []
   for (const l of lines) {
     const R = POLE_PATCH_RADIUS[l.kind] ?? 1.2
     for (let i = 0; i + 1 < l.poles.length; i += 2) {
@@ -357,7 +360,7 @@ export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed =
         const cx = x + Math.cos(a) * off, cz = z + Math.sin(a) * off
         const b = rnd() * Math.PI, len = R * (0.2 + rnd() * 0.5)
         const half = R * (0.35 + rnd() * 0.3)
-        out.push({ points: [cx - Math.cos(b) * len / 2, cz - Math.sin(b) * len / 2, cx + Math.cos(b) * len / 2, cz + Math.sin(b) * len / 2], half, edge: R * (0.3 + rnd() * 0.3), core })
+        out.push({ points: [cx - Math.cos(b) * len / 2, cz - Math.sin(b) * len / 2, cx + Math.cos(b) * len / 2, cz + Math.sin(b) * len / 2], half, edge: R * (0.4 + rnd() * 0.4), core, peak: 0.55 + rnd() * 0.3, prio: 8 })
       }
     }
   }

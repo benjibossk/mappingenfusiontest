@@ -189,6 +189,20 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   const rm = rockMasks(heights, cols, rows, step, maxHeight, shape)
   const at = (c: number, r: number) => heights[Math.min(Math.max(r, 0), rows - 1) * cols + Math.min(Math.max(c, 0), cols - 1)]
   const covered0 = (i: number, h: number) => !!(cover && cover[i] && h > 1)
+  const coverShare = (c: number, r: number) => {
+    const m = new Map<string, number>()
+    let tot = 0
+    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+      const rr = r + dr, cc = c + dc
+      if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue
+      const w = (3 - Math.abs(dr)) * (3 - Math.abs(dc))
+      tot += w
+      const j = rr * cols + cc, k = cover![j] && heights[j] > 1 ? COVER_OF[cover![j]] : ''
+      if (k) m.set(k, (m.get(k) ?? 0) + w)
+    }
+    for (const [k, v] of m) m.set(k, v / tot)
+    return m
+  }
   for (let i = 0; i < heights.length; i++) {
     const c = i % cols, r = (i - c) / cols
     const h = heights[i]
@@ -236,14 +250,19 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     weights.Rock_01.push(rock)
     weights.Debris_Rock_01.push(scree)
     // real land cover takes the free ground (grass), never the coast, rock or river bed
-    const covered = cover && cover[i] && h > 1 ? COVER_OF[cover[i]] : ''
     weights.Grass_02.push(moist)
     const mountain = Math.min(1, high + (1 - high) * 0.15 * gw.variant * inland)
     // + heather ~20 % with the mountain grass ([M] Everon / Kolguyev uplands), only when the cover set carries Heather_01
-    const heather = cover && !covered ? rest * 0.2 * band(h, maxHeight * 0.5, maxHeight * 0.75) : 0
-    if (cover) for (const k of Object.keys(COVER)) weights[k].push(k === covered ? rest : k === 'Heather_01' ? heather : 0)
-    weights.MountainGrass_01.push(covered ? 0 : (rest - heather) * mountain)
-    weights.Grass_01.push(covered ? 0 : (rest - heather) * (1 - mountain))
+    // soft cover edges: share of each cover kind over a 5x5 tent kernel (~16 m ramp at 8 m), not a hard
+    // cell-by-cell switch (forest floor / field edges looked cut with a knife; vanilla fades 10-20 m)
+    const share = cover && h > 1 ? coverShare(c, r) : null
+    let used = 0
+    if (share) for (const v of share.values()) used += v
+    const open = rest * (1 - used)
+    const heath = cover ? open * 0.2 * band(h, maxHeight * 0.5, maxHeight * 0.75) : 0
+    if (cover) for (const k of Object.keys(COVER)) weights[k].push(rest * (share?.get(k) ?? 0) + (k === 'Heather_01' ? heath : 0))
+    weights.MountainGrass_01.push((open - heath) * mountain)
+    weights.Grass_01.push((open - heath) * (1 - mountain))
   }
   for (const k of names) weights[k] = weights[k].map((w) => (w < 1 / 255 ? 0 : w))
   const out = names.map((name) => ({ ...grid, name, weights: weights[name] }))
@@ -336,6 +355,10 @@ export function limitPerBlock(surfaces: SurfaceGrid[], blockSize = 64, max = 4) 
     if (glue < 0) {
       const w = new Array(n).fill(0)
       for (const i of conflicts) for (let k = 0; k < n; k++) w[k] += surfaces[k].weights[i]
+      // not the sea bed: glued into a coastal land block it filled whole seam cells of grass with SeaBed_01,
+      // near-black hard bands across the coast slopes (seed 21, x 3392). A land glue under water is hidden.
+      const sea = surfaces.findIndex((s) => s.name === 'SeaBed_01')
+      if (sea >= 0 && w.some((v, k) => k !== sea && v > 0)) w[sea] = -1
       glue = w.indexOf(Math.max(...w))
     }
     for (const i of conflicts) {
@@ -361,7 +384,23 @@ export function limitPerBlock(surfaces: SurfaceGrid[], blockSize = 64, max = 4) 
         else { freed += v; surfaces[k].weights[i] = 0 }
       }
       if (!freed) continue
-      if (best < 0) best = ok.length ? ok[0] : (glue >= 0 ? glue : 0)
+      // none of the cell's own surfaces is allowed: take the allowed surface that dominates its
+      // neighbourhood (was ok[0] = the first grid, SeaBed_01: black seabed seams across the land
+      // along block lines, seen on seed 21 at x 3392)
+      if (best < 0 && ok.length) {
+        let bw = -1
+        // never the sea bed on ground that had none (it renders near black on land)
+        const dry = ok.filter((k) => surfaces[k].name !== 'SeaBed_01')
+        for (const k of dry.length ? dry : ok) {
+          let t = 0
+          for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) {
+            const rr = r + dr, cc = c + dc
+            if (rr >= 0 && rr < rows && cc >= 0 && cc < cols) t += surfaces[k].weights[rr * cols + cc] / (1 + Math.abs(dr) + Math.abs(dc))
+          }
+          if (t > bw) { bw = t; best = k }
+        }
+      }
+      if (best < 0) best = glue >= 0 ? glue : 0
       surfaces[best].weights[i] += freed
     }
   }

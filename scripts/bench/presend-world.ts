@@ -40,3 +40,51 @@ if (process.argv.includes('--list')) for (const i of issues.slice(0, 40)) consol
   for (const e of big) hist[Math.min(9, Math.floor(deg(e.x, e.z) / 5))]++
   console.log(`rocks: ${es.length} (${(es.length / land).toFixed(1)}/km2 land) ${Object.entries(by).map(([k, n]) => `${k} ${(n / land).toFixed(1)}`).join(', ')}; big slope % ${hist.map((n) => Math.round((100 * n) / Math.max(1, big.length))).join(' ')}`)
 }
+// roads vs relief: grade along the centre lines and side slope 2-6 m past the carriageway edge (embankments)
+{
+  const g = w.grid, H = w.heights as ArrayLike<number>
+  const hb = (x: number, z: number) => {
+    const gx = Math.min(Math.max((x - g.minX) / g.step, 0), g.cols - 1.001), gz = Math.min(Math.max((z - g.minZ) / g.step, 0), g.rows - 1.001)
+    const c = Math.floor(gx), r = Math.floor(gz), fx = gx - c, fz = gz - r, i = r * g.cols + c
+    return (H[i] * (1 - fx) + H[i + 1] * fx) * (1 - fz) + (H[i + g.cols] * (1 - fx) + H[i + g.cols + 1] * fx) * fz
+  }
+  const grades: number[] = [], sides: number[] = []
+  for (const r of roads) for (let i = 0; i + 3 < r.line.length; i += 2) {
+    const ax = r.line[i], az = r.line[i + 1], bx = r.line[i + 2], bz = r.line[i + 3], L = Math.hypot(bx - ax, bz - az)
+    if (L < 2 || hb(ax, az) < 0.5) continue
+    grades.push(Math.abs(hb(bx, bz) - hb(ax, az)) / L * 100)
+    const nx = -(bz - az) / L, nz = (bx - ax) / L, mx = (ax + bx) / 2, mz = (az + bz) / 2
+    for (const s of [-1, 1]) {
+      const d0 = r.half + 2, d1 = r.half + 6
+      sides.push(Math.atan(Math.abs(hb(mx + s * nx * d1, mz + s * nz * d1) - hb(mx + s * nx * d0, mz + s * nz * d0)) / 4) * 180 / Math.PI)
+    }
+  }
+  const q = (a: number[], f: number) => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(f * s.length))].toFixed(1) : '-' }
+  console.log(`road grade %: p50 ${q(grades, 0.5)} p95 ${q(grades, 0.95)} max ${q(grades, 1)}; side slope deg (2-6 m off the edge): p50 ${q(sides, 0.5)} p90 ${q(sides, 0.9)} p99 ${q(sides, 0.99)}, > 35 deg ${(100 * sides.filter((v) => v > 35).length / Math.max(1, sides.length)).toFixed(1)} %`)
+}
+// surfaces: sea bed on dry land (block-limiter seams, seed 21), road cores lost to the per-block limit (grass clutter on the road)
+{
+  const { paintMasks } = await import('../../src/shared/maskPaint.mjs')
+  const { roadMasks } = await import('../../src/modules/roads')
+  const sea = w.surfaces.find((s) => s.name === 'SeaBed_01')
+  let dry = 0
+  if (sea) for (let i = 0; i < w.heights.length; i++) if (w.heights[i] > 2 && sea.weights[i] > 0.3) dry++
+  const side = 1025, f = (side - 1) / 4032
+  const rm = roadMasks([...w.roads, ...w.zones.flatMap((z) => z.roads)] as never)
+  const { names, bytes } = paintMasks(side, size, w.surfaces as never, rm as never, null, Math.max(4, Math.round(63 * f)), 1) as { names: string[]; bytes: Uint8Array[] }
+  const mPerPx = size / (side - 1)
+  let tot = 0, lost = 0
+  for (const r of rm) for (let i = 0; i + 3 < r.points.length; i += 2) {
+    const L = Math.hypot(r.points[i + 2] - r.points[i], r.points[i + 3] - r.points[i + 1])
+    for (let t = 0; t < L; t += mPerPx) {
+      const x = r.points[i] + (r.points[i + 2] - r.points[i]) * t / Math.max(L, 1e-6), z = r.points[i + 1] + (r.points[i + 3] - r.points[i + 1]) * t / Math.max(L, 1e-6)
+      const p = (side - 1 - Math.round(z / mPerPx)) * side + Math.round(x / mPerPx)
+      if (p < 0 || p >= side * side) continue
+      let best = -1, bv = -1
+      for (let k = 0; k < bytes.length; k++) if (bytes[k][p] > bv) { bv = bytes[k][p]; best = k }
+      tot++
+      if (!/^(Asphalt|Concrete|Cobblestone|Dirt|Pebbles|Gravel)/.test(names[best])) lost++
+    }
+  }
+  console.log(`surfaces: SeaBed > 30 % on land > 2 m: ${dry} cells; road centre pixels on a clutter surface: ${(100 * lost / Math.max(1, tot)).toFixed(1)} % of ${tot}`)
+}

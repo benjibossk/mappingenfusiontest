@@ -14,6 +14,7 @@
 //    37-56 % within 60 m of the sea (beach clusters / stones).
 // Scale is not exported by the Workbench plugin yet: the size variety comes from the prefab mix.
 
+import { slopeTilt } from './slopeAlign'
 import type { ProjectEntity } from '../project'
 import { mulberry } from './vegLayers'
 
@@ -54,6 +55,9 @@ export function buryRocks<T extends ProjectEntity>(es: T[], groundAt: (x: number
 
 /** [M] tilt half-ranges (deg) ~ 2x the vanilla median |pitch| / |roll| */
 const TILT: Record<Kind, number> = { cliff: 25, rock: 10, slab: 8, boulder: 20, cluster: 5, stone: 6, beach: 8 }
+/** share of the slope tilt a piece takes (0 = upright, random tilt only) and its footprint radius (m) */
+const LEAN: Record<Kind, number> = { cliff: 0.5, rock: 0.45, slab: 0.7, boulder: 0.6, cluster: 0.8, stone: 0.8, beach: 0.6 }
+const FOOT: Record<Kind, number> = { cliff: 6, rock: 4, slab: 2.5, boulder: 1.5, cluster: 1.5, stone: 0.6, beach: 1 }
 /** min spacing to another piece (m) */
 const GAP: Record<Kind, number> = { cliff: 9, rock: 5, slab: 3, boulder: 2.5, cluster: 3, stone: 1.5, beach: 2.5 }
 
@@ -140,9 +144,18 @@ export function cliffRocks(o: CliffOptions): ProjectEntity[] {
     const t = TILT[kind]
     // burial: vanilla median offset +-15 % (cliffs / rocks), a few cm for the small ones
     const dy = pc.dy * (0.85 + rand() * 0.3) - (Math.abs(pc.dy) < 0.5 ? rand() * 0.1 : 0)
-    const ycm = Math.round((ground(x, z) + dy) * 100) || -1
+    // slope under the footprint: the big pieces lean partly into it (vanilla cliffs 16-30 deg, boulders up to
+    // 23 deg median) and sink by the drop across their footprint, so the downhill side never floats
+    // (seed 21 x 2087 z 3413: upright pillar on a steep slope, downhill side in the air)
+    const R = FOOT[kind], [sl] = slopeAt(o.heightAt, x, z, Math.max(2, R))
+    const lean = LEAN[kind]
+    const [sp0, sr0] = lean ? slopeTilt(o.heightAt, x, z, yaw, Math.max(2, R)) : [0, 0]
+    // tall pieces (cliffs, rocks) on > 40 deg: half-buried rather than standing as a pillar
+    const sink = lean ? sl * R * 0.6 + 0.2 * Math.min(1, sl) + ((kind === 'cliff' || kind === 'rock') && sl > 0.84 ? 1.5 * R * (sl - 0.84) + 1 : 0) : 0
+    const ycm = Math.round((ground(x, z) + dy - sink) * 100) || -1
+    const tilt = (s0: number) => Math.max(-40, Math.min(40, Math.round(s0 * lean + (rand() - 0.5) * 2 * t)))
     const e: ProjectEntity = { id: `${o.prefix ?? 'CLIFF_'}${out.length + 1}`, prefab: pc.p, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw,
-      ycm, pitch: Math.round((rand() - 0.5) * 2 * t), roll: Math.round((rand() - 0.5) * 2 * t), role: kind === 'stone' || kind === 'beach' ? 'clutter' : 'essential' }
+      ycm, pitch: tilt(sp0), roll: tilt(sr0), role: kind === 'stone' || kind === 'beach' ? 'clutter' : 'essential' }
     if (!e.pitch) delete e.pitch
     if (!e.roll) delete e.roll
     out.push(e)
