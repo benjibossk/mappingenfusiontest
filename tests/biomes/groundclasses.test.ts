@@ -76,3 +76,27 @@ test('in-game map slope shading is opt-in', () => {
   const again = renderIngameMap({ grid, seaLevel: 0, width: 64, height: 64 })
   assert.deepEqual(again.data, base.data)
 })
+
+test('opt-in ground biome body + bridge writes import-ordered names and LISEZMOI', async () => {
+  const { groundBiomeBody } = await import('../../src/biomes/groundMasks.ts')
+  const { writeMasks } = await import('../../bridge/terrain-masks.mjs')
+  const { mkdtempSync, readdirSync, readFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os'); const { join } = await import('node:path')
+  const grid = { minX: 0, minZ: 0, step, cols, rows }
+  const body = { surfaces: [{ ...grid, name: 'Grass_01', weights: new Array(cols * rows).fill(1) }], colours: { SeaBed_01: [0, 0, 80] as [number, number, number] }, roads: [] }
+  const out = groundBiomeBody(body, grid, h, 'montagnard', autoCalibrate('montagnard', d))
+  assert.ok(out.surfaces.some(s => s.name.startsWith('manquant_')))
+  assert.equal(out.fileNames.SeaBed_01, '01_mer__SeaBed_01')
+  const dir = mkdtempSync(join(tmpdir(), 'gc-'))
+  try {
+    const r = writeMasks(dir, 65, (cols - 1) * step, out.surfaces, [], out.colours, { fileNames: out.fileNames, readme: out.readme })
+    const files = readdirSync(dir)
+    assert.ok(files.includes('00_LISEZMOI_import.txt') && files.includes('01_mer__SeaBed_01.png'), files.join(','))
+    assert.ok(files.some(f => /__manquant\.png$/.test(f)))
+    assert.match(readFileSync(join(dir, '00_LISEZMOI_import.txt'), 'utf-8'), /Ordre d'import/)
+    assert.equal(r.written[0], '00_LISEZMOI_import.txt')
+    // default call unchanged: plain surface names, no readme
+    const r2 = writeMasks(dir, 65, (cols - 1) * step, body.surfaces, [], null)
+    assert.deepEqual(readdirSync(dir).sort(), ['Grass_01.png']); assert.deepEqual(r2.written, ['Grass_01'])
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

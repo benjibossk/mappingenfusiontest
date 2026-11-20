@@ -100,14 +100,20 @@ export function writeSatellite(outFile, side, terrainSize, surfaces, colours, ba
 //! with weights 0..1, row 0 = south (same layout as /heightmap), sampled bilinearly.
 //! roads: [{points: [x0, z0, ...], half, edge, core, side?}] painted over the surfaces at pixel precision
 //! (see roadLayers). The pixels come from paintMasks (src/shared/maskPaint.mjs), shared with the app preview.
-export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colours = null) {
+//! opts (opt-in climate ground classes, src/biomes/groundMasks.ts): fileNames {surface: file name without
+//! .png, import-ordered e.g. 01_mer__SeaBed_01} and readme (written as 00_LISEZMOI_import.txt).
+export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colours = null, opts = {}) {
   mkdirSync(outDir, { recursive: true });
-  for (const f of readdirSync(outDir)) if (f.toLowerCase().endsWith(".png")) rmSync(join(outDir, f));
+  for (const f of readdirSync(outDir)) if (f.toLowerCase().endsWith(".png") || f === README) rmSync(join(outDir, f));
   const { names, bytes } = paintMasks(side, terrainSize, surfaces, roads, colours);
+  const fileNames = opts.fileNames ?? {};
   const written = [];
   names.forEach((name, k) => {
-    writeFileSync(join(outDir, name + ".png"), png(side, (col, row) => bytes[k][row * side + col]));
-    written.push(name);
+    const f = /^[\w+-]+$/.test(fileNames[name] ?? "") ? fileNames[name] : name;
+    writeFileSync(join(outDir, f + ".png"), png(side, (col, row) => bytes[k][row * side + col]));
+    written.push(f);
   });
+  if (typeof opts.readme === "string" && opts.readme) { writeFileSync(join(outDir, README), opts.readme.replace(/\n/g, "\r\n"), "utf-8"); written.unshift(README); }
   return { dir: outDir, side, written };
 }
+const README = "00_LISEZMOI_import.txt";
