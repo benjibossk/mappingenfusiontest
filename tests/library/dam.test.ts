@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { placeDams, damTarget, damZone, pointInPoly, DAM_DEFAULTS, GRAVEL_DAM } from '../../src/modules/dam.ts'
+import { placeDams, damTarget, damZone, pointInPoly, DAM_DEFAULTS, DAM_PARAPET } from '../../src/modules/dam.ts'
 
 // a valley running +Z (downstream), narrow throat around z = 500, bed falling 3 cm/m
 const g = { minX: 0, minZ: 0, step: 4, cols: 201, rows: 201 }
@@ -43,12 +43,18 @@ test('dam: closes the throat, reservoir upstream only, level under the crest, ri
   assert.ok(damTarget(d, DAM_DEFAULTS, d.cx, d.cz) === d.crest)
 })
 
-test('dam zone: vanilla GravelDam_01 pieces cover the crest', () => {
+test('dam zone: continuous parapet on both crest edges', () => {
   const h = valley(), d = placeDams(h, g, [river]).dams[0]
   const z = damZone(d)
   const L = Math.hypot(d.bx - d.ax, d.bz - d.az)
-  assert.ok(z.entities.length * GRAVEL_DAM.w >= L)
-  assert.ok(z.entities.every((e) => e.prefab.startsWith('{64E482C4598F3E45}')))
+  const par = z.shapes.filter((s) => s.generator === DAM_PARAPET)
+  assert.equal(par.length, 2)
+  assert.equal(z.entities.length, 0)
+  for (const s of par) {
+    const p = s.points, n = p.length
+    assert.ok(Math.hypot(p[n - 2] - p[0], p[n - 1] - p[1]) >= L)
+    for (let i = 0; i < n; i += 2) assert.ok(damTarget(d, DAM_DEFAULTS, p[i], p[i + 1]) === d.crest)
+  }
   assert.ok(z.access)
 })
 
