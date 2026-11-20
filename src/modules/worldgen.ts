@@ -55,7 +55,7 @@ import { suggestMilitary, type MilitaryKind } from './military'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
 import { fitPort, type VanillaTemplate } from './vanillaSites'
 import { placeRpPlaces } from './rpPlaces'
-import { buildHarbour, harbourTier, pickHarbour, type HarbourTier } from './harbour'
+import { buildHarbour, harbourTier, pickHarbours, type HarbourTier } from './harbour'
 import { parcelTemplate } from '../library/parcelLib'
 import type { Composition } from '../library/schema'
 import { lampConsumers, streetLights, type StreetLamp } from './streetLights'
@@ -599,11 +599,17 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
           // a whole vanilla harbour from the parcel library (harbour.ts): exact pieces, heights, chaining
           const near0 = sites.reduce<Site | null>((b, s) => (!b || Math.hypot(s.x - x, s.z - z) < Math.hypot(b.x - x, b.z - z) ? s : b), null)
           tier0 = harbourTier(near0 && Math.hypot(near0.x - x, near0.z - z) < 1500 ? near0.kind : undefined)
-          compo = pickHarbour(tier0, ss('settlements', 'vanilla-port', k + tries)) ?? undefined
-          tpl = compo ? parcelTemplate(compo) : undefined
+          // the world's biome first (Everon / Arland / Kolguyev sets), large ports (> 200 m) for a town; every
+          // candidate is tried here (seed 21: one pick per try only ever fitted Arland 3292). Up to 30 % of the sea
+          // parts may start ashore and 60 % of the land parts at sea: the harbour's own terrain samples re-shape (straighten) the shore
           const lines = allRoadLines(), pads = [...roads.map((r) => (isPaved(r.type) ? 40 : 8)), ...zones.flatMap((zn) => zn.roads.map(() => 8))]
-          const fit = tpl && fitPort(tpl, hAt, x, z, lines, { roadPads: pads })
-          if (!tpl || !fit || !free(fit.x, fit.z, tpl.radius * 0.6, 'vanilla:' + type, gap)) continue
+          let fit: ReturnType<typeof fitPort> = null
+          compo = undefined; tpl = undefined
+          for (const c of pickHarbours(tier0, ss('settlements', 'vanilla-port', k + tries), { biome: p.biome, maxR: tier0 === 'port' ? 360 : 200 })) {
+            const t = parcelTemplate(c), f = fitPort(t, hAt, x, z, lines, { roadPads: pads, minWater: 0.7, minLand: 0.4, seaAxis: [0, 1] })
+            if (f && free(f.x, f.z, t.radius * 0.6, 'vanilla:' + type, gap)) { fit = f; compo = c; tpl = t; break }
+          }
+          if (!tpl || !fit) continue
           sx = fit.x; sz = fit.z; syaw = fit.yaw; fit0 = fit
         }
         const zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x: sx, z: sz, yaw: syaw, seed: ss('settlements', 'vanilla-' + type, k), template: tpl })

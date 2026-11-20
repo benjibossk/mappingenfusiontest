@@ -103,13 +103,14 @@ export interface PortFit { x: number; z: number; yaw: number; water: number; lan
  *  heads) >= minDepth deep (default 5 m; a second pass drops the depth, the harbour basin is dredged anyway),
  *  >= 60 % of the land parts ashore (h > 0.5), and no road entering the footprint hull grown by its pad
  *  (roadPads[i], default roadPad = 8 m; ~40 m for asphalt). null = no fit. */
-export function fitPort(t: VanillaTemplate, hAt: (x: number, z: number) => number, x: number, z: number, roads: ArrayLike<number>[] = [], o: { reach?: number; roadPad?: number; roadPads?: number[]; minDepth?: number } = {}): PortFit | null {
+export function fitPort(t: VanillaTemplate, hAt: (x: number, z: number) => number, x: number, z: number, roads: ArrayLike<number>[] = [], o: { reach?: number; roadPad?: number; roadPads?: number[]; minDepth?: number; minWater?: number; minLand?: number; seaAxis?: [number, number] } = {}): PortFit | null {
   const wat = t.objects.filter((ob) => PORT_SEA_RX.test(ob.p)), lnd = t.objects.filter((ob) => isPortLand(ob.p))
   if (!wat.length || !lnd.length) return null
   const n = coastNormal(hAt, x, z)
   if (!n) return null
   const mean = (a: VanillaObject[], k: 'dx' | 'dz') => a.reduce((s, q) => s + q[k], 0) / a.length
-  const mx = mean(wat, 'dx') - mean(lnd, 'dx'), mz = mean(wat, 'dz') - mean(lnd, 'dz'), ml = Math.hypot(mx, mz) || 1
+  // seaAxis: the template's own sea direction (harbour library: +Z, from its sea parts AND quay pieces)
+  const mx = o.seaAxis ? o.seaAxis[0] : mean(wat, 'dx') - mean(lnd, 'dx'), mz = o.seaAxis ? o.seaAxis[1] : mean(wat, 'dz') - mean(lnd, 'dz'), ml = Math.hypot(mx, mz) || 1
   // world angle of a local vector = its local angle + yaw
   const base = ((Math.atan2(n[0], n[1]) - Math.atan2(mx, mz)) * 180) / Math.PI
   const proj = wat.map((ob) => (ob.dx * mx + ob.dz * mz) / ml), cut = [...proj].sort((a, b) => a - b)[Math.floor(proj.length * 2 / 3)]
@@ -121,13 +122,16 @@ export function fitPort(t: VanillaTemplate, hAt: (x: number, z: number) => numbe
     for (let dy = -15; dy <= 15; dy += 5) for (let oz = -reach; oz <= reach; oz += step) for (let ox = -reach; ox <= reach; ox += step) {
       const yaw = Math.round((((base + dy) % 360) + 360) % 360), cx = x + ox, cz = z + oz
       let ok = true
-      for (const ob of wat) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) > 0) { ok = false; break } }
+      // sea parts over the sea: all of them by default, minWater (0-1) lets a share start ashore (dredged later)
+      let dry = 0
+      const maxDry = Math.floor(wat.length * (1 - (o.minWater ?? 1)))
+      for (const ob of wat) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) > 0 && ++dry > maxDry) { ok = false; break } }
       if (ok && depth > 0) for (const ob of heads) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) > -depth) { ok = false; break } }
       if (!ok) continue
       let l = 0
       for (const ob of L) { const [px, pz] = toWorld(cx, cz, yaw, ob.dx, ob.dz); if (hAt(px, pz) > 0.5) l++ }
       const fl = l / L.length
-      if (fl < 0.6) continue
+      if (fl < (o.minLand ?? 0.6)) continue
       cands.push({ x: round(cx), z: round(cz), yaw, water: 1, land: round(fl), score: fl - Math.abs(dy) / 300 - Math.hypot(ox, oz) / (reach * 20), deep: depth > 0 })
     }
     cands.sort((a, b) => b.score - a.score)
