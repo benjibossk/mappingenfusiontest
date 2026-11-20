@@ -125,6 +125,8 @@ export function streetLights(o: LampInput): StreetLamp[] {
     return best
   }
   const nordic = o.biome === 'nordic_kolguyev'
+  // Arland (bench 3 seeds: 47 lamps vs vanilla 25, edge offset 1.2 vs 2-2.6 m): the through roads only, set back
+  const arl = /arland/i.test(o.biome ?? '')
   const out: StreetLamp[] = []
   const used = new Map<string, number>()
   // the through roads first (vanilla: 70 % of the lamps on the paved main road), then the lanes
@@ -132,7 +134,7 @@ export function streetLights(o: LampInput): StreetLamp[] {
   for (const q of order) {
     const kindOf = LIT[q.r.type]
     if (!kindOf) continue
-    if (nordic && kindOf !== 'main') continue // Kolguyev road-driven: the through roads only
+    if ((nordic || arl) && kindOf !== 'main') continue // Kolguyev road-driven: the through roads only
     const L = q.l, rnd = rng(hash(q.r.id, o.seed))
     // cumulative length
     const acc: number[] = [0]
@@ -172,7 +174,7 @@ export function streetLights(o: LampInput): StreetLamp[] {
       let placed: StreetLamp | null = null
       for (const sgn of [sd, -sd]) {
         for (let tryi = 0; tryi < 3 && !placed; tryi++) {
-          const off = q.h + R.edge[0] + (R.edge[1] - R.edge[0]) * ((rnd() + tryi) / 3)
+          const off = q.h + (arl ? 1.2 : 0) + R.edge[0] + (R.edge[1] - R.edge[0]) * ((rnd() + tryi) / 3)
           const nx = -uz * sgn, nz = ux * sgn
           const x = cx + nx * off, z = cz + nz * off
           if (onRoad(x, z, 0.8)) continue
