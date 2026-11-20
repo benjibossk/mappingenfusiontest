@@ -630,7 +630,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   if (p.vanillaSites) placeVanillaWorldSites()
   // 7c. RP places (rpPlaces.ts): police, clinic, town hall, bank, market, shops, garages, car lots, bus stops, sawmills, mines,
   // delivery depots, fuel: vanilla buildings stamped before the villages so the lots build around them; off with rpPlaces: false
-  if (p.rpPlaces !== false) zones.push(...placeRpPlaces({ heights: cur.heights, g, sites, zones, roads, isWater, seed: ss('settlements', 'rp'), landKm2 }))
+  if (p.rpPlaces !== false) zones.push(...placeRpPlaces({ heights: cur.heights, g, sites, zones, roads, isWater, seed: ss('settlements', 'rp'), landKm2, biome: p.biome }))
   cur = composeHeights(base, g, waters, zones, roads)
   // 8. villages v2
   await step('villages')

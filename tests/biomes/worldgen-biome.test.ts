@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import { generateWorld, WORLD_DEFAULTS } from '../../src/modules/worldgen.ts'
 import { forestTuning, leafOf, mixedNeedle, drapeTint, treeTint, forestGeneratorFor } from '../../src/biomes/vegetation.ts'
 
-const P = { ...WORLD_DEFAULTS, size: 2048, seed: 4243 } // RP places on; seed 4242 has no field grove (its only broadleaf stand) once the RP places take part of the countryside
+const P = { ...WORLD_DEFAULTS, size: 2048, seed: 4244 } // RP places on; 4242 then 4243 lost their few broadleaf stands once the RP places (vanilla compositions, up to 95 m) took part of the countryside
 const digest = (w: unknown) => createHash('sha1').update(JSON.stringify(w)).digest('hex')
 const strip = (w: Awaited<ReturnType<typeof generateWorld>>) => ({ ...w, params: undefined })
 

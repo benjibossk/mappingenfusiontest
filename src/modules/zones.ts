@@ -40,6 +40,8 @@ export interface ZoneItem {
   harbour?: HarbourPlan
   /** RP / Life place role (rpPlaces.ts): police, clinic, market, fuel, sawmill... (metadata only, the map stays vanilla) */
   rpRole?: string
+  /** surface core painted under the whole site box (parcelground.yardSurfaceMasks): RP yards (rpPlaces RP_GROUND) */
+  ground?: string
 }
 
 const tag = (zid: string, id: string) => `${zid}_${id.replace(/[^A-Za-z0-9_]+/g, '_')}`

@@ -10,7 +10,7 @@ test('vanilla parcels pack is valid and covers every harvested category', () => 
   assert.deepEqual(validatePack(PARCELS_PACK), [])
   const g = parcelsByCategory()
   for (const k of ['garden', 'farm', 'cemetery', 'industrial', 'fuel', 'roadside', 'allotment', 'sport'] as const) assert.ok((g.get(k)?.length ?? 0) > 0, k)
-  assert.equal(g.get('farm')!.length, 109)
+  assert.equal(g.get('farm')!.filter((c) => !c.subtype).length, 109) // the farmsteads (subtyped: RP apiaries)
   for (const c of allParcels()) {
     assert.ok(c.size.w > 0 && c.size.d > 0)
     for (const i of c.items) assert.ok(Math.abs(i.x) <= c.size.w / 2 + 0.5 && Math.abs(i.z) <= c.size.d / 2 + 0.5, `${c.id} ${i.prefab}`)

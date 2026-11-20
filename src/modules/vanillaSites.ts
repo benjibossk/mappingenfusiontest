@@ -7,7 +7,7 @@ import { toWorld, round } from './gen-common'
 import { coastNormal, PORT_SEA_RX } from './harbour'
 export { PORT_SEA_RX }
 
-export interface VanillaObject { p: string; dx: number; dz: number; yaw: number }
+export interface VanillaObject { p: string; dx: number; dz: number; yaw: number; pitch?: number; roll?: number }
 export interface VanillaTemplate {
   id: string; map: string; x: number; z: number; axisYaw: number
   roadDist: number; roadType: string | null; radius: number; slope: number
@@ -47,6 +47,7 @@ export function stampTemplate(t: VanillaTemplate, x: number, z: number, yaw: num
     if (o.maxRadius !== undefined && Math.hypot(ob.dx, ob.dz) > o.maxRadius) return
     const [wx, wz] = toWorld(x, z, yaw, ob.dx, ob.dz)
     const e: ProjectEntity = { id: `${o.id ?? t.id}-${i}`, prefab: ob.p, x: round(wx), z: round(wz), yaw: round((((yaw + ob.yaw) % 360) + 360) % 360) }
+    if (ob.pitch || ob.roll) { e.pitch = ob.pitch ?? 0; e.roll = ob.roll ?? 0 } // vanilla tilt (parcel library), exported as "pitch yaw roll"
     if (o.groundAt) e.ycm = Math.round(o.groundAt(wx, wz) * 100)
     out.push(e)
   })

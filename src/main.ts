@@ -1561,7 +1561,7 @@ function parcelGround() {
   for (const z of zones) if (z.kind === 'site' && z.sub === 'cemetery') out.push(...cemeteryPathMasks(z.boxes.filter((b) => b.role === 'grave').map((b) => b.corners), z.shapes.find((sh) => sh.id.endsWith('_aisle'))?.points, seed))
   const yards = settled.filter((b) => b.role === 'farmyard').map((b) => ({ corners: b.corners.map((v, i) => (i % 2 ? b.z : b.x) + (v - (i % 2 ? b.z : b.x)) * 1.8) }))
   out.push(...parcelGroundMasks([...setGardens, ...yards], settled, seed))
-  for (const z of zones) if (z.rpRole === 'sawmill' && z.sub?.startsWith('parcel:')) out.push(...yardSurfaceMasks(z.boxes[0]?.corners ?? [], seed)) // worn gravel yard under the vanilla sawmill
+  for (const z of zones) if (z.ground) out.push(...yardSurfaceMasks(z.boxes[0]?.corners ?? [], seed, z.ground)) // worn gravel / dirt yard under the RP sites
   return out
 }
 let setParcels: VillageParcel[] = [] // biome dressing of the back gardens (not Everon): trees, props, fences
