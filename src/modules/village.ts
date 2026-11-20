@@ -41,6 +41,8 @@ export interface VillageOptions {
   dropScale?: number // multiplies the per-category ground drop a footprint may straddle (1 = MAX_DROP; Zone tool default 1.4: drawn zones are rarely flat)
   pool?: Building[] // replaces the vanilla list (captured parcels: parcelPool)
   blocked?: [number, number, number, number][] // world boxes already taken
+  /** map whose yard habits apply (yardProfile), default the biome */
+  yards?: string
   biome?: string // BiomeId: back gardens dressed with the biome's lot template (biomes/parcel.ts); Everon / unset = none (unchanged)
   library?: import('../library/index.ts').Library // packs to draw from (default: vanilla seed + vanilla compositions)
   compositions?: boolean // gardens also get real composition prefabs from the library (library/*.json packs); with it, Everon gardens are dressed too
@@ -100,6 +102,12 @@ const VARIANT: Record<'village' | 'town' | 'hamlet', Params> = {
   hamlet: { lotMin: [12, 14, 16], lotMax: [20, 26, 34], depth: [36, 40, 46], setback: [3, 7], fill: [0.8, 0.6, 0.4], grow: { ...GROW_VILLAGE, maxStreets: 0 }, chunk: 40 },
   village: { lotMin: [9, 12, 16], lotMax: [15, 22, 40], depth: [32, 38, 48], setback: [2.5, 6], fill: [0.9, 0.7, 0.45], grow: GROW_VILLAGE, chunk: 40 },
   town: { lotMin: [7, 9, 14], lotMax: [11, 16, 30], depth: [26, 32, 44], setback: [0.5, 2.5], fill: [0.97, 0.85, 0.55], grow: GROW_TOWN, chunk: 36 },
+}
+
+/** outbuildings behind the houses per map: chance multiplier, extra push back (m), share with a second one */
+export function yardProfile(biome?: string): { p: number; push: number; second: number } {
+  if (biome && /kolguyev|nordic/i.test(biome)) return { p: 3, push: 10, second: 0.8 }
+  return { p: 1, push: 0, second: 0 }
 }
 
 export function settleVillages(sites: Site[], roads: Road[], waters: Water[], heights: ArrayLike<number>, grid: Grid, o: VillageOptions, keep: Placed[] = []): VillageResult {
@@ -604,14 +612,20 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
         // annex at the back of the garden
         // Bohemia: 1.6 outbuildings per house on Everon, 76 % behind the house (median 9 m behind, 11 m to the side,
         // 18 m centre to centre), 80 % aligned with it within 5 deg, the rest mostly square to it
-        if (free && rand() < (organic ? (k === 0 ? 0.5 : k === 1 ? 0.75 : 0.9) : (k === 0 ? 0.15 : k === 1 ? 0.4 : 0.55))) {
+        // per-map yard (bench 2026-11-20: outbuildings per house Arland / Kolguyev vanilla 0.98 vs ours 0.45 / 0.33,
+        // median 24 m to the house vs ours 16): more of them, farther back, sometimes a second one on the other side
+        const yp = yardProfile(o.yards ?? o.biome)
+        const nA = free && rand() < Math.min(1, yp.p * (organic ? (k === 0 ? 0.5 : k === 1 ? 0.75 : 0.9) : (k === 0 ? 0.15 : k === 1 ? 0.4 : 0.55))) ? (yp.second && rand() < yp.second ? 2 : 1) : 0
+        let side0 = 1
+        for (let w = 0; w < nA; w++) {
           const ac = pool(rand() < 0.5 ? ['annex'] : ['shed'])
           const a = ac[Math.floor(rand() * ac.length)]
           if (a) {
-            const side = orand() < 0.5 ? -1 : 1, half = Math.max(0, lot.w - 8) / 2
-            const lat = organic ? side * half * (0.4 + 0.6 * orand()) : (rand() - 0.5) * Math.max(0, lot.w - 8)
+            if (!w) side0 = orand() < 0.5 ? -1 : 1
+            const side = w ? -side0 : side0, half = Math.max(0, lot.w - 8) / 2
+            const lat = organic || w ? side * half * (0.4 + 0.6 * orand()) : (rand() - 0.5) * Math.max(0, lot.w - 8)
             const arot = organic ? (orand() < 0.8 ? (orand() - 0.5) * 8 : orand() < 0.5 ? 90 : -90) : 0
-            const ra = putFacing(a, fx0, fz0, fx, fz, back + 2 + rand() * 3, lat, arot)
+            const ra = putFacing(a, fx0, fz0, fx, fz, back + 2 + (yp.push ? yp.push * orand() : 0) + rand() * 3, lat, arot)
             if ((ra.x - fx0) * lot.nx + (ra.z - fz0) * lot.nz + ra.depth / 2 <= lot.d && fits(a, ra.corners)) add(id('A'), site.id, a, ra, 'annex')
           }
         }

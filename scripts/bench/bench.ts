@@ -26,6 +26,7 @@ import { streetLights } from '../../src/modules/streetLights'
 import { gameplayReport, GAMEPLAY_NOT_BUILDING } from '../../src/modules/gameplay'
 import { localStreets, streetStats, polyLen, STREET_REACH } from './streets'
 import { rocksBench } from './rocks'
+import { ensemblesBench } from './ensembles'
 
 const args = process.argv.slice(2)
 const mapId = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--'))) ?? 'everon'
@@ -110,7 +111,7 @@ for (const kind of ['town', 'village', 'hamlet'] as const) {
   }
   if (!ks.length) continue
   const V = WORLD.villages[kind]
-  const vr = settleVillages(ks, roads, waters, heights, grid, { seed: SEED, density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, parcelShare: opt('--pshare') !== undefined ? Number(opt('--pshare')) : parcelShareOf(BIOME), oblique: villageOblique(BIOME) }, placed as never)
+  const vr = settleVillages(ks, roads, waters, heights, grid, { seed: SEED, ...(BIOME ? { yards: BIOME } : {}), density: V.density * Number(opt("--vmul") ?? settlementDensityMul(mapId === 'kolguyev' ? 'nordic_kolguyev' : mapId === 'arland' ? 'woodland_arland' : undefined)), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', template: true, parcelShare: opt('--pshare') !== undefined ? Number(opt('--pshare')) : parcelShareOf(BIOME), oblique: villageOblique(BIOME) }, placed as never)
   placed = vr.placed
   lots.push(...vr.lots)
   benchLanes.push(...vr.lanes)
@@ -385,10 +386,16 @@ const gpV = gameplayReport({ ...gpIn, houses: m.buildings.items.filter((b) => !G
 const gpO = gameplayReport({ ...gpIn, houses: placed.map((b) => ({ x: b.x, z: b.z })) })
 const gpBrief = (r: typeof gpV) => ({ score: r.score, sub: Object.fromEntries(Object.entries(r.sub).map(([k, v]) => [k, v.score])) })
 const rocks = rocksBench(mapId, { minX: grid.minX, minZ: grid.minZ, maxX: grid.minX + (grid.cols - 1) * grid.step, maxZ: grid.minZ + (grid.rows - 1) * grid.step }, hAt, (x, z) => nearRoad(x, z).d > 8)
+const ensembles = ensemblesBench(sites, { b: vanillaB.map((b) => ({ x: b.x, z: b.z, out: (b as { cls?: string }).cls === 'shed' })), f: vf },
+  // our fences are long polylines: cut into ~5 m pieces like the vanilla ones (closure test by distance)
+  { b: placed.map((b) => ({ x: b.x, z: b.z, out: b.cat === 'shed' || b.cat === 'annex' })), f: genFences.flatMap((pl) => { const o: { x: number; z: number; len: number }[] = []
+    for (let i = 2; i < pl.length; i += 2) { const L = Math.hypot(pl[i] - pl[i - 2], pl[i + 1] - pl[i - 1]), n = Math.max(1, Math.round(L / 5)); for (let k = 0; k < n; k++) o.push({ x: pl[i - 2] + ((pl[i] - pl[i - 2]) * (k + 0.5)) / n, z: pl[i - 1] + ((pl[i + 1] - pl[i - 1]) * (k + 0.5)) / n, len: L / n }) }
+    return o }) }, ksScore)
 const report = {
   map: m.name, genSec, sites: sites.length,
   gameplay: { vanilla: gpBrief(gpV), ours: gpBrief(gpO) },
   farmsteads,
+  ensembles,
   villages: { score: villageScore, ...villages, counts: { vanilla: vanillaB.length, ours: placed.length }, byKind: { town: kindRatio('town'), village: kindRatio('village'), hamlet: kindRatio('hamlet') },
     median: { setback: [med(dv.setback), med(dg.setback)].map((x) => +x.toFixed(1)), orient: [med(dv.orient), med(dg.orient)].map((x) => +x.toFixed(1)), nn: [med(dv.nn), med(dg.nn)].map((x) => +x.toFixed(1)) },
     worstSites: siteScore.map((s) => ({ ...s, err: Math.abs(s.g - s.v) })).sort((a, b) => b.err - a.err).slice(0, 8) },
@@ -399,7 +406,7 @@ const report = {
   streetLights: streetLightInfo,
   powerWindows: powerWin.length ? { score: powerWindowScore, windows: powerWin } : null,
   rocks,
-  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, streetLights: streetLightScore, power: power?.tilePoles ?? null, powerWindow: powerWindowScore, rocks: rocks?.score ?? null },
+  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, streetLights: streetLightScore, power: power?.tilePoles ?? null, powerWindow: powerWindowScore, rocks: rocks?.score ?? null, ensembles: ensembles.score },
   powerRef: { nearRoad10: Object.fromEntries(kindsP.map((k) => [k, nearShare(vPoles, k)])), lvMedianSpan: +med(spans('lv')).toFixed(1), mvMedianSpan: +med(spans('mv')).toFixed(1), hvMedianSpan: +med(spans('hv')).toFixed(1) },
 }
 console.log(JSON.stringify(report, null, 1))
