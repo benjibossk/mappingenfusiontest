@@ -7,7 +7,7 @@ class MG_ShapeBuilder
 	//! points: world X/Z pairs, the first one is the shape origin.
 	//! generator: resource name "{GUID}path" or a bare path (resolved here). Empty = no generator.
 	//! spline: SplineShapeEntity (road generators refuse polylines), else PolylineShapeEntity.
-	static IEntitySource Create(WorldEditorAPI api, string name, array<float> pointsXZ, bool closed, string generator, bool spline = false, array<string> paramKeys = null, array<string> paramValues = null, int layer = -1, array<float> lift = null)
+	static IEntitySource Create(WorldEditorAPI api, string name, array<float> pointsXZ, bool closed, string generator, bool spline = false, array<string> paramKeys = null, array<string> paramValues = null, int layer = -1, array<float> lift = null, bool powerSource = false)
 	{
 		// drop points closer than 0.5 m to the previous kept one (and a closing point on top of the first):
 		// zero-length segments make ForestGeneratorEntity divide by zero (BadFloat assertion, 1.9)
@@ -77,6 +77,20 @@ class MG_ShapeBuilder
 			api.CreateObjectArrayVariableMember(shapeSrc, null, "Points", "ShapePoint", p);
 			array<ref ContainerIdPathEntry> path = { new ContainerIdPathEntry("Points", p) };
 			api.SetVariableValue(shapeSrc, path, "Position", string.Format("%1 %2 %3", x - pos[0], y, z - pos[2]));
+		}
+
+		// power line fed from its first point: Points[0].Data[0] = SCR_PowerlineGeneratorPointData,
+		// its m_JunctionData.m_bPowerSource = true (vanilla SCR_PowerlineGeneratorJunctionData)
+		if (powerSource)
+		{
+			array<ref ContainerIdPathEntry> p0 = { new ContainerIdPathEntry("Points", 0) };
+			bool ok = api.CreateObjectArrayVariableMember(shapeSrc, p0, "Data", "SCR_PowerlineGeneratorPointData", 0);
+			array<ref ContainerIdPathEntry> d0 = { new ContainerIdPathEntry("Points", 0), new ContainerIdPathEntry("Data", 0) };
+			ok = ok && api.CreateObjectVariableMember(shapeSrc, d0, "m_JunctionData", "SCR_PowerlineGeneratorJunctionData");
+			array<ref ContainerIdPathEntry> j0 = { new ContainerIdPathEntry("Points", 0), new ContainerIdPathEntry("Data", 0), new ContainerIdPathEntry("m_JunctionData") };
+			ok = ok && api.SetVariableValue(shapeSrc, j0, "m_bPowerSource", "1");
+			if (!ok)
+				Print("[MapGen] " + name + ": cannot mark point 0 as power source", LogLevel.WARNING);
 		}
 
 		if (generator.IsEmpty())

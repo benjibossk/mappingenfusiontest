@@ -11,6 +11,7 @@ class MG_ProjectShape : JsonApiStruct
 	ref array<string> paramKeys = {};	//!< generator properties (RoadWidth, AdjustHeightMap...)
 	ref array<string> paramValues = {};
 	ref array<float> lift = {};	//!< optional metres above the terrain per point (water level); empty = on the terrain
+	bool powerSource;		//!< power line: point 0 is a power source (SCR_PowerlineGeneratorJunctionData.m_bPowerSource)
 
 	void MG_ProjectShape()
 	{
@@ -22,6 +23,7 @@ class MG_ProjectShape : JsonApiStruct
 		RegV("paramKeys");
 		RegV("paramValues");
 		RegV("lift");
+		RegV("powerSource");
 	}
 }
 
@@ -286,7 +288,7 @@ class MG_ProjectApplier
 			done++;
 			if (done % 50 == 0)
 				Print(string.Format("[MapGen] progress: shapes %1/%2", done, nShapes), LogLevel.NORMAL);
-			IEntitySource shapeMade = MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, Layer(api, LayerFor(shape.id, shape.generator)), shape.lift);
+			IEntitySource shapeMade = MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, Layer(api, LayerFor(shape.id, shape.generator)), shape.lift, shape.powerSource);
 			if (shapeMade)
 				created++;
 			if (rep)
