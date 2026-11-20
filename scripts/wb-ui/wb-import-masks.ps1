@@ -175,7 +175,7 @@ if (-not $NoSave) {
     Start-Sleep -Seconds 6
     $wp = Get-Process -Id $wbpid -ErrorAction SilentlyContinue
     if (-not $wp -or (Get-Process -Name CrashReporter* -ErrorAction SilentlyContinue)) { 'WORKBENCH CRASHED during save'; exit 3 }
-    $tt = $wp.MainWindowTitle; if ($tt.EndsWith('*')) { "SAVE FAILED: $lastErr" } else { "saved with Ctrl+S ($tt)" }
+    $tt = $wp.MainWindowTitle; if ($tt.EndsWith('*')) { "SAVE FAILED: $lastErr" } else { "saved ($tt)" }
   }
   Start-Sleep -Seconds 3
   foreach ($d in @(Dialogs | Where-Object { $before -notcontains $_.Current.NativeWindowHandle })) { DescribeDialog $d }
