@@ -9,6 +9,7 @@
 // Each issue can carry a fix: drop the object, or nudge it off the road.
 import { polyOverlap } from '../modules/validate'
 import { pointInPoly } from '../modules/industrial'
+import { nearBridge } from '../modules/water'
 
 /** street lamp prefabs (streetLights.ts): exempt from onRoad as road furniture, checked on their own */
 export const STREET_LAMP = /LampStreet_E_0[123]_(4m|6m|single)|LampIndustrial_05\.et/
@@ -217,17 +218,9 @@ export function bridgeChecks(o: { plans: BridgeLine[]; entities: { id: string; x
       })
       if (kink) out.push({ kind: 'bridgePitch', id: p.id, x: (p.a[0] + p.b[0]) / 2, z: (p.a[1] + p.b[1]) / 2 })
     }
-    // buildings by the deck: distance to the deck axis, buried ends included
-    const ax = p.a[0] - ex * over, az = p.a[1] - ez * over, len = L + 2 * over
-    const near = (x: number, z: number) => {
-      const t = Math.max(0, Math.min(len, (x - ax) * ex + (z - az) * ez))
-      return Math.hypot(x - ax - ex * t, z - az - ez * t) < clear + 3.5 // + deck half width
-    }
     o.settled.forEach((b, i) => {
       if (b.ycm != null) return
-      let hit = near(b.x, b.z)
-      for (let k = 0; !hit && k + 1 < b.corners.length; k += 2) hit = near(b.corners[k], b.corners[k + 1])
-      if (hit) out.push({ kind: 'bridgeHouse', id: `${b.id} / ${p.id}`, x: b.x, z: b.z, fix: { op: 'drop', ref: { list: 'settled', i } } })
+      if (nearBridge(p, b, clear, over)) out.push({ kind: 'bridgeHouse', id: `${b.id} / ${p.id}`, x: b.x, z: b.z, fix: { op: 'drop', ref: { list: 'settled', i } } })
     })
   }
   return out

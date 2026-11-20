@@ -22,7 +22,7 @@ import { FOREST_AVOID, GENERATORS, withAvoid, type Project, type ProjectEntity, 
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
-import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
+import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
@@ -1303,7 +1303,7 @@ function zoneHabitation(zone: number[], n: number) {
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   const before = settled.length
   const res = settleVillages([site], allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: Number($<HTMLSelectElement>('zoneDens').value) || 1, variant: 'auto', maxSlope: 0.2, polygon: zone, reach, blocked, biome: currentBiome }, settled)
-  settled = res.placed
+  settled = offBridges(res.placed)
   setLanes = [...setLanes, ...res.lanes]
   setSquares = [...setSquares, ...res.squares]
   setGardens = [...setGardens, ...res.gardens]
@@ -1334,7 +1334,7 @@ function zoneScattered(zone: number[], n: number) {
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   const res = scatterBuildings(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, haPerGroup: Math.max(2, num('zoneHa') || 8), maxSlope: ZONE_MAX_SLOPE.scattered, blocked, prefix: sid }, settled)
   const made = res.placed.length - settled.length
-  settled = res.placed
+  settled = offBridges(res.placed)
   setLanes = [...setLanes, ...res.lanes]
   finishZone('scattered', zone, res.groups ? t('log.zoneScattered', { g: res.groups, n: made, s: res.lanes.length }) : t('err.zoneNoHouse'), res.yards)
 }
@@ -1350,7 +1350,7 @@ function zoneTown(zone: number[], n: number) {
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
   const res = generateTown(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: num('setDensity') || 1, maxSlope: ZONE_MAX_SLOPE.town, blocked, prefix: sid }, settled)
   const made = res.placed.length - settled.length
-  settled = res.placed
+  settled = offBridges(res.placed)
   setLanes = [...setLanes, ...res.lanes]
   setSquares = [...setSquares, ...res.squares]
   // the town's parking and church blocks are dressed by the site generators (sitezones.ts): parking bays, and the
@@ -1649,7 +1649,19 @@ function paintSink(x: number, z: number, v: number) {
 
 //! fine heights from the macro, rivers if live; surfaces only when final (end of stroke)
 // 2 m patches over the harbours, sent with the relief (heightpatch.txt)
-const heightPatches = () => (island ? zones.flatMap((zn) => (zn.harbour ? [harbourPatch(island!.heights, island!.grid, zn.harbour)] : [])) : [])
+const heightPatches = () => (island ? [...zones.flatMap((zn) => (zn.harbour ? [harbourPatch(island!.heights, island!.grid, zn.harbour)] : [])), ...bridgeRampPatches(riverBridgePlans(), island.heights, island.grid)] : [])
+// river bridges of the current roads / waters (same gaps and widths as the export, waterAndRoads)
+function riverBridgePlans() {
+  if (!island) return []
+  const ids = new Set(roads.map((r) => r.id))
+  const hb = (id: string) => { const r = roads.find((q) => q.id === id); return r ? { half: roadHalf(r), dirt: DIRT_ROADS.has(r.type) } : undefined }
+  return riverBridges(roadGaps().filter((g) => ids.has(g.id) && !noBridge.has(gapKey(g))), island.heights, island.grid, hb).plans
+}
+//! generated buildings closer than 5 m to a river bridge deck are left out (touching the deck end otherwise)
+function offBridges<B extends { x: number; z: number; corners: number[] }>(list: B[]): B[] {
+  const plans = riverBridgePlans()
+  return plans.length ? list.filter((b) => !plans.some((p) => nearBridge(p, b))) : list
+}
 function recompose(final: boolean) {
   if (!island || !sculpt) return
   const g = island.grid
@@ -3854,7 +3866,7 @@ $<HTMLButtonElement>('setGen').addEventListener('click', () => void track((async
     : settle(sites, allRoads, waters, island.heights, island.grid, { seed: num('setSeed'), density: num('setDensity') }, { square: chk('setSquare'), lanes: chk('setLanes'), paths: chk('setPaths'), pool, blocked })
   setGardens = 'gardens' in res ? (res.gardens as typeof setGardens) : []
   setParcels = 'parcels' in res ? ((res.parcels as VillageParcel[] | undefined) ?? []) : []
-  settled = res.placed
+  settled = offBridges(res.placed)
   setLanes = res.lanes
   setPaths = res.paths
   setSquares = res.squares
@@ -4656,7 +4668,7 @@ function runChecks() {
   {
     const hb = (id: string) => { const r = roads.find((q) => q.id === id); return r ? { half: roadHalf(r), dirt: DIRT_ROADS.has(r.type) } : undefined }
     const rb = riverBridges(roadGaps().filter((g) => ids.has(g.id) && !noBridge.has(gapKey(g))), island.heights, g0, hb)
-    const hs = island.heights, at = (x: number, z: number) => hs[Math.min(g0.rows - 1, Math.max(0, Math.round((z - g0.minZ) / g0.step))) * g0.cols + Math.min(g0.cols - 1, Math.max(0, Math.round((x - g0.minX) / g0.step)))]
+    const at = patchedAt(island.heights, g0, bridgeRampPatches(rb.plans, island.heights, g0)) // ramps of the capped decks included
     issues = [...issues, ...bridgeChecks({ plans: rb.plans, entities: rb.entities, roadY: at, settled })]
   }
   $('checkDensity').textContent = t('check.density', { n: Math.round(density.total), max: PLATFORM_BUDGETS[budgetPlatform()].total })
@@ -5243,7 +5255,7 @@ function applyWorld(w: WorldResult) {
   powerStations = w.powerStations ?? []; powerAccess = w.powerAccess ?? []
   areas = w.areas.map((a) => ({ id: a.id, kind: a.kind, leaf: a.leaf, pts: a.pts, ...(a.tall && { tall: a.tall }), ...(a.stage && { stage: a.stage }), ...(a.logs && { logs: a.logs }) }))
   result = w.campaign ?? null
-  settled = w.settlement.placed; setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
+  settled = offBridges(w.settlement.placed); setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
   setGardens = []
   setParcels = [...(w.settlement.parcels ?? []), ...(w.settlement.fences ?? [])]
   zones = w.zones

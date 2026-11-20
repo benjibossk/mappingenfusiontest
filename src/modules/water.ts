@@ -794,7 +794,7 @@ const BRIDGE_OVER = 8 // metres of deck buried in each bank
 
 /** [M] steepest deck allowed (rise / run): above it the higher bank sets the deck and the lower end is flagged */
 export const BRIDGE_MAX_PITCH = 0.08
-export interface RiverBridge { id: string; a: [number, number, number]; b: [number, number, number]; slope: number; capped: boolean; deckIds: string[] }
+export interface RiverBridge { id: string; a: [number, number, number]; b: [number, number, number]; slope: number; capped: boolean; deckIds: string[]; half: number }
 
 //! one bridge per road gap: deck pieces end to end along ONE straight 3D line from the road height on bank A
 //! to the road height on bank B (every piece and pillar on that line, same tilt; capped at BRIDGE_MAX_PITCH).
@@ -843,7 +843,7 @@ export function riverBridges(gaps: { id: string; from: [number, number]; to: [nu
         // nose up along +Z = negative editor X angle (SlopeAngles convention)
         out.push({ id, prefab: BRIDGE.wooden, x: r2(cx + wx * o), z: r2(cz + wz * o), yaw: wy, ycm: Math.round(lineY(o) * 100), ...(cd(tilt) ? { pitchcd: -cd(tilt) } : {}) })
       }
-      plans.push({ id: base, a: [g.from[0], g.from[1], hA], b: [g.to[0], g.to[1], hB], slope, capped, deckIds })
+      plans.push({ id: base, a: [g.from[0], g.from[1], hA], b: [g.to[0], g.to[1], hB], slope, capped, deckIds, half: h })
       return
     }
     // +X of the model along the road: yaw turns +Z towards (sin, cos), so +X goes to (cos, -sin).
@@ -877,7 +877,66 @@ export function riverBridges(gaps: { id: string; from: [number, number]; to: [nu
         out.push({ id: `${base}_PILLAR_${j}`, prefab: p.prefab === BRIDGE.wide ? BRIDGE.pillar : BRIDGE.pillarNarrow, x: r2(x), z: r2(z), yaw, ycm: Math.round(y * 100) - PILLAR_DROP })
       s += p.len * c
     })
-    plans.push({ id: base, a: [g.from[0], g.from[1], hA], b: [g.to[0], g.to[1], hB], slope, capped, deckIds })
+    plans.push({ id: base, a: [g.from[0], g.from[1], hA], b: [g.to[0], g.to[1], hB], slope, capped, deckIds, half: h })
   })
   return { entities: out, plans }
+}
+
+/** [M] approach ramp of a capped bridge: metres of road raised beyond the 3 m abutment sample, side taper */
+export const BRIDGE_RAMP = { len: 25, flat: 3, taper: 4 }
+//! Height patches (2 m) that raise the terrain + road on the LOW bank of a bridge whose pitch was capped:
+//! flat at the deck end for 3 m, then a straight ramp back down to the ground over BRIDGE_RAMP.len metres.
+export function bridgeRampPatches(plans: RiverBridge[], heights: ArrayLike<number>, grid: Grid, step = 2): { minX: number; minZ: number; step: number; cols: number; rows: number; heights: number[] }[] {
+  const at = sampler(heights, grid), out: { minX: number; minZ: number; step: number; cols: number; rows: number; heights: number[] }[] = []
+  for (const p of plans) {
+    if (!p.capped) continue
+    const dx = p.b[0] - p.a[0], dz = p.b[1] - p.a[1], L = Math.hypot(dx, dz) || 1
+    const ex = dx / L, ez = dz / L
+    const sA = at(p.a[0] - ex * 3, p.a[1] - ez * 3), sB = at(p.b[0] + ex * 3, p.b[1] + ez * 3)
+    const useA = p.a[2] - 0.05 - sA > p.b[2] - 0.05 - sB
+    const [x0, z0, y0] = useA ? p.a : p.b
+    const ox = useA ? -ex : ex, oz = useA ? -ez : ez // outwards, along the road away from the river
+    const top = y0 - 0.05, w = p.half + 2, R = BRIDGE_RAMP
+    const far = R.flat + R.len + 3
+    const xs = [x0, x0 + ox * far].flatMap((x) => [x - w - R.taper, x + w + R.taper]), zs = [z0, z0 + oz * far].flatMap((z) => [z - w - R.taper, z + w + R.taper])
+    const minX = Math.floor(Math.min(...xs) / step) * step, minZ = Math.floor(Math.min(...zs) / step) * step
+    const cols = Math.ceil((Math.max(...xs) - minX) / step) + 1, rows = Math.ceil((Math.max(...zs) - minZ) / step) + 1
+    const hs: number[] = []
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const x = minX + c * step, z = minZ + r * step, g = at(x, z)
+      const d = (x - x0) * ox + (z - z0) * oz, lat = Math.abs(-(x - x0) * oz + (z - z0) * ox)
+      let y = g
+      if (d >= -2 && d <= far && lat <= w + R.taper) {
+        const k = d <= R.flat + 3 ? 1 : Math.max(0, 1 - (d - R.flat - 3) / R.len) // 1 = deck height
+        const side = lat <= w ? 1 : 1 - (lat - w) / R.taper
+        y = Math.max(g, g + (top - g) * k * side)
+      }
+      hs.push(Math.round(y * 100) / 100)
+    }
+    out.push({ minX, minZ, step, cols, rows, heights: hs })
+  }
+  return out
+}
+//! terrain height with the patches on top (nearest patch sample where one covers the point)
+export function patchedAt(heights: ArrayLike<number>, grid: Grid, patches: { minX: number; minZ: number; step: number; cols: number; rows: number; heights: number[] }[]): (x: number, z: number) => number {
+  const at = sampler(heights, grid)
+  return (x, z) => {
+    for (const q of patches) {
+      const c = Math.round((x - q.minX) / q.step), r = Math.round((z - q.minZ) / q.step)
+      if (c >= 0 && r >= 0 && c < q.cols && r < q.rows) return q.heights[r * q.cols + c]
+    }
+    return at(x, z)
+  }
+}
+//! a building (origin or corner) closer than `clear` m to a bridge deck, its buried ends (`over`) included
+export function nearBridge(p: RiverBridge | { a: number[]; b: number[] }, b: { x: number; z: number; corners: number[] }, clear = 5, over = BRIDGE_OVER): boolean {
+  const dx = p.b[0] - p.a[0], dz = p.b[1] - p.a[1], L = Math.hypot(dx, dz) || 1, ex = dx / L, ez = dz / L
+  const ax = p.a[0] - ex * over, az = p.a[1] - ez * over, len = L + 2 * over
+  const near = (x: number, z: number) => {
+    const t = Math.max(0, Math.min(len, (x - ax) * ex + (z - az) * ez))
+    return Math.hypot(x - ax - ex * t, z - az - ez * t) < clear + 3.5
+  }
+  if (near(b.x, b.z)) return true
+  for (let k = 0; k + 1 < b.corners.length; k += 2) if (near(b.corners[k], b.corners[k + 1])) return true
+  return false
 }
