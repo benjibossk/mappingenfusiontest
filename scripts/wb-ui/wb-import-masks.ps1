@@ -11,7 +11,8 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $A = [System.Windows.Automation.AutomationElement]
 $P = [System.Windows.Automation.PropertyCondition]
-$wbpid = (Get-Process | Where-Object { $_.ProcessName -like 'ArmaReforgerWorkbench*' } | Select-Object -First 1).Id
+# pick OUR Workbench (several can run, e.g. another session's FF project): the one whose window or command line names Mapgenerator
+$wbpid = (Get-CimInstance Win32_Process -Filter "Name like 'ArmaReforgerWorkbench%'" | Where-Object { $_.CommandLine -match 'Mapgenerator' -or (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).MainWindowTitle -match 'Mapgenerator' } | Select-Object -First 1).ProcessId
 if (-not $wbpid) { throw 'Workbench not running' }
 function Tops { $A::RootElement.FindAll('Children', (New-Object $P($A::ProcessIdProperty, [int]$wbpid))) }
 function WE { Tops | Where-Object { $_.Current.Name -match '^World Editor' } | Select-Object -First 1 }
@@ -115,7 +116,8 @@ if (-not $NoSave) {
   # save: menu Invoke once, else Ctrl+S
   $saved = $false
   # ONE attempt only: repeated UIA Invokes on Save World crashed the Workbench (2026-11-20)
-  try { MenuInvoke 'File' 'Save World'; $saved = $true } catch { $lastErr = "$_" }
+  # UIA Invoke on File > Save World crashed the Workbench twice right after an import (2026-11-20): keyboard Ctrl+S only
+  $lastErr = 'Ctrl+S did not clear the * in the title'
   if (-not $saved) {
     # UIA Invoke on Save World can fault (RPC_E_SERVERFAULT) after the import box: fall back to Esc + Ctrl+S on the focused editor
     Add-Type -AssemblyName System.Windows.Forms
