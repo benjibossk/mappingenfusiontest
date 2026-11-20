@@ -95,6 +95,8 @@ export interface GridOptions {
   ugMin: number
 }
 export type PowerDistrib = 'auto' | 'overhead' | 'underground'
+/** longest LV drop to a farm before an MV spur + pole transformer is preferred (POWERGRID_LOGIC.md) */
+const FARM_LV = 300
 export const GRID_DEFAULTS: GridOptions = { style: 'eden', ehv: 'auto', hv: true, mv: true, lv: true, mvMax: 4000, lvMax: 900, farmMax: 600, plants: 'auto', distrib: 'auto', ugMin: 25 }
 
 export interface GridInput {
@@ -552,9 +554,11 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       const yard = onRoad ? Math.max(0, rd.d - 15) : 0
       const fx = onRoad && yard > 15 ? rd.x + ((s.x - rd.x) / rd.d) * yard : rx, fz = onRoad && yard > 15 ? rd.z + ((s.z - rd.z) / rd.d) * yard : rz
       let src = nearestPole('lv', rx, rz), how: 'lv' | 'pole-trafo' = 'lv', from = 'LV'
-      if (!(src.d <= opt.farmMax) && opt.mv) {
+      // POWERGRID_LOGIC: a farm under FARM_LV m from LV hangs on it, farther it takes an MV spur + pole transformer
+      // (falls back to the long LV drop when no MV line is near enough)
+      if (!(src.d <= FARM_LV) && opt.mv) {
         const m = nearestPole('mv', rx, rz)
-        if (m.d <= opt.farmMax) {
+        if (m.d <= opt.farmMax && m.d < src.d) {
           const dims = STATION_PREFABS.eden.mvlv // pole kiosk in both styles: a farm never gets a fenced yard
           const a = Math.atan2(rx - m.x, rz - m.z), tx = m.x + Math.sin(a) * 6, tz = m.z + Math.cos(a) * 6
           const st: Station = { id: `PSTA_POLE_${++nid}`, kind: 'mvlv', site: s.id, x: tx, z: tz, yaw: a, w: dims.w, d: dims.d, h: dims.h, y: hAt(h, g, tx, tz), prefab: dims.prefab }
