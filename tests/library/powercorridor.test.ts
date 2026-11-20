@@ -30,3 +30,24 @@ test('planner: villages along one road get no long parallel LV / MV runs', () =>
   const L = parallelOverlap(p.lines)
   assert.ok(L < 120, `parallel LV/MV ${Math.round(L)} m`)
 })
+
+test('topology: plant is the power source, edges join known nodes, every transformer sits on a feeder', async () => {
+  const { gridTopology } = await import('../../src/modules/powergrid.ts')
+  const size = 6000, step = 20, cols = Math.round(size / step) + 1
+  const grid = { minX: 0, minZ: 0, step, cols, rows: cols }
+  const heights = new Float32Array(cols * cols).fill(40)
+  const sites: GridSite[] = [
+    { id: 'T1', x: 1200, z: 1200, kind: 'town', r: 250 }, { id: 'V1', x: 3000, z: 1500, kind: 'village', r: 120 },
+    { id: 'V2', x: 4400, z: 3800, kind: 'village', r: 120 }, { id: 'FARM_1', x: 3300, z: 1900, kind: 'hamlet', r: 40 },
+  ]
+  const roads = [[1200, 1200, 3000, 1500, 4400, 3800], [3000, 1500, 3300, 1900]]
+  const p = planGrid({ heights, grid, sites, roads, isWater: () => false, size }, { style: 'eden', plants: 1, ehv: false })
+  const t = gridTopology(p), ids = new Set(t.nodes.map((n) => n.id))
+  assert.equal(ids.size, t.nodes.length)
+  assert.ok(t.nodes.some((n) => n.kind === 'plant' && n.powerSource))
+  assert.ok(t.nodes.filter((n) => n.powerSource).every((n) => n.kind === 'plant'))
+  for (const e of t.edges) assert.ok(ids.has(e.from) && ids.has(e.to), e.id)
+  const fed = new Set(t.feeders.flatMap((f) => f.transformers))
+  for (const n of t.nodes) if (n.kind === 'mvlv') assert.ok(fed.has(n.id), `${n.id} on no feeder`)
+  assert.deepEqual(gridTopology(p), t) // stable
+})

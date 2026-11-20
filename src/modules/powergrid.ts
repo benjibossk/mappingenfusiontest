@@ -706,3 +706,55 @@ export function accessShapes(access: number[][], prefix = 'PSTA_ROAD'): ProjectS
     paramKeys: ['AdjustHeightMap', 'RoadWidth', 'AdjustHeightMapPriority'], paramValues: ['0', '4', '5'] }))
 }
 
+
+// ---- topology (POWERGRID_LOGIC.md §6): who feeds whom, for a future Bohemia grid system ------------------------
+export type TopoNodeKind = 'plant' | 'ehvYard' | 'hvmv' | 'mvlv' | 'poleTrafo' | 'junction' | 'consumer'
+export interface PowerTopology {
+  nodes: { id: string; kind: TopoNodeKind; x: number; z: number; prefab?: string; entityName: string; powerSource: boolean; siteId?: string }[]
+  edges: { id: string; level: 'EHV' | 'HV' | 'MV' | 'LV'; from: string; to: string; generatorEntity: string }[]
+  feeders: { id: string; substation: string; edges: string[]; transformers: string[] }[]
+  consumers: { siteId: string; transformer: string | null }[]
+}
+const TOPO_KIND: Record<StationKind, TopoNodeKind> = { plant: 'plant', ehv: 'ehvYard', hv: 'hvmv', mvlv: 'mvlv', ind: 'mvlv' }
+/** directed graph source -> feeder -> transformer -> consumers of a plan; names = the exported entity names
+ *  (stations PSTA_*, lines POWER_*), stable for a given seed */
+export function gridTopology(plan: Pick<GridPlan, 'lines' | 'stations'>): PowerTopology {
+  const nodes: PowerTopology['nodes'] = [], byId = new Map<string, PowerTopology['nodes'][number]>()
+  const add = (n: PowerTopology['nodes'][number]) => { if (!byId.has(n.id)) { byId.set(n.id, n); nodes.push(n) } return n.id }
+  for (const s of plan.stations) add({ id: s.id, kind: s.id.startsWith('PSTA_POLE') ? 'poleTrafo' : TOPO_KIND[s.kind], x: s.x, z: s.z, prefab: s.prefab, entityName: s.id, powerSource: s.kind === 'plant', siteId: s.site })
+  const stationIds = new Set(plan.stations.map((s) => s.id))
+  const nearestNode = (x: number, z: number) => { let b: string | null = null, bd = 12; for (const n of nodes) { const d = Math.hypot(n.x - x, n.z - z); if (d < bd) { bd = d; b = n.id } } return b }
+  const edges: PowerTopology['edges'] = []
+  for (const l of plan.lines) {
+    const P = l.poles, n = P.length
+    if (n < 4) continue
+    const from = stationIds.has(l.from) ? l.from : nearestNode(P[0], P[1]) ?? add({ id: `JCT_${l.id}_A`, kind: 'junction', x: P[0], z: P[1], entityName: `JCT_${l.id}_A`, powerSource: false })
+    const to = stationIds.has(l.to) ? l.to : add({ id: `SITE_${l.to}`, kind: 'consumer', x: P[n - 2], z: P[n - 1], entityName: `SITE_${l.to}`, powerSource: false, siteId: l.to })
+    edges.push({ id: l.id, level: l.kind.toUpperCase() as 'EHV', from, to, generatorEntity: l.id })
+  }
+  // feeders: each MV edge leaving an HV/MV yard or a plant, followed downstream through the transformers it reaches
+  const out = new Map<string, string[]>()
+  for (const e of edges) (out.get(e.from) ?? out.set(e.from, []).get(e.from)!).push(e.id)
+  const edge = new Map(edges.map((e) => [e.id, e]))
+  const feeders: PowerTopology['feeders'] = []
+  for (const e of edges) {
+    if (e.level !== 'MV') continue
+    const src = byId.get(e.from)
+    if (!src || (src.kind !== 'hvmv' && src.kind !== 'plant')) continue
+    const seen = new Set<string>(), tr = new Set<string>(), q = [e.id]
+    while (q.length) {
+      const id = q.pop()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      const t = byId.get(edge.get(id)!.to)
+      if (t && (t.kind === 'mvlv' || t.kind === 'poleTrafo')) tr.add(t.id)
+      if (edge.get(id)!.level === 'MV') for (const nx of out.get(edge.get(id)!.to) ?? []) if (edge.get(nx)!.level === 'MV') q.push(nx)
+    }
+    feeders.push({ id: `FEEDER_${feeders.length + 1}`, substation: src.id, edges: [...seen], transformers: [...tr] })
+  }
+  // consumers: the site of each transformer, and each site an LV edge ends at (fed by the edge's source transformer)
+  const consumers = new Map<string, string | null>()
+  for (const s of plan.stations) if ((s.kind === 'mvlv' || s.kind === 'ind') && s.site && !consumers.has(s.site)) consumers.set(s.site, s.id)
+  for (const e of edges) { const t = byId.get(e.to); if (t?.kind === 'consumer' && t.siteId && !consumers.get(t.siteId)) consumers.set(t.siteId, byId.get(e.from)?.kind === 'junction' ? null : e.from) }
+  return { nodes, edges, feeders, consumers: [...consumers].map(([siteId, transformer]) => ({ siteId, transformer })) }
+}

@@ -5,6 +5,7 @@
 // -> industrial zones (they hook onto the main roads, so after the network) -> villages v2 -> power
 // lines -> forests -> surfaces. The result is loaded into the normal steps (main.ts) to be tweaked.
 
+import { gridTopology, type PowerTopology } from './powergrid'
 import { dedupeRing } from './forestEdge'
 import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
@@ -107,6 +108,8 @@ export interface WorldResult {
   powerAccess?: number[][]
   areas: WorldArea[]
   surfaces: SurfaceGrid[]
+  /** who feeds whom (powergrid.topology.json, POWERGRID_LOGIC.md §6) */
+  powerTopology?: PowerTopology
   issues: Issue[]
   overfull: number
   /** V2 valley bridges (decks + piers) for the roads' `spans`; the river crossings stay with splitAtWater at export */
@@ -701,7 +704,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 10b. countryside: plots + hedges (campaign.ts, Tanin AgriFieldGenerator method) on the open, gentle
   // ground around each settlement; never in a forest, a lake, a zone or the settlement core
   // 10a. production forests on part of the large conifer / mixed woods, tracks linked to the road network
-  const prod = addProdForests(areas, { seed: ss('forests', 'prodforest'), roads: allRoads.map((r) => r.pts), ground: (x, z) => hAt(x, z) })
+  const prod = addProdForests(areas, { seed: ss('forests', 'prodforest'), roads: allRoads.map((r) => r.pts), ground: (x, z) => hAt(x, z),
+    blocked: (x, z) => discs.some((d) => Math.hypot(x - d.x, z - d.z) < d.r + 10) || settlement.placed.some((b) => Math.abs(b.x - x) < 14 && Math.abs(b.z - z) < 14) })
   if (prod.count) { areas.splice(0, areas.length, ...(prod.areas as WorldArea[])); roads.push(...prod.tracks); allRoads.push(...prod.tracks) }
   const forestRings = [...areas.map((a) => a.pts), ...prod.outlines]
   const topH = cur.heights.reduce((a, b) => Math.max(a, b), 0)
@@ -916,7 +920,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       })
     }
   }
-  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
+  return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access, powerTopology: gridTopology(pw) }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
 }
 
 /** station footprint corners (x, z centre, yaw radians, w x d) */

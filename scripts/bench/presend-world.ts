@@ -22,3 +22,8 @@ if (process.argv.includes('--list')) for (const i of issues.slice(0, 40)) consol
   const L = parallelOverlap(w.power as never)
   console.log(`parallel LV/MV within 25 m: ${Math.round(L)} m`)
 }
+{
+  const t = (w as { powerTopology?: { nodes: unknown[]; edges: unknown[]; feeders: unknown[]; consumers: { transformer: string | null }[] } }).powerTopology
+  if (t) console.log(`topology: ${t.nodes.length} nodes, ${t.edges.length} edges, ${t.feeders.length} feeders, ${t.consumers.length} consumers (${t.consumers.filter((c) => !c.transformer).length} without transformer)`)
+  const o = process.argv.indexOf('--topology'); if (t && o > 0) (await import('node:fs')).writeFileSync(process.argv[o + 1], JSON.stringify(t, null, 1))
+}
