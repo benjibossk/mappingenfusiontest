@@ -170,11 +170,8 @@ if (-not $NoSave) {
   $lastErr = 'Ctrl+S did not clear the * in the title'
   if (-not $saved) {
     # UIA Invoke on Save World can fault (RPC_E_SERVERFAULT) after the import box: fall back to Esc + Ctrl+S on the focused editor
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -Namespace MgK -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);'
-    [MgK.U]::SetForegroundWindow([IntPtr](WE).Current.NativeWindowHandle) | Out-Null; Start-Sleep -Milliseconds 400
-    [System.Windows.Forms.SendKeys]::SendWait('{ESC}{ESC}'); Start-Sleep -Milliseconds 300
-    [System.Windows.Forms.SendKeys]::SendWait('^s'); Start-Sleep -Seconds 4
+    # NET API save, no keyboard/focus (Benji plays on the same PC)
+    node (Join-Path $PSScriptRoot 'wb-save.mjs')
     Start-Sleep -Seconds 6
     $wp = Get-Process -Id $wbpid -ErrorAction SilentlyContinue
     if (-not $wp -or (Get-Process -Name CrashReporter* -ErrorAction SilentlyContinue)) { 'WORKBENCH CRASHED during save'; exit 3 }
