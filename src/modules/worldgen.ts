@@ -11,7 +11,7 @@ import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
 import { DENSITY, scaledCount, worldCounts } from '../data/densities'
 import { featheredBelt, scatterLayers } from './vegLayers'
-import { cliffRocks } from './cliffRocks'
+import { buryRocks, cliffRocks, paintRockSurfaces, rockStamps } from './cliffRocks'
 import { VEG } from '../data/biomes'
 import { fr } from '../i18n'
 import { computeSurfaces, settlementMask, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
@@ -862,10 +862,22 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     })
     if (scat.length) zones.push({ id: 'VEG_SCATTER', kind: 'site', sub: 'scatter', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'scatter'), shapes: [], entities: scat, flat: [], plat: [], roads: [], warnings: [],
       boxes: scat.map((t) => ({ corners: [t.x - 1, t.z - 1, t.x + 1, t.z - 1, t.x + 1, t.z + 1, t.x - 1, t.z + 1], role: 'tree', h: 0.1 })) })
-    // rocks / cliff faces on ground past ~37 deg (cliffRocks.ts), 8 m clear of roads, houses, zones and water
+    // rocks / cliffs / scree / field stones on the steepest ranks of the island (cliffRocks.ts, ROCKS_VANILLA.md), 8 m clear of roads, houses, zones and water
     const nearRoad = (x: number, z: number) => onRoad(x, z) || onRoad(x + 8, z) || onRoad(x - 8, z) || onRoad(x, z + 8) || onRoad(x, z - 8)
-    const cliffs = cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, seed: ss('forests', 'cliffs'), max: Math.round(60 * landKm2),
-      ok: (x, z) => !isLakeOrSea(x, z) && !nearRoad(x, z) && !houseNear(x, z) && !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r + 8 }) })
+    // bilinear ground for the burial depth (hAt is the nearest vertex: up to ~3 m off on a steep 8 m cell)
+    const gAt = (x: number, z: number) => {
+      const fx = Math.min(Math.max((x - g.minX) / g.step, 0), g.cols - 1.001), fz = Math.min(Math.max((z - g.minZ) / g.step, 0), g.rows - 1.001)
+      const c = Math.floor(fx), r = Math.floor(fz), u = fx - c, v = fz - r, H = cur.heights, i = r * g.cols + c
+      return (H[i] * (1 - u) + H[i + 1] * u) * (1 - v) + (H[i + g.cols] * (1 - u) + H[i + g.cols + 1] * u) * v
+    }
+    const forestR = rasterCover(g, areas.filter((a) => a.kind === 'forest'))
+    const inWood = (x: number, z: number) => { if (!forestR) return false; const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step); const v = forestR[r * g.cols + c]; return v >= 1 && v <= 3 }
+    buryRocks(scat, gAt)
+    // site / industry / military footprints only: the map-wide scatter layers (VEG_SCATTER, field trees...) are a
+    // zone too and their disc covers the whole island (that is why this placed 0 rocks before)
+    const discs = zones.map(zoneDisc).filter((d) => d.r < 600)
+    const cliffs = cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, groundAt: gAt, forest: inWood, seed: ss('forests', 'cliffs'), max: Math.round(200 * landKm2),
+      ok: (x, z) => !isLakeOrSea(x, z) && !nearRoad(x, z) && !houseNear(x, z) && !discs.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 8) })
     if (cliffs.length) zones.push({ id: 'CLIFF_ROCKS', kind: 'site', sub: 'cliffs', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'cliffs'), shapes: [], entities: cliffs, flat: [], plat: [], roads: [], warnings: [],
       boxes: cliffs.map((t) => ({ corners: [t.x - 3, t.z - 3, t.x + 3, t.z - 3, t.x + 3, t.z + 3, t.x - 3, t.z + 3], role: 'rock', h: 2 })) })
   }
@@ -944,7 +956,11 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   }
   // 11. surfaces (5 per block at most)
   await step('surfaces')
-  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas.filter((a) => !a.id.startsWith('FOREST_GP_')), ...cropCover(camp)]) /* gameplay copses / belts: trees on grass, like vanilla hedge woods */, settlementMask(g, settlement.placed.map((q) => q.corners)))
+  const settleM = settlementMask(g, settlement.placed.map((q) => q.corners))
+  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas.filter((a) => !a.id.startsWith('FOREST_GP_')), ...cropCover(camp)]) /* gameplay copses / belts: trees on grass, like vanilla hedge woods */, settleM)
+  // the rocky ground the vanilla rocks sit in: scree halo + bare rock at cliffs (cliffRocks.ts paintRockSurfaces)
+  const rockZone = zones.find((zn) => zn.id === 'CLIFF_ROCKS')
+  if (rockZone) paintRockSurfaces(surfaces, rockStamps(rockZone.entities), undefined, settleM)
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, power, refusedGaps: [], heights: cur.heights, grid: g })
   // the Workbench drops outline points closer than 0.5 m to the previous one (seed 21 report: 55 forest outlines

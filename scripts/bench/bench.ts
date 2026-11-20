@@ -25,6 +25,7 @@ import { pastureFences, pastureDensity, pastureStyles } from '../../src/modules/
 import { streetLights } from '../../src/modules/streetLights'
 import { gameplayReport, GAMEPLAY_NOT_BUILDING } from '../../src/modules/gameplay'
 import { localStreets, streetStats, polyLen, STREET_REACH } from './streets'
+import { rocksBench } from './rocks'
 
 const args = process.argv.slice(2)
 const mapId = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--'))) ?? 'everon'
@@ -383,6 +384,7 @@ const gpIn = { heights, grid, forests: m.forests ?? [] }
 const gpV = gameplayReport({ ...gpIn, houses: m.buildings.items.filter((b) => !GAMEPLAY_NOT_BUILDING.test(m.buildings.prefabs[b[0]])).map(([, x, z]) => ({ x, z })) })
 const gpO = gameplayReport({ ...gpIn, houses: placed.map((b) => ({ x: b.x, z: b.z })) })
 const gpBrief = (r: typeof gpV) => ({ score: r.score, sub: Object.fromEntries(Object.entries(r.sub).map(([k, v]) => [k, v.score])) })
+const rocks = rocksBench(mapId, { minX: grid.minX, minZ: grid.minZ, maxX: grid.minX + (grid.cols - 1) * grid.step, maxZ: grid.minZ + (grid.rows - 1) * grid.step }, hAt, (x, z) => nearRoad(x, z).d > 8)
 const report = {
   map: m.name, genSec, sites: sites.length,
   gameplay: { vanilla: gpBrief(gpV), ours: gpBrief(gpO) },
@@ -396,7 +398,8 @@ const report = {
   power,
   streetLights: streetLightInfo,
   powerWindows: powerWin.length ? { score: powerWindowScore, windows: powerWin } : null,
-  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, streetLights: streetLightScore, power: power?.tilePoles ?? null, powerWindow: powerWindowScore },
+  rocks,
+  scores: { villages: villageScore, fences: fenceScore, streets: streetScore, ruralFences: ruralScore, farmsteads: farmsteads.score, streetLights: streetLightScore, power: power?.tilePoles ?? null, powerWindow: powerWindowScore, rocks: rocks?.score ?? null },
   powerRef: { nearRoad10: Object.fromEntries(kindsP.map((k) => [k, nearShare(vPoles, k)])), lvMedianSpan: +med(spans('lv')).toFixed(1), mvMedianSpan: +med(spans('mv')).toFixed(1), hvMedianSpan: +med(spans('hv')).toFixed(1) },
 }
 console.log(JSON.stringify(report, null, 1))

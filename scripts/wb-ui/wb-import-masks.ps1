@@ -157,6 +157,12 @@ if (-not $NoTerrainFix -and -not $script:importFailed) {
   } else { 'terrain fix: Manage tab not found, skipped' }
 }
 if (-not $NoSave) {
+  # Ctrl+S right after a mask import crashed the Workbench in nvtt (2026-11-20 14:28) while it was still
+  # re-encoding textures: wait until the live console.log has been quiet for 30 s (max 5 min) first.
+  $ld = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  $cl = Join-Path $ld.FullName 'console.log'
+  for ($i = 0; $i -lt 60; $i++) { $age = ((Get-Date) - (Get-Item $cl).LastWriteTime).TotalSeconds; if ($age -ge 30) { break }; Start-Sleep -Seconds 5 }
+  "console quiet before save ($([int]$age) s)"
   # save: menu Invoke once, else Ctrl+S
   $saved = $false
   # ONE attempt only: repeated UIA Invokes on Save World crashed the Workbench (2026-11-20)
@@ -169,7 +175,10 @@ if (-not $NoSave) {
     [MgK.U]::SetForegroundWindow([IntPtr](WE).Current.NativeWindowHandle) | Out-Null; Start-Sleep -Milliseconds 400
     [System.Windows.Forms.SendKeys]::SendWait('{ESC}{ESC}'); Start-Sleep -Milliseconds 300
     [System.Windows.Forms.SendKeys]::SendWait('^s'); Start-Sleep -Seconds 4
-    $tt = (Get-Process -Id $wbpid).MainWindowTitle; if ($tt.EndsWith('*')) { "SAVE FAILED: $lastErr" } else { "saved with Ctrl+S ($tt)" }
+    Start-Sleep -Seconds 6
+    $wp = Get-Process -Id $wbpid -ErrorAction SilentlyContinue
+    if (-not $wp -or (Get-Process -Name CrashReporter* -ErrorAction SilentlyContinue)) { 'WORKBENCH CRASHED during save'; exit 3 }
+    $tt = $wp.MainWindowTitle; if ($tt.EndsWith('*')) { "SAVE FAILED: $lastErr" } else { "saved with Ctrl+S ($tt)" }
   }
   Start-Sleep -Seconds 3
   foreach ($d in @(Dialogs | Where-Object { $before -notcontains $_.Current.NativeWindowHandle })) { DescribeDialog $d }
