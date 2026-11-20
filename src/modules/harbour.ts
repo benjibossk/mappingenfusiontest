@@ -24,7 +24,7 @@ export interface HarbourPlan {
   /** basin polygon, local [u0, v0, u1, v1, ...], flat at BASIN_H */
   basin: number[]
   /** extra dredged discs (local) around the template's sea parts */
-  dredge: { u: number; v: number; r: number }[]
+  dredge: { u: number; v: number; r: number; free?: boolean }[] // free: not clipped to the quay line (a sea part beside the apron)
   /** breakwater arms, local [u0, v0, u1, v1] (root on the coast -> head) */
   arms: number[][]
   /** pass (entrance) local [uL, vL, uR, vR] */
@@ -114,7 +114,7 @@ export const apronDist = (H: HarbourPlan, u: number, v: number) => Math.hypot(Ma
 /** signed distances (local) to the basin (polygon + dredge discs, clipped to v >= 0) and to the apron */
 function dists(H: HarbourPlan, u: number, v: number) {
   let dB = polyDist(H.basin, u, v)
-  for (const c of H.dredge) dB = Math.min(dB, Math.max(Math.hypot(u - c.u, v - c.v) - c.r, -v))
+  for (const c of H.dredge) dB = Math.min(dB, c.free ? Math.hypot(u - c.u, v - c.v) - c.r : Math.max(Math.hypot(u - c.u, v - c.v) - c.r, -v))
   const du = Math.abs(u) - H.apronHalf, dv = Math.max(-H.apronDepth - v, v)
   const dA = du <= 0 && dv <= 0 ? Math.max(du, dv) : Math.hypot(Math.max(du, 0), Math.max(dv, 0))
   return { dB, dA }
@@ -152,6 +152,7 @@ export function buildHarbour(o: {
   hAt: (x: number, z: number) => number
   core: ProjectEntity[]; isSea: (prefab: string) => boolean
   roads: ArrayLike<number>[]
+  avoid?: { x: number; z: number; r: number }[] // other zones' discs: the link road goes round them
 }): HarbourBuild | null {
   const T = TIERS[o.tier], n = coastNormal(o.hAt, o.x, o.z)
   if (!n) return null
@@ -165,10 +166,14 @@ export function buildHarbour(o: {
   if (s0 === null) return null
   const H: HarbourPlan = { tier: o.tier, ox: o.x + nx * s0, oz: o.z + nz * s0, yaw, quayHalf: T.quayHalf, apronHalf: T.quayHalf + 10, apronDepth: T.apronDepth, basin: [], dredge: [], arms: [], pass: [], jetties: [], streetV: T.streetV }
   // the template's sea parts in front of the quay stay seaward of it (else the apron would bury them)
-  const sea = o.core.filter((e) => o.isSea(e.prefab)).map((e) => toLocal(H, e.x, e.z))
+  // + the template's own quay edges (concrete piers, pier ladders, davits): they need water at their foot, our apron
+  // must stay behind them (seed 21 audit: an Arland template's inner basin filled by the apron, 40 parts on dry land)
+  const QUAY_RX = /Piers\/PierConcrete|Ladder_Pier|Davits?\//i
+  const sea = o.core.filter((e) => o.isSea(e.prefab) || QUAY_RX.test(e.prefab)).map((e) => toLocal(H, e.x, e.z))
   const front = sea.filter(([u]) => Math.abs(u) <= H.apronHalf + 10)
   const vMin = front.length ? Math.min(...front.map((q) => q[1])) : 10
-  if (vMin < 6) { const sh = Math.min(40, 6 - vMin); H.ox -= nx * sh; H.oz -= nz * sh }
+  if (vMin < 6) { const sh = Math.min(100, 6 - vMin); // 100 (was 40): a template with its own inner basin (Arland 1089_3300) kept 40 sea parts under the apron (seed 21 audit)
+    H.ox -= nx * sh; H.oz -= nz * sh }
   // roads kept >= 40 m off the quay and >= 25 m off the apron (their carved beds and shoulders stay off the flat)
   for (const l of o.roads) for (let i = 0; i + 3 < l.length; i += 2) {
     const ax = l[i], az = l[i + 1], dx = l[i + 2] - ax, dz = l[i + 3] - az, m = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 4))
@@ -199,6 +204,9 @@ export function buildHarbour(o: {
     H.pass = [-W, D, W, D]
   }
   for (const [u, v] of sea) if (v > 0) H.dredge.push({ u: round(u), v: round(v), r: 14 })
+  // sea parts behind the quay line but beside the apron (side quays, ladders, moored buoys of the template): dredged
+  // too, else they stand on dry ground (seed 21 live audit: 63 port parts on land, 40 in one Arland port template)
+  else if (Math.abs(u) > H.apronHalf + 2) H.dredge.push({ u: round(u), v: round(v), r: 8, free: true })
 
   // entities
   let seed = (o.seed >>> 0) || 1
@@ -249,18 +257,28 @@ export function buildHarbour(o: {
   const yc = Math.round(APRON_H * 100)
   for (let u = -H.quayHalf + 8; u <= H.quayHalf - 8; u += 14) if (rnd() < 0.7) put(rnd() < 0.6 ? P.pallet : P.palletBox, u + rnd() * 4 - 2, -13 - rnd() * (o.tier === 'fishing' ? 0 : 10), rnd() * 360, yc, 4)
   if (o.tier !== 'fishing') for (let u = -H.quayHalf + 10; u <= H.quayHalf - 10; u += 7) if (rnd() < 0.6) put(P.containers[Math.floor(rnd() * 3)], u, -40, 90, yc, 4)
-  for (let w = 0; w < T.warehouses; w++) put(T.warehouses === 1 ? P.warehouseOffice : P.warehouse, (w - (T.warehouses - 1) / 2) * 48, -66, 0, yc, 12)
+  for (let w = 0; w < T.warehouses; w++) put(T.warehouses === 1 ? P.warehouseOffice : P.warehouse, (w - (T.warehouses - 1) / 2) * 48, -66, 0, yc, 22) // 22 m: the warehouse footprint (~36 x 18 m) clear of the template core (seed 21 audit: 10 core items inside a warehouse)
 
   // quay street parallel to the quay + link to the nearest road point
   const roads: Road[] = []
   const a0 = localToWorld(H, -H.apronHalf, H.streetV), a1 = localToWorld(H, H.apronHalf, H.streetV), mid = localToWorld(H, 0, H.streetV)
   roads.push({ id: `${o.id}_quay`, type: 'asphalt', pts: [round(a0[0]), round(a0[1]), round(mid[0]), round(mid[1]), round(a1[0]), round(a1[1])] })
   let best: [number, number] | null = null, bd = 1500
+  // the link never runs through another zone (seed 21: a port link through a military base, 11 of its objects on it)
+  const backAt = (d: number) => localToWorld(H, 0, H.streetV - Math.min(30, d / 2))
+  const crosses = (x: number, z: number, d: number) => {
+    const b = backAt(d)
+    for (const q of o.avoid ?? []) for (const [ax, az, bx, bz] of [[mid[0], mid[1], b[0], b[1]], [b[0], b[1], x, z]]) {
+      const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz, t = L ? Math.max(0, Math.min(1, ((q.x - ax) * dx + (q.z - az) * dz) / L)) : 0
+      if (Math.hypot(q.x - ax - dx * t, q.z - az - dz * t) < q.r) return true
+    }
+    return false
+  }
   for (const l of o.roads) for (let i = 0; i + 1 < l.length; i += 2) {
     const [, v] = toLocal(H, l[i], l[i + 1])
     if (v > H.streetV) continue // only roads inland of the street (never across the apron)
     const d = Math.hypot(l[i] - mid[0], l[i + 1] - mid[1])
-    if (d < bd) { bd = d; best = [l[i], l[i + 1]] }
+    if (d < bd && !crosses(l[i], l[i + 1], d)) { bd = d; best = [l[i], l[i + 1]] }
   }
   if (best && bd > 5) {
     const back = localToWorld(H, 0, H.streetV - Math.min(30, bd / 2))

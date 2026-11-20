@@ -297,11 +297,17 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     const st: Station = { id: `PSTA_${kind.toUpperCase()}_${++nid}`, kind, site: site.id, x: p.x, z: p.z, yaw: p.yaw, w: dims.w, d: dims.d, h: dims.h, y, prefab: dims.prefab, byGenerator, ...(dims.off && { off: dims.off }) }
     flattenPad(h, g, st)
     stations.push(st)
-    const rd = nearestRoad(roads, st.x, st.z)
-    if (Number.isFinite(rd.x) && rd.d < 400) {
-      const gx = st.x + Math.sin(st.yaw) * (st.d / 2 + 2), gz = st.z + Math.cos(st.yaw) * (st.d / 2 + 2)
-      access.push([gx, gz, rd.x, rd.z])
-    }
+    const gx = st.x + Math.sin(st.yaw) * (st.d / 2 + 2), gz = st.z + Math.cos(st.yaw) * (st.d / 2 + 2)
+    // straight access track to the nearest road point it can reach without crossing a house (seed 21 live audit:
+    // a town house on PSTA_ROAD_3 and a 5.7 m terrain step where the track was carved through its pad)
+    const clearTo = (x: number, z: number) => { if (!ob) return true; const L = Math.hypot(x - gx, z - gz); for (let t = 0; t <= L; t += 2) { const k = L ? t / L : 0; if (ob.bldDist(gx + (x - gx) * k, gz + (z - gz) * k, 6) < 6) return false } return true }
+    const cands: { d: number; x: number; z: number }[] = []
+    for (const pl of roads) for (let i = 0; i + 1 < pl.length; i += 2) { const d = Math.hypot(pl[i] - gx, pl[i + 1] - gz); if (d < 400) cands.push({ d, x: pl[i], z: pl[i + 1] }) }
+    const rd = nearestRoad(roads, gx, gz)
+    if (Number.isFinite(rd.x) && rd.d < 400) cands.unshift({ d: rd.d, x: rd.x, z: rd.z })
+    cands.sort((a, b) => a.d - b.d)
+    const to = cands.slice(0, 40).find((c) => clearTo(c.x, c.z))
+    if (to) access.push([gx, gz, to.x, to.z])
     return st
   }
   let lid = 0

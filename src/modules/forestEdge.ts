@@ -100,4 +100,17 @@ function ringPieces(prev: Poly, ins: Poly, near: Poly[]): number[][] {
 
 /** pieces -> closed area shapes with the forest obstacle avoidance */
 export const forestEdgeShapes = (pieces: EdgePiece[]): ProjectShape[] =>
-  pieces.map((p) => ({ id: p.id, kind: 'polyline', closed: true, points: p.pts, generator: p.generator, avoid: FOREST_AVOID }))
+  // points closer than 0.5 m merged here: the Workbench drops them anyway (seed 21 report: 55 outlines with lost points)
+  pieces.map((p) => ({ id: p.id, kind: 'polyline', closed: true, points: dedupeRing(p.pts, 0.5), generator: p.generator, avoid: FOREST_AVOID }))
+
+/** closed ring x,z,...: drop points closer than `min` metres to the previous kept one (and the last to the first) */
+export function dedupeRing(pts: number[], min: number): number[] {
+  const out: number[] = []
+  for (let i = 0; i + 1 < pts.length; i += 2) {
+    const n = out.length
+    if (n && Math.hypot(pts[i] - out[n - 2], pts[i + 1] - out[n - 1]) < min) continue
+    out.push(pts[i], pts[i + 1])
+  }
+  while (out.length > 6 && Math.hypot(out[0] - out[out.length - 2], out[1] - out[out.length - 1]) < min) out.splice(-2, 2)
+  return out.length >= 6 ? out : pts
+}

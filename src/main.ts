@@ -105,7 +105,7 @@ const toWb = async (p: Project) => {
 import { ffBiomeName, ffBiomeValue } from './ffbiome'
 import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
-import { applyFixes, preSendChecks, type PreIssue } from './validate/preSend'
+import { applyFixes, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
 import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
@@ -4477,7 +4477,7 @@ function runChecks() {
   // #1: building overlaps, objects on a road, zone objects off the map (logic of scripts/mg-audit.mjs)
   const g0 = island.grid
   issues = [...issues, ...preSendChecks({
-    width: (g0.cols - 1) * g0.step, height: (g0.rows - 1) * g0.step, settled, zones,
+    width: (g0.cols - 1) * g0.step, height: (g0.rows - 1) * g0.step, settled, zones: zones.map((zn) => ({ ...zn, lines: zoneLines(zn, roadHalf as never) })),
     roads: [...roads.map((r) => ({ r, zone: undefined as number | undefined })), ...zones.flatMap((zn, k) => zn.roads.map((r) => ({ r, zone: k })))]
       .filter(({ r }) => r.pts.length >= 4).map(({ r, zone }) => ({ id: r.id, half: roadHalf(r), line: centreLine(r.pts, 4), zone })),
   })]

@@ -180,6 +180,19 @@ export function generateIndustrial(heightAt: (x: number, z: number) => number, r
   }
   v0 = Math.max(v0, mainHalf + setback)
   const inZone = (x: number, z: number) => !o.polygon || o.polygon.length < 6 || pointInPoly(o.polygon, x, z)
+  // the other roads (smoothed, as laid): no lot, fence or cross street on them (seed 21: street0 and a lot fence
+  // ran along a curving asphalt road the straight frame did not follow)
+  const netLines = roads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 4), half: roadHalf(r) }))
+  const onRoad = (x: number, z: number, m: number) => netLines.some((l) => { for (let i = 0; i + 3 < l.pts.length; i += 2) {
+    const ax = l.pts[i], az = l.pts[i + 1], dx = l.pts[i + 2] - ax, dz = l.pts[i + 3] - az, L = dx * dx + dz * dz
+    if (Math.abs(x - ax) > 60 && Math.abs(x - l.pts[i + 2]) > 60) continue
+    const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+    if (Math.hypot(x - ax - dx * t, z - az - dz * t) < l.half + m) return true
+  } return false })
+  const bandClear = (ua: number, ub: number, va: number, vb: number, m: number) => {
+    for (let u = ua; u <= ub + 0.01; u += Math.max(2, (ub - ua) / Math.ceil((ub - ua) / 4))) for (let v = va; v <= vb + 0.01; v += Math.max(2, (vb - va) / Math.ceil((vb - va) / 4))) { const [x, z] = W(u, v); if (onRoad(x, z, m)) return false }
+    return true
+  }
 
   // rows: cross street then a band of lots behind it
   const rows: { c: number; a: number; b: number }[] = []
@@ -217,6 +230,8 @@ export function generateIndustrial(heightAt: (x: number, z: number) => number, r
         const corners = cornersL.flatMap(([u, v]) => W(u, v))
         let ok = true
         for (let k = 0; k < 8; k += 2) if (!inZone(corners[k], corners[k + 1])) ok = false
+        // the lot + its stretch of cross street in front: off the other roads
+        if (ok && !bandClear(ua, ub, row.c, row.b, 2)) ok = false
         if (!ok) continue
         const id = `${pre}_${o.seed}_${ri}_${lots.length}`
         // gate on the street side, near the spine end (shorter drive)

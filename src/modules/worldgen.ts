@@ -5,6 +5,7 @@
 // -> industrial zones (they hook onto the main roads, so after the network) -> villages v2 -> power
 // lines -> forests -> surfaces. The result is loaded into the normal steps (main.ts) to be tweaked.
 
+import { dedupeRing } from './forestEdge'
 import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
 import { DENSITY, scaledCount, worldCounts } from '../data/densities'
@@ -590,7 +591,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         if (type === 'port') { // harbour around the template core (harbour.ts): basin, apron, arms, jetties, buoys, quay street
           const near = sites.reduce<Site | null>((b, s) => (!b || Math.hypot(s.x - sx, s.z - sz) < Math.hypot(b.x - sx, b.z - sz) ? s : b), null)
           const tier = harbourTier(near && Math.hypot(near.x - sx, near.z - sz) < 1500 ? near.kind : undefined)
-          const hb = buildHarbour({ id: zn.id, tier, x: sx, z: sz, seed: ss('settlements', 'harbour', k), hAt, core: zn.entities, isSea: (q) => PORT_SEA_RX.test(q), roads: allRoadLines() })
+          const hb = buildHarbour({ id: zn.id, tier, x: sx, z: sz, seed: ss('settlements', 'harbour', k), hAt, core: zn.entities, isSea: (q) => PORT_SEA_RX.test(q), roads: allRoadLines(), avoid: zones.map(zoneDisc) })
           if (!hb) continue
           zn.harbour = hb.plan; zn.entities.push(...hb.entities); zn.roads.push(...hb.roads); zn.boxes.push(...hb.boxes)
           zn.warnings.push(`harbour ${tier}${fit0 && !fit0.deep ? ' (template heads shallow before dredging)' : ''}`)
@@ -831,5 +832,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas, ...cropCover(camp)]), settlementMask(g, settlement.placed.map((q) => q.corners)))
   if (overfullBlocks(surfaces)) limitPerBlock(surfaces)
   const issues = validate({ roads, sites, settled: settlement.placed, power, refusedGaps: [], heights: cur.heights, grid: g })
+  // the Workbench drops outline points closer than 0.5 m to the previous one (seed 21 report: 55 forest outlines
+  // with lost points): merge them here so what is sent is what is built
+  for (const a of areas) a.pts = dedupeRing(a.pts, 0.75)
   return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }) }
 }

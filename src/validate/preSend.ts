@@ -2,10 +2,11 @@
 //   bldgOverlap  two building footprints overlap
 //   onRoad       a building / zone object stands on a road carriageway
 //   entOutside   a zone object lies outside the map
+//   shapeOnRoad  a zone's own street / fence runs along or across another road (>= 6 m inside its carriageway)
 // Each issue can carry a fix: drop the object, or nudge it off the road.
 import { polyOverlap } from '../modules/validate'
 
-export type PreKind = 'bldgOverlap' | 'onRoad' | 'entOutside'
+export type PreKind = 'bldgOverlap' | 'onRoad' | 'entOutside' | 'shapeOnRoad'
 export type Fix = { op: 'drop'; ref: Ref } | { op: 'move'; ref: Ref; dx: number; dz: number }
 /** building index in `settled`, or entity index in zone `zone` */
 export type Ref = { list: 'settled'; i: number } | { list: 'zone'; zone: number; i: number }
@@ -46,7 +47,7 @@ const radius = (b: Bldg) => {
   return r
 }
 
-export function preSendChecks(o: { width: number; height: number; settled: Bldg[]; zones: { id: string; entities: Ent[] }[]; roads: RoadLine[] }): PreIssue[] {
+export function preSendChecks(o: { width: number; height: number; settled: Bldg[]; zones: { id: string; entities: Ent[]; lines?: { id: string; pts: number[]; half: number }[] }[]; roads: RoadLine[] }): PreIssue[] {
   const out: PreIssue[] = []
   const roadAt = segIndex(o.roads)
   // building footprints: spatial hash, pairwise overlap
@@ -96,6 +97,22 @@ export function preSendChecks(o: { width: number; height: number; settled: Bldg[
     // zone props (crates, tanks...): only probe the origin, radius ~1.5 m
     onRoad(e.x, e.z, [], e.prefab, e.ycm, e.id, { list: 'zone', zone: k, i }, 1.5)
   }))
+  // zone streets and fences (polylines): a run of >= 6 m inside another road's carriageway; the 15 m at each end
+  // are left out (a zone street meets the road there). Seed 21: an industrial cross street and lot fence on an asphalt road.
+  o.zones.forEach((zn, k) => (zn.lines ?? []).forEach((l) => {
+    let tot = 0
+    for (let i = 0; i + 3 < l.pts.length; i += 2) tot += Math.hypot(l.pts[i + 2] - l.pts[i], l.pts[i + 3] - l.pts[i + 1])
+    let acc = 0, run = 0
+    for (let i = 0; i + 3 < l.pts.length; i += 2) {
+      const ax = l.pts[i], az = l.pts[i + 1], dx = l.pts[i + 2] - ax, dz = l.pts[i + 3] - az, L = Math.hypot(dx, dz)
+      for (let t = 0; t < L; t += 2, acc += 2) {
+        const x = ax + (dx * t) / L, z = az + (dz * t) / L
+        const hit = acc > 15 && acc < tot - 15 ? roadAt(x, z).find((s) => s.r.zone !== k && nearest(x, z, s.ax, s.az, s.bx, s.bz)[0] < s.r.half + l.half - 0.3) : undefined
+        run = hit ? run + 1 : 0
+        if (run === 3) { out.push({ kind: 'shapeOnRoad', id: l.id + ' / ' + hit!.r.id, x, z }); return }
+      }
+    }
+  }))
   return out
 }
 
@@ -117,4 +134,14 @@ export function applyFixes(fixes: Fix[], settled: Bldg[], zones: { entities: Ent
   for (const r of drops) if (r.list === 'zone') { if (!zd.has(r.zone)) zd.set(r.zone, new Set()); zd.get(r.zone)!.add(r.i) }
   for (const [k, set] of zd) for (const i of [...set].sort((a, b) => b - a)) { zones[k]?.entities.splice(i, 1); n++ }
   return n
+}
+
+/** the lines a zone lays itself: its streets (half width) and its fence / wall polylines (0.3 m) */
+export function zoneLines(zn: { roads: { id: string; pts: number[]; width?: number }[]; shapes: { id: string; kind?: string; points?: number[]; closed?: boolean }[] }, half: (r: never) => number): { id: string; pts: number[]; half: number }[] {
+  const roadIds = new Set(zn.roads.map((r) => r.id))
+  return [
+    ...zn.roads.filter((r) => r.pts.length >= 4).map((r) => ({ id: r.id, pts: r.pts, half: half(r as never) })),
+    ...zn.shapes.filter((s) => s.kind === 'polyline' && /fence|wall/i.test(s.id) && !roadIds.has(s.id) && (s.points?.length ?? 0) >= 4)
+      .map((s) => ({ id: s.id, pts: s.closed ? [...s.points!, s.points![0], s.points![1]] : s.points!, half: 0.3 })),
+  ]
 }
