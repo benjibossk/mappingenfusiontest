@@ -302,18 +302,31 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     let y = 0
     for (const [x, z] of footprint(p.x, p.z, p.yaw, dims.w, dims.d, 0)) y += hAt(h, g, x, z) / 9
     const st: Station = { id: `PSTA_${kind.toUpperCase()}_${++nid}`, kind, site: site.id, x: p.x, z: p.z, yaw: p.yaw, w: dims.w, d: dims.d, h: dims.h, y, prefab: dims.prefab, byGenerator, ...(dims.off && { off: dims.off }) }
-    flattenPad(h, g, st)
-    stations.push(st)
-    const gx = st.x + Math.sin(st.yaw) * (st.d / 2 + 2), gz = st.z + Math.cos(st.yaw) * (st.d / 2 + 2)
     // straight access track to the nearest road point it can reach without crossing a house (seed 21 live audit:
     // a town house on PSTA_ROAD_3 and a 5.7 m terrain step where the track was carved through its pad)
-    const clearTo = (x: number, z: number) => { if (!ob) return true; const L = Math.hypot(x - gx, z - gz); for (let t = 0; t <= L; t += 2) { const k = L ? t / L : 0; if (ob.bldDist(gx + (x - gx) * k, gz + (z - gz) * k, 6) < 6) return false } return true }
-    const cands: { d: number; x: number; z: number }[] = []
-    for (const pl of roads) for (let i = 0; i + 1 < pl.length; i += 2) { const d = Math.hypot(pl[i] - gx, pl[i + 1] - gz); if (d < 400) cands.push({ d, x: pl[i], z: pl[i + 1] }) }
-    const rd = nearestRoad(roads, gx, gz)
-    if (Number.isFinite(rd.x) && rd.d < 400) cands.unshift({ d: rd.d, x: rd.x, z: rd.z })
-    cands.sort((a, b) => a.d - b.d)
-    const to = cands.slice(0, 40).find((c) => clearTo(c.x, c.z))
+    const gate = () => [st.x + Math.sin(st.yaw) * (st.d / 2 + 2), st.z + Math.cos(st.yaw) * (st.d / 2 + 2)]
+    const pick = (gx: number, gz: number) => {
+      const clearTo = (x: number, z: number) => { if (!ob) return true; const L = Math.hypot(x - gx, z - gz); for (let t = 0; t <= L; t += 2) { const k = L ? t / L : 0; if (ob.bldDist(gx + (x - gx) * k, gz + (z - gz) * k, 6) < 6) return false } return true }
+      const cands: { d: number; x: number; z: number }[] = []
+      for (const pl of roads) for (let i = 0; i + 1 < pl.length; i += 2) { const d = Math.hypot(pl[i] - gx, pl[i + 1] - gz); if (d < 400) cands.push({ d, x: pl[i], z: pl[i + 1] }) }
+      const rd = nearestRoad(roads, gx, gz)
+      if (Number.isFinite(rd.x) && rd.d < 400) cands.unshift({ d: rd.d, x: rd.x, z: rd.z })
+      cands.sort((a, b) => a.d - b.d)
+      return cands.slice(0, 40).find((c) => clearTo(c.x, c.z))
+    }
+    let [gx, gz] = gate()
+    let to = pick(gx, gz)
+    // the door / dock side (+z of the prefab, where the gate is) faces the track's road end (seed 21 live: the track
+    // reached a transformer's side, its doors turned away): 180 deg keeps the same footprint, 90 deg only on a
+    // near-square one (TransformerSubstation_01 4.1 x 4.6), so the checked placement stays valid
+    if (to && !dims.off) {
+      const want = Math.atan2(to.x - st.x, to.z - st.z), off = (a: number) => Math.abs(Math.atan2(Math.sin(want - a), Math.cos(want - a)))
+      const turns = Math.abs(st.w - st.d) < 1.5 ? [0, Math.PI / 2, Math.PI, -Math.PI / 2] : [0, Math.PI]
+      const best = turns.reduce((b, t) => (off(st.yaw + t) < off(st.yaw + b) - 1e-6 ? t : b), 0)
+      if (best) { st.yaw += best; [gx, gz] = gate(); to = pick(gx, gz) ?? to }
+    }
+    flattenPad(h, g, st)
+    stations.push(st)
     if (to) access.push([gx, gz, to.x, to.z])
     return st
   }

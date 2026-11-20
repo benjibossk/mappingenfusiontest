@@ -87,6 +87,47 @@ if (process.argv.includes('--list')) for (const i of issues.slice(0, 40)) consol
     }
   }
   console.log(`surfaces: SeaBed > 30 % on land > 2 m: ${dry} cells; road centre pixels on a clutter surface: ${(100 * lost / Math.max(1, tot)).toFixed(1)} % of ${tot}`)
+// vegetation / poles vs road corridors (roadClip.ts): every road, lane, zone street and power access track
+{
+  const { Corridors, hedgesOnRoad, ringOnRoad } = await import('../../src/modules/roadClip')
+  const all = [...w.roads, ...w.settlement.lanes, ...w.zones.flatMap((z) => z.roads), ...((w as { powerAccess?: number[][] }).powerAccess ?? []).map((pts, i) => ({ id: `PSTA_ROAD_${i + 1}`, type: 'dirt', pts }))]
+  const C = new Corridors(all.filter((r) => r.pts.length >= 4).map((r) => ({ id: r.id, pts: centreLine(r.pts, 4), half: roadHalf(r as never) })))
+  const hedges = (w as { campaign?: { hedges: number[][][] } }).campaign?.hedges ?? []
+  const hr = hedgesOnRoad(hedges, C)
+  const groves = w.areas.filter((a) => a.id.startsWith('FOREST_GROVE_') && ringOnRoad(a.pts, C, 0)).length
+  const trees = w.zones.filter((z) => z.sub === 'fieldtrees').flatMap((z) => z.entities).filter((e) => C.hit(e.x, e.z, 0.5)).length
+  const poles: string[] = []
+  const sts = (w as { powerStations?: { x: number; z: number; w: number; d: number }[] }).powerStations ?? []
+  let slots = 0
+  for (const l of w.power as { id: string; poles: number[] }[]) for (let i = 0; i + 1 < l.poles.length; i += 2) { if (sts.some((st) => Math.hypot(st.x - l.poles[i], st.z - l.poles[i + 1]) < Math.max(st.w, st.d) / 2 + 3)) { slots++; continue } const h = C.hit(l.poles[i], l.poles[i + 1], 1.4); if (h) poles.push(`${l.id}#${i / 2} / ${h.id}`) }
+  for (const s of (w as { powerStations?: { id: string; x: number; z: number }[] }).powerStations ?? []) { const h = C.hit(s.x, s.z, 0.5); if (h && !/^PSTA_ROAD/.test(h.id)) poles.push(`${s.id} / ${h.id}`) }
+  console.log(`hedge-on-road: ${hr.length}${hr.length ? ' (' + hr.slice(0, 5).map((q) => `${JSON.stringify(hedges[q.i])} / ${q.road} @${q.x.toFixed(1)},${q.z.toFixed(1)}`).join(', ') + ')' : ''}; grove-on-road: ${groves}; fieldtree-on-road: ${trees}; pole-on-road: ${poles.length} (station slots skipped: ${slots})${poles.length ? ' (' + poles.slice(0, 6).join(', ') + ')' : ''}`)
+}
+// power lines vs roads (POWERGRID_LOGIC.md: 87 % of vanilla distribution poles < 10 m from a road): MV/LV poles near a
+// road, line length within 15 m of a carriageway edge, road crossings per km and their angle (vanilla: near-square)
+{
+  const { Corridors } = await import('../../src/modules/roadClip')
+  const rl = [...w.roads, ...w.settlement.lanes, ...w.zones.flatMap((z) => z.roads)].filter((r) => r.pts.length >= 4).map((r) => ({ id: r.id, pts: centreLine(r.pts, 4), half: roadHalf(r as never) }))
+  const C = new Corridors(rl)
+  const segs = rl.flatMap((r) => { const o: number[][] = []; for (let i = 0; i + 3 < r.pts.length; i += 2) o.push([r.pts[i], r.pts[i + 1], r.pts[i + 2], r.pts[i + 3]]); return o })
+  let poles = 0, near = 0, len = 0, follow = 0, cross = 0, steep = 0
+  for (const l of (w.power as { kind: string; poles: number[] }[]).filter((q) => q.kind === 'mv' || q.kind === 'lv')) {
+    const p = l.poles
+    for (let i = 0; i + 1 < p.length; i += 2) { poles++; if (C.hit(p[i], p[i + 1], 10)) near++ }
+    for (let i = 0; i + 3 < p.length; i += 2) {
+      const ax = p[i], az = p[i + 1], bx = p[i + 2], bz = p[i + 3], L = Math.hypot(bx - ax, bz - az); len += L
+      for (let t = 0.5; t < L; t += 1) if (C.hit(ax + ((bx - ax) * t) / L, az + ((bz - az) * t) / L, 15)) follow++
+      for (const s of segs) {
+        const d = (bx - ax) * (s[3] - s[1]) - (bz - az) * (s[2] - s[0]); if (!d) continue
+        const u = ((s[0] - ax) * (s[3] - s[1]) - (s[1] - az) * (s[2] - s[0])) / d, v = ((s[0] - ax) * (bz - az) - (s[1] - az) * (bx - ax)) / d
+        if (u < 0 || u > 1 || v < 0 || v > 1) continue
+        cross++
+        const c = Math.abs(((bx - ax) * (s[2] - s[0]) + (bz - az) * (s[3] - s[1])) / (L * Math.hypot(s[2] - s[0], s[3] - s[1]) || 1))
+        if (Math.acos(Math.min(1, c)) * 180 / Math.PI >= 60) steep++
+      }
+    }
+  }
+  console.log(`power vs roads (MV+LV): poles < 10 m from a road ${Math.round((100 * near) / Math.max(1, poles))} % (vanilla 87 %), length within 15 m ${Math.round((100 * follow) / Math.max(1, len))} %, crossings ${(cross / Math.max(0.001, len / 1000)).toFixed(1)}/km (${Math.round((100 * steep) / Math.max(1, cross))} % at >= 60 deg)`)
 }
 // harbours (harbour.ts, HARBOUR_VANILLA.md): pieces floating / sunk vs sea level, misaligned quay pieces, isolated
 // breakwater pieces, land props in the water, sea parts on dry ground

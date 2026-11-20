@@ -308,12 +308,14 @@ export function powerCorridorMasks(lines: Pick<PowerLine, 'kind' | 'path'>[], in
   return out
 }
 
-/** Project shape for the native generator. The generator itself spaces poles every m_fDistance along
- *  the polyline (plus one on start / end / each corner it needs), so the shape carries the corners of
- *  the route and m_fDistance is set to our spacing: the preview poles match what Workbench builds. */
+/** Project shape for the native generator: one shape point per pole, flagged perPoint (Workbench side
+ *  m_bGeneratePerPoint on each point), so the poles stand exactly where the tool put them and kept them
+ *  off the roads. The generator's own m_fDistance walk (fixed span from the last pole, re-anchored on
+ *  junctions only) never matched placePoles' even split: seed 21 POWER_LV_18 had a pole on a dirt track
+ *  the tool never saw. Without a pole list the route corners go out and the generator spaces them. */
 export function powerLineShape(line: PowerLine, id: string): ProjectShape {
   const spacing = line.spacing ?? POWER_DEFAULTS[line.kind].spacing
-  return { id, kind: 'polyline', closed: false, points: simplifyPath(line.path, 1), generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance', 'm_bNextPointMeasurementXZ', 'Clearance'], paramValues: [String(spacing), '1', String(POWER_CLEARANCE[line.kind])] }
+  return { id, kind: 'polyline', closed: false, points: line.poles.length >= 4 ? line.poles.map((v) => Math.round(v * 100) / 100) : simplifyPath(line.path, 1), ...(line.poles.length >= 4 && { perPoint: true }), generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance', 'm_bNextPointMeasurementXZ', 'Clearance'], paramValues: [String(spacing), '1', String(POWER_CLEARANCE[line.kind])] }
 }
 
 const KIND_RANK: Record<PowerKind, number> = { ehv: 0, hv: 1, mv: 2, lv: 3 }
