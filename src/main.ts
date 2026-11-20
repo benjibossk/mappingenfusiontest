@@ -138,7 +138,7 @@ import { derivativesFor, groundBiomeBody, groundPlan, projectTextureNames } from
 import { renderIngameMap } from './modules/ingameMap'
 const GC_FIELDS: readonly [string, Key, keyof BiomeSettings, boolean][] = [
   ['gcSnow', 'gc.snow', 'snowLine', false], ['gcTree', 'gc.tree', 'treeLine', false], ['gcSand', 'gc.sand', 'sandWidth', false],
-  ['gcForest', 'gc.forest', 'forest', true], ['gcWet', 'gc.wet', 'wetland', true], ['gcRock', 'gc.rock', 'rockSlope', false],
+  ['gcForest', 'gc.forest', 'forest', true], ['gcWet', 'gc.wet', 'wetland', true], ['gcRock', 'gc.rock', 'rockSlope', false], ['gcBare', 'gc.bare', 'bareRock', false],
 ]
 import { finalLayers } from './preview/finalMasks'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, type ZoneLeafChoice } from './biomes/vegetation'
@@ -2453,7 +2453,7 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
       world: txt('tWorld'),
       ...maskBody(island.surfaces),
     })
-    return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' })
+    return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '')
   }),
 )
 
@@ -2478,7 +2478,7 @@ function gcSettings(): BiomeSettings {
   return s
 }
 function gcFill(s: BiomeSettings) {
-  for (const [id, , k, pct] of GC_FIELDS) $<HTMLInputElement>(id).value = s[k] >= 1e8 ? '' : String(Math.round(pct ? s[k] * 100 : s[k]))
+  for (const [id, , k, pct] of GC_FIELDS) { const x = s[k]; $<HTMLInputElement>(id).value = x == null || x >= 1e8 ? '' : String(Math.round((pct ? x * 100 : x) * 10) / 10) }
 }
 function gcTable() {
   const el = $('gcTable')
@@ -2493,7 +2493,7 @@ function gcTable() {
     const miss = a.texture ? '' : ` <span style="color:#d22" title="${esc(t('gc.missingTip'))}">${t('gc.missing')}</span>`
     return `<tr><td>${esc(getLang() === 'fr' ? c.fr : c.en)}${miss}</td><td><select data-gc="${c.id}">${opts}</select></td><td>${(share(a.classIndex) * 100).toFixed(1)} %</td></tr>`
   }).join('')}</table><pre class="hint">${esc(layers.map((l) => l.file).join('\n'))}</pre>`
-  el.querySelectorAll<HTMLSelectElement>('select[data-gc]').forEach((s) => s.addEventListener('change', () => { gcOverrides[s.dataset.gc!] = s.value || null; gcTable() }))
+  el.querySelectorAll<HTMLSelectElement>('select[data-gc]').forEach((s) => s.addEventListener('change', () => { gcOverrides[s.dataset.gc!] = s.value || null; gcTable(); autosave() }))
 }
 $<HTMLSelectElement>('gcBiome').addEventListener('change', () => { for (const k of Object.keys(gcOverrides)) delete gcOverrides[k]; gcFill(DEFAULT_SETTINGS[gcBiome()]); $('gcTable').textContent = '' })
 $<HTMLButtonElement>('gcReset').addEventListener('click', () => gcFill(DEFAULT_SETTINGS[gcBiome()]))
@@ -2503,11 +2503,37 @@ $<HTMLButtonElement>('gcAuto').addEventListener('click', () => {
 })
 $<HTMLButtonElement>('gcPreview').addEventListener('click', gcTable)
 gcFill(DEFAULT_SETTINGS[gcBiome()])
+/** saved with the project (islandProject / loadProject) */
+function gcState() {
+  return { on: $<HTMLInputElement>('gcOn').checked, biome: gcBiome(), settings: gcSettings(), overrides: { ...gcOverrides }, slope: $<HTMLSelectElement>('gcSlope').value }
+}
+function gcLoad(s: unknown) {
+  const g = (s ?? {}) as Partial<ReturnType<typeof gcState>>
+  $<HTMLInputElement>('gcOn').checked = g.on === true
+  $<HTMLSelectElement>('gcBiome').value = CLIMATE_BIOME_IDS.includes(g.biome as ClimateBiome) ? g.biome! : 'tempere'
+  gcFill({ ...DEFAULT_SETTINGS[gcBiome()], ...(g.settings ?? {}) })
+  for (const k of Object.keys(gcOverrides)) delete gcOverrides[k]
+  for (const [k, v] of Object.entries(g.overrides ?? {})) if (typeof v === 'string' || v === null) gcOverrides[k] = v
+  $<HTMLSelectElement>('gcSlope').value = ['', '25', '30', '35'].includes(g.slope ?? '30') ? (g.slope ?? '30') : '30'
+  $('gcTable').textContent = ''
+}
+for (const id of ['gcOn', 'gcBiome', 'gcSlope', ...GC_FIELDS.map((f) => f[0])]) document.getElementById(id)?.addEventListener('change', () => autosave())
 $<HTMLButtonElement>('tIngame').addEventListener('click', () =>
   run(t('btn.tIngame'), async () => {
     if (!island) throw new Error(t('err.genFirst'))
     const v = $<HTMLSelectElement>('gcSlope').value
-    const img = renderIngameMap({ grid: { ...island.grid, heights: island.heights }, seaLevel: 0, width: 1024, height: 1024, slopeShadeDeg: v ? Number(v) : undefined })
+    const rect = (c: number[]) => {
+      const x = (c[0] + c[2] + c[4] + c[6]) / 4, z = (c[1] + c[3] + c[5] + c[7]) / 4
+      return { x, z, w: Math.hypot(c[2] - c[0], c[3] - c[1]), d: Math.hypot(c[4] - c[2], c[5] - c[3]), angle: Math.atan2(c[3] - c[1], c[2] - c[0]) }
+    }
+    const img = renderIngameMap({
+      grid: { ...island.grid, heights: island.heights }, seaLevel: 0, width: 2048, height: 2048, slopeShadeDeg: v ? Number(v) : undefined,
+      forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts),
+      roads: [...roads, ...setLanes, ...setPaths].map((r) => ({ type: r.type, points: centreLine(r.pts, 5), width: r.width })),
+      buildings: settled.filter((b) => b.corners?.length === 8).map((b) => rect(b.corners)),
+      water: waters.filter((w) => WATER_TYPES[w.type].closed).map((w) => w.pts),
+      rivers: waters.filter((w) => !WATER_TYPES[w.type].closed).map((w) => ({ points: centreLine(w.pts, 5), width: w.width })),
+    })
     return (await writeIngameMap(img)).message
   }),
 )
@@ -2991,6 +3017,7 @@ function islandProject() {
     powerStations,
     powerAccess,
     biome: currentBiome,
+    groundBiome: gcState(),
     layers: layerMap,
     sculptStrokes,
   }
@@ -3055,6 +3082,7 @@ function loadProject(p: any) {
   }
   removed = Array.isArray(p.removed) ? p.removed : []
   setBiome(isBiome(p.biome) ? p.biome : DEFAULT_BIOME, false)
+  gcLoad(p.groundBiome)
   waterInfo()
   recompose(true)
 }

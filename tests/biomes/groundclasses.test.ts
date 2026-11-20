@@ -90,13 +90,36 @@ test('opt-in ground biome body + bridge writes import-ordered names and LISEZMOI
   const dir = mkdtempSync(join(tmpdir(), 'gc-'))
   try {
     const r = writeMasks(dir, 65, (cols - 1) * step, out.surfaces, [], out.colours, { fileNames: out.fileNames, readme: out.readme })
-    const files = readdirSync(dir)
+    // import folder: plain surface names only (the Workbench matches by surface name), no manquant_*
+    const plain = readdirSync(dir)
+    assert.ok(plain.includes('SeaBed_01.png') && !plain.some(f => f.startsWith('manquant_') || f.startsWith('0')), plain.join(','))
+    const files = readdirSync(r.orderDir!)
     assert.ok(files.includes('00_LISEZMOI_import.txt') && files.includes('01_mer__SeaBed_01.png'), files.join(','))
     assert.ok(files.some(f => /__manquant\.png$/.test(f)))
-    assert.match(readFileSync(join(dir, '00_LISEZMOI_import.txt'), 'utf-8'), /Ordre d'import/)
-    assert.equal(r.written[0], '00_LISEZMOI_import.txt')
+    assert.match(readFileSync(join(r.orderDir!, '00_LISEZMOI_import.txt'), 'utf-8'), /Ordre d'import/)
+    rmSync(r.orderDir!, { recursive: true, force: true })
     // default call unchanged: plain surface names, no readme
     const r2 = writeMasks(dir, 65, (cols - 1) * step, body.surfaces, [], null)
     assert.deepEqual(readdirSync(dir).sort(), ['Grass_01.png']); assert.deepEqual(r2.written, ['Grass_01'])
   } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('temperate auto-calibration hits the Everon shares (FIELDS_SURFACES_VANILLA)', () => {
+  const N = 128, st = 20, hh = new Float32Array(N * N)
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    let v = 0
+    for (let o = 0; o < 5; o++) { const f = 2 ** o / 40; v += Math.sin(c * f * 1.3 + o * 1.7) * Math.cos(r * f * 0.9 + o * 2.3) * 120 / 2 ** o }
+    hh[r * N + c] = c < 6 ? -5 : 60 + v + (c - 6) * 1.5
+  }
+  const dd = computeDerivatives(hh, N, N, st, 0)
+  const s = autoCalibrate('tempere', dd), g = classifyGround('tempere', dd, s)
+  const ids = BIOME_CLASSES.tempere.map(c => c.id), cnt: Record<string, number> = {}
+  let land = 0
+  for (const v of g) if (v !== 0) { land++; cnt[ids[v]] = (cnt[ids[v]] ?? 0) + 1 }
+  const sh = (k: string) => (cnt[k] ?? 0) / land
+  const rock = sh('roche') + sh('eboulis'), forest = sh('feuillus') + sh('coniferes')
+  assert.ok(Math.abs(rock - 0.21) < 0.03, `rock ${rock}`)
+  assert.ok(Math.abs(sh('roche') - 0.014) < 0.01, `bare ${sh('roche')}`)
+  assert.ok(Math.abs(forest - 0.13) < 0.03, `forest ${forest}`)
+  assert.ok(Math.abs(sh('coniferes') / forest - 0.72) < 0.08, `conifer ${sh('coniferes') / forest}`)
 })
