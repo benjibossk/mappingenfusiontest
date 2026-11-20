@@ -91,9 +91,21 @@ function cleanSpline(pts: number[]): number[] {
   }
   return out // fewer than 2 points left: a crumb under 0.5 m, dropped by toWb
 }
+// closed area outlines (forests...): legs over 400 m flagged by the bridge as suspect geometry (5th send: 13 forest
+// outlines); split every <= 200 m, collinear points (the area is unchanged)
+function splitLongLegs(pts: number[], max: number, closed: boolean): number[] {
+  const out: number[] = [], n = pts.length / 2
+  for (let i = 0; i < n; i++) {
+    out.push(pts[i * 2], pts[i * 2 + 1])
+    if (!closed && i === n - 1) break
+    const j = (i + 1) % n, dx = pts[j * 2] - pts[i * 2], dz = pts[j * 2 + 1] - pts[i * 2 + 1], k = Math.ceil(Math.hypot(dx, dz) / max)
+    for (let q = 1; q < k; q++) out.push(Math.round((pts[i * 2] + (dx * q) / k) * 100) / 100, Math.round((pts[i * 2 + 1] + (dz * q) / k) * 100) / 100)
+  }
+  return out
+}
 const toWb = async (p: Project) => {
   const before = p.shapes.reduce((n, sh) => n + sh.points.length, 0), count = p.shapes.length
-  p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).filter((sh) => sh.points.length >= 4) }
+  p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).map((sh) => (sh.kind === 'polyline' && sh.closed && !sh.lift?.length ? { ...sh, points: splitLongLegs(sh.points, 200, true) } : sh)).filter((sh) => sh.points.length >= 4) }
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   const ids = [...p.shapes.map((s) => s.id), ...(p.entities ?? []).map((e) => e.id)]
   const go = (r: Removed) => r.f === 'ANY' || ids.some((id) => id.startsWith(r.f))
@@ -104,6 +116,7 @@ const toWb = async (p: Project) => {
   autosave()
   return (lostPts > 0 || crumbs ? t('log.cleaned', { pts: lostPts, crumbs }) + '\n' : '') + msg
 }
+import { harbourPatch } from './modules/harbour'
 import { ffBiomeName, ffBiomeValue } from './ffbiome'
 import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/network'
 import { validate, type Issue } from './modules/validate'
@@ -1610,6 +1623,8 @@ function paintSink(x: number, z: number, v: number) {
 }
 
 //! fine heights from the macro, rivers if live; surfaces only when final (end of stroke)
+// 2 m patches over the harbours, sent with the relief (heightpatch.txt)
+const heightPatches = () => (island ? zones.flatMap((zn) => (zn.harbour ? [harbourPatch(island!.heights, island!.grid, zn.harbour)] : [])) : [])
 function recompose(final: boolean) {
   if (!island || !sculpt) return
   const g = island.grid
@@ -2444,7 +2459,7 @@ $<HTMLButtonElement>('tSurf').addEventListener('click', () =>
 $<HTMLButtonElement>('tHeight').addEventListener('click', () =>
   run(t('run.l.relief'), async () => {
     if (!island) throw new Error(t('err.genFirst'))
-    return (await applyHeightmap({ ...island.grid, heights: island.heights })).message
+    return (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message
   }),
 )
 $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
@@ -3492,7 +3507,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     if (!island || !roads.length) throw new Error(t('err.noRoadsToSend'))
     const out: string[] = []
     logEl.textContent = t('test.p1')
-    out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights })).message }))
+    out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message }))
     logEl.textContent = t('test.p2')
     out.push(t('test.routes', { msg: await toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }) }))
     logEl.textContent = t('test.p3')
@@ -4116,7 +4131,7 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const deps = modDepsText(entities.map((e) => e.prefab)), depsEl = $<HTMLPreElement>('modDeps')
     depsEl.textContent = deps; depsEl.hidden = !deps
     // relief first: objects are dropped on the ground that is there when they are created
-    const relief = island ? (await applyHeightmap({ ...island.grid, heights: island.heights })).message + '\n' : ''
+    const relief = island ? (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message + '\n' : ''
     const msg = relief + await toWb({ version: 0, shapes, entities }) + (deps ? '\n' + deps : '')
     sentSig = stepSigs().slice(0, 6).join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
@@ -4379,7 +4394,7 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
     runChecks() // markers only, never blocks
     const out: string[] = []
     logEl.textContent = t('test.p1')
-    out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights })).message }))
+    out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message }))
     logEl.textContent = t('test.water')
     out.push(t('test.waterSent', { msg: await toWb(waterAndRoads()) }))
     logEl.textContent = t('test.p3')

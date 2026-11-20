@@ -9,7 +9,7 @@
 import type { Grid } from './island'
 import type { Road } from './roads'
 import type { ProjectEntity } from '../project'
-import { toWorld, round } from './gen-common'
+import { toWorld, round, heightAt } from './gen-common'
 
 export type HarbourTier = 'fishing' | 'bourg' | 'port'
 
@@ -122,7 +122,7 @@ function dists(H: HarbourPlan, u: number, v: number) {
 
 /** harbour terrain, in place (same grid layout as the heights): basin flat at -7.5 m, apron flat at +2.2 m,
  *  vertical quay wall between them, <= 10 m linear blend to the natural ground around both */
-export function applyHarbour(heights: number[], g: Grid, H: HarbourPlan) {
+function harbourBox(H: HarbourPlan) {
   const pts: number[][] = []
   for (let i = 0; i < H.basin.length; i += 2) pts.push([H.basin[i], H.basin[i + 1]])
   for (const c of H.dredge) pts.push([c.u - c.r, c.v - c.r], [c.u + c.r, c.v + c.r])
@@ -131,6 +131,10 @@ export function applyHarbour(heights: number[], g: Grid, H: HarbourPlan) {
   const ul = Math.min(...pts.map((q) => q[0])) - BLEND, uh = Math.max(...pts.map((q) => q[0])) + BLEND
   const vl = Math.min(...pts.map((q) => q[1])) - BLEND, vh = Math.max(...pts.map((q) => q[1])) + BLEND
   for (const [u, v] of [[ul, vl], [uh, vl], [uh, vh], [ul, vh]]) { const [x, z] = localToWorld(H, u, v); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z) }
+  return { x0, z0, x1, z1 }
+}
+export function applyHarbour(heights: number[], g: Grid, H: HarbourPlan) {
+  const { x0, z0, x1, z1 } = harbourBox(H)
   const c0 = Math.max(0, Math.floor((x0 - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((x1 - g.minX) / g.step))
   const r0 = Math.max(0, Math.floor((z0 - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((z1 - g.minZ) / g.step))
   for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
@@ -141,6 +145,25 @@ export function applyHarbour(heights: number[], g: Grid, H: HarbourPlan) {
     else if (dB < BLEND && dB <= dA) heights[i] = Math.min(h, BASIN_H + ((h - BASIN_H) * dB) / BLEND)
     else if (dA < BLEND) heights[i] = APRON_H + ((h - APRON_H) * dA) / BLEND
   }
+}
+
+/** a finer height patch over the harbour (the main grid is 8 m: the quay step becomes a ramp, 5th live send ycm on
+ *  every quay piece). Written by the bridge as heightpatch.txt, sampled first by MG_HeightmapApplier. Same rule as
+ *  applyHarbour on top of the coarse result, so its border matches the main grid. */
+export interface HeightPatch { minX: number; minZ: number; step: number; cols: number; rows: number; heights: number[] }
+export function harbourPatch(heights: ArrayLike<number>, g: Grid, H: HarbourPlan, step = 2): HeightPatch {
+  const b = harbourBox(H), minX = Math.floor(b.x0 / step) * step, minZ = Math.floor(b.z0 / step) * step
+  const cols = Math.ceil((b.x1 - minX) / step) + 1, rows = Math.ceil((b.z1 - minZ) / step) + 1, out: number[] = []
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = minX + c * step, z = minZ + r * step, h = heightAt(heights, g, x, z), [u, v] = toLocal(H, x, z), { dB, dA } = dists(H, u, v)
+    let y = h
+    if (dB <= 0) y = BASIN_H
+    else if (dA <= 0) y = APRON_H
+    else if (dB < BLEND && dB <= dA) y = Math.min(h, BASIN_H + ((h - BASIN_H) * dB) / BLEND)
+    else if (dA < BLEND) y = APRON_H + ((h - APRON_H) * dA) / BLEND
+    out.push(Math.round(y * 100) / 100)
+  }
+  return { minX, minZ, step, cols, rows, heights: out }
 }
 
 export interface HarbourBuild { plan: HarbourPlan; entities: ProjectEntity[]; roads: Road[]; boxes: { corners: number[]; role: string; h?: number }[] }

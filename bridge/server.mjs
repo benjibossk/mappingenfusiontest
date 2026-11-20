@@ -386,6 +386,15 @@ const server = createServer(async (req, res) => {
         lines.push(g.heights.slice(r * g.cols, (r + 1) * g.cols).map((h) => h.toFixed(2)).join(" "));
       mkdirSync(join(PROFILE_DIR, "MapGen"), { recursive: true });
       writeFileSync(join(PROFILE_DIR, "MapGen", "heightmap.txt"), lines.join(String.fromCharCode(10)), "utf-8");
+      // finer local patches (harbour quay step at 2 m): header + one line per row each; empty file = none
+      const pl = [];
+      for (const q of Array.isArray(g.patches) ? g.patches : [])
+        if (q.cols >= 2 && q.rows >= 2 && q.step > 0 && q.heights?.length === q.cols * q.rows)
+          {
+          pl.push(`${q.minX} ${q.minZ} ${q.step} ${q.cols} ${q.rows}`);
+          for (let r = 0; r < q.rows; r++) pl.push(q.heights.slice(r * q.cols, (r + 1) * q.cols).map((h) => (+h).toFixed(2)).join(" "));
+        }
+      writeFileSync(join(PROFILE_DIR, "MapGen", "heightpatch.txt"), pl.join(String.fromCharCode(10)), "utf-8");
       const result = await callWorkbench("MG_ApplyHeightmap", { file: "$profile:MapGen/heightmap.txt" }, 600_000);
       return send(res, result.status === "error" ? 500 : 200, result);
     }
