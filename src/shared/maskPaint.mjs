@@ -36,7 +36,7 @@ export function roadLayers(side, mPerPx, roads) {
           const d = Math.hypot(x - ax - t * dx, z - az - t * dz);
           if (d >= reach) continue;
           const i2 = row * side + col;
-          const w = d <= r.half ? 1 : 1 - smooth((d - r.half) / r.edge);
+          const w = (d <= r.half ? 1 : 1 - smooth((d - r.half) / r.edge)) * (r.peak ?? 1);
           if (shoulder) {
             // core: hard-ish edge (1 m fade), shoulder fills the band outside
             const cw = d <= r.half ? 1 : Math.max(0, 1 - (d - r.half) / 1);
@@ -108,10 +108,20 @@ export function paintMasks(side, terrainSize, surfaces, roads = [], colours = nu
   const names = surfaces.map((s) => s.name);
   stampRoads(bytes, names, side, mPerPx, roads);
   const rgb = colours ? names.map((n) => colours[n] ?? null) : null;
-  limitPixelBlocks(bytes, side, blockPx, 4, margin, rgb);
+  // road / track cores are kept by the block limiter whatever their share of the block: a crossing road is a
+  // small share of its block and was dropped first (seed 21 IND_1: concrete road turned into Pebbles_01,
+  // asphalt cut, grass clutter across the carriageway)
+  // (a band may set its own `prio`: pole-foot dirt patches, else lost as a tiny share of their block)
+  const pr = new Map();
+  for (const r of roads) {
+    const v = r.prio ?? (/^(Dirt_0[12]|Grass|Forest)/.test(r.core ?? "") ? 1 : ROAD_PRIO);
+    pr.set(r.core, Math.max(pr.get(r.core) ?? 1, v));
+  }
+  const prio = names.map((n) => pr.get(n) ?? 1);
+  limitPixelBlocks(bytes, side, blockPx, 4, margin, rgb, prio);
   // the iterative pass above can oscillate between neighbouring blocks and stop at its pass cap
   // (seen: block [12x22] left with 6 surfaces) -> hard, guaranteed pass on the same footprint
-  enforcePixelBlocks(bytes, side, blockPx, 4, margin, rgb);
+  enforcePixelBlocks(bytes, side, blockPx, 4, margin, rgb, 2, 0.01, prio);
   return { names, bytes };
 }
 
@@ -123,7 +133,8 @@ export function paintMasks(side, terrainSize, surfaces, roads = [], colours = nu
 //! (weight x colour gap to its closest kept surface) and it is replaced by that closest-coloured
 //! surface, so blocks along roads don't show up as squares of another colour.
 //! Repeated until every region is fine, since a move can touch a neighbour region.
-export function limitPixelBlocks(bytes, side, blockPx = 63, max = 5, margin = 3, cols = null) {
+export const ROAD_PRIO = 40;
+export function limitPixelBlocks(bytes, side, blockPx = 63, max = 5, margin = 3, cols = null, prio = null) {
   const gap = (a, b) => (cols && cols[a] && cols[b] ? Math.hypot(cols[a][0] - cols[b][0], cols[a][1] - cols[b][1], cols[a][2] - cols[b][2]) : null);
   const nb = Math.ceil((side - 1) / blockPx);
   for (let pass = 0; pass < 32; pass++) {
@@ -136,7 +147,7 @@ export function limitPixelBlocks(bytes, side, blockPx = 63, max = 5, margin = 3,
           const totals = bytes.map((a) => {
             let t = 0;
             for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) t += a[r * side + c];
-            return t;
+            return prio ? t * prio[bytes.indexOf(a)] : t;
           });
           const used = totals.map((t, k) => [t, k]).filter(([t]) => t > 0).sort((a, b) => b[0] - a[0]);
           if (used.length <= max) break;
@@ -193,7 +204,7 @@ export function limitPixelBlocks(bytes, side, blockPx = 63, max = 5, margin = 3,
 //! A surface under `minShare` of a block's total weight is dropped from that block too: a 0.x %
 //! residue still counts as a block material and shows as an odd-coloured block in the engine
 //! (community mapping docs, "Info & Diags" merge advice).
-export function enforcePixelBlocks(bytes, side, blockPx = 63, max = 4, margin = 3, cols = null, tiny = 2, minShare = 0.01) {
+export function enforcePixelBlocks(bytes, side, blockPx = 63, max = 4, margin = 3, cols = null, tiny = 2, minShare = 0.01, prio = null) {
   const n = bytes.length;
   if (!n || max < 1) return;
   const nb = Math.ceil((side - 1) / blockPx);
@@ -210,7 +221,7 @@ export function enforcePixelBlocks(bytes, side, blockPx = 63, max = 4, margin = 
   for (let by = 0; by < nb; by++) for (let bx = 0; bx < nb; bx++) {
     const r0 = Math.max(0, by * blockPx - margin), r1 = Math.min(side - 1, by * blockPx + blockPx + margin);
     const c0 = Math.max(0, bx * blockPx - margin), c1 = Math.min(side - 1, bx * blockPx + blockPx + margin);
-    const t = bytes.map((a) => { let s = 0; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) s += a[r * side + c]; return s; });
+    const t = bytes.map((a, k) => { let s = 0; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) s += a[r * side + c]; return prio ? s * prio[k] : s; });
     const floor = t.reduce((a, b) => a + b, 0) * minShare;
     const r = t.map((v, k) => [v, k]).filter(([v]) => v > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
     ranked.push(r.filter(([v], j) => j === 0 || v >= floor).map(([, k]) => k));

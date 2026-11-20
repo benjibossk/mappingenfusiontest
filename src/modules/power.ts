@@ -308,12 +308,14 @@ export function powerCorridorMasks(lines: Pick<PowerLine, 'kind' | 'path'>[], in
   return out
 }
 
-/** Project shape for the native generator. The generator itself spaces poles every m_fDistance along
- *  the polyline (plus one on start / end / each corner it needs), so the shape carries the corners of
- *  the route and m_fDistance is set to our spacing: the preview poles match what Workbench builds. */
+/** Project shape for the native generator: one shape point per pole, flagged perPoint (Workbench side
+ *  m_bGeneratePerPoint on each point), so the poles stand exactly where the tool put them and kept them
+ *  off the roads. The generator's own m_fDistance walk (fixed span from the last pole, re-anchored on
+ *  junctions only) never matched placePoles' even split: seed 21 POWER_LV_18 had a pole on a dirt track
+ *  the tool never saw. Without a pole list the route corners go out and the generator spaces them. */
 export function powerLineShape(line: PowerLine, id: string): ProjectShape {
   const spacing = line.spacing ?? POWER_DEFAULTS[line.kind].spacing
-  return { id, kind: 'polyline', closed: false, points: simplifyPath(line.path, 1), generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance', 'm_bNextPointMeasurementXZ', 'Clearance'], paramValues: [String(spacing), '1', String(POWER_CLEARANCE[line.kind])] }
+  return { id, kind: 'polyline', closed: false, points: line.poles.length >= 4 ? line.poles.map((v) => Math.round(v * 100) / 100) : simplifyPath(line.path, 1), ...(line.poles.length >= 4 && { perPoint: true }), generator: line.style ? POWER_STYLE[line.style][line.kind].gen : POWER_GENERATORS[line.kind], paramKeys: ['m_fDistance', 'm_bNextPointMeasurementXZ', 'Clearance'], paramValues: [String(spacing), '1', String(POWER_CLEARANCE[line.kind])] }
 }
 
 const KIND_RANK: Record<PowerKind, number> = { ehv: 0, hv: 1, mv: 2, lv: 3 }
@@ -389,10 +391,13 @@ export function simplifyPath(p: number[], tol: number): number[] {
 
 //! disturbed ground under each pole / pylon, same mask format as roadMasks (bridge paints the bands).
 //! An irregular blob = a few short overlapping stubs with seeded jitter around the pole (never a
-//! perfect circle), soft edge. Radius ~1.2 m for LV/MV wooden poles, ~4 m for HV/EHV pylons.
-export const POLE_PATCH_RADIUS: Record<PowerKind, number> = { lv: 1.2, mv: 1.2, hv: 4, ehv: 4 }
+//! perfect circle), soft edge. Radius ~2 m for LV/MV wooden poles, ~5 m for HV/EHV pylons (1.2 m was
+//! under the 1 m mask pixel + bilinear blur and the block limiter dropped it as a tiny share: never seen
+//! in game, seed 21 x 2512 z 3108). Partial weight (`peak`, disturbed soil mixed with the grass) and a
+//! block-limiter priority (`prio`) so the patch survives.
+export const POLE_PATCH_RADIUS: Record<PowerKind, number> = { lv: 2, mv: 2, hv: 5, ehv: 5 }
 export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed = 1, core = 'Dirt_01') {
-  const out: { points: number[]; half: number; edge: number; core: string }[] = []
+  const out: { points: number[]; half: number; edge: number; core: string; peak: number; prio: number }[] = []
   for (const l of lines) {
     const R = POLE_PATCH_RADIUS[l.kind] ?? 1.2
     for (let i = 0; i + 1 < l.poles.length; i += 2) {
@@ -406,7 +411,7 @@ export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed =
         const cx = x + Math.cos(a) * off, cz = z + Math.sin(a) * off
         const b = rnd() * Math.PI, len = R * (0.2 + rnd() * 0.5)
         const half = R * (0.35 + rnd() * 0.3)
-        out.push({ points: [cx - Math.cos(b) * len / 2, cz - Math.sin(b) * len / 2, cx + Math.cos(b) * len / 2, cz + Math.sin(b) * len / 2], half, edge: R * (0.3 + rnd() * 0.3), core })
+        out.push({ points: [cx - Math.cos(b) * len / 2, cz - Math.sin(b) * len / 2, cx + Math.cos(b) * len / 2, cz + Math.sin(b) * len / 2], half, edge: R * (0.4 + rnd() * 0.4), core, peak: 0.55 + rnd() * 0.3, prio: 8 })
       }
     }
   }

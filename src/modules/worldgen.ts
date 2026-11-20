@@ -20,6 +20,11 @@ import { computeRivers } from './hydro'
 import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
 import { damFootprint, damZone, placeDams, snapRoadsToCrest } from './dam'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
+import { clipLine, Corridors, ringOnRoad } from './roadClip'
+/** hedge gap at a road: half width + this margin on each side (m) */
+export const HEDGE_ROAD_MARGIN = 2.5
+/** power pole foot: half width + this clearance from any carriageway (m) */
+export const POLE_ROAD_CLEAR = 1.5
 import { connectIslands, roadIslands } from './roadgraph'
 import { findCrossings, planBridge } from './bridges'
 import { streamCulverts } from './culverts'
@@ -639,7 +644,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   if (p.vanillaSites) placeVanillaWorldSites()
   // 7c. RP places (rpPlaces.ts): police, clinic, town hall, bank, market, shops, garages, car lots, bus stops, sawmills, mines,
   // delivery depots, fuel: vanilla buildings stamped before the villages so the lots build around them; off with rpPlaces: false
-  if (p.rpPlaces !== false) zones.push(...placeRpPlaces({ heights: cur.heights, g, sites, zones, roads, isWater, seed: ss('settlements', 'rp'), landKm2 }))
+  if (p.rpPlaces !== false) zones.push(...placeRpPlaces({ heights: cur.heights, g, sites, zones, roads, isWater, seed: ss('settlements', 'rp'), landKm2, biome: p.biome }))
   cur = composeHeights(base, g, waters, zones, roads)
   // 8. villages v2
   await step('villages')
@@ -786,6 +791,27 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       }
     })
   })
+  // hedges and groves off every road / track, once ALL of them exist (seed 21 live check: FIELD_7_Hedge_281 across
+  // ROAD_ASPHALTE_ETROITE and PSTA_ROAD_7, FOREST_GROVE_7_1 on the road edge): the power access tracks (PSTA_ROAD_*)
+  // and the field tracks of later sites were never seen by the plots laid before them
+  const corridorsNow = () => new Corridors([...roads, ...settlement.lanes, ...zones.flatMap((z) => z.roads), ...(pw?.access ?? []).map((pts, i): Road => ({ id: `PSTA_ROAD_${i + 1}`, type: 'dirt', pts }))]
+    .filter((rd) => rd.pts.length >= 4).map((rd) => ({ id: rd.id, pts: centreLine(rd.pts, 4), half: roadHalf(rd) })))
+  let vegRoads = corridorsNow()
+  const clipVegetation = () => {
+    vegRoads = corridorsNow()
+    const hedges: number[][][] = [], shapes: CampaignResult['shapes'] = []
+    camp.hedges.forEach((h, i) => {
+      const sh = camp.shapes[i], parts = clipLine(h, vegRoads, HEDGE_ROAD_MARGIN)
+      parts.forEach((q, j) => {
+        hedges.push(q)
+        shapes.push({ ...sh, id: j ? `${sh.id}_${String.fromCharCode(96 + j)}` : sh.id, points: q.flatMap((v) => [Math.round(v[0] * 100) / 100, Math.round(v[1] * 100) / 100]) })
+      })
+    })
+    camp.hedges = hedges; camp.shapes = shapes
+    for (const zn of zones) if (zn.sub === 'fieldtrees') zn.entities = zn.entities.filter((e) => !vegRoads.hit(e.x, e.z, 2))
+    for (let i = areas.length - 1; i >= 0; i--) if (areas[i].id.startsWith('FOREST_GROVE_') && ringOnRoad(areas[i].pts, vegRoads, 2)) areas.splice(i, 1)
+  }
+  clipVegetation()
   // crops over the whole countryside at once: plots of two zones / sites can touch (fieldlayout.ts)
   if (camp.fields.length) camp.crops = colourCrops(camp.fields, { seed: ss('fields', 'crops'), centre: (x, z) => {
     let best = Infinity
@@ -827,7 +853,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       if (Math.hypot(x - ax - dx * t, z - az - dz * t) < rd.half) return true
     } return false })
     const ents = fieldTrees({ fields: camp.fields, hedges: camp.hedges, seed: ss('forests', 'fieldtrees'), density: ftd, biome: p.biome, prefix: 'TREE_FIELD_',
-      ok: (x, z) => !isLakeOrSea(x, z) && !settlement.placed.some((b) => Math.abs(b.x - x) < 12 && Math.abs(b.z - z) < 12) && !areas.some((a) => a.kind === 'forest' && pointInPoly(a.pts, x, z)) && !nearRoad(x, z) })
+      ok: (x, z) => !isLakeOrSea(x, z) && !settlement.placed.some((b) => Math.abs(b.x - x) < 12 && Math.abs(b.z - z) < 12) && !areas.some((a) => a.kind === 'forest' && pointInPoly(a.pts, x, z)) && !nearRoad(x, z) && !vegRoads.hit(x, z, 3) })
     if (ents.length) {
       let cx = 0, cz = 0
       for (const t of ents) { cx += t.x / ents.length; cz += t.z / ents.length }
@@ -913,6 +939,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   { const keep = new Set(dropOrphanRings(roads)); for (let k = roads.length - 1; k >= 0; k--) if (!keep.has(roads[k])) roads.splice(k, 1) }
   // every road / lane end on another road runs 1.75 m into it: overlapping meshes, no hole at the junction
   { const all = [...roads, ...settlement.lanes]; overlapJunctions(roads, all); overlapJunctions(settlement.lanes, all) }
+  // the junction overlaps above lengthen road ends by 1.75 m (seed 42: a hedge end on ROAD_ASPHALTE_ETROITE_1): clip again
+  clipVegetation()
+  // pole feet off every carriageway: half width + POLE_ROAD_CLEAR (seed 21 live: PSTA_POLE_10, POWER_LV_18 on a dirt
+  // track); the shape points are the poles (perPoint export), so what is checked here is what Workbench builds
+  for (const l of power) for (let i = 0; i + 1 < l.poles.length; i += 2) {
+    if ((pw?.stations ?? []).some((st) => Math.hypot(st.x - l.poles[i], st.z - l.poles[i + 1]) < Math.max(st.w, st.d) / 2 + 3)) continue // a cable slot on its station
+    for (let k = 0; k < 8; k++) { const h = vegRoads.hit(l.poles[i], l.poles[i + 1], POLE_ROAD_CLEAR); if (!h) break; l.poles[i] += h.ux * (h.need + 0.2); l.poles[i + 1] += h.uz * (h.need + 0.2) }
+  }
   // last word on the vegetation scatter: the roads moved since (cuts, junction overlaps, late tracks), so a bush or
   // tree within the carriageway + 1 m of a final road or lane goes (pre-send seed 21: a belt bush 0.7 m on a prod track)
   {

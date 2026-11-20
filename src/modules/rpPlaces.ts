@@ -10,7 +10,8 @@ import type { Grid } from './island'
 import type { Road } from './roads'
 import { roadHalf, isPaved } from './roads'
 import { makeVanillaSite, makeLibraryParcel, zoneDisc, type ZoneItem } from './zones'
-import { pickParcel, parcelTemplate } from '../library/parcelLib'
+import { allParcels, parcelTemplate } from '../library/parcelLib'
+import type { Composition, ParcelCategory } from '../library/schema'
 import type { VanillaTemplate, VanillaObject } from './vanillaSites'
 import { SITE_RADIUS, type Site } from './network'
 import { mulberry } from './vegLayers'
@@ -98,6 +99,40 @@ const COMPOSE: Record<string, { radius: number; objects: VanillaObject[] }> = {
   depot: { radius: 24, objects: [o(P.warehouse, 0, -8), o(P.pallet, -14, 8), o(P.pallet, -11, 8), o(P.pallet, 12, 8), ...bays(0, 14, 1, 14)] },
 }
 
+/** vanilla compositions of the parcel library per RP role (PakTools sawmill_harvest.py / rp_sites_harvest.py):
+ *  category, subtype (undefined = the plain yards of the category) and the largest box that fits the role */
+const RP_PARCEL: Partial<Record<RpRole, { cat: ParcelCategory; sub?: string; maxW: number; maxD: number; need?: RegExp }>> = {
+  sawmill: { cat: 'industrial', sub: 'sawmill', maxW: 120, maxD: 100 },
+  mine: { cat: 'industrial', sub: 'mine', maxW: 100, maxD: 100 },
+  lumber: { cat: 'industrial', sub: 'lumber', maxW: 30, maxD: 22 },
+  depot: { cat: 'industrial', maxW: 60, maxD: 50 },
+  garage: { cat: 'industrial', sub: 'garage', maxW: 50, maxD: 42 },
+  car_dealer: { cat: 'industrial', sub: 'garage', maxW: 50, maxD: 42 },
+  juicer: { cat: 'farm', maxW: 45, maxD: 45, need: /\/(Barn|Shed|Stable)/ }, // a farm yard with its barn / shed
+  distillery: { cat: 'farm', maxW: 45, maxD: 45, need: /\/(Barn|Shed|Stable)/ },
+  beehive: { cat: 'farm', sub: 'apiary', maxW: 18, maxD: 14 },
+}
+/** surface painted under the site (yardSurfaceMasks): gravel for the work yards, dirt for the farm ones */
+export const RP_GROUND: Partial<Record<RpRole, string>> = { sawmill: 'Dirt_03', mine: 'Dirt_03', lumber: 'Dirt_01', depot: 'Dirt_03', garage: 'Dirt_03', car_dealer: 'Dirt_03', juicer: 'Dirt_01', distillery: 'Dirt_01', market: 'Dirt_03', sell_point: 'Dirt_01', beehive: 'Dirt_01', furnace: 'Dirt_03' }
+
+/** soviet / western flavour of a composition: its main object (items[0]) */
+const isSoviet = (c: Composition) => /_USSR_/i.test(c.items[0]?.prefab ?? '')
+/** the vanilla composition of an RP role: the world's vanilla map first, else the same flavour (Kolguyev /
+ *  tundra = soviet, every other biome = western), else any; deterministic, the seed hashed so near seeds do not share the pick */
+export function rpParcel(role: RpRole, seed: number, biome?: string, list: Composition[] = allParcels()): Composition | null {
+  const d = RP_PARCEL[role]
+  if (!d) return null
+  const fit = list.filter((c) => c.category === d.cat && c.subtype === d.sub && c.size.w <= d.maxW && c.size.d <= d.maxD && (!d.need || c.items.some((i) => d.need!.test(i.prefab))))
+  const soviet = biome === 'nordic_kolguyev' || biome === 'winter_tundra'
+  // the three vanilla maps pick their own; the other biomes (and unset = Everon) borrow Kolguyev or Everon
+  const map = soviet ? 'nordic_kolguyev' : biome === 'woodland_arland' ? biome : 'temperate_everon'
+  const local = fit.filter((c) => c.biomes.includes(map))
+  const flavour = fit.filter((c) => isSoviet(c) === soviet)
+  const pool = local.length ? local : flavour.length ? flavour : fit
+  if (!pool.length) return null
+  return pool[Math.floor(mulberry(seed ^ 0x5bd1e995)() * pool.length)]
+}
+
 /** template from a composition: same shape as data/templates/vanilla_sites.json so zones.makeVanillaSite stamps it */
 export function rpTemplate(role: string): VanillaTemplate | null {
   const c = COMPOSE[role]
@@ -127,6 +162,8 @@ export interface RpContext {
   isWater: (x: number, z: number) => boolean
   seed: number
   landKm2: number
+  /** world biome (BiomeId): the vanilla compositions of that map first */
+  biome?: string
 }
 
 function segDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number) {
@@ -182,9 +219,12 @@ export function placeRpPlaces(c: RpContext): ZoneItem[] {
   }
   const count: Record<string, number> = {}
   const place = (role: RpRole, list: Road[], seed: number, accept: (x: number, z: number) => boolean, score?: (x: number, z: number) => number): ZoneItem | null => {
-    // sawmill: a whole vanilla sawmill yard of the parcel library (industrial/sawmill, harvested from Everon and
-    // Kolguyev: mill, log piles, plank stacks, rails, fences, crates) laid as a box, its entrance (+Z) on the road
-    const parcel = role === 'sawmill' ? pickParcel('industrial', { subtype: 'sawmill', seed }) : null
+    // a whole vanilla composition of the parcel library when one exists for the role (rpParcel: biome first),
+    // laid as a box with its entrance (+Z) on the road; else (or when it does not fit) the hand-made COMPOSE layout
+    const parcel = rpParcel(role, seed, c.biome)
+    return (parcel && placeWith(role, list, seed, accept, score, parcel)) || placeWith(role, list, seed, accept, score, null)
+  }
+  const placeWith = (role: RpRole, list: Road[], seed: number, accept: (x: number, z: number) => boolean, score: ((x: number, z: number) => number) | undefined, parcel: Composition | null): ZoneItem | null => {
     const tpl = parcel ? parcelTemplate(parcel) : rpTemplate(role)
     if (!tpl || !list.length) return null
     const hw = parcel ? parcel.size.w / 2 : tpl.radius, hd = parcel ? parcel.size.d / 2 : tpl.radius
@@ -223,6 +263,8 @@ export function placeRpPlaces(c: RpContext): ZoneItem[] {
     if (!zn) return null
     zn.sub = `rp:${role}`
     zn.rpRole = role
+    const gr = RP_GROUND[role]
+    if (gr) zn.ground = gr // worn yard surface painted under the whole site box (main.ts parcelGround)
     out.push(zn)
     return zn
   }
