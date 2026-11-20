@@ -113,11 +113,11 @@ export function roadFieldLayout(o: RoadFieldOptions): Ring[] {
   const m = roadReach * 2
   const roads = (o.roads ?? []).filter((p) => { for (let i = 0; i + 1 < p.length; i += 2) if (p[i] > bx0 - m && p[i] < bx1 + m && p[i + 1] > bz0 - m && p[i + 1] < bz1 + m) return true; return false })
   const fringe = o.fringe ?? 0, reach = Math.max(fringe + 1, o.reach ?? fringe + 1)
-  // size gradient: target x0.6 at the fringe .. x4.2 at the outer reach (final plots ~0.6 .. 3 ha) (vanilla p10 0.6 ha .. p90 5.7 ha)
+  // size gradient: target x0.6 at the fringe .. x6.35 at the outer reach (final plots ~0.6 .. 3 ha) (vanilla p10 0.6 ha .. p90 5.7 ha)
   const target = (x: number, z: number) => {
     if (!o.centre) return A0
     const t = Math.max(0, Math.min(1, (Math.hypot(x - o.centre[0], z - o.centre[1]) - fringe) / (reach - fringe)))
-    return A0 * (0.6 + 3.6 * t) // pieces stop between ~0.5 and 1 x target, then roads / houses cut them
+    return A0 * (0.6 + 5.75 * t) // pieces stop between ~0.5 and 1 x target, then roads / houses cut them
   }
   const out: Ring[] = []
   const stack: { r: Ring; depth: number; asp: number }[] = [{ r: ring, depth: 0, asp: o.aspect }]
