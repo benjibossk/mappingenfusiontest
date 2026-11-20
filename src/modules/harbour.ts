@@ -129,15 +129,20 @@ export function harbourPatch(heights: ArrayLike<number>, g: Grid, H: HarbourPlan
   return { minX, minZ, step, cols, rows, heights: out }
 }
 
-/** harbour composition for a tier (fishing: small wooden sites; bourg / port: concrete quays). `maxR`: footprint */
-export function pickHarbour(tier: HarbourTier, seed: number, maxR = 200): Composition | null {
-  const r = (c: Composition) => Math.hypot(c.size.w, c.size.d) / 2
-  // deck 1.5-3 m: a real concrete quay (Arland 3205 / 1089 sit at -0.2 / 1.2, re-basing them floats their breakwaters)
+/** harbour compositions to try, in order: the world's biome first (Everon / Arland / Kolguyev sets, then the
+ *  others), concrete quays for a bourg / port, rotated by `seed`. `maxR`: footprint radius (360 = the large ports) */
+export function pickHarbours(tier: HarbourTier, seed: number, o: { biome?: string; maxR?: number } = {}): Composition[] {
+  const r = (c: Composition) => Math.hypot(c.size.w, c.size.d) / 2, maxR = o.maxR ?? 200, biome = o.biome ?? 'temperate_everon'
+  // deck 1.4-3 m: a real concrete quay (Arland 3205 / 1089 sit at -0.2 / 1.2, re-basing them floats their breakwaters)
   const ok = HARBOUR_PARCELS.filter((c) => r(c) <= maxR && Math.abs(((c as { deck?: number }).deck ?? 2.2) - 2.2) <= 0.8)
-  const quay = ok.filter((c) => c.tags.includes('quay') && c.items.filter((i) => QUAY_RX.test(i.prefab)).length >= (tier === 'fishing' ? 0 : 20))
-  const list = (tier === 'fishing' ? ok : quay).length ? (tier === 'fishing' ? ok : quay) : ok
-  return list.length ? list[Math.abs(Math.floor(seed)) % list.length] : null
+  const quay = ok.filter((c) => c.items.filter((i) => QUAY_RX.test(i.prefab)).length >= 20)
+  const list = tier === 'fishing' || !quay.length ? ok : quay
+  const rot = <T,>(a: T[]) => a.length ? [...a.slice(Math.abs(Math.floor(seed)) % a.length), ...a.slice(0, Math.abs(Math.floor(seed)) % a.length)] : a
+  // a large port offered first for a town, the smaller ones after
+  const byR = (a: Composition[]) => tier === 'port' ? [...rot(a.filter((c) => r(c) > 200)), ...rot(a.filter((c) => r(c) <= 200))] : rot(a)
+  return [...byR(list.filter((c) => c.biomes.includes(biome))), ...byR(list.filter((c) => !c.biomes.includes(biome)))]
 }
+export const pickHarbour = (tier: HarbourTier, seed: number, maxR = 200) => pickHarbours(tier, seed, { maxR })[0] ?? null
 
 export interface HarbourBuild { plan: HarbourPlan; entities: ProjectEntity[]; roads: Road[]; boxes: { corners: number[]; role: string; h?: number }[] }
 
@@ -194,19 +199,20 @@ export function harbourTier(kind: string | undefined): HarbourTier {
 export interface HarbourIssue { kind: 'floating' | 'sunk' | 'pierMisaligned' | 'breakwaterIsolated' | 'inWater' | 'seaDry'; id: string; x: number; z: number; value?: number }
 /** pre-send harbour checks on the entities of a harbour zone, `hAt` = final terrain:
  *  floating / sunk: quay pieces outside deck - 4.0 -1.5..+3.5 m (vanilla raised heads +3.1), breakwaters outside -10..-1.5 m, land props > 0.8 m off
- *  the ground; pierMisaligned: a concrete quay piece without a neighbour (<= 22 m) at a multiple of 30° (±3°);
+ *  the ground; pierMisaligned: a concrete quay piece whose neighbours (<= 22 m) are none at a multiple of 30° (±3°; a lone vanilla piece is fine);
  *  breakwaterIsolated: a breakwater piece with nothing (breakwater / quay) within 26 m; inWater: a land prop over
  *  the sea; seaDry: a sea part on dry ground. */
 export function harbourIssues(ents: ProjectEntity[], hAt: (x: number, z: number) => number): HarbourIssue[] {
   const out: HarbourIssue[] = []
-  const quay = ents.filter((e) => QUAY_RX.test(e.prefab)), bw = ents.filter((e) => BREAKWATER_RX.test(e.prefab))
+  // deck height / chaining judged on the deck pieces (flat pads and slipway corners have their own origins)
+  const quay = ents.filter((e) => /PierConcrete_01_(20m|10m_end|corner_90)\.et/i.test(e.prefab)), bw = ents.filter((e) => BREAKWATER_RX.test(e.prefab))
   const y = (e: ProjectEntity) => (e.ycm ?? hAt(e.x, e.z) * 100) / 100
   const near = (e: ProjectEntity, L: ProjectEntity[], r: number) => L.filter((q) => q !== e && Math.hypot(q.x - e.x, q.z - e.z) <= r)
   for (const e of quay) {
     const dy = y(e) - (APRON_H - QUAY_DECK)
     if (dy < -1.5 || dy > 3.5) out.push({ kind: dy > 0 ? 'floating' : 'sunk', id: e.id, x: e.x, z: e.z, value: round(dy) })
     const nb = near(e, quay, 22)
-    if (!nb.some((q) => { const a = ((((q.yaw - e.yaw) % 30) + 30) % 30); return a < 3 || a > 27 })) out.push({ kind: 'pierMisaligned', id: e.id, x: e.x, z: e.z })
+    if (nb.length && !nb.some((q) => { const a = ((((q.yaw - e.yaw) % 30) + 30) % 30); return a < 3 || a > 27 })) out.push({ kind: 'pierMisaligned', id: e.id, x: e.x, z: e.z })
   }
   for (const e of bw) {
     const b = y(e)
@@ -214,14 +220,15 @@ export function harbourIssues(ents: ProjectEntity[], hAt: (x: number, z: number)
     if (!near(e, [...bw, ...quay], 26).length) out.push({ kind: 'breakwaterIsolated', id: e.id, x: e.x, z: e.z })
   }
   for (const e of ents) {
-    // breakwaters are exempt: vanilla revetments line the apron edge (Everon: terrain p90 +2.2 under their origin)
-    if (PORT_SEA_RX.test(e.prefab)) { if (!BREAKWATER_RX.test(e.prefab) && hAt(e.x, e.z) > 0.3) out.push({ kind: 'seaDry', id: e.id, x: e.x, z: e.z, value: round(hAt(e.x, e.z)) }); continue }
+    // breakwaters and wooden piers are exempt (wooden jetties root on the beach at +2 m), vanilla revetments line the apron edge (Everon: terrain p90 +2.2 under their origin)
+    if (PORT_SEA_RX.test(e.prefab)) { if (!BREAKWATER_RX.test(e.prefab) && !/Pier_?Wood/i.test(e.prefab) && hAt(e.x, e.z) > 0.3) out.push({ kind: 'seaDry', id: e.id, x: e.x, z: e.z, value: round(hAt(e.x, e.z)) }); continue }
     if (WET_RX.test(e.prefab)) continue
     const g = hAt(e.x, e.z)
-    if (g <= 0) { out.push({ kind: 'inWater', id: e.id, x: e.x, z: e.z, value: round(g) }); continue }
+    // over the sea: fine on a pier deck (vanilla fishing piers carry nets, traps, sheds), wrong below the surface
+    if (g <= 0) { if (y(e) < 0.3) out.push({ kind: 'inWater', id: e.id, x: e.x, z: e.z, value: round(y(e)) }); continue }
     const dy = y(e) - g
     if (dy < -0.8) out.push({ kind: 'sunk', id: e.id, x: e.x, z: e.z, value: round(dy) })
-    else if (dy > 0.8 && !/Container|Crate|Pallet|Shell|MetalSheet|Plank|Stack/i.test(e.prefab)) out.push({ kind: 'floating', id: e.id, x: e.x, z: e.z, value: round(dy) })
+    else if (dy > 1.0 && !/Container|Crate|Pallet|Shell|MetalSheet|Plank|Stack/i.test(e.prefab)) out.push({ kind: 'floating', id: e.id, x: e.x, z: e.z, value: round(dy) })
   }
   return out
 }
