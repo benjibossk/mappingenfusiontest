@@ -58,6 +58,8 @@ export function makeAirfield(heights: number[], g: Grid, o: { id: string; size: 
   return { id: o.id, kind: 'airfield', sub: o.size, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes, ...prefixed(o.id, a.shapes, a.entities), flat: a.flatten, plat: [], roads: [], warnings: [], access: [a.apron.x, a.apron.z] }
 }
 
+/** naval / quay-edge pieces of a vanilla base, never stamped (bases are placed inland) */
+const MIL_NAVAL_RX = /\/Naval\/|PierConcrete|Ladder_Pier|Davit|LifeBuoy|SeaBollard|Breakwater|Mooring/i
 export function makeMilitary(heights: number[], g: Grid, o: { id: string; kind: MilitaryKind; x: number; z: number; yaw: number; seed: number; vanilla?: boolean }): ZoneItem {
   if (o.vanilla) { // real Bohemia base / checkpoint (data/templates/vanilla_sites.json); our yaw turns +Z AWAY from the road, the template's +Z faces it
     // a base template sized for the spot the suggester found (Cain's 290 m quarry-sized bases do not fit an outpost spot)
@@ -65,7 +67,9 @@ export function makeMilitary(heights: number[], g: Grid, o: { id: string; kind: 
     const v = makeVanillaSite(heights, g, { id: o.id, type: o.kind === 'checkpoint' ? 'checkpoint' : 'military_base', x: o.x, z: o.z, yaw: o.yaw + 180, seed: o.seed,
       // hillside bases (Cain 5072/6333 slope 0.39, Arland 1452/1834 0.62) are terraces of stone / retaining walls and dug-in
       // bunkers built for their slope: stamped on our flat platform they read as loose wall blocks and bare grey boxes (seed 21)
-      fit: o.kind === 'checkpoint' ? undefined : (t) => t.radius <= maxR && t.objects.length >= minN && t.slope <= 0.1 })
+      fit: o.kind === 'checkpoint' ? undefined : (t) => t.radius <= maxR && t.objects.filter((ob) => !MIL_NAVAL_RX.test(ob.p)).length >= minN && t.slope <= 0.1,
+      // coastal bases (Arland 1117/3367) carry their own quay: inland its pier blocks, davits and ladders stand dry (seed 21 live, port-dry)
+      skip: MIL_NAVAL_RX })
     if (v) return { ...v, kind: 'military', sub: o.kind, yaw: o.yaw }
   }
   const m = generateMilitary({ kind: o.kind, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed })
@@ -119,11 +123,11 @@ export function nextZoneId(zones: ZoneItem[], kind: ZoneKind) {
 
 /** stamps a vanilla site template (military_base, checkpoint, port, fuel_depot, gas_station, farm...) at x/z, its
  *  access side (+Z) turned to `yaw`; ground flattened to the mean height over the template radius. null = no template. */
-export function makeVanillaSite(heights: number[], g: Grid, o: { id: string; type: string; x: number; z: number; yaw: number; seed: number; fit?: (t: VanillaTemplate) => boolean; template?: VanillaTemplate }): ZoneItem | null {
+export function makeVanillaSite(heights: number[], g: Grid, o: { id: string; type: string; x: number; z: number; yaw: number; seed: number; fit?: (t: VanillaTemplate) => boolean; template?: VanillaTemplate; skip?: RegExp }): ZoneItem | null {
   const t = o.template ?? pickTemplate(o.type, o.seed, o.fit)
   if (!t) return null
   // loose wall pieces of the composition -> WG polylines (wallRuns.ts: every wall is a wall generator)
-  const { entities, shapes } = wallPiecesToShapes(stampTemplate(t, o.x, o.z, o.yaw, { id: t.id }), t.id)
+  const { entities, shapes } = wallPiecesToShapes(stampTemplate(t, o.x, o.z, o.yaw, { id: t.id, ...(o.skip ? { skip: o.skip } : {}) }), t.id)
   const r = Math.max(10, t.radius), box = { x: o.x, z: o.z, hw: r, hd: r, yaw: o.yaw }
   const flat: FlattenRequest[] = o.type === 'port' ? [] : [{ box, h0: 0, h1: 0, falloff: 15 }]
   if (flat.length) { // flat platform at the mean height of the footprint

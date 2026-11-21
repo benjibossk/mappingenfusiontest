@@ -33,7 +33,7 @@ test('seed 21 world (vanilla on): ports in the water, no road in a port, full mi
   }
   const mil = w.zones.find((z) => z.id === 'MIL_1')!
   assert.ok(mil && mil.sub !== 'checkpoint', 'MIL_1 is a base')
-  assert.ok(mil.entities.length >= 50, `MIL_1 entities ${mil.entities.length}`) // flat-ground vanilla camp only (hillside bases filtered), walls as WG shapes
+  assert.ok(mil.entities.length >= 40, `MIL_1 entities ${mil.entities.length}`) // naval / quay pieces of coastal bases skipped (inland), flat-ground vanilla camp only (hillside bases filtered), walls as WG shapes
   assert.ok(mil.shapes.length > 0, 'MIL_1 walls as wall-generator shapes')
   assert.ok(w.zones.every((z) => z.entities.every((e) => !isLooseWallPiece(e.prefab))), 'no loose wall piece')
 })

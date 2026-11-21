@@ -131,8 +131,19 @@ export function makeProdForest(zone: number[], o: ProdOptions): ProdForest {
     const [x0, z0, x1, z1] = t, L = Math.hypot(x1 - x0, z1 - z0), dx = (x1 - x0) / L, dz = (z1 - z0) / L
     for (let d = 30 + rnd() * 60; d < L - 20; d += 70 + rnd() * 90) {
       const side = rnd() < 0.5 ? -1 : 1, x = x0 + dx * d - dz * 6.5 * side, z = z0 + dz * d + dx * 6.5 * side
-      if (inPoly(zone, x, z)) logs.push({ x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw: Math.round((Math.atan2(dx, dz) * 180) / Math.PI) })
+      // never on another track or road (seed 21: a pile 6.5 m off a branch fell on the link track, 0.5 m off its axis)
+      if (inPoly(zone, x, z) && !nearLine(x, z, [...tracks, ...(o.roads ?? [])], 4.5)) logs.push({ x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw: Math.round((Math.atan2(dx, dz) * 180) / Math.PI) })
     }
   }
   return { tracks, compartments, logs, angle: ang }
+}
+
+/** true when (x, z) is within r m of one of the polylines (flat X/Z) */
+function nearLine(x: number, z: number, lines: ArrayLike<number>[], r: number): boolean {
+  for (const l of lines) for (let i = 0; i + 3 < l.length; i += 2) {
+    const ax = l[i], az = l[i + 1], dx = l[i + 2] - ax, dz = l[i + 3] - az, L = dx * dx + dz * dz
+    const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+    if (Math.hypot(x - ax - t * dx, z - az - t * dz) < r) return true
+  }
+  return false
 }

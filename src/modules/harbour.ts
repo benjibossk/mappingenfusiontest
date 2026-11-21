@@ -96,7 +96,9 @@ function harbourBox(H: HarbourPlan) {
 function target(near: ReturnType<typeof index>, H: HarbourPlan, x: number, z: number, h: number, sharpOnly = false): number | null {
   const [u, v] = toLocal(H, x, z), { d, c } = near(u, v)
   if (c < 0 || d > CORE + BLEND) return null
-  const t = c === 1 || c === 3 ? Math.min(h, BASIN_H) : CLS_H[c]
+  // basin: dredged to -7.5, deeper sea kept; under a sea part (piers, piles, dolphins): exactly -7.5, the deep sea
+  // filled (seed 21 live: wooden pier poles 15-35 m over a -30 m seabed, the piles hanging in open water)
+  const t = c === 1 ? Math.min(h, BASIN_H) : c === 3 ? BASIN_H : CLS_H[c]
   if (d <= CORE) return t
   if (sharpOnly) return null
   return t + ((h - t) * (d - CORE)) / BLEND
@@ -198,7 +200,7 @@ export function harbourTier(kind: string | undefined): HarbourTier {
 
 export interface HarbourIssue { kind: 'floating' | 'sunk' | 'pierMisaligned' | 'breakwaterIsolated' | 'inWater' | 'seaDry'; id: string; x: number; z: number; value?: number }
 /** pre-send harbour checks on the entities of a harbour zone, `hAt` = final terrain:
- *  floating / sunk: quay pieces outside deck - 4.0 -1.5..+3.5 m (vanilla raised heads +3.1), breakwaters outside -10..-1.5 m, land props > 0.8 m off
+ *  floating / sunk: quay pieces outside deck - 4.0 -1.5..+3.5 m (vanilla raised heads +3.1), breakwaters outside -10..-1.5 m, sea piles / piers > 16 m over the seabed (vanilla decks +4..+7 over a -7.5 basin), land props > 0.8 m off
  *  the ground; pierMisaligned: a concrete quay piece whose neighbours (<= 22 m) are none at a multiple of 30° (±3°; a lone vanilla piece is fine);
  *  breakwaterIsolated: a breakwater piece with nothing (breakwater / quay) within 26 m; inWater: a land prop over
  *  the sea; seaDry: a sea part on dry ground. */
@@ -221,7 +223,12 @@ export function harbourIssues(ents: ProjectEntity[], hAt: (x: number, z: number)
   }
   for (const e of ents) {
     // breakwaters and wooden piers are exempt (wooden jetties root on the beach at +2 m), vanilla revetments line the apron edge (Everon: terrain p90 +2.2 under their origin)
-    if (PORT_SEA_RX.test(e.prefab)) { if (!BREAKWATER_RX.test(e.prefab) && !/Pier_?Wood/i.test(e.prefab) && hAt(e.x, e.z) > 0.3) out.push({ kind: 'seaDry', id: e.id, x: e.x, z: e.z, value: round(hAt(e.x, e.z)) }); continue }
+    if (PORT_SEA_RX.test(e.prefab)) {
+      if (!BREAKWATER_RX.test(e.prefab) && !/Pier_?Wood/i.test(e.prefab) && hAt(e.x, e.z) > 0.3) out.push({ kind: 'seaDry', id: e.id, x: e.x, z: e.z, value: round(hAt(e.x, e.z)) })
+      // piles / piers over a seabed far below them: the poles hang in open water (seabed under sea parts = -7.5)
+      else if (!BREAKWATER_RX.test(e.prefab) && !/Buoy/i.test(e.prefab) && y(e) - hAt(e.x, e.z) > 16) out.push({ kind: 'floating', id: e.id, x: e.x, z: e.z, value: round(y(e) - hAt(e.x, e.z)) })
+      continue
+    }
     if (WET_RX.test(e.prefab)) continue
     const g = hAt(e.x, e.z)
     // over the sea: fine on a pier deck (vanilla fishing piers carry nets, traps, sheds), wrong below the surface

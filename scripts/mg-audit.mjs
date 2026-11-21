@@ -16,8 +16,14 @@
 //                 furniture (bollards, buoys, ladders, davits, quay blocks): no water within 3 m (+ half a grid step)
 //   on-road       placed objects standing on a road carriageway (road shapes of the project)
 //   pole-in-bldg  poles (entity or power-line vertex) inside a building's AABB (built entities.txt)
-//   ycm           absolute-height entities (bridges) whose deck is under the terrain or > 15 m above it
-//   terrain       sent heightmap vs built terrain: cells off by more than --tol
+//   ycm           absolute-height entities (bridges) whose deck is under the terrain or > 15 m above it; the end deck
+//                 (DECK_0) sits on its bank: 1 m; harbour pieces keep their vanilla heights: sea piles / piers > 16 m over
+//                 the seabed, other pieces > 0.8 m under the ground or > 15 m over max(ground, sea); cliffRocks: burial
+//                 per prefab + the slope sink of cliffRocks.ts
+//                 vanilla harbours (ids *-h<k>, src/modules/harbour.ts): only their sea parts (piles, piers, dolphins, buoys)
+//                 must be wet, their nets / winches / flat pads are quay props on dry land
+//   terrain       sent heightmap (+ the 2 m heightpatch.txt of harbours / bridge ramps, sampled first) vs built terrain:
+//                 cells off by more than --tol
 // Exit code 1 when a check finds something.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -80,6 +86,28 @@ function readGrid(file) {
 }
 const terrain = readGrid(join(DIR, "heights.txt"));
 const target = readGrid(join(DIR, "heightmap.txt"));
+// 2 m patches (bridge server.mjs heightpatch.txt: per patch a "minX minZ step cols rows" line then rows of heights),
+// sampled first by MG_HeightmapApplier: the expected height inside a patch is the patch's
+const patches = [];
+if (existsSync(join(DIR, "heightpatch.txt"))) {
+  const L = readFileSync(join(DIR, "heightpatch.txt"), "utf-8").trim().split(/\r?\n/);
+  for (let i = 0; i < L.length; ) {
+    const [minX, minZ, step, cols, rows] = L[i].trim().split(/\s+/).map(Number);
+    const v = new Float32Array(cols * rows); let k = 0;
+    for (const r of L.slice(i + 1, i + 1 + rows)) for (const q of r.trim().split(/\s+/)) if (k < v.length) v[k++] = Number(q);
+    patches.push({ minX, minZ, step, cols, rows, v });
+    i += 1 + rows;
+  }
+}
+const patchAt = (x, z) => {
+  for (const p of patches) {
+    const fx = (x - p.minX) / p.step, fz = (z - p.minZ) / p.step;
+    if (fx < 0 || fz < 0 || fx > p.cols - 1 || fz > p.rows - 1) continue;
+    const c = Math.min(Math.floor(fx), p.cols - 2), r = Math.min(Math.floor(fz), p.rows - 2), tx = fx - c, tz = fz - r, i = r * p.cols + c;
+    return (p.v[i] * (1 - tx) + p.v[i + 1] * tx) * (1 - tz) + (p.v[i + p.cols] * (1 - tx) + p.v[i + p.cols + 1] * tx) * tz;
+  }
+  return null;
+};
 
 // --- geometry ---
 const pts = (s) => { const o = []; for (let i = 0; i + 1 < s.points.length; i += 2) o.push([s.points[i], s.points[i + 1]]); return o; };
@@ -125,9 +153,16 @@ const wetNear = (x, z, r) => {
   for (let a = 0; a < 16; a++) for (const d of [r / 2, r]) if (terrain.at(x + Math.cos(a * Math.PI / 8) * d, z + Math.sin(a * Math.PI / 8) * d) <= terrain.ocean + 0.3) return true;
   return false;
 };
+// vanilla harbour pieces (harbour.ts PORT_SEA_RX / harbourIssues seaDry): sea parts only, breakwaters / wooden piers exempt
+const isHarbour = (e) => /-h\d+$/.test(e.id);
+const HARBOUR_SEA = /\/Naval\/(Breakwater|Piers\/MooringDolphin|Piers\/Pier_?Wood|Piers\/PierWooden)|\/Naval\/Buoy_01_(red|green)|MooringBuoy/i;
 if (terrain)
   for (const e of sent.filter(isPort)) {
     const h = terrain.at(e.x, e.z);
+    if (isHarbour(e)) {
+      if (HARBOUR_SEA.test(e.prefab) && !/Breakwater|Pier_?Wood/i.test(e.prefab) && h > terrain.ocean + 0.3) findings["port-dry"].push({ id: e.id, prefab: e.prefab.split("/").pop(), x: e.x, z: e.z, ground: r1(h), ocean: r1(terrain.ocean) });
+      continue;
+    }
     if (isQuayEdge(e) ? !wetNear(e.x, e.z, QUAY_REACH + terrain.step / 2) && h > terrain.ocean + 0.3 && !lakes.some((p) => inPoly(e.x, e.z, p))
       : h > terrain.ocean + 0.3 && !lakes.some((p) => inPoly(e.x, e.z, p)))
       findings["port-dry"].push({ id: e.id, prefab: e.prefab.split("/").pop(), x: e.x, z: e.z, ground: r1(h), ocean: r1(terrain.ocean) });
@@ -189,7 +224,8 @@ function inOriented(b, x, z) {
   return [a, -a].some((r) => { const u = dx * Math.cos(r) - dz * Math.sin(r), v = dx * Math.sin(r) + dz * Math.cos(r); return Math.abs(u) < w - 0.3 && Math.abs(v) < d - 0.3; });
 }
 const poles = [
-  ...sent.filter((e) => /Pole|PowerLine|Pylon|Lamp|StreetLight/i.test(e.prefab)).map((e) => ({ id: e.id, x: e.x, z: e.z })),
+  // vanilla compositions (ids *_parcel_*: RP sites, yards) carry their own lamps against their own buildings
+  ...sent.filter((e) => /Pole|PowerLine|Pylon|Lamp|StreetLight/i.test(e.prefab) && !/_parcel_/.test(e.id)).map((e) => ({ id: e.id, x: e.x, z: e.z })),
   // power-line vertices only: WEGenerators/Walls/Pole/WG_PoleFence_* are fences, not poles (24 false hits, 4th send)
   ...shapes.filter((s) => /PowerLine|Pole/i.test(s.generator ?? "") && !/\/Walls\//i.test(s.generator ?? "")).flatMap((s) => pts(s).map(([x, z], i) => ({ id: `${s.id}#${i}`, x, z }))),
 ];
@@ -207,8 +243,25 @@ if (terrain)
     // cliffRocks bury their pivot on purpose (vanilla burial, up to ~0.6 x the piece height): only a rock lost
     // deep under the ground or floating counts (6th send: 782 CLIFF_ findings, all burial)
     const rock = /^CLIFF_/.test(e.id);
-    const dy = ROCK_DY.get(e.prefab.split("/").pop().replace(/\.et$/, "")) ?? 0;
-    if (rock ? Math.abs(y - g - dy) > Math.max(3, Math.abs(dy) * 0.5) /* the 8 m audit grid misses ~3 m on 35 deg rock faces */ : y < g - 0.2 || y > g + 15) findings.ycm.push({ id: e.id, x: e.x, z: e.z, y: r1(y), ground: r1(g), delta: r1(y - g) });
+    const name = e.prefab.split("/").pop().replace(/\.et$/, "");
+    const dy = ROCK_DY.get(name) ?? 0;
+    let bad;
+    if (rock) {
+      // cliffRocks sink the big pieces by the drop across their footprint (+ half-burial on > 40 deg): sink = sl R 0.6
+      // + 0.2 min(1, sl) [+ 1.5 R (sl - 0.84) + 1 for cliffs / rocks], dy itself +-15 % (seed 21 live: 80 rocks on slopes)
+      const kind = /Cliff/.test(name) ? "cliff" : /GraniteRock/.test(name) ? "rock" : /SurfaceStone/.test(name) ? "slab" : /Boulder/.test(name) ? "boulder" : /Cluster/.test(name) ? "cluster" : /Beach/.test(name) ? "beach" : "stone";
+      const R = { cliff: 6, rock: 4, slab: 2.5, boulder: 1.5, cluster: 1.5, stone: 0.6, beach: 1 }[kind], d = Math.max(2, R);
+      const sl = Math.hypot(terrain.at(e.x + d, e.z) - terrain.at(e.x - d, e.z), terrain.at(e.x, e.z + d) - terrain.at(e.x, e.z - d)) / (2 * d);
+      const sink = sl * R * 0.6 + 0.2 * Math.min(1, sl) + ((kind === "cliff" || kind === "rock") && sl > 0.84 ? 1.5 * R * (sl - 0.84) + 1 : 0);
+      // the 8 m audit grid misses ~3 m on 35 deg rock faces, more on steeper ones (bilinear error ~ slope x half a step)
+      const tol = Math.max(3, Math.abs(dy) * 0.5) + sl * terrain.step * 0.5;
+      bad = y - g > dy * 0.85 + tol || y - g < dy * 1.15 - sink * 1.5 - tol;
+    } else if (isHarbour(e)) {
+      if (/Buoy/i.test(e.prefab)) bad = false; // floating at the surface or grounded: vanilla height
+      else if (HARBOUR_SEA.test(e.prefab)) bad = y - g > 16; // piles hanging in open water (seabed under sea parts -7.5)
+      else bad = (g > 0 && y < g - 0.8) || y > Math.max(g, 0) + 15;
+    } else bad = y < g - (/_DECK_0$/.test(e.id) ? 1 : 0.2) || y > g + 15;
+    if (bad) findings.ycm.push({ id: e.id, x: e.x, z: e.z, y: r1(y), ground: r1(g), delta: r1(y - g) });
   }
 
 // terrain
@@ -218,10 +271,10 @@ if (terrain && target) {
   for (let r = 0; r < target.rows; r++) for (let c = 0; c < target.cols; c++) {
     const x = target.minX + c * target.step, z = target.minZ + r * target.step;
     if (x >= terrain.minX + (terrain.cols - 1) * terrain.step || z >= terrain.minZ + (terrain.rows - 1) * terrain.step) continue;
-    const d = terrain.at(x, z) - target.v[r * target.cols + c];
+    const want = patchAt(x, z) ?? target.v[r * target.cols + c], d = terrain.at(x, z) - want;
     n++; sum += Math.abs(d);
     if (Math.abs(d) > max) max = Math.abs(d);
-    if (Math.abs(d) > TOL) { bad++; if (findings.terrain.length < 500) findings.terrain.push({ x, z, sent: r1(target.v[r * target.cols + c]), built: r1(d + target.v[r * target.cols + c]), delta: r1(d) }); }
+    if (Math.abs(d) > TOL) { bad++; if (findings.terrain.length < 500) findings.terrain.push({ x, z, sent: r1(want), built: r1(d + want), delta: r1(d) }); }
   }
   findings.terrain.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
   tStats = { cells: n, bad, maxAbs: r1(max), meanAbs: Math.round((sum / Math.max(n, 1)) * 100) / 100 };

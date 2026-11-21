@@ -1,12 +1,24 @@
 # Import terrain surface masks into the open World Editor world via UI Automation (no mouse, no keys
 # except Ctrl+S fallback). Steps: Tools > Terrain Tool, Window > Current Tool, Paint tab, set the
 # "Import/export masks from/to" path field (ValuePattern), Invoke Import, dismiss info dialogs, save.
+#
+# ORDER OF THE SEND FLOW: apply (objects) -> SAVE -> write masks -> this import -> wait -> save.
+# Save the objects BEFORE the mask import: the save at the end of this script is the risky one (the
+# Workbench re-encodes textures in the background after the import / "Fix block borders" / normal map
+# generation, and a save during that crashed it in nvtt::CubeSurface::toGamma, twice on 2026-11-21,
+# while a save ~10 min later worked). If it crashes, only the masks are lost, not the objects.
+# Before saving this script waits for a quiet console.log (>= -QuietSec, default 120 s, max -QuietMaxSec)
+# AND then a fixed -SaveDelaySec (default 180 s). -NoNormalMap: the normal map is not generated, so its
+# 'Reimporting Done' is not awaited (the quiet console + delay still apply before the save).
 param(
   [string]$Folder = "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\profile\MapGen\masks\MG_Test",
   [int]$TimeoutSec = 300,
   [switch]$NoSave,
   [switch]$NoTerrainFix,
   [switch]$NoNormalMap,
+  [int]$QuietSec = 120,
+  [int]$QuietMaxSec = 900,
+  [int]$SaveDelaySec = 180,
   [switch]$Probe
 )
 $ErrorActionPreference = 'Stop'
@@ -146,23 +158,33 @@ if (-not $NoTerrainFix -and -not $script:importFailed) {
     $pt = Find (WE) 'Paint' 'TabItem'; if ($pt) { (Pat $pt ([System.Windows.Automation.SelectionItemPattern])).Select() }
     # The normal/vegetation generation runs asynchronously: Ctrl+S during it crashed the Workbench
     # in nvtt (2026-11-20 13:45). Wait for 'Reimporting Done' in the live console.log before saving.
-    $logDir = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    $clog = Join-Path $logDir.FullName 'console.log'; $done = $false
-    for ($i = 0; $i -lt 180 -and -not $done; $i++) {
-      Start-Sleep -Seconds 2
-      $tail = Get-Content $clog -Tail 400 -ErrorAction SilentlyContinue
-      if ($tail -match 'Reimporting Done') { $done = $true }
-    }
-    if ($done) { 'terrain fix: generation finished'; Start-Sleep -Seconds 5 } else { 'terrain fix: generation not confirmed after 6 min, save skipped'; $NoSave = $true }
+    # Only when it was launched: with -NoNormalMap nothing prints it (the old 6 min wait then skipped the save).
+    if (-not $NoNormalMap) {
+      $logDir = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+      $clog = Join-Path $logDir.FullName 'console.log'; $done = $false
+      for ($i = 0; $i -lt 180 -and -not $done; $i++) {
+        Start-Sleep -Seconds 2
+        $tail = Get-Content $clog -Tail 400 -ErrorAction SilentlyContinue
+        if ($tail -match 'Reimporting Done') { $done = $true }
+      }
+      if ($done) { 'terrain fix: generation finished'; Start-Sleep -Seconds 5 } else { 'terrain fix: generation not confirmed after 6 min, save skipped'; $NoSave = $true }
+    } else { 'terrain fix: normal map not generated (-NoNormalMap), no Reimporting Done to wait for' }
   } else { 'terrain fix: Manage tab not found, skipped' }
 }
 if (-not $NoSave) {
   # Ctrl+S right after a mask import crashed the Workbench in nvtt (2026-11-20 14:28) while it was still
-  # re-encoding textures: wait until the live console.log has been quiet for 30 s (max 5 min) first.
+  # re-encoding textures. 30 s of quiet console was not enough: the save right after the import + "Fix block
+  # borders" crashed twice in nvtt::CubeSurface::toGamma (2026-11-21), a save ~10 min later worked.
+  # So: console.log quiet for >= $QuietSec (max $QuietMaxSec of waiting), THEN a fixed $SaveDelaySec.
   $ld = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
   $cl = Join-Path $ld.FullName 'console.log'
-  for ($i = 0; $i -lt 60; $i++) { $age = ((Get-Date) - (Get-Item $cl).LastWriteTime).TotalSeconds; if ($age -ge 30) { break }; Start-Sleep -Seconds 5 }
-  "console quiet before save ($([int]$age) s)"
+  $qEnd = (Get-Date).AddSeconds($QuietMaxSec); $age = 0
+  while ((Get-Date) -lt $qEnd) { $age = ((Get-Date) - (Get-Item $cl).LastWriteTime).TotalSeconds; if ($age -ge $QuietSec) { break }; Start-Sleep -Seconds 5 }
+  if ($age -lt $QuietSec) { "console never quiet for $QuietSec s within $QuietMaxSec s: save skipped (save by hand later)"; exit 4 }
+  "console quiet before save ($([int]$age) s), extra delay $SaveDelaySec s"
+  Start-Sleep -Seconds $SaveDelaySec
+  $wp0 = Get-Process -Id $wbpid -ErrorAction SilentlyContinue
+  if (-not $wp0 -or (Get-Process -Name CrashReporter* -ErrorAction SilentlyContinue)) { 'WORKBENCH CRASHED before save'; exit 3 }
   # save: menu Invoke once, else Ctrl+S
   $saved = $false
   # ONE attempt only: repeated UIA Invokes on Save World crashed the Workbench (2026-11-20)
