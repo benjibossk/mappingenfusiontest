@@ -27,7 +27,7 @@ export function memoryKV(): KV {
 }
 
 /** IndexedDB key-value store (one object store); null when IndexedDB is unavailable (private window) */
-export function indexedKV(dbName = 'reforger-mapper', store = 'projects'): KV | null {
+export function indexedKV(dbName = 'reforger-mapper-projects', store = 'projects'): KV | null {
   if (typeof indexedDB === 'undefined') return null
   let dbp: Promise<IDBDatabase> | null = null
   const db = () => (dbp ??= new Promise<IDBDatabase>((res, rej) => {

@@ -803,3 +803,14 @@ button.linkbtn:hover:not(:disabled) { background: none; border: 0; color: var(--
 .biomebadge[data-avail="mods"] { border-color: var(--red); color: #E07A6B; }
 #oneClick span, #replayAll span { white-space: nowrap; }
 .rwsteps li[data-ms]::after { content: attr(data-ms); margin-left: auto; font-variant-numeric: tabular-nums; color: var(--tx-3); }
+
+/* projects list (welcome screen) */
+.welcome .projlist { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-bottom: 10px; }
+.welcome .projrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 16px; background: var(--ink-3); border: 1px solid var(--line-2); }
+.welcome .projrow.on { border-color: var(--amber); }
+.welcome .projrow .pname { color: var(--tx-1); font: 600 15px var(--f-body); }
+.welcome .projrow .pname em { margin-left: 8px; color: var(--amber-hi); font-size: 12px; font-style: normal; text-transform: uppercase; }
+.welcome .projrow .pwhen { color: var(--tx-3); font-size: 12px; }
+.welcome .projrow .grow { flex: 1; }
+.welcome .projrow button[data-act="del"] { color: var(--tx-3); }
+.welcome .projlist .pnone { margin: 0; padding: 10px 16px; border: 1px dashed var(--line-2); color: var(--tx-3); }
