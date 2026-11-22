@@ -21,6 +21,8 @@
 // No dependencies: node bridge/server.mjs
 
 import { createServer } from "node:http";
+import { execFile } from "node:child_process";
+import { tmpdir } from "node:os";
 import { Socket } from "node:net";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -225,6 +227,17 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { bridge: "ok", projectFile: PROJECT_FILE, workbench: state });
     }
 
+    // diagnostic after a send (Giorbev: "after each write to the Workbench"): scripts/mg-audit.mjs --live, as JSON
+    if (req.method === "POST" && req.url === "/audit") {
+      const out = join(tmpdir(), `mg-audit-${process.pid}.json`);
+      rmSync(out, { force: true });
+      const script = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "mg-audit.mjs");
+      await new Promise((ok) => execFile(process.execPath, [script, "--live", "--json", out], { timeout: 180000 }, () => ok()));
+      if (!existsSync(out)) return send(res, 500, { status: "error", message: "audit failed (Workbench closed?)" });
+      const r = JSON.parse(readFileSync(out, "utf-8"));
+      const counts = Object.fromEntries(Object.entries(r.findings).map(([k, l]) => [k, k === "terrain" && r.terrain ? r.terrain.bad : l.length]));
+      return send(res, 200, { status: "ok", counts, terrain: r.terrain, findings: Object.fromEntries(Object.entries(r.findings).map(([k, l]) => [k, l.slice(0, 20)])) });
+    }
     if (req.method === "GET" && req.url.startsWith("/heights")) {
       const step = Number(new URL(req.url, "http://x").searchParams.get("step") ?? 8);
       const result = await callWorkbench("MG_ExportHeights", { step });

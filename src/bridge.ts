@@ -137,3 +137,12 @@ export async function pushComments(comments: WbComment[]): Promise<boolean> {
     return (await res.json()).status === 'ok'
   } catch { return false }
 }
+
+/** live audit of the open world after a send (bridge POST /audit = scripts/mg-audit.mjs --live) */
+export interface AuditResult { status: string; counts: Record<string, number>; findings: Record<string, Record<string, unknown>[]>; message?: string }
+export async function auditWorld(): Promise<AuditResult> {
+  const res = await fetch(`${BRIDGE_URL}/audit`, { method: 'POST' })
+  const r = (await res.json()) as AuditResult
+  if (!res.ok) throw new Error(r.message ?? `audit ${res.status}`)
+  return r
+}

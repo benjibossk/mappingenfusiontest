@@ -822,3 +822,5 @@ button.linkbtn:hover:not(:disabled) { background: none; border: 0; color: var(--
 .welcome .dashgrid strong { color: var(--tx-1); font-size: 15px; }
 @media (max-width: 900px) { .welcome .dashgrid { grid-template-columns: 1fr; } }
 .flash { outline: 2px solid var(--amber-hi); outline-offset: 3px; transition: outline-color .4s; }
+.wbaudit { margin-top: 8px; font-size: 13px; }
+.wbaudit li.bad { color: var(--amber-hi); }

@@ -23,7 +23,7 @@ import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
 import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
-import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw } from './bridge'
+import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw, auditWorld } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
 import { Sculpt } from './modules/sculpt'
@@ -791,6 +791,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <p id="checkDensity" class="hint"></p>
+        <div id="wbAudit" class="wbaudit" hidden></div>
         <button id="checkFixAll" type="button" class="secondary" hidden></button>
         <ul id="checkList" class="issues"></ul>
       </details>
@@ -4308,9 +4309,21 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     sentSig = stepSigs().slice(0, 6).join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()
+    void runAudit()
     return what + '\n' + msg
   }),
 )
+// diagnostic of the world in the Workbench after each send (bridge /audit): shown in the Workbench tab, never blocks
+async function runAudit(): Promise<void> {
+  const box = $<HTMLDivElement>('wbAudit')
+  box.hidden = false; box.textContent = t('audit.running')
+  try {
+    const r = await auditWorld()
+    const bad = Object.entries(r.counts).filter(([, n]) => n > 0)
+    box.innerHTML = `<b>${bad.length ? t('audit.bad', { n: bad.reduce((a, [, n]) => a + n, 0) }) : t('audit.ok')}</b><ul class="issues">${Object.entries(r.counts).map(([k, n]) => `<li class="${n ? 'bad' : 'ok'}">${n ? '✖' : '✔'} ${t(('audit.' + k) as Key)} : ${n}</li>`).join('')}</ul>`
+    if (bad.length) ($('checkBox') as HTMLDetailsElement).open = true
+  } catch (err) { box.textContent = t('audit.fail', { msg: (err as Error).message }) }
+}
 $<HTMLButtonElement>('areasClear').addEventListener('click', () => { areas = []; recompose(true); draw(); autosave() })
 // forests for a fictive island (a real place brings its own): replaces the previously generated ones only
 $<HTMLButtonElement>('forestGen').addEventListener('click', () => {
