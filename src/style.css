@@ -814,3 +814,11 @@ button.linkbtn:hover:not(:disabled) { background: none; border: 0; color: var(--
 .welcome .projrow .grow { flex: 1; }
 .welcome .projrow button[data-act="del"] { color: var(--tx-3); }
 .welcome .projlist .pnone { margin: 0; padding: 10px 16px; border: 1px dashed var(--line-2); color: var(--tx-3); }
+.welcome .projdash { width: 100%; margin: 4px 0 12px; }
+.welcome .dashgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+.welcome .dashgrid button { display: flex; align-items: center; gap: 14px; padding: 14px 16px; text-align: left; background: var(--ink-3); border: 1px solid var(--line-2); color: var(--tx-3); font: 13px var(--f-body); letter-spacing: 0; text-transform: none; justify-content: flex-start; }
+.welcome .dashgrid button:hover { background: var(--ink-4); border-color: var(--amber-hi); }
+.welcome .dashgrid .wtxt { display: flex; flex-direction: column; gap: 2px; }
+.welcome .dashgrid strong { color: var(--tx-1); font-size: 15px; }
+@media (max-width: 900px) { .welcome .dashgrid { grid-template-columns: 1fr; } }
+.flash { outline: 2px solid var(--amber-hi); outline-offset: 3px; transition: outline-color .4s; }

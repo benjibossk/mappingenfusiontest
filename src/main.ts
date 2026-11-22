@@ -398,6 +398,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="wgroup">
         <span class="wglabel">${t('proj.title')}</span>
         <div id="projList" class="projlist"></div>
+        <div id="projDash" class="projdash" hidden><span class="wglabel" id="dashTitle"></span><div class="dashgrid">${([['terrain','island'],['atelier','pin'],['masks','globe'],['sat','map'],['diag','check'],['share','users']] as const).map(([k, i]) => `<button type="button" data-dash="${k}">${ic(i, 22)}<span class="wtxt"><strong>${t(('dash.' + k) as Key)}</strong><span>${t(('dash.' + k + '.tip') as Key)}</span></span></button>`).join('')}</div></div>
         <span class="wglabel">${t('welcome.g.create')}</span>
         <div class="choices create">
           <button type="button" data-go="tGen" class="rec">${ic('island', 28)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
@@ -3229,6 +3230,9 @@ async function renderProjects(): Promise<void> {
     <button type="button" class="rm-link" data-act="dup">${t('proj.dup')}</button>
     <button type="button" class="rm-link" data-act="export">${t('proj.export')}</button>
     <button type="button" class="rm-link" data-act="del">${t('proj.del')}</button></div>`
+  const act = all.find((m) => m.id === activeProject)
+  $('projDash').hidden = !act || !island
+  if (act) $('dashTitle').textContent = t('dash.title', { name: act.name })
   const shown = projShowAll ? all : all.slice(0, 3)
   box.innerHTML = (all.length ? shown.map(row).join('') : `<p class="pnone">${t('proj.none')}</p>`)
     + (all.length > 3 ? `<button type="button" class="rm-link" data-act="all">${projShowAll ? '−' : '+'} ${t('proj.all', { n: all.length })}</button>` : '')
@@ -3264,6 +3268,22 @@ document.getElementById('projList')?.addEventListener('click', async (e) => {
     if (confirm(t('proj.delAsk', { name: r.name }))) { await projects.remove(id); if (activeProject === id) activeProject = null }
   }
   void renderProjects()
+})
+// project dashboard (Giorbev's 6 entries): each one leads to the place of the app that does it
+const goTab = (tab: string, then?: () => void) => {
+  closeMenu(); $('welcome').hidden = true; menuOpen = false
+  document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${tab}"]`)?.click()
+  if (then) setTimeout(then, 50)
+}
+const focusEl = (id: string) => { const el = document.getElementById(id); el?.scrollIntoView({ block: 'center' }); el?.classList.add('flash'); setTimeout(() => el?.classList.remove('flash'), 1600) }
+document.getElementById('projDash')?.addEventListener('click', (e) => {
+  const k = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-dash]')?.dataset.dash
+  if (k === 'terrain') goTab('island')
+  else if (k === 'atelier') goTab('water')
+  else if (k === 'masks') goTab('wb', () => focusEl('tMasks'))
+  else if (k === 'sat') goTab('camp', () => focusEl('satSend'))
+  else if (k === 'diag') goTab('wb', () => { $<HTMLButtonElement>('checkRun').click(); focusEl('checkRun') })
+  else if (k === 'share') { closeMenu(); $('welcome').hidden = true; menuOpen = false; if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false }
 })
 void (async () => {
   let legacy: unknown = null
