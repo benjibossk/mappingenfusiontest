@@ -469,7 +469,7 @@ function renderTo(size: number): HTMLCanvasElement {
 }
 function panelMap(p: HTMLElement) {
   if (needWorld(p)) return
-  p.innerHTML = `<label class="at-field">${tk('at.map.style')}<select id="atStyle"><option value="military" ${S.style === 'military' ? 'selected' : ''}>${tk('at.map.military')}</option><option value="realistic" ${S.style === 'realistic' ? 'selected' : ''}>${tk('at.map.realistic')}</option></select></label>
+  p.innerHTML = `<label class="at-field">${tk('at.map.style')}<select id="atStyle"><option value="military" ${S.style === 'military' ? 'selected' : ''}>${tk('at.map.military')}</option><option value="realistic" ${S.style === 'realistic' ? 'selected' : ''}>${tk('at.map.realistic')}</option><option value="topo" ${S.style === 'topo' ? 'selected' : ''}>${tk('at.map.topo')}</option></select></label>
     <label class="at-field">${tk('at.map.size')}<select id="atSize">${[2048, 4096, 8192].map((n) => `<option ${S.size === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
     <div class="at-checks">${(Object.keys(S.mapLayers) as (keyof MapLayers)[]).map((k) => `<label><input type="checkbox" data-ml="${k}" ${S.mapLayers[k] ? 'checked' : ''}> ${tk('at.map.l.' + k)}</label>`).join('')}</div>
     <div class="row"><button id="atPreview" type="button">${tk('at.map.preview')}</button><button id="atPng" type="button" class="secondary">${tk('at.map.export')}</button><button id="atV3d" type="button" class="secondary" title="${esc(tk('at.v3d.tip'))}">${tk('at.v3d')}</button>${S.src!.canWrite ? `<button id="atPngSave" type="button" class="secondary">${tk('at.map.save')}</button>` : ''}</div>

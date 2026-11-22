@@ -173,6 +173,7 @@ const P = {
   'at.map.style': ['Style', 'Style'],
   'at.map.military': ['Military 80s', 'Militaire années 80'],
   'at.map.realistic': ['Realistic satellite', 'Satellite réaliste'],
+  'at.map.topo': ['Topographic (altitude tints, contours)', 'Topographique (teintes d’altitude, courbes)'],
   'at.map.size': ['Image size (px)', 'Taille de l\'image (px)'],
   'at.map.preview': ['Render the preview', 'Calculer l\'aperçu'],
   'at.v3d': ['3D view', 'Vue 3D'],

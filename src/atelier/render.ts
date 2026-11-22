@@ -6,7 +6,17 @@ import type { HeightGrid } from './heights.ts'
 import type { LayerObjects } from './formats/layer.ts'
 import { topoSurface, type Topo } from './formats/topo.ts'
 
-export type MapStyle = 'military' | 'realistic'
+export type MapStyle = 'military' | 'realistic' | 'topo'
+// topographic background (idea of MapGeneratorPro fond_topo.py / hypsometric_colormap.py, MIT (c) Giorbev):
+// hypsometric tints by relative height, hillshade, contour lines (thin every `minor` m, bold every 5th)
+const HYPSO: [number, RGB][] = [[0, [112, 160, 96]], [0.15, [160, 190, 110]], [0.35, [222, 214, 140]], [0.55, [205, 165, 105]], [0.75, [160, 120, 90]], [0.9, [190, 180, 175]], [1, [250, 250, 250]]]
+export function hypso(t: number): RGB {
+  const u = Math.min(1, Math.max(0, t))
+  for (let k = 1; k < HYPSO.length; k++) if (u <= HYPSO[k][0]) { const [a, ca] = HYPSO[k - 1], [b, cb] = HYPSO[k], f = (u - a) / (b - a); return ca.map((v, q) => v + (cb[q] - v) * f) as RGB }
+  return HYPSO[HYPSO.length - 1][1]
+}
+/** contour interval for a relief of `range` m: ~20 lines over the map, rounded to 5 / 10 / 20 / 50 / 100 m */
+export function contourStep(range: number): number { const r = range / 20; return [2, 5, 10, 20, 50, 100, 200].find((v) => v >= r) ?? 200 }
 export interface MapLayers { relief: boolean; forest: boolean; water: boolean; roads: boolean; buildings: boolean; walls: boolean; port: boolean; slopes: boolean; legend: boolean }
 export interface WaterMask { x0: number; z1: number; W: number; H: number; m: Uint8Array }
 export interface RenderInput { H: HeightGrid; sizeX: number; sizeZ: number; objects: LayerObjects; water: WaterMask[]; sea: number; sat?: { W: number; H: number; data: Uint8ClampedArray } | null; topo?: Topo | null }
@@ -55,14 +65,27 @@ export function renderMap(ctx: CanvasRenderingContext2D, S: number, inp: RenderI
   const img = ctx.createImageData(S, SH), d = img.data
   const fc = L.forest ? forestClasses(objects.trees, sizeX, sizeZ) : null
   const az = 315 * Math.PI / 180, alt = 45 * Math.PI / 180, lx = Math.sin(az) * Math.cos(alt), lz = Math.cos(az) * Math.cos(alt), ly = Math.sin(alt)
-  const hAt = (x: number, z: number) => { const c = Math.min(Math.max(Math.round(x / H.cell), 0), H.cols - 1), r = Math.min(Math.max(Math.round(z / H.cell), 0), H.rows - 1); return H.h[r * H.cols + c] }
+  // bilinear: smooth contour lines and shading (nearest cell drew staircases)
+  const hAt = (x: number, z: number) => {
+    const fx = Math.min(Math.max(x / H.cell, 0), H.cols - 1), fz = Math.min(Math.max(z / H.cell, 0), H.rows - 1)
+    const c = Math.min(Math.floor(fx), H.cols - 2), r = Math.min(Math.floor(fz), H.rows - 2), u = fx - c, v = fz - r, o = r * H.cols + c
+    return (H.h[o] * (1 - u) + H.h[o + 1] * u) * (1 - v) + (H.h[o + H.cols] * (1 - u) + H.h[o + H.cols + 1] * u) * v
+  }
   for (let j = 0; j < SH; j++) for (let i = 0; i < S; i++) {
     const x = (i + 0.5) * mpp, z = sizeZ - (j + 0.5) * mpp, h = hAt(x, z), e = Math.max(mpp, H.cell)
     const dx = (hAt(x + e, z) - hAt(x - e, z)) / (2 * e), dz = (hAt(x, z + e) - hAt(x, z - e)) / (2 * e)
     const nl = Math.hypot(dx, dz, 1), shade = Math.max(0, (-dx * lx - dz * lz + ly) / nl)
     const slope = Math.atan(Math.hypot(dx, dz)) * 180 / Math.PI
     let c: RGB
-    if (style === 'military') {
+    if (style === 'topo') {
+      c = hypso((h - Math.max(inp.sea, H.min)) / Math.max(1, H.max - Math.max(inp.sea, H.min)))
+      if (L.relief) { const s = 0.7 + 0.4 * Math.min(1.2, shade / ly); c = c.map((v) => Math.min(255, v * s)) as RGB }
+      const iv = contourStep(H.max - H.min), k0 = Math.floor(h / iv)
+      if (h > inp.sea && (k0 !== Math.floor(hAt(x + mpp, z) / iv) || k0 !== Math.floor(hAt(x, z - mpp) / iv))) {
+        const major = Math.max(k0, Math.floor(hAt(x + mpp, z) / iv), Math.floor(hAt(x, z - mpp) / iv)) % 5 === 0
+        c = c.map((v) => v * (major ? 0.45 : 0.7)) as RGB
+      }
+    } else if (style === 'military') {
       c = PAL.paper
       if (fc) { const k = fc.c[Math.floor(j * mpp / fc.cell) * fc.W + Math.floor(i * mpp / fc.cell)]; if (k) c = k === 1 ? PAL.forestLight : k === 2 ? PAL.forest : PAL.forestDense }
       if (L.slopes && slope > SLOPE_DEG - SLOPE_RAMP) { let t = Math.min(1, (slope - SLOPE_DEG + SLOPE_RAMP) / SLOPE_RAMP); t = t * t * (3 - 2 * t); c = c.map((v, q) => v + (PAL.slope[q] - v) * t) as RGB }
