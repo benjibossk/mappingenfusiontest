@@ -8,6 +8,8 @@ import { planGrid, type PowerDistrib, type GridLine, type GridSite, type Station
 import type { PowerStyle } from './power'
 import { centreLine, roadHalf, type Road } from './roads'
 import type { Disc, PowerWorld } from './powerroads'
+import { dimsFootprint } from '../library/dims'
+import { footprintOf } from './industrial'
 
 /** built world for the power planner: road half widths, houses + zone buildings, fenced plots, and no-pole
  *  discs on every bridge deck / overpass (spans, lifts, OSM bridges) */
@@ -27,6 +29,15 @@ export function powerWorld(roads: Road[], buildings: number[][], lots: number[][
     }
   }
   const zb = zones.flatMap((z) => z.boxes.filter((b) => b.corners.length >= 8).map((b) => b.corners))
+  // the buildings of vanilla compositions (RP places, library parcels: one 'area' box only): their real footprint,
+  // else a line crosses them (seed 21 live audit: POWER_LV_10 through the RP_DEPOT cow shed, 70 m long)
+  const fallback = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, h: 0 }
+  for (const z of zones) for (const e of z.entities) {
+    if (!/Structures\/(Agriculture|Houses|Industrial|Commercial|Military|Infrastructure\/(Garages|Warehouses))/i.test(e.prefab)) continue
+    const f = dimsFootprint(e.prefab, fallback)
+    if (f.h < 2.5 || (f.maxX - f.minX) * (f.maxZ - f.minZ) < 12) continue
+    zb.push(footprintOf(f, e.x, e.z, e.yaw ?? 0))
+  }
   return { roads: roads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: centreLine(r.pts, 8), half: roadHalf(r) })), buildings: [...buildings, ...zb], lots, noPole }
 }
 

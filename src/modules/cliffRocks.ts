@@ -147,9 +147,9 @@ export function cliffRocks(o: CliffOptions): ProjectEntity[] {
     // slope under the footprint: the big pieces lean partly into it (vanilla cliffs 16-30 deg, boulders up to
     // 23 deg median) and sink by the drop across their footprint, so the downhill side never floats
     // (seed 21 x 2087 z 3413: upright pillar on a steep slope, downhill side in the air)
-    const R = FOOT[kind], [sl] = slopeAt(o.heightAt, x, z, Math.max(2, R))
+    const R = FOOT[kind], [sl] = slopeAt(ground, x, z, Math.max(2, R))
     const lean = LEAN[kind]
-    const [sp0, sr0] = lean ? slopeTilt(o.heightAt, x, z, yaw, Math.max(2, R)) : [0, 0]
+    const [sp0, sr0] = lean ? slopeTilt(ground, x, z, yaw, Math.max(2, R)) : [0, 0]
     // tall pieces (cliffs, rocks) on > 40 deg: half-buried rather than standing as a pillar
     const sink = lean ? sl * R * 0.6 + 0.2 * Math.min(1, sl) + ((kind === 'cliff' || kind === 'rock') && sl > 0.84 ? 1.5 * R * (sl - 0.84) + 1 : 0) : 0
     const ycm = Math.round((ground(x, z) + dy - sink) * 100) || -1

@@ -7,6 +7,7 @@
 
 import { gridTopology, type PowerTopology } from './powergrid'
 import { dedupeRing } from './forestEdge'
+import { Sculpt } from './sculpt'
 import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
 import { DENSITY, scaledCount, worldCounts } from '../data/densities'
@@ -60,7 +61,7 @@ import { suggestMilitary, type MilitaryKind } from './military'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
 import { fitPort, type VanillaTemplate } from './vanillaSites'
 import { placeRpPlaces } from './rpPlaces'
-import { buildHarbour, harbourTier, pickHarbours, type HarbourTier } from './harbour'
+import { buildHarbour, harbourIssues, harbourTier, pickHarbours, type HarbourTier } from './harbour'
 import { parcelTemplate } from '../library/parcelLib'
 import type { Composition } from '../library/schema'
 import { lampConsumers, streetLights, type StreetLamp } from './streetLights'
@@ -362,6 +363,10 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     landRatio: WORLD.island.landRatio, roughness: WORLD.island.roughness, seed: ss('relief', 'island'), islands: 1,
   }
   const island = generateIsland(isl)
+  // the relief the page builds from this island (main.ts applyWorld -> tGen -> Sculpt.compose: 32 m macro + its own
+  // detail noise) is what is drawn and sent: place everything on that one, not on the raw island (seed 21 live:
+  // 32 % of land cells up to 9 m off, rocks buried, slopes / shores judged on another terrain)
+  { const sc = new Sculpt(island.grid.cols, island.grid.step, isl.maxHeight, isl.seed, island.heights); sc.seaDepth = isl.seaDepth; island.heights = sc.compose().slice() }
   const g = island.grid, base = island.heights
   // 2. rivers + lakes (same as the Water step's "Generate")
   await step('water')
@@ -1019,7 +1024,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const net = [...roads, ...settlement.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ l: centreLine(r.pts, 4), h: roadHalf(r) }))
     const on = (x: number, z: number, m: number) => net.some((q) => lineDist(q.l, x, z) < q.h + m)
     for (const zn of zones) {
-      if (!/^RP_|_SITE_[0-9]+$/.test(zn.id)) continue
+      if (!/^RP_|^VAN_BUS_STOP_|_SITE_[0-9]+$/.test(zn.id)) continue
       zn.entities = zn.entities.filter((e) => !on(e.x, e.z, 1))
       zn.shapes = zn.shapes.flatMap((sh) => {
         if (sh.kind !== 'polyline' || sh.closed || /RG_Road/i.test(sh.generator)) return [sh]
@@ -1038,6 +1043,13 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         return parts.filter((q) => q.length >= 4).map((q, k) => ({ ...sh, id: k ? `${sh.id}_${k}` : sh.id, points: q }))
       })
     }
+  }
+  // harbour land props left on a slope the harbour sculpt did not level (seed 21: shed props 13-22 m under a hillside
+  // behind the apron): dropped on the final relief; deck, breakwater and sea pieces are kept
+  for (const zn of zones) {
+    if (!zn.harbour) continue
+    const bad = new Set(harbourIssues(zn.entities, hAt).filter((i) => i.kind === 'sunk' || i.kind === 'floating' || i.kind === 'inWater').map((i) => i.id))
+    zn.entities = zn.entities.filter((e) => !bad.has(e.id) || /PierConcrete_01_(20m|10m_end|corner_90)|Breakwater/i.test(e.prefab))
   }
   return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access, powerTopology: withLamps(gridTopology(pw), lamps) }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }), ...(lamps.length && { streetLights: lamps }) }
 }
