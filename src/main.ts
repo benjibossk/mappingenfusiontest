@@ -1,5 +1,6 @@
 import { dedupeLines, trimCrossings, densify } from './modules/fenceDedupe'
-import { gameplayReport, type GameplayReport, type GameplayKey } from './modules/gameplay'
+import { gameplayReport, settlementClusters, type GameplayReport, type GameplayKey } from './modules/gameplay'
+import { scenarioFit } from './modules/scenarioFit'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
@@ -4939,8 +4940,17 @@ function runGameplay() {
   if (!island) { gpReport = null; out.textContent = t('gp.none'); return }
   gpReport = gameplayReport({ heights: island.heights, grid: island.grid, forests: areas.filter((a) => a.kind === 'forest'), houses: settled.map((b) => ({ x: b.x, z: b.z })) })
   const r = gpReport, bar = (v: number) => `<span style="display:inline-block;width:${Math.round(v * 0.6)}px;height:6px;background:${v >= 80 ? '#4caf50' : v >= 50 ? '#e0a030' : '#d04030'}"></span>`
-  out.innerHTML = `<b>${t('gp.total', { s: r.score })}</b><ul class="issues">${(Object.keys(r.sub) as GameplayKey[]).map((k) => `<li>${bar(r.sub[k].score)} ${r.sub[k].score} · ${t(('gp.' + k) as K, { v: r.sub[k].value })}</li>`).join('')}</ul>`
+  out.innerHTML = `<b>${t('gp.total', { s: r.score })}</b><ul class="issues">${(Object.keys(r.sub) as GameplayKey[]).map((k) => `<li>${bar(r.sub[k].score)} ${r.sub[k].score} · ${t(('gp.' + k) as K, { v: r.sub[k].value })}</li>`).join('')}</ul>` + scenarioHtml()
   draw()
+}
+// scenario fit (src/modules/scenarioFit.ts): which game modes the map suits, and what each one lacks
+function scenarioHtml(): string {
+  const houses = settled.map((b) => ({ x: b.x, z: b.z }))
+  const places = sites.length ? sites.map((s) => ({ x: s.x, z: s.z, kind: s.kind }))
+    : settlementClusters(houses).map((c) => ({ x: c.x, z: c.z, kind: c.n >= 25 ? 'town' : 'village' }))
+  const fits = scenarioFit({ heights: island!.heights, grid: { cols: island!.grid.cols, rows: island!.grid.rows, cell: island!.grid.step, minX: island!.grid.minX, minZ: island!.grid.minZ }, places, houses, roads: roads.map((r) => ({ type: r.type, pts: r.pts })) })
+  const icon = { ok: '✔', partial: '◐', no: '✖' }
+  return `<b>${t('fit.title')}</b><ul class="issues">${fits.map((f) => `<li class="fit-${f.level}">${icon[f.level]} <b>${t(('fit.' + f.id) as K)}</b> : ${t(('fit.lvl.' + f.level) as K)}${f.lacks.length ? '<br><small>' + f.lacks.map((l) => t(('fit.lack.' + l.key) as K, l.vars)).join(' · ') + '</small>' : ''}</li>`).join('')}</ul>`
 }
 function drawGameplay() {
   for (const sp of gpReport!.spots) {
