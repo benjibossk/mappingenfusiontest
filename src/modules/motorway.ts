@@ -80,8 +80,8 @@ export function trimTightEnds(axis: number[], R: number, step = 3): number[] {
   for (let guard = 0; guard < 20; guard++) {
     const n = a.length / 2
     let head = -1, tail = -1
-    for (let i = step; i + step < n && i < n * 0.35; i++) if (tightAt(a, i)) head = i // last tight point near the start
-    for (let i = n - step - 1; i >= n * 0.65 && i >= step; i--) if (tightAt(a, i)) tail = i // first tight point near the end
+    for (let i = step; i + step < n && i < n * 0.45; i++) if (tightAt(a, i)) head = i // last tight point near the start
+    for (let i = n - step - 1; i >= n * 0.55 && i >= step; i--) if (tightAt(a, i)) tail = i // first tight point near the end
     if (head < 0 && tail < 0) return a
     const cut = head >= 0 && (tail < 0 || head < n - 1 - tail) ? a.slice((head + 4) * 2) : a.slice(0, Math.max(0, tail - 4) * 2)
     if (cut.length < 8) return a
@@ -90,6 +90,19 @@ export function trimTightEnds(axis: number[], R: number, step = 3): number[] {
   return a
 }
 
+//! one carriageway: the axis offset by sgn*gap, tapered to 0 over MOTORWAY.taper at both ends
+function offsetTaper(axis: number[], sA: number[], L: number, sgn: number): number[] {
+  const n = axis.length / 2, out: number[] = []
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1)
+    let tx = axis[b * 2] - axis[a * 2], tz = axis[b * 2 + 1] - axis[a * 2 + 1]
+    const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l
+    const f = Math.min(1, sA[i] / MOTORWAY.taper, (L - sA[i]) / MOTORWAY.taper)
+    const d = sgn * MOTORWAY.gap * Math.sin((f * Math.PI) / 2)
+    out.push(axis[i * 2] - tz * d, axis[i * 2 + 1] + tx * d)
+  }
+  return out
+}
 //! segment intersection: parameters (t on ab, u on cd) or null
 function hit(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): [number, number] | null {
   const rx = bx - ax, rz = bz - az, sx = dx - cx, sz = dz - cz, den = rx * sz - rz * sx
@@ -133,30 +146,32 @@ export interface MotorwayResult {
   cut: number // roads cut back at it
 }
 
-//! the two biggest places farthest apart (towns first), each end moved out of its place toward the other
-export function motorwayEnds(sites: Site[]): [[number, number], [number, number]] | null {
-  const big = [...sites].sort((a, b) => ORDER[a.kind] - ORDER[b.kind])
+//! end pairs to try, best first: the two biggest places farthest apart (towns first), then the next pairs;
+//! each end moved out of its place toward the other
+export function motorwayEndPairs(sites: Site[]): [[number, number], [number, number]][] {
+  const out: [[number, number], [number, number]][] = []
   for (const lim of [0, 1]) {
-    const pool = big.filter((s) => ORDER[s.kind] <= lim)
-    let best: [Site, Site] | null = null, bd = 1500
+    const pool = sites.filter((s) => ORDER[s.kind] <= lim), pairs: [Site, Site, number][] = []
     for (let i = 0; i < pool.length; i++) for (let j = i + 1; j < pool.length; j++) {
       const d = Math.hypot(pool[i].x - pool[j].x, pool[i].z - pool[j].z)
-      if (d > bd) { bd = d; best = [pool[i], pool[j]] }
+      if (d > 1500) pairs.push([pool[i], pool[j], d])
     }
-    if (best) {
-      const [a, b] = best, ux = (b.x - a.x) / bd, uz = (b.z - a.z) / bd
+    pairs.sort((p, q) => q[2] - p[2])
+    for (const [a, b, d] of pairs) {
+      const ux = (b.x - a.x) / d, uz = (b.z - a.z) / d
       const ra = SITE_RADIUS[a.kind] + 160, rb = SITE_RADIUS[b.kind] + 160
-      return [[a.x + ux * ra, a.z + uz * ra], [b.x - ux * rb, b.z - uz * rb]]
+      out.push([[a.x + ux * ra, a.z + uz * ra], [b.x - ux * rb, b.z - uz * rb]])
     }
   }
-  return null
+  return out
+}
+export function motorwayEnds(sites: Site[]): [[number, number], [number, number]] | null {
+  return motorwayEndPairs(sites)[0] ?? null
 }
 
 //! Builds the motorway on the heights `h` and fits it into `roads` (modified in place: control points of the
 //! interchange roads, overpass lifts / spans, cut roads). Returns null when no route keeps under the grade.
 export function buildMotorway(h: number[], g: Grid, river: Float32Array | undefined, sites: Site[], roads: Road[], o: { maxSlope?: number } = {}): MotorwayResult | null {
-  const ends = motorwayEnds(sites)
-  if (!ends) return null
   // towns and villages are no-go like the sea (heights copy marked below 0): the route and the smoothing go round them
   const hm = h.slice()
   for (const s of sites) {
@@ -166,7 +181,12 @@ export function buildMotorway(h: number[], g: Grid, river: Float32Array | undefi
       if (Math.hypot(c - c0, r - r0) * g.step < R) hm[r * g.cols + c] = -5
   }
   const at = (x: number, z: number) => hm[Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))]
-  const raw = routeLink(hm, g, river, ends[0], ends[1], MOTORWAY.type, o.maxSlope ?? 10) ?? routeLink(hm, g, river, ends[0], ends[1], 'asphaltLine', o.maxSlope ?? 10)
+  // the first end pair whose route keeps under the grade (an end on a cliff or a lake shore blocks the best one)
+  let raw: number[] | null = null
+  for (const ends of motorwayEndPairs(sites).slice(0, 6)) {
+    raw = routeLink(hm, g, river, ends[0], ends[1], MOTORWAY.type, o.maxSlope ?? 10) ?? routeLink(hm, g, river, ends[0], ends[1], 'asphaltLine', o.maxSlope ?? 10)
+    if (raw) break
+  }
   if (!raw) return null
   // gentle curves: coarse polyline (DP 60 m) rounded by Chaikin at a 20 m spacing, then relaxed (Laplacian,
   // ends fixed) until the smallest radius reaches minRadius; a relaxation that would cut over the sea stops
@@ -189,22 +209,31 @@ export function buildMotorway(h: number[], g: Grid, river: Float32Array | undefi
     axis = t
   }
   axis = trimTightEnds(axis, MOTORWAY.minRadius * 0.9).map(r2)
+  // the carriageways (offset +-gap, tapered) bend tighter than the axis: cut the axis back past any end
+  // stretch where a carriageway drops under 210 m (sampled like the 10 m centre line it is built on)
+  for (let guard = 0; guard < 12; guard++) {
+    const s0 = arcLength(axis), L0 = s0[s0.length - 1]
+    let head = -1, tail = Infinity // last tight arc length in the first half, first one in the second half
+    for (const sg of [1, -1]) {
+      const l = centreLine(offsetTaper(axis, s0, L0, sg), 10), m = l.length / 2, sl = arcLength(l)
+      for (let i = 3; i + 3 < m; i++) {
+        if (minRadius(l.slice((i - 3) * 2, (i + 4) * 2)) >= 210) continue
+        const at = (sl[i] / sl[m - 1]) * L0
+        if (at < L0 / 2) head = Math.max(head, at); else tail = Math.min(tail, at)
+      }
+    }
+    if (head < 0 && tail === Infinity) break
+    let cut: number[] = []
+    if (head >= 0 && (tail === Infinity || head < L0 - tail)) { const k = s0.findIndex((v) => v > head + 60); if (k > 0) cut = axis.slice(k * 2) }
+    else { const k = s0.findIndex((v) => v > tail - 60); if (k > 0) cut = axis.slice(0, k * 2) }
+    if (cut.length < 8) return null
+    axis = cut
+  }
   const sA = arcLength(axis), L = sA[sA.length - 1]
   if (L < 1000) return null
   // carriageways: offset ±gap, tapered to 0 at both ends (shared end points)
   const n = axis.length / 2
-  const side = (sgn: number) => {
-    const out: number[] = []
-    for (let i = 0; i < n; i++) {
-      const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1)
-      let tx = axis[b * 2] - axis[a * 2], tz = axis[b * 2 + 1] - axis[a * 2 + 1]
-      const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l
-      const f = Math.min(1, sA[i] / MOTORWAY.taper, (L - sA[i]) / MOTORWAY.taper)
-      const d = sgn * MOTORWAY.gap * Math.sin((f * Math.PI) / 2)
-      out.push(r2(axis[i * 2] - tz * d), r2(axis[i * 2 + 1] + tx * d))
-    }
-    return out
-  }
+  const side = (sgn: number) => offsetTaper(axis, sA, L, sgn).map(r2)
   const A: Road = { id: 'MW_A', type: MOTORWAY.type, pts: side(1), flatten: true, auto: true }
   const B: Road = { id: 'MW_B', type: MOTORWAY.type, pts: side(-1), flatten: true, auto: true }
   const i0 = sA.findIndex((s) => s >= MOTORWAY.taper), i1 = sA.findIndex((s) => s > L - MOTORWAY.taper)
@@ -242,8 +271,14 @@ export function buildMotorway(h: number[], g: Grid, river: Float32Array | undefi
     return { x, z, r: Math.hypot(r.pts[0] - x, r.pts[1] - z) }
   })
   const ringNear = (x: number, z: number) => rings.some((g) => Math.hypot(g.x - x, g.z - z) < g.r + 30)
-  // a half interchange whose only target sits in a roundabout would give no slip road: skip it, take the next
-  const blocked = (c: (typeof cands)[number]) => { if (c.cross) return false; const [x, z] = pointAt(axis, c.s), q = nearestOn(c.road.pts, x, z); return ringNear(q[0], q[1]) }
+  // a half interchange serves the nearest point of its road out of any roundabout (seed 7: the only road
+  // near a short motorway met it in a roundabout, no slip road at all); none within 500 m: skip it
+  const offRing = (road: Road, x: number, z: number): [number, number] | null => {
+    const l = centreLine(road.pts, 5); let bq: [number, number] | null = null, bd = 500
+    for (let i = 0; i < l.length; i += 2) { const d = Math.hypot(l[i] - x, l[i + 1] - z); if (d < bd && !ringNear(l[i], l[i + 1])) { bd = d; bq = [l[i], l[i + 1]] } }
+    return bq
+  }
+  const blocked = (c: (typeof cands)[number]) => { if (c.cross) return false; const [x, z] = pointAt(axis, c.s); return !offRing(c.road, x, z) }
   for (const c of cands) if (picked.length < want && !blocked(c) && picked.every((p) => Math.abs(p.s - c.s) > Math.min(1200, L / (want + 1.5)))) picked.push(c)
   let ramp = 0
   // slip road: quadratic Bezier leaving the carriageway along its heading, ending on the road point q
@@ -275,7 +310,7 @@ export function buildMotorway(h: number[], g: Grid, river: Float32Array | undefi
         targets.push({ q: [r2(x), r2(z)], sgn })
       }
     } else {
-      const [x, z] = nearestOn(c.road.pts, cx, cz)
+      const [x, z] = offRing(c.road, cx, cz)!
       targets.push({ q: [r2(x), r2(z)], sgn: Math.sign((x - cx) * -Math.sin(head) + (z - cz) * Math.cos(head)) })
     }
     for (const t of targets) {

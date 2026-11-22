@@ -339,6 +339,7 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     const dx = e.lead[0] - e.at[0], dz = e.lead[1] - e.at[1], L = Math.hypot(dx, dz)
     return L > WALL_POLE ? [e.at[0] + (dx / L) * WALL_POLE, e.at[1] + (dz / L) * WALL_POLE] : e.lead
   }
+  const lvReach = (st: Station, s: { x: number; z: number }) => Math.hypot(st.x - s.x, st.z - s.z) <= opt.lvMax && ob.roadPath(st.x, st.z, s.x, s.z) !== null
   let lid = 0
   const fans = new Map<Station, number>() // lines already hung on each station (lead fan-out)
   const route = (kind: PowerKind, a: Station, b: Station | [number, number], tag: string): GridLine | null => {
@@ -477,7 +478,9 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       todo.delete(bt)
       if (bc % 1e6 > opt.mvMax) { unfed.push(bt.id); continue }
       // a hamlet close to a village transformer is fed by LV (step 3), a remote one gets its own kiosk
-      if (bt.kind === 'hamlet' && [...trafo.values()].some((q) => Math.hypot(q.x - bt!.x, q.z - bt!.z) <= opt.lvMax)) continue
+      // (reachable along the roads without a huge detour: an LV line hugs the road, vanilla 87 % of poles
+      // within 10 m of one; seed 7 HAMLET_2 sat 850 m from a kiosk but 2.5 km away by road)
+      if (bt.kind === 'hamlet' && [...trafo.values()].some((q) => lvReach(q, bt!))) continue
       const kind: StationKind = bt.kind === 'industry' ? 'ind' : 'mvlv'
       const pref = Math.atan2(bn.x - bt.x, bn.z - bt.z)
       const st = addStation(kind, bt, [bt.r * 0.75, bt.r * 0.9, bt.r * 1.05, bt.r * 1.25], pref)
@@ -555,7 +558,7 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       if (s.kind !== 'hamlet' || isFarm(s)) continue
       if (trafo.has(s.id)) continue // own kiosk: LV from it above
       let bs: Station | null = null, bd = Infinity
-      for (const st of trafo.values()) { const d = Math.hypot(st.x - s.x, st.z - s.z); if (d < bd) { bd = d; bs = st } }
+      for (const st of trafo.values()) { const d = Math.hypot(st.x - s.x, st.z - s.z); if (d < bd && lvReach(st, s)) { bd = d; bs = st } }
       if (!bs || bd > opt.lvMax) { if (opt.mv && !unfed.includes(s.id)) unfed.push(s.id); continue }
       const u = ug(s), gate = entranceOf(s, bs.x, bs.z)
       // underground: the run stops at the entrance pole; overhead: on along the main street to the centre

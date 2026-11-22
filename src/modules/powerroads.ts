@@ -187,6 +187,24 @@ export class PowerObstacles {
       }
       if (bj >= 0) link(e.i, bj)
     }
+    // X crossings with no shared vertex (a lane drawn across a road, a farm track over a main road): each
+    // crossing segment pair links its nearest end nodes, else the two networks never meet (seed 7 LV_11)
+    for (let i = 0; i < nodes.length; i++) for (const j of nodes[i].adj) {
+      if (j < i || roadOf[i] === undefined) continue
+      const a = nodes[i], b = nodes[j]
+      for (const k of this.nodeIdx.near(Math.min(a.x, b.x) - 16, Math.min(a.z, b.z) - 16, Math.max(a.x, b.x) + 16, Math.max(a.z, b.z) + 16)) {
+        if (roadOf[k] === roadOf[i]) continue
+        for (const l of nodes[k].adj) {
+          if (l < k || roadOf[l] !== roadOf[k]) continue
+          const c = nodes[k], d = nodes[l]
+          const den = (b.x - a.x) * (d.z - c.z) - (b.z - a.z) * (d.x - c.x)
+          if (Math.abs(den) < 1e-9) continue
+          const t = ((c.x - a.x) * (d.z - c.z) - (c.z - a.z) * (d.x - c.x)) / den, u = ((c.x - a.x) * (b.z - a.z) - (c.z - a.z) * (b.x - a.x)) / den
+          if (t < 0 || t > 1 || u < 0 || u > 1) continue
+          link(t < 0.5 ? i : j, u < 0.5 ? k : l)
+        }
+      }
+    }
     return nodes
   }
   /** junction (3+ branches) and roundabout discs */

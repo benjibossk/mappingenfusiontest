@@ -165,6 +165,8 @@ export function buildHarbour(o: {
     const t = it as { pitch?: number; roll?: number }
     if (t.pitch) e.pitch = t.pitch
     if (t.roll) e.roll = t.roll
+    const sc = (it as { scale?: number }).scale
+    if (sc && Math.abs(sc - 1) > 1e-3) e.scalepm = Math.round(sc * 1000)
     return e
   })
   // access: from the most inland apron sample near the middle to the nearest road point inland of it

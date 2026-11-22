@@ -81,6 +81,8 @@ export interface ProjectEntity {
   /** degrees, tilt on the terrain slope for small props / fences (src/modules/slopeAlign.ts); absent = upright */
   pitch?: number
   roll?: number
+  /** uniform scale in per mille (int: the plugin JsonApiStruct drops floats sent as integers); absent = 1 */
+  scalepm?: number
   /** centi-degrees, exact tilt of pitched bridge decks (water.ts riverBridges); wins over pitch / roll */
   pitchcd?: number
   rollcd?: number

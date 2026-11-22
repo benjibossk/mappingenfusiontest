@@ -53,7 +53,7 @@ export function pickParcel(category: ParcelCategory, o: PickOptions = {}, list: 
 export function parcelTemplate(c: Composition): VanillaTemplate {
   const radius = Math.hypot(c.size.w, c.size.d) / 2
   return { id: `parcel_${c.id.replace(/-/g, '_')}`, map: String(c.where?.[0] ?? 'library'), x: 0, z: 0, axisYaw: 0, roadDist: 0, roadType: null, radius, slope: 0,
-    objects: c.items.map((i) => ({ p: i.prefab, dx: i.x, dz: i.z, yaw: i.yaw, ...(i.pitch || i.roll ? { pitch: i.pitch ?? 0, roll: i.roll ?? 0 } : {}) })) }
+    objects: c.items.map((i) => ({ p: i.prefab, dx: i.x, dz: i.z, yaw: i.yaw, ...(i.pitch || i.roll ? { pitch: i.pitch ?? 0, roll: i.roll ?? 0 } : {}), ...(i.scale && i.scale !== 1 ? { scale: i.scale } : {}) })) }
 }
 
 /** world corners [x0,z0,...] of a parcel's footprint placed at (x, z), +Z turned to yaw */
