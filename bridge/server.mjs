@@ -261,7 +261,15 @@ const server = createServer(async (req, res) => {
         cur[key].push(item); size += n;
       };
       for (const s of project.shapes) add("shapes", s);
-      for (const e of project.entities ?? []) add("entities", e);
+      // MG_ProjectEntity reads these as int (JsonApiStruct): a value with decimals is dropped, the object
+      // then stands at 0 deg (1401 / 9114 objects of seed 21: vanilla port, sawmill, mine, town sites)
+      const INT_FIELDS = ["yaw", "ycm", "pitch", "roll", "pitchcd", "rollcd", "scalepm"];
+      for (const e of project.entities ?? []) {
+        const o = { ...e };
+        if (typeof o.yaw === "number" && !Number.isInteger(o.yaw)) o.yawcd = Math.round(o.yaw * 100); // exact vanilla angle (piers line up)
+        for (const k of INT_FIELDS) if (typeof o[k] === "number") o[k] = Math.round(o[k]);
+        add("entities", o);
+      }
       parts.push(cur);
       // hand-made work to keep: profile/MapGen/locked.json = ["NAME", "PREFIX*", ...]. Honoured only once
       // MG_ApplyProjectPlugin.c reads the "locked" field (TODO addon side); unknown JSON fields are ignored until then.
