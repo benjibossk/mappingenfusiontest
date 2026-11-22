@@ -3,7 +3,8 @@
 // pixel row 0 = NORTH (z max), column 0 = west, value 0..255 = surface weight.
 
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 import { enforcePixelBlocks, limitPixelBlocks, paintMasks, roadLayers, sampler } from "../src/shared/maskPaint.mjs";
 
@@ -66,9 +67,30 @@ export function maskSide(terrPath) {
 //! Satellite map (Manage -> Satellite Map -> Import, untick "linear colour space"): RGB PNG, row 0 = NORTH,
 //! each pixel = weighted mix of the surface colours, background colour where no surface has weight.
 //! colours: {surfaceName: [r, g, b]}. Without it the terrain renders white.
-export function writeSatellite(outFile, side, terrainSize, surfaces, colours, background = [40, 60, 80], roads = []) {
+// vanilla "middle" textures of the surfaces (scripts/harvest-terrain-middles.ts), idea of MapGeneratorPro
+// satmap_v2_textured (MIT (c) Giorbev): each surface is its real texture tiled on the ground, scaled so its
+// mean stays the colour the app chose (the satellite keeps its calibrated tones, plus the grain)
+let MIDDLES = null;
+export function terrainMiddles() {
+  if (MIDDLES) return MIDDLES;
+  try {
+    const j = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "library", "terrain-middles.json"), "utf-8"));
+    MIDDLES = new Map(Object.entries(j.surfaces).map(([k, v]) => [k.toLowerCase(), { side: j.side, repeat: v.repeat, mean: v.mean, tile: Buffer.from(v.tile, "base64") }]));
+  } catch { MIDDLES = new Map(); }
+  return MIDDLES;
+}
+//! texture of one surface at world (x, z), as a factor per channel around 1 (null = flat colour)
+export function middleFactor(name, x, z) {
+  const m = terrainMiddles().get(String(name).replace(/\.emat$/i, "").split("/").pop().toLowerCase());
+  if (!m) return null;
+  const u = Math.floor(((x / m.repeat) % 1 + 1) % 1 * m.side), v = Math.floor(((z / m.repeat) % 1 + 1) % 1 * m.side);
+  const o = (v * m.side + u) * 3;
+  return [m.tile[o] / Math.max(1, m.mean[0]), m.tile[o + 1] / Math.max(1, m.mean[1]), m.tile[o + 2] / Math.max(1, m.mean[2])];
+}
+
+export function writeSatellite(outFile, side, terrainSize, surfaces, colours, background = [40, 60, 80], roads = [], textured = true) {
   const mPerPx = terrainSize / (side - 1);
-  const samplers = surfaces.map((s) => ({ c: colours[s.name] ?? [128, 128, 128], f: sampler(s) }));
+  const samplers = surfaces.map((s) => ({ name: s.name, c: colours[s.name] ?? [128, 128, 128], f: sampler(s) }));
   const layers = roadLayers(side, mPerPx, roads);
   const roadCol = [...layers].map(([name, a]) => ({ c: colours[name] ?? [90, 90, 90], a }));
   writeFileSync(outFile, png(side, (col, row) => {
@@ -83,10 +105,12 @@ export function writeSatellite(outFile, side, terrainSize, surfaces, colours, ba
     const z = (side - 1 - row) * mPerPx;
     let total = 0;
     const acc = [0, 0, 0];
-    for (const { c, f } of samplers) {
+    for (const { name, c, f } of samplers) {
       const w = Math.min(Math.max(f(x, z), 0), 1);
+      if (!w) continue;
       total += w;
-      for (let k = 0; k < 3; k++) acc[k] += c[k] * w;
+      const t = textured ? middleFactor(name, x, z) : null;
+      for (let k = 0; k < 3; k++) acc[k] += Math.min(255, c[k] * (t ? t[k] : 1)) * w;
     }
     if (total < 1) for (let k = 0; k < 3; k++) acc[k] += background[k] * (1 - total);
     const n = Math.max(total, 1);
