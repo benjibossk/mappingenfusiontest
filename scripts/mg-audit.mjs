@@ -237,6 +237,7 @@ for (const p of poles)
     }
 
 // ycm
+const sl8 = (x, z) => Math.hypot(terrain.at(x + 8, z) - terrain.at(x - 8, z), terrain.at(x, z + 8) - terrain.at(x, z - 8)) / 16;
 if (terrain)
   for (const e of sent.filter((e) => e.ycm && !/PILLAR|_WALL_/.test(e.id) && !/PierConcrete/.test(e.prefab))) {
     const y = e.ycm / 100, g = terrain.at(e.x, e.z);
@@ -246,7 +247,12 @@ if (terrain)
     const name = e.prefab.split("/").pop().replace(/\.et$/, "");
     const dy = ROCK_DY.get(name) ?? 0;
     let bad;
-    if (rock) {
+    if (rock && /^CLIFF_G\d+$/.test(e.id)) {
+      // whole vanilla groups (cliffRocks addGroup, ids CLIFF_G<n>): each piece keeps its vanilla height above the
+      // ground, -19 m (deep cliffs) to +2 m (big boulders on their pivot): only lost (< -25 m) or floating (> +3 m) counts
+      const tol = Math.abs(sl8(e.x, e.z)) * terrain.step * 0.5;
+      bad = y - g < -25 - tol || y - g > 3 + tol;
+    } else if (rock) {
       // cliffRocks sink the big pieces by the drop across their footprint (+ half-burial on > 40 deg): sink = sl R 0.6
       // + 0.2 min(1, sl) [+ 1.5 R (sl - 0.84) + 1 for cliffs / rocks], dy itself +-15 % (seed 21 live: 80 rocks on slopes)
       const kind = /Cliff/.test(name) ? "cliff" : /GraniteRock/.test(name) ? "rock" : /SurfaceStone/.test(name) ? "slab" : /Boulder/.test(name) ? "boulder" : /Cluster/.test(name) ? "cluster" : /Beach/.test(name) ? "beach" : "stone";

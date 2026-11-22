@@ -204,7 +204,7 @@ export function cliffRocks(o: CliffOptions): ProjectEntity[] {
     g.items.forEach((it, i) => {
       const [x, z] = pts[i]
       if (!(inBox(x, z) && o.heightAt(x, z) > 0.5 && o.ok(x, z))) return
-      const e: ProjectEntity = { id: `${o.prefix ?? 'CLIFF_'}${out.length + 1}`, prefab: it.p, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100,
+      const e: ProjectEntity = { id: `${o.prefix ?? 'CLIFF_'}G${out.length + 1}`, prefab: it.p, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100,
         yaw: Math.round(((down + it.yaw) % 360 + 360) % 360), ycm: Math.round((ground(x, z) + it.dy) * 100) || -1,
         role: /Stone|Pebble/i.test(it.p) ? 'clutter' : 'essential' }
       if (it.pitch) e.pitch = Math.round(it.pitch)
