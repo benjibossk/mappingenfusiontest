@@ -121,7 +121,17 @@ export function computeDerivatives(heights: ArrayLike<number>, cols: number, row
   const wr = wmax - wmin || 1
   for (let i = 0; i < n; i++) wet[i] = (wet[i] - wmin) / wr
   // coast distance: two-pass chamfer from sea cells
-  for (let i = 0; i < n; i++) coast[i] = land[i] ? Infinity : 0
+  // only the true sea (water connected to the map edge) makes a coast: an inland hollow under sea level does not
+  // (MapGeneratorPro generate_coastal, MIT (c) Giorbev)
+  const sea = new Uint8Array(n), stack: number[] = []
+  const seed = (i: number) => { if (!land[i] && !sea[i]) { sea[i] = 1; stack.push(i) } }
+  for (let c = 0; c < cols; c++) { seed(c); seed((rows - 1) * cols + c) }
+  for (let r = 0; r < rows; r++) { seed(r * cols); seed(r * cols + cols - 1) }
+  while (stack.length) {
+    const i = stack.pop()!, r = (i / cols) | 0, c = i - r * cols
+    if (c > 0) seed(i - 1); if (c < cols - 1) seed(i + 1); if (r > 0) seed(i - cols); if (r < rows - 1) seed(i + cols)
+  }
+  for (let i = 0; i < n; i++) coast[i] = sea[i] ? 0 : Infinity
   const d1 = step, d2 = step * Math.SQRT2
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const i = r * cols + c; let v = coast[i]
@@ -176,7 +186,7 @@ export function classifyGround(biome: ClimateBiome, d: Derivatives, s: BiomeSett
   // forest score: shaded, sheltered (hollow-ish), not too steep; threshold so `forest` of the land qualifies
   const fscore = new Float32Array(n)
   // rock / scree / beach cells cannot be forest: excluded from the ranking so `forest` is a share of the whole land
-  for (let i = 0; i < n; i++) fscore[i] = d.slope[i] >= s.rockSlope || (d.coast[i] <= s.sandWidth && d.alt[i] < 4) ? -Infinity
+  for (let i = 0; i < n; i++) fscore[i] = d.slope[i] >= s.rockSlope || (d.coast[i] <= s.sandWidth && d.alt[i] < 4 && d.slope[i] < 12) ? -Infinity
     : (1 - d.sun[i]) * 0.6 + Math.max(-1, Math.min(1, -d.tpi[i] / 20)) * 0.25 + d.flow[i] * 0.15
   const forestT = s.forest > 0 ? landQuantile(d, fscore, 1 - s.forest) : Infinity
   const conT = s.conifer != null && s.forest > 0 ? landQuantile(d, fscore, 1 - s.forest * s.conifer) : NaN
@@ -187,7 +197,8 @@ export function classifyGround(biome: ClimateBiome, d: Derivatives, s: BiomeSett
     if (!d.land[i]) { out[i] = 0; continue }
     const a = d.alt[i], sl = d.slope[i], sun = d.sun[i], tpi = d.tpi[i], w = d.wet[i]
     const isWet = w >= wetT && sl < 4, isForest = fscore[i] >= forestT && a < s.treeLine && sl < s.rockSlope
-    const nearCoast = d.coast[i] <= s.sandWidth && a < 4
+    // no beach on steep ground (MGP: coastal fades out at 12 deg): a sea cliff stays rock / scree / meadow
+    const nearCoast = d.coast[i] <= s.sandWidth && a < 4 && sl < 12
     let k = -1
     switch (biome) {
       case 'tempere':

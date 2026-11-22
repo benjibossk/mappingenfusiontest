@@ -123,3 +123,22 @@ test('temperate auto-calibration hits the Everon shares (FIELDS_SURFACES_VANILLA
   assert.ok(Math.abs(forest - 0.13) < 0.03, `forest ${forest}`)
   assert.ok(Math.abs(sh('coniferes') / forest - 0.72) < 0.08, `conifer ${sh('coniferes') / forest}`)
 })
+
+test('coast: only the sea touching the map edge makes beaches; no beach on a steep shore (MGP rules)', () => {
+  // 40 x 40 at 10 m: sea on the west edge (x < 8), land rising east; an inland hollow under sea level at (30, 20)
+  const cols = 40, rows = 40, h = new Float32Array(cols * rows)
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    let v = c < 8 ? -0.3 : (c - 8) * 0.5 + 0.5
+    if (Math.hypot(c - 30, r - 20) < 3) v = -2
+    if (r < 10 && c >= 8 && c < 12) v = (c - 8) * 6 + 0.5 // steep sea cliff in the north
+    h[r * cols + c] = v
+  }
+  const d = computeDerivatives(h, cols, rows, 10)
+  assert.ok(d.coast[20 * cols + 27] >= 150, 'land next to the inland hollow is measured from the real sea, not from the hollow')
+  assert.ok(d.coast[20 * cols + 9] <= 20, 'the west shore is coast')
+  const cls = classifyGround('tempere', d)
+  const plage = BIOME_CLASSES.tempere.findIndex((c) => c.id === 'plage')
+  assert.equal(cls[25 * cols + 8], plage, 'gentle west shore = beach')
+  assert.notEqual(cls[5 * cols + 9], plage, 'steep north shore is not beach')
+  assert.notEqual(cls[20 * cols + 27], plage, 'no beach around the inland hollow')
+})
