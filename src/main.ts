@@ -132,6 +132,7 @@ import { worldToIsland } from './modules/importWorld'
 import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
+import { ProjectStore, indexedKV, memoryKV, type ProjectMeta } from './projects'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, yardMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 import { desirePaths, type MaskBand } from './modules/desirePaths'
@@ -395,6 +396,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button type="button" id="welcomeTour" class="rm-link wtour">${ic('help', 16)}<span>${t('welcome.tour')}</span></button>
       </div>
       <div class="wgroup">
+        <span class="wglabel">${t('proj.title')}</span>
+        <div id="projList" class="projlist"></div>
         <span class="wglabel">${t('welcome.g.create')}</span>
         <div class="choices create">
           <button type="button" data-go="tGen" class="rec">${ic('island', 28)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
@@ -3000,6 +3003,7 @@ try { if (sessionStorage.getItem('reforger-mapper.atelier.open') === '1') openAt
 const ENTRY: Record<string, Entry> = { tGen: 'new', tRandom: 'random', tReal: 'real', pOpen: 'open' }
 document.querySelectorAll<HTMLButtonElement>('#welcome [data-go]').forEach((b) => b.addEventListener('click', () => {
   entry = ENTRY[b.dataset.go!] ?? null
+  if (entry && entry !== 'open') void newActiveProject(t(`proj.newName.${entry}` as Key, { date: new Date().toLocaleString() }))
   forceBusy = true
   $<HTMLButtonElement>(b.dataset.go!).click()
   forceBusy = false
@@ -3095,6 +3099,7 @@ function autosave() {
   saveTimer = window.setTimeout(() => {
     const p = islandProject()
     try { if (p) localStorage.setItem(PROJECT_KEY, JSON.stringify(p)) } catch { /* storage full or blocked */ }
+    if (p) void saveActiveProject(p)
     if (p && collab && performance.now() > quietUntil) collab.sendProject(p)
   }, 500)
 }
@@ -3179,7 +3184,11 @@ $<HTMLInputElement>('pFile').addEventListener('change', async (e) => {
   if (!f) return
   await busy(t('busy.open'), async () => {
     try {
-      loadProject(JSON.parse(await f.text()))
+      const file = JSON.parse(await f.text())
+      const data = file?.kind === 'reforger-mapper-project' ? file.data : file
+      loadProject(data)
+      const rec = await projects.importFile(file, f.name.replace(/\.json$/i, ''))
+      await projects.setActive(rec.id); activeProject = rec.id; void renderProjects()
       logEl.textContent = t('log.opened', { name: f.name })
       coachAfter('open')
     } catch (err) {
@@ -3189,6 +3198,80 @@ $<HTMLInputElement>('pFile').addEventListener('change', async (e) => {
   })
   ;(e.target as HTMLInputElement).value = ''
 })
+
+// --- projects (Giorbev's "Projets" level): several saved projects, the 3 most recent on the welcome screen ---
+const projects = new ProjectStore(indexedKV() ?? memoryKV())
+let activeProject: string | null = null
+async function newActiveProject(name: string): Promise<void> {
+  const r = await projects.create(name)
+  await projects.setActive(r.id); activeProject = r.id
+  void renderProjects()
+}
+async function saveActiveProject(p: unknown): Promise<void> {
+  try {
+    if (!activeProject) { const r = await projects.create(t('proj.newName.new', { date: new Date().toLocaleString() }), p); await projects.setActive(r.id); activeProject = r.id }
+    else await projects.save(activeProject, p)
+    if (!$('welcome').hidden) void renderProjects()
+  } catch (err) { console.warn('project not saved', err) }
+}
+let projShowAll = false
+async function renderProjects(): Promise<void> {
+  const box = document.getElementById('projList')
+  if (!box) return
+  const all = await projects.list()
+  const esc = (v: string) => v.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)
+  const row = (m: ProjectMeta) => `<div class="projrow${m.id === activeProject ? ' on' : ''}" data-id="${m.id}">
+    <span class="pname">${esc(m.name)}${m.id === activeProject ? ` <em>${t('proj.active')}</em>` : ''}</span>
+    <span class="pwhen">${t('proj.updated', { when: new Date(m.updated).toLocaleString() })}</span>
+    <span class="grow"></span>
+    <button type="button" data-act="open">${t('proj.open')}</button>
+    <button type="button" class="rm-link" data-act="rename">${t('proj.rename')}</button>
+    <button type="button" class="rm-link" data-act="dup">${t('proj.dup')}</button>
+    <button type="button" class="rm-link" data-act="export">${t('proj.export')}</button>
+    <button type="button" class="rm-link" data-act="del">${t('proj.del')}</button></div>`
+  const shown = projShowAll ? all : all.slice(0, 3)
+  box.innerHTML = (all.length ? shown.map(row).join('') : `<p class="pnone">${t('proj.none')}</p>`)
+    + (all.length > 3 ? `<button type="button" class="rm-link" data-act="all">${projShowAll ? '−' : '+'} ${t('proj.all', { n: all.length })}</button>` : '')
+}
+document.getElementById('projList')?.addEventListener('click', async (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]')
+  if (!b) return
+  const act = b.dataset.act, id = b.closest<HTMLElement>('.projrow')?.dataset.id
+  if (act === 'all') { projShowAll = !projShowAll; return void renderProjects() }
+  if (!id) return
+  const r = await projects.get(id)
+  if (!r) return void renderProjects()
+  if (act === 'open') {
+    await busy(t('busy.open'), async () => {
+      try {
+        if (r.data) { loadProject(r.data); try { localStorage.setItem(PROJECT_KEY, JSON.stringify(r.data)) } catch { /* storage full */ } }
+        await projects.setActive(id); activeProject = id
+        logEl.textContent = t('log.opened', { name: r.name })
+        closeMenu()
+      } catch (err) { busyFailed = true; logEl.textContent = t('err.open', { msg: (err as Error).message }) }
+    })
+  } else if (act === 'rename') {
+    const n = prompt(t('proj.renameAsk'), r.name)
+    if (n) await projects.rename(id, n)
+  } else if (act === 'dup') await projects.duplicate(id)
+  else if (act === 'export') {
+    const f = await projects.exportFile(id)
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(f)], { type: 'application/json' }))
+    a.download = `${r.name.replace(/[^\w\- ]+/g, '_')}.mapper.json`
+    a.click(); URL.revokeObjectURL(a.href)
+  } else if (act === 'del') {
+    if (confirm(t('proj.delAsk', { name: r.name }))) { await projects.remove(id); if (activeProject === id) activeProject = null }
+  }
+  void renderProjects()
+})
+void (async () => {
+  let legacy: unknown = null
+  try { const s0 = localStorage.getItem(PROJECT_KEY); legacy = s0 ? JSON.parse(s0) : null } catch { /* */ }
+  await projects.migrateLegacy(legacy)
+  activeProject = await projects.activeId()
+  void renderProjects()
+})()
 
 // --- roads ---
 function roadInfo() {
