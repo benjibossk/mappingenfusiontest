@@ -56,7 +56,13 @@ function weldForests(fs: Forest[], a: AdaptOptions): Forest[] {
     try { const b = turf.buffer(toPoly(f.pts), a.gap / 2, { units: 'meters' }); if (b) grown.push(b) } catch { /* broken ring */ }
   }
   let merged: Feature<Polygon | MultiPolygon> | null = grown[0] ?? null
-  if (grown.length > 1) merged = turf.union(turf.featureCollection(grown))
+  if (grown.length > 1) {
+    try { merged = turf.union(turf.featureCollection(grown)) } catch {
+      // degenerate rings: union them one by one, skipping the pieces polyclip cannot handle
+      merged = grown[0]
+      for (const g of grown.slice(1)) { try { merged = turf.union(turf.featureCollection([merged!, g])) ?? merged } catch { /* skip */ } }
+    }
+  }
   if (!merged) return []
   const shrunk = turf.buffer(merged, -a.gap / 2, { units: 'meters' })
   if (!shrunk) return []

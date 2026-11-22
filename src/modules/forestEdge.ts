@@ -65,7 +65,8 @@ export function forestEdges(forests: EdgeForest[], o: EdgeOptions = {}): EdgePie
       if (c[0] > b[2] + m || c[2] < b[0] - m || c[1] > b[3] + m || c[3] < b[1] - m) return
       // contact zone = this forest within `touch` m of the other one (a road between two woods is not a contact)
       const gp = flatToPoly(g.pts), gb = gp && bufferM(gp, touch)
-      const contact = gb && turf.intersect(turf.featureCollection([A, gb as Feature<Polygon>]))
+      let contact: ReturnType<typeof turf.intersect> | null | false | undefined = null
+      try { contact = gb && turf.intersect(turf.featureCollection([A, gb as Feature<Polygon>])) } catch { contact = null }
       const zone = contact && bufferM(contact as Poly, d + 1)
       if (zone) near.push(zone)
     })

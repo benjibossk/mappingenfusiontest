@@ -3283,7 +3283,7 @@ document.getElementById('projDash')?.addEventListener('click', (e) => {
   else if (k === 'atelier') goTab('water')
   else if (k === 'masks') goTab('wb', () => focusEl('tMasks'))
   else if (k === 'sat') goTab('camp', () => focusEl('satSend'))
-  else if (k === 'diag') goTab('wb', () => { $<HTMLButtonElement>('checkRun').click(); focusEl('checkRun') })
+  else if (k === 'diag') goTab('wb', () => { $<HTMLButtonElement>('checkRun').click(); ;($('checkBox') as HTMLDetailsElement).open = true; focusEl('checkRun'); void runAudit() })
   else if (k === 'share') { closeMenu(); $('welcome').hidden = true; menuOpen = false; if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false }
 })
 void (async () => {

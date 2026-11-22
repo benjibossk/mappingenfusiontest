@@ -74,9 +74,10 @@ export function cutDiscs<T extends { pts: number[] }>(patches: T[], discs: { x: 
         for (const [x, z] of outer) { const q = Math.hypot(x - d.x, z - d.z); if (q < bd) { bd = q; bx = x; bz = z } }
         const ux = (bx - d.x) / (bd || 1), uz = (bz - d.z) / (bd || 1), L = bd + 10, h = lane / 2
         const laneP = turf.polygon([[[d.x - uz * h, d.z + ux * h], [d.x - uz * h + ux * L, d.z + ux * h + uz * L], [d.x + uz * h + ux * L, d.z - ux * h + uz * L], [d.x + uz * h, d.z - ux * h], [d.x - uz * h, d.z + ux * h]]])
-        cutter = (turf.union(turf.featureCollection([cutter as Feature<Polygon>, laneP])) ?? cutter) as Feature<Polygon | MultiPolygon>
+        // polyclip can throw "Unable to complete output ring" on near-degenerate rings: skip that one lane
+        try { cutter = (turf.union(turf.featureCollection([cutter as Feature<Polygon>, laneP])) ?? cutter) as Feature<Polygon | MultiPolygon> } catch { /* keep the cutter */ }
       }
-      f = turf.difference(turf.featureCollection([f as Feature<Polygon>, cutter as Feature<Polygon>])) as Feature<Polygon | MultiPolygon> | null
+      try { f = turf.difference(turf.featureCollection([f as Feature<Polygon>, cutter as Feature<Polygon>])) as Feature<Polygon | MultiPolygon> | null } catch { /* degenerate: keep the forest uncut */ }
     }
     if (!f) continue
     const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates
