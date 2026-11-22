@@ -50,7 +50,7 @@ import type { Station } from './powergrid'
 import type { Feature, Polygon } from 'geojson'
 import { generateForests } from './forestgen'
 import type { CampaignResult } from './campaign'
-import { mergeForestPatches } from './forestMerge'
+import { cutDiscs, mergeForestPatches } from './forestMerge'
 import { cutForests, riparianBands, type RiparianPatch } from './riparian'
 import { countrysideZones, fillFieldZone, pointObstacle, roadObstacles } from './zonefill'
 import { colourCrops, cropCover } from './fieldlayout'
@@ -583,6 +583,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       const i = r * g.cols + c
       if (cur.heights[i] > 0.5 && (cur.heights[i - 1] <= 0 || cur.heights[i + 1] <= 0 || cur.heights[i - g.cols] <= 0 || cur.heights[i + g.cols] <= 0)) coast++
     }
+    // the harbour's terrain sculpt (applyHarbour: apron, dredged basin, shore straightening) reaches past its pieces:
+    // at 0.6 x radius it tilted half of a vanilla military base next to it (seed 21 live, MIL_1: 10 m vs 17 m)
+    const HARBOUR_SCULPT_MARGIN = 30
     const nPorts = scaledCount(DENSITY.portsPerKmCoast, (coast * g.step) / 1000)
     const free = (x: number, z: number, r: number, sameSub: string, gap: number) =>
       !sites.some((s) => Math.hypot(s.x - x, s.z - z) < SITE_RADIUS[s.kind] * 0.6 + r) &&
@@ -612,7 +615,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
           compo = undefined; tpl = undefined
           for (const c of pickHarbours(tier0, ss('settlements', 'vanilla-port', k + tries), { biome: p.biome, maxR: tier0 === 'port' ? 360 : 200 })) {
             const t = parcelTemplate(c), f = fitPort(t, hAt, x, z, lines, { roadPads: pads, minWater: 0.7, minLand: 0.4, seaAxis: [0, 1] })
-            if (f && free(f.x, f.z, t.radius * 0.6, 'vanilla:' + type, gap)) { fit = f; compo = c; tpl = t; break }
+            if (f && free(f.x, f.z, t.radius + HARBOUR_SCULPT_MARGIN, 'vanilla:' + type, gap)) { fit = f; compo = c; tpl = t; break }
           }
           if (!tpl || !fit) continue
           sx = fit.x; sz = fit.z; syaw = fit.yaw; fit0 = fit
@@ -724,7 +727,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       .map((f, k) => ({ id: `FOREST_GEN_${k + 1}`, kind: 'forest' as const, leaf: f.leaf, pts: f.pts }))
     : []
   // overlapping forest patches: same species = merged into one wood, else the later one is cut (no criss-crossing outlines)
-  const areas: WorldArea[] = mergeForestPatches(rawAreas).map((a, k) => ({ ...a, id: `FOREST_GEN_${k + 1}` }))
+  const areas: WorldArea[] = cutDiscs(mergeForestPatches(rawAreas), discs).map((a, k) => ({ ...a, id: `FOREST_GEN_${k + 1}` }))
   // 10b. countryside: plots + hedges (campaign.ts, Tanin AgriFieldGenerator method) on the open, gentle
   // ground around each settlement; never in a forest, a lake, a zone or the settlement core
   // 10a. production forests on part of the large conifer / mixed woods, tracks linked to the road network

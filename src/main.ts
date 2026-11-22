@@ -1,4 +1,4 @@
-import { dedupeLines, densify } from './modules/fenceDedupe'
+import { dedupeLines, trimCrossings, densify } from './modules/fenceDedupe'
 import { gameplayReport, type GameplayReport, type GameplayKey } from './modules/gameplay'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
@@ -3906,7 +3906,11 @@ function parcelEntities(): ProjectEntity[] {
 function parcelShapes(): ProjectShape[] {
   // neighbouring parcels share a boundary: one fence on it, not two (fenceDedupe.ts)
   const all = setParcels.flatMap((p, i) => p.fences.filter((f) => f.pts.length >= 4).map((f, k) => ({ id: `PARCEL_FENCE_${i + 1}_${k + 1}`, f })))
-  const kept = dedupeLines(all.map((a) => a.f.pts))
+  const dd = dedupeLines(all.map((a) => a.f.pts))
+  // then fences of overlapping parcels stop on the first one instead of crossing it (fenceDedupe.trimCrossings)
+  const flat = dd.flatMap((ps, j) => ps.map((pts) => ({ j, pts }))), tr = trimCrossings(flat.map((f) => f.pts))
+  const kept: number[][][] = all.map(() => [])
+  flat.forEach((f, k) => kept[f.j].push(...tr[k]))
   return all.flatMap((a, j) => kept[j].map((pts, n) => ({ id: kept[j].length > 1 ? `${a.id}_${n + 1}` : a.id, kind: 'polyline' as const, closed: false, points: densify(pts).map((v) => Math.round(v * 100) / 100), generator: a.f.guid })))
 }
 function applyRealPlace(r: RealPlace) {

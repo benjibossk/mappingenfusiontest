@@ -43,3 +43,47 @@ function noHoles(f: Feature<Polygon | MultiPolygon>): Feature<Polygon | MultiPol
   }
   return f
 }
+
+/**
+ * Forests never cover a zone (sawmill, base, depot...). The old test only looked at the outline points, so a
+ * forest that swallowed a whole zone kept it (seed 21 live: trees through RP_SAWMILL_1 and MIL_1). Each disc
+ * (r + margin) is cut out; a cut that would leave a hole (one ring only per forest) is opened to the nearest
+ * edge by a `lane` m clearing, the way a yard in a wood keeps its track. Biggest remaining piece kept.
+ */
+export function cutDiscs<T extends { pts: number[] }>(patches: T[], discs: { x: number; z: number; r: number }[], margin = 15, lane = 16): T[] {
+  const out: T[] = []
+  for (const a of patches) {
+    const ring: number[][] = []
+    for (let i = 0; i + 1 < a.pts.length; i += 2) ring.push([a.pts[i], a.pts[i + 1]])
+    if (ring.length < 3) continue
+    ring.push(ring[0])
+    let f: Feature<Polygon | MultiPolygon> | null = turf.polygon([ring])
+    for (const d of discs) {
+      if (!f) break
+      const R = d.r + margin
+      const bb = turf.bbox(f)
+      if (d.x + R < bb[0] || d.x - R > bb[2] || d.z + R < bb[1] || d.z - R > bb[3]) continue
+      const c: number[][] = []
+      for (let k = 0; k <= 24; k++) { const t = (k / 24) * Math.PI * 2; c.push([d.x + Math.cos(t) * R, d.z + Math.sin(t) * R]) }
+      c[24] = c[0]
+      let cutter: Feature<Polygon | MultiPolygon> = turf.polygon([c])
+      // hole? -> add a lane from the disc to the nearest outline point
+      if (turf.booleanPointInPolygon([d.x, d.z], f)) {
+        let bx = 0, bz = 0, bd = Infinity
+        const outer = (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates).flatMap((p) => p[0])
+        for (const [x, z] of outer) { const q = Math.hypot(x - d.x, z - d.z); if (q < bd) { bd = q; bx = x; bz = z } }
+        const ux = (bx - d.x) / (bd || 1), uz = (bz - d.z) / (bd || 1), L = bd + 10, h = lane / 2
+        const laneP = turf.polygon([[[d.x - uz * h, d.z + ux * h], [d.x - uz * h + ux * L, d.z + ux * h + uz * L], [d.x + uz * h + ux * L, d.z - ux * h + uz * L], [d.x + uz * h, d.z - ux * h], [d.x - uz * h, d.z + ux * h]]])
+        cutter = (turf.union(turf.featureCollection([cutter as Feature<Polygon>, laneP])) ?? cutter) as Feature<Polygon | MultiPolygon>
+      }
+      f = turf.difference(turf.featureCollection([f as Feature<Polygon>, cutter as Feature<Polygon>])) as Feature<Polygon | MultiPolygon> | null
+    }
+    if (!f) continue
+    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates
+    let best: number[][] | null = null, ba = 0
+    for (const p of polys) { let ar = 0; for (let i = 0; i + 1 < p[0].length; i++) ar += p[0][i][0] * p[0][i + 1][1] - p[0][i + 1][0] * p[0][i][1]; ar = Math.abs(ar); if (ar > ba) { ba = ar; best = p[0] } }
+    if (!best || best.length < 4) continue
+    out.push({ ...a, pts: best.slice(0, -1).flat() })
+  }
+  return out
+}

@@ -80,3 +80,47 @@ export function densify(p: number[], max = 4): number[] {
   }
   return o
 }
+
+/** segment crossing point of a-b and c-d (strictly inside both), or null */
+function cross(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): [number, number, number] | null {
+  const rx = bx - ax, rz = bz - az, sx = dx - cx, sz = dz - cz, den = rx * sz - rz * sx
+  if (Math.abs(den) < 1e-9) return null
+  const t = ((cx - ax) * sz - (cz - az) * sx) / den, u = ((cx - ax) * rz - (cz - az) * rx) / den
+  return t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6 ? [ax + rx * t, az + rz * t, t] : null
+}
+
+/**
+ * Fences of overlapping parcels cut through each other (seed 21 live: PARCEL_FENCE_10 across 13 and 1). In order,
+ * each line is split where it crosses an earlier kept one: it stops ON that fence (a T, like a real field corner).
+ * The overhang past the crossing goes when shorter than `stub` m; a long run on the other side stays (its own field edge).
+ * Pieces shorter than `minLen` are dropped. Input: flat X/Z polylines; output: for each input line, its kept pieces.
+ */
+export function trimCrossings(lines: number[][], stub = 30, minLen = 4): number[][][] {
+  const kept: number[][] = [], out: number[][][] = []
+  const len = (p: number[]) => { let L = 0; for (let i = 0; i + 3 < p.length; i += 2) L += Math.hypot(p[i + 2] - p[i], p[i + 3] - p[i + 1]); return L }
+  for (const p of lines) {
+    // split p at every crossing with a kept line
+    const pieces: { pts: number[]; a: boolean; b: boolean }[] = []
+    let cur: number[] = [p[0], p[1]], startCut = false
+    for (let i = 0; i + 3 < p.length; i += 2) {
+      const hits: [number, number, number][] = []
+      for (const q of kept) for (let j = 0; j + 3 < q.length; j += 2) {
+        const h = cross(p[i], p[i + 1], p[i + 2], p[i + 3], q[j], q[j + 1], q[j + 2], q[j + 3])
+        if (h) hits.push(h)
+      }
+      hits.sort((m, n) => m[2] - n[2])
+      for (const h of hits) { cur.push(h[0], h[1]); pieces.push({ pts: cur, a: startCut, b: true }); cur = [h[0], h[1]]; startCut = true }
+      cur.push(p[i + 2], p[i + 3])
+    }
+    pieces.push({ pts: cur, a: startCut, b: false })
+    const mine: number[][] = []
+    for (const pc of pieces) {
+      const L = len(pc.pts)
+      if (L < minLen) continue
+      if (pieces.length > 1 && (pc.a !== pc.b) && L < stub) continue // overhang stub past a crossing
+      mine.push(pc.pts)
+    }
+    kept.push(...mine); out.push(mine)
+  }
+  return out
+}

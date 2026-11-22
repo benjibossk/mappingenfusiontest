@@ -330,6 +330,15 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     if (to) access.push([gx, gz, to.x, to.z])
     return st
   }
+  // the end pole of a station line: WALL_POLE m out of the cable slot along its lead, beside that wall. On the slot
+  // itself it stood in the wall, and the per-point generator (one pole per shape point) or fixPoles pushed it out
+  // in front of the doors (seed 21 live, TransformerStation_E_02)
+  const WALL_POLE = 3
+  const wallPole = (e: { at: [number, number]; lead: [number, number] | null }): [number, number] => {
+    if (!e.lead) return e.at
+    const dx = e.lead[0] - e.at[0], dz = e.lead[1] - e.at[1], L = Math.hypot(dx, dz)
+    return L > WALL_POLE ? [e.at[0] + (dx / L) * WALL_POLE, e.at[1] + (dz / L) * WALL_POLE] : e.lead
+  }
   let lid = 0
   const fans = new Map<Station, number>() // lines already hung on each station (lead fan-out)
   const route = (kind: PowerKind, a: Station, b: Station | [number, number], tag: string): GridLine | null => {
@@ -345,8 +354,8 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
     const along = follows(kind) ? followRoads(ob, ax, az, ex, ez, spacing, Array.isArray(b)) : null
     if (along) {
       let path = along
-      if (A.lead) path = [...A.at, ...path]
-      if (B.lead) path = [...path, ...B.at]
+      if (A.lead) path = [...wallPole(A), ...path]
+      if (B.lead) path = [...path, ...wallPole(B)]
       const poles = (bld ? clearSpans(ob, fixPoles(ob, placePoles(path, spacing)), spacing) : fixPoles(ob, placePoles(path, spacing)))
       let length = 0
       for (let i = 0; i + 3 < poles.length; i += 2) length += Math.hypot(poles[i + 2] - poles[i], poles[i + 3] - poles[i + 1])
@@ -371,8 +380,8 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       return !clr || ob.spanBld(x0, z0, x1, z1, clr) >= clr
     }
     let path = smoothPath(l.path, spacing * 0.45, ok)
-    if (A.lead) path = [...A.at, ...path]
-    if (B.lead) path = [...path, ...B.at]
+    if (A.lead) path = [...wallPole(A), ...path]
+    if (B.lead) path = [...path, ...wallPole(B)]
     let length = 0
     for (let i = 0; i + 3 < path.length; i += 2) length += Math.hypot(path[i + 2] - path[i], path[i + 3] - path[i + 1])
     const poles = (bld ? clearSpans(ob, fixPoles(ob, placePoles(path, spacing)), spacing) : fixPoles(ob, placePoles(path, spacing)))

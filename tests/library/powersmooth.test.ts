@@ -33,7 +33,7 @@ test('smooth: zigzag of 16 m corners collapses, a forbidden shortcut is kept', (
   assert.equal(smoothPath(bend, 200, () => false).length, 6)
 })
 
-test('grid lines end exactly on the station cable slots', () => {
+test('grid lines end 3 m off the station cable slots', () => {
   const step = 20, cols = 301, size = 6000
   const grid = { minX: 0, minZ: 0, step, cols, rows: cols }
   const heights = new Float32Array(cols * cols).fill(30)
@@ -47,7 +47,8 @@ test('grid lines end exactly on the station cable slots', () => {
   const slots = plan.stations.filter((s) => STATION_ATTACH[s.prefab.slice(0, 18)]).flatMap((s) => [-1e4, 1e4].flatMap((d) => [attachPoint(s, s.x + d, s.z).at, attachPoint(s, s.x, s.z + d).at]))
   for (const l of plan.lines) if (l.kind !== 'lv') {
     const end = [l.path[0], l.path[1]]
-    assert.ok(slots.some((q) => Math.hypot(q[0] - end[0], q[1] - end[1]) < 1e-6), `${l.id} start not on a slot`)
+    // the end pole stands 3 m out of the slot, beside its wall (powergrid wallPole), never in the wall itself
+    assert.ok(slots.some((q) => Math.abs(Math.hypot(q[0] - end[0], q[1] - end[1]) - 3) < 1e-6), `${l.id} start not 3 m off a slot`)
   }
 })
 
