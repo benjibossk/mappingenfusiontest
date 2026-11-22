@@ -12,11 +12,19 @@
 //    the valley (|yaw - downhill| median 18-23 deg), rocks / boulders any yaw (median 74-105 deg = random).
 //  - Everon 36 % in forest (all its GraniteRock are the _Forest variants), Arland / Kolguyev 2-4 %;
 //    37-56 % within 60 m of the sea (beach clusters / stones).
-// Scale is not exported by the Workbench plugin yet: the size variety comes from the prefab mix.
+// Scale: the vanilla groups carry their per-piece scale (scalepm); single pieces get the size variety from the prefab mix.
 
 import { slopeTilt } from './slopeAlign'
 import type { ProjectEntity } from '../project'
 import { mulberry } from './vegLayers'
+import CLUSTERS_JSON from '../../library/rock-clusters.json' with { type: 'json' }
+
+// whole vanilla rock groups (PakTools/rock_clusters_harvest.py: Eden / Cain / Arland, single linkage 12 m,
+// 3-40 pieces): frame origin at the group centroid, +Z downhill. The community pastes such groups by hand
+// because generated rocks look wrong; here an outcrop of 3+ pieces is one of them, turned to face our valley.
+interface ClusterItem { p: string; dx: number; dz: number; dy: number; yaw: number; pitch?: number; roll?: number; scale?: number }
+interface RockCluster { id: string; slope: number; radius: number; coast: boolean; forest: boolean; kinds: string[]; items: ClusterItem[] }
+const CLUSTERS = (CLUSTERS_JSON as unknown as { groups: RockCluster[] }).groups.filter((g) => g.radius <= 40)
 
 type Kind = 'cliff' | 'rock' | 'slab' | 'boulder' | 'cluster' | 'stone' | 'beach'
 interface Piece { p: string; dy: number }
@@ -39,7 +47,19 @@ export const ROCK_SETS: Record<Kind | 'rockForest' | 'slabForest' | 'stoneForest
 export const CLIFF_PREFABS = { cliff: ROCK_SETS.cliff.map((q) => q.p), rock: [...ROCK_SETS.rock, ...ROCK_SETS.rockForest].map((q) => q.p) }
 const KIND_OF = new Map<string, Kind>()
 for (const [k, set] of Object.entries(ROCK_SETS)) for (const q of set) KIND_OF.set(q.p, k.replace(/Forest$/, '') as Kind)
-export const rockKind = (prefab: string): Kind | undefined => KIND_OF.get(prefab)
+/** kind of a granite piece: our sets, else by name (the vanilla groups carry other variants: _V2, _Large, Cain sets) */
+export const rockKind = (prefab: string): Kind | undefined => {
+  const k = KIND_OF.get(prefab)
+  if (k || !/\/Rocks\//.test(prefab)) return k
+  const b = prefab.slice(prefab.lastIndexOf('/') + 1)
+  if (/Cliff/i.test(b)) return 'cliff'
+  if (/Boulder/i.test(b)) return 'boulder'
+  if (/Cluster/i.test(b)) return 'cluster'
+  if (/SurfaceStone|Slab/i.test(b)) return 'slab'
+  if (/Rock/i.test(b)) return 'rock'
+  if (/Stone|Pebble/i.test(b)) return 'stone'
+  return undefined
+}
 const DY = new Map<string, number>([...Object.values(ROCK_SETS).flat().map((q) => [q.p, q.dy] as [string, number]), ['{FF262A7485FF0448}Prefabs/Rocks/Granite/GraniteStone_02_V2.et', -0.08]])
 
 /** sinks the granite pieces placed elsewhere (vegLayers scatter) by their vanilla median pivot offset: a
@@ -79,6 +99,8 @@ export interface CliffOptions {
   /** absolute override of the rock threshold (rise/run); default from the slope percentiles */
   minSlope?: number
   max?: number
+  /** false: outcrops of 3+ pieces assembled piece by piece instead of whole vanilla groups */
+  vanillaGroups?: boolean
   /** multiplier of the outcrop chance (1 = vanilla Everon-like density) */
   density?: number
   /** land-slope quantile of the rock threshold (default 0.72, Everon) */
@@ -165,6 +187,36 @@ export function cliffRocks(o: CliffOptions): ProjectEntity[] {
     return true
   }
   const downOf = (gx: number, gz: number) => (Math.atan2(-gx, -gz) * 180) / Math.PI
+  // slope (tan) -> deg, for matching against the harvested group slopes
+  const deg = (t: number) => (Math.atan(t) * 180) / Math.PI
+  const addGroup = (px: number, pz: number, s: number, down: number, cliffy: boolean): number => {
+    const sd = deg(s), forest = !!o.forest?.(px, pz)
+    const fits = CLUSTERS.filter((g) => Math.abs(g.slope - sd) < 7 && g.kinds.includes('cliff') === cliffy && (!g.forest || forest))
+    if (!fits.length) return 0
+    const g = pick(fits)
+    const a = (down * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a)
+    const pts = g.items.map((it) => [px + it.dx * c + it.dz * sn, pz - it.dx * sn + it.dz * c] as const)
+    // the whole group or nothing: 85 % of its pieces on allowed dry ground, none in a taken cell
+    let good = 0
+    for (const [x, z] of pts) if (inBox(x, z) && o.heightAt(x, z) > 0.5 && o.ok(x, z) && free(x, z, 2)) good++
+    if (good < pts.length * 0.85 || out.length + pts.length > max) return 0
+    let k = 0
+    g.items.forEach((it, i) => {
+      const [x, z] = pts[i]
+      if (!(inBox(x, z) && o.heightAt(x, z) > 0.5 && o.ok(x, z))) return
+      const e: ProjectEntity = { id: `${o.prefix ?? 'CLIFF_'}${out.length + 1}`, prefab: it.p, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100,
+        yaw: Math.round(((down + it.yaw) % 360 + 360) % 360), ycm: Math.round((ground(x, z) + it.dy) * 100) || -1,
+        role: /Stone|Pebble/i.test(it.p) ? 'clutter' : 'essential' }
+      if (it.pitch) e.pitch = Math.round(it.pitch)
+      if (it.roll) e.roll = Math.round(it.roll)
+      if (it.scale) e.scalepm = Math.round(it.scale * 1000)
+      out.push(e); k++
+      const ck = Math.floor(x / 10) * 100003 + Math.floor(z / 10)
+      let cl = cell.get(ck); if (!cl) cell.set(ck, (cl = []))
+      cl.push({ x, z, g: 3 })
+    })
+    return k
+  }
   // 1. outcrops on the steepest ranks (+ crests): a group strung along the contour, scree below
   for (let z = o.box.minZ + sp / 2; z < o.box.maxZ; z += sp) {
     for (let x = o.box.minX + sp / 2; x < o.box.maxX; x += sp) {
@@ -184,7 +236,9 @@ export function cliffRocks(o: CliffOptions): ProjectEntity[] {
       // [M] cluster sizes: ~40 % single, median 2, p90 13-16
       const n = rand() < 0.4 ? 1 : 2 + Math.min(10, Math.floor(-Math.log(1 - rand() * 0.999) * 3))
       let placed = 0
-      for (let k = 0; k < n; k++) {
+      // 3+ pieces: a whole vanilla group of similar slope (cliff faces where our ground is cliff-steep)
+      if (n >= 3 && o.vanillaGroups !== false) placed = addGroup(px, pz, s, down, s >= cliffT)
+      for (let k = placed ? n : 0; k < n; k++) {
         const along = k === 0 ? 0 : (rand() - 0.5) * (6 + 2.2 * n), across = k === 0 ? 0 : (rand() - 0.5) * 4
         const qx = px + ux * along + dx * across, qz = pz + uz * along + dz * across
         const qs = k === 0 ? s : slopeAt(o.heightAt, qx, qz)[0]

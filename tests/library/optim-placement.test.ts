@@ -73,6 +73,21 @@ test('cliff rocks: steepest ranks only, kept off forbidden cells, cliffs face do
   assert.deepEqual(es, cliffRocks(o))
 })
 
+test('cliff rocks: outcrops of 3+ pieces are whole vanilla groups (scale kept, sunk, off forbidden cells)', () => {
+  const h = (x: number) => (x < 500 ? 10 : 10 + (x - 500) * 0.45) // ~24 deg wall: matches many harvested groups
+  const o = { box: { minX: 0, minZ: 0, maxX: 1000, maxZ: 400 }, heightAt: h, ok: (x: number, z: number) => z > 100, seed: 2, density: 6 }
+  const es = cliffRocks(o)
+  const scaled = es.filter((e) => e.scalepm)
+  assert.ok(scaled.length > 10, `vanilla-scaled pieces ${scaled.length}`)
+  for (const e of es) {
+    assert.ok(e.z > 100)
+    assert.ok(rockKind(e.prefab), e.prefab)
+    assert.ok(e.ycm !== undefined && e.ycm <= Math.round(h(e.x) * 100) + 50, `floating ${e.prefab} ${e.ycm} vs ${h(e.x) * 100}`)
+  }
+  const off = cliffRocks({ ...o, vanillaGroups: false })
+  assert.ok(!off.some((e) => e.scalepm), 'vanillaGroups: false = piece by piece')
+})
+
 test('cliff rocks: relative thresholds give rocks on a gentle island (max slope ~20 deg)', () => {
   const h = (x: number, z: number) => 40 + 30 * Math.sin(x / 90) * Math.cos(z / 110) // slopes up to ~0.4 (22 deg)
   const es = cliffRocks({ box: { minX: 0, minZ: 0, maxX: 2000, maxZ: 2000 }, heightAt: h, ok: () => true, seed: 3 })
