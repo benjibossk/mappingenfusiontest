@@ -396,10 +396,21 @@ export function simplifyPath(p: number[], tol: number): number[] {
 //! in game, seed 21 x 2512 z 3108). Partial weight (`peak`, disturbed soil mixed with the grass) and a
 //! block-limiter priority (`prio`) so the patch survives.
 export const POLE_PATCH_RADIUS: Record<PowerKind, number> = { lv: 2, mv: 2, hv: 5, ehv: 5 }
-export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed = 1, core = 'Dirt_01') {
+/** deterministic "old line" draw from its first pole and the seed */
+export function lineIsOld(poles: number[], seed = 1, share = 0.5): boolean {
+  if (poles.length < 2) return false
+  let h = (Math.imul(Math.round(poles[0]), 2654435761) ^ Math.imul(Math.round(poles[1]), 40503) ^ Math.imul(seed | 0, 2246822519)) >>> 0
+  h = Math.imul(h ^ (h >>> 16), 2246822507) >>> 0; h = (h ^ (h >>> 13)) >>> 0
+  return h / 4294967296 < share
+}
+export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed = 1, core = 'Dirt_01', oldCore = 'Grass_02', oldShare = 0.5) {
   const out: { points: number[]; half: number; edge: number; core: string; peak: number; prio: number }[] = []
   for (const l of lines) {
     const R = POLE_PATCH_RADIUS[l.kind] ?? 1.2
+    // line age, seeded per line: a recent line has bare soil at each foot, an old one is grown over (taller,
+    // denser grass, a softer patch): two lines side by side tell their story
+    const old = lineIsOld(l.poles, seed, oldShare)
+    const lineCore = old ? oldCore : core
     for (let i = 0; i + 1 < l.poles.length; i += 2) {
       const x = l.poles[i], z = l.poles[i + 1]
       // deterministic per pole: hash of seed + rounded position
@@ -411,7 +422,7 @@ export function poleDirtMasks(lines: Pick<PowerLine, 'kind' | 'poles'>[], seed =
         const cx = x + Math.cos(a) * off, cz = z + Math.sin(a) * off
         const b = rnd() * Math.PI, len = R * (0.2 + rnd() * 0.5)
         const half = R * (0.35 + rnd() * 0.3)
-        out.push({ points: [cx - Math.cos(b) * len / 2, cz - Math.sin(b) * len / 2, cx + Math.cos(b) * len / 2, cz + Math.sin(b) * len / 2], half, edge: R * (0.4 + rnd() * 0.4), core, peak: 0.55 + rnd() * 0.3, prio: 8 })
+        out.push({ points: [cx - Math.cos(b) * len / 2, cz - Math.sin(b) * len / 2, cx + Math.cos(b) * len / 2, cz + Math.sin(b) * len / 2], half, edge: R * (0.4 + rnd() * 0.4), core: lineCore, peak: (old ? 0.4 : 0.55) + rnd() * 0.3, prio: 8 })
       }
     }
   }

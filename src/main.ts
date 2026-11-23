@@ -45,6 +45,7 @@ import { buildMotorway, overpassDecks } from './modules/motorway'
 import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fillFieldZone, flatToPoly, pointObstacle, roadObstacles, slopeShare, type ZoneFillType } from './modules/zonefill'
 import { cutAtRoads } from './modules/roadGaps'
 import { dropCoveredPosts, extraGuardrails } from './modules/guardrails'
+import { noiseBerms } from './modules/noiseBerms'
 import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
@@ -1686,6 +1687,11 @@ function recompose(final: boolean) {
   const padFoot = buildingFootprints(settled, zones)
   const pads = padFoot.length ? applyPads(island.heights, g, padFoot) : null // building pads
   const beds = roads.length ? carveRoads(island.heights, g, roads, { water: wl }) : null
+  if (beds) {
+    const pre = import.meta.env.DEV ? island.heights.slice() : null
+    noiseBerms(island.heights, g, roads, settled, beds.weight, wl?.wet) // merlons along big roads at town edges
+    if (pre) (window as unknown as { __bermRaise: number[] }).__bermRaise = island.heights.map((h, k) => h - pre[k]) // dev probe
+  }
   if (pads) layPads(island.heights, pads, beds?.weight)
   rivers = undefined
   riverSim = undefined
