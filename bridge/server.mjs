@@ -20,6 +20,7 @@
 // Workbench side: NET API enabled in Options (port 5775), Mapgenerator addon loaded.
 // No dependencies: node bridge/server.mjs
 
+import { missingBaseEntities } from "./world-setup.mjs";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -44,6 +45,20 @@ const VANILLA_SURFACES = join(dirname(fileURLToPath(import.meta.url)), "surfaces
 const MAX_BODY = 64 * 1024 * 1024;
 
 // --- Workbench NET API wire format: int32 version, then length-prefixed strings ---
+
+/** the open world's file on disk: Workbench names it "{GUID}Worlds/X.ent" or "$Addon:Worlds/X.ent" */
+function worldFile(world, ext = ".ent") {
+  const w = String(world ?? "").replace(/^\{[0-9A-F]+\}/i, "");
+  const m = w.match(/^\$([^:]+):(.+)$/);
+  const rel = (m ? m[2] : w).replace(/\.ent$/i, ext);
+  if (!rel || rel.includes("..")) return null;
+  const addons = m ? [m[1]] : readdirSync(ADDONS_DIR);
+  // a terrain sits either beside the world or in a folder named after it (Worlds/X/X.terr)
+  const alt = rel.replace(/([^/]+)(\.[a-z]+)$/i, "$1/$1$2");
+  for (const a of addons) for (const r of [rel, alt]) { const f = join(ADDONS_DIR, a, r); if (existsSync(f)) return f; }
+  return null;
+}
+
 function pascal(s) {
   const b = Buffer.from(s, "utf-8");
   const len = Buffer.alloc(4);
@@ -215,10 +230,7 @@ const server = createServer(async (req, res) => {
       const q = new URL(req.url, "http://x").searchParams;
       let terr = null;
       if (q.get("addon") && q.get("world")) terr = join(ADDONS_DIR, q.get("addon"), q.get("world"), basename(q.get("world")) + ".terr");
-      else if (wb?.world) {
-        const rel = String(wb.world).replace(/^\{[0-9A-F]+\}/i, "").replace(/\.ent$/i, ".terr");
-        for (const a of readdirSync(ADDONS_DIR)) { const f = join(ADDONS_DIR, a, rel); if (existsSync(f)) { terr = f; break; } }
-      }
+      else if (wb?.world) terr = worldFile(wb.world, ".terr");
       if (!terr || terr.includes("..") || !existsSync(terr)) return send(res, 404, { error: "terrain .terr not found", workbench: wb });
       return send(res, 200, { terr, declared: listTerrainMaterials(terr), coverage: null, coverageNote: wb?.note ?? "painted coverage not exposed by the script API", workbench: wb });
     }
@@ -236,6 +248,14 @@ const server = createServer(async (req, res) => {
       if (!existsSync(out)) return send(res, 500, { status: "error", message: "audit failed (Workbench closed?)" });
       const r = JSON.parse(readFileSync(out, "utf-8"));
       const counts = Object.fromEntries(Object.entries(r.findings).map(([k, l]) => [k, k === "terrain" && r.terrain ? r.terrain.bad : l.length]));
+      // base entities of a playable world (Workbench's World Setup plugin list)
+      let base = null;
+      try {
+        const wb = await callWorkbench("MG_ListMaterials", {}, 5_000);
+        const f = worldFile(wb?.world);
+        if (f) base = missingBaseEntities(f);
+      } catch { /* Workbench busy: skip this check */ }
+      if (base) { counts.base = base.length; r.findings.base = base; }
       return send(res, 200, { status: "ok", counts, terrain: r.terrain, findings: Object.fromEntries(Object.entries(r.findings).map(([k, l]) => [k, l.slice(0, 20)])) });
     }
     if (req.method === "GET" && req.url.startsWith("/heights")) {

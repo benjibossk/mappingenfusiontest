@@ -4333,7 +4333,7 @@ async function runAudit(): Promise<void> {
   try {
     const r = await auditWorld()
     const bad = Object.entries(r.counts).filter(([, n]) => n > 0)
-    box.innerHTML = `<b>${bad.length ? t('audit.bad', { n: bad.reduce((a, [, n]) => a + n, 0) }) : t('audit.ok')}</b><ul class="issues">${Object.entries(r.counts).map(([k, n]) => `<li class="${n ? 'bad' : 'ok'}">${n ? '✖' : '✔'} ${t(('audit.' + k) as Key)} : ${n}</li>`).join('')}</ul>`
+    box.innerHTML = `<b>${bad.length ? t('audit.bad', { n: bad.reduce((a, [, n]) => a + n, 0) }) : t('audit.ok')}</b><ul class="issues">${Object.entries(r.counts).map(([k, n]) => `<li class="${n ? 'bad' : 'ok'}">${n ? '✖' : '✔'} ${t(('audit.' + k) as Key)} : ${n}${k === 'base' && n ? '<br><small>' + ((r.findings as Record<string, unknown[]>).base ?? []).join(', ') + ' · ' + t('audit.base.fix') + '</small>' : ''}</li>`).join('')}</ul>`
     if (bad.length) ($('checkBox') as HTMLDetailsElement).open = true
   } catch (err) { box.textContent = t('audit.fail', { msg: (err as Error).message }) }
 }
