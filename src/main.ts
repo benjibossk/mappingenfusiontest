@@ -1,6 +1,7 @@
 import { dedupeLines, trimCrossings, densify } from './modules/fenceDedupe'
 import { gameplayReport, settlementClusters, type GameplayReport, type GameplayKey } from './modules/gameplay'
 import { scenarioFit } from './modules/scenarioFit'
+import { exportStates } from './modules/exportStates'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
 import './style.css'
@@ -786,6 +787,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         ${connectSteps()}
         <div class="row"><button type="button" class="wbRetry">${ic('refresh', 14)} ${t('wb.retry')}</button><button id="wbDownload" type="button" class="secondary" title="${t('wb.download.tip')}">${ic('folder', 14)} ${t('wb.download')}</button></div>
       </div>
+      <div id="exportLayers" class="exportlayers" aria-live="polite"></div>
       <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
       <details class="adv" id="checkBox"><summary>${t('legend.check')}</summary>
         ${hint('hint.check')}
@@ -2652,6 +2654,7 @@ tabButtons.forEach((b) => b.addEventListener('click', () => {
 // step status badges: done is read from the real state; a done step turns stale when a step above it changed since
 const REGEN: Record<string, string> = { island: 'tGen', water: 'wGen', roads: 'netGen', villages: 'setGen', camp: 'generate' }
 let sentSig: string | null = null
+let sentSigs: string[] | null = null // per layer, for the export panel
 const objIds = new WeakMap<object, number>()
 let objNext = 1
 const oid = (o: object | null | undefined) => {
@@ -2700,9 +2703,18 @@ function refreshSteps() {
     const missLabel = miss >= 0 ? t((STEPS as readonly { label: K }[])[miss].label) : ''
     if (missLabel) b.dataset.blocked = missLabel; else delete b.dataset.blocked
     if (i === 4) { const need = document.getElementById('setNeedRoads'); if (need) need.hidden = !!sig[3] }
+    if (i === 0) renderExportLayers(sig)
     b.title = `${t(s.lead)}
 ${missLabel ? t('step.blocked', { s: missLabel }) : t(`step.state.${state}`)}`
   })
+}
+// export panel: one row per layer, its state against the last send (src/modules/exportStates.ts)
+function renderExportLayers(sig: string[]) {
+  const box = document.getElementById('exportLayers')
+  if (!box) return
+  const st = exportStates(sig.slice(0, 6), sentSigs, UP.slice(0, 6))
+  const icon = { empty: '·', ready: '●', sent: '✔', resend: '↻' }
+  box.innerHTML = `<b>${t('exp.title')}</b><ul>${st.map((s, i) => `<li class="exp-${s}"><span aria-hidden="true">${icon[s]}</span> ${t((STEPS as readonly { label: K }[])[i].label)} : ${t(('exp.' + s) as K)}</li>`).join('')}</ul>`
 }
 // step header (title + one-line explanation) and Previous / Next
 function showStep(tab: string) {
@@ -4307,7 +4319,7 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     // relief first: objects are dropped on the ground that is there when they are created
     const relief = island ? (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message + '\n' : ''
     const msg = relief + await toWb({ version: 0, shapes, entities }) + (deps ? '\n' + deps : '')
-    sentSig = stepSigs().slice(0, 6).join('|')
+    sentSigs = stepSigs().slice(0, 6); sentSig = sentSigs.join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()
     void runAudit()

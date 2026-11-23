@@ -824,3 +824,10 @@ button.linkbtn:hover:not(:disabled) { background: none; border: 0; color: var(--
 .flash { outline: 2px solid var(--amber-hi); outline-offset: 3px; transition: outline-color .4s; }
 .wbaudit { margin-top: 8px; font-size: 13px; }
 .wbaudit li.bad { color: var(--amber-hi); }
+
+/* export panel: layer states */
+.exportlayers ul{list-style:none;margin:4px 0 8px;padding:0}
+.exportlayers li{padding:2px 0}
+.exportlayers .exp-empty{opacity:.55}
+.exportlayers .exp-sent span{color:#5fa24a}
+.exportlayers .exp-resend span,.exportlayers .exp-ready span{color:#e1a12e}
