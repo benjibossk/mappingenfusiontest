@@ -10,11 +10,13 @@ export interface BermOpts { height?: number; slope?: number; crest?: number; gap
 
 /** raises noise berms in place; returns the number of cells raised */
 export function noiseBerms(heights: number[], grid: Grid, roads: Road[], houses: { x: number; z: number }[], bedWeight?: Float32Array, wet?: Uint8Array, o: BermOpts = {}): number {
-  const H = o.height ?? 4, run = H * (o.slope ?? 1.5), crest = o.crest ?? 2, gap = o.gap ?? 4
+  const { cols, rows, step } = grid
+  // the relief grid is coarse (8 m on a generated world): a 14 m bank covers one or two cells and turns into a
+  // staircase of bumps along a slanted road (seen in the Workbench, seed 21). Slopes span >= 1.5 cells, crest >= 1
+  const H = o.height ?? 4, run = Math.max(H * (o.slope ?? 1.5), 1.5 * step), crest = Math.max(o.crest ?? 2, step), gap = o.gap ?? 4
   const reachTown = o.townReach ?? 150, clear = o.houseClear ?? 10
   const base = 2 * run + crest
   if (!houses.length) return 0
-  const { cols, rows, step } = grid
   const B = 50, bucket = new Map<number, { x: number; z: number }[]>(), key = (x: number, z: number) => Math.floor(x / B) * 100003 + Math.floor(z / B)
   for (const h of houses) { const k = key(h.x, h.z); let a = bucket.get(k); if (!a) bucket.set(k, (a = [])); a.push(h) }
   const near = (x: number, z: number, d: number, f: (h: { x: number; z: number }) => boolean = () => true) => {
@@ -34,14 +36,14 @@ export function noiseBerms(heights: number[], grid: Grid, roads: Road[], houses:
     if (m < 3) continue
     // per point and side (+1 left, -1 right): houses on that side, beyond the berm, within reach of the town
     const amp = [new Float32Array(m), new Float32Array(m)]
-    const s = new Float32Array(m)
+    const s = new Float32Array(m), street = new Uint8Array(m)
     for (let i = 1; i < m; i++) s[i] = s[i - 1] + Math.hypot(line[i * 2] - line[i * 2 - 2], line[i * 2 + 1] - line[i * 2 - 1])
     for (let i = 0; i < m; i++) {
       const a = Math.max(0, i - 1), b = Math.min(m - 1, i + 1)
       const dx = line[b * 2] - line[a * 2], dz = line[b * 2 + 1] - line[a * 2 + 1], L = Math.hypot(dx, dz) || 1
       const x = line[i * 2], z = line[i * 2 + 1]
       // a street through the town (houses right on it) is no bypass: no berm there
-      if (near(x, z, off + base)) continue
+      if (near(x, z, off + base)) { street[i] = 1; continue }
       for (let sd = 0; sd < 2; sd++) {
         const sign = sd ? -1 : 1
         amp[sd][i] = near(x, z, reachTown, (h) => {
@@ -49,6 +51,12 @@ export function noiseBerms(heights: number[], grid: Grid, roads: Road[], houses:
           return cross * sign > off + base
         }) ? 1 : 0
       }
+    }
+    // one continuous bank: gaps under 120 m between served points are filled (a house set back, a side road
+    // already skipped by the bed test), else the bank breaks into a row of bumps (seen in the Workbench, seed 21)
+    for (const A of amp) {
+      let last = -1
+      for (let i = 0; i < m; i++) if (A[i]) { if (last >= 0 && i - last > 1 && s[i] - s[last] < 120) for (let j = last + 1; j < i; j++) if (!street[j]) A[j] = 1; last = i }
     }
     // ease the ends: amplitude falls linearly to 0 over 40 m from the last served point
     const EASE = 40
@@ -79,7 +87,8 @@ export function noiseBerms(heights: number[], grid: Grid, roads: Road[], houses:
         if (!w) continue
         const u = Math.abs(cross) - off
         if (u <= 0 || u >= base) continue
-        const h = H * w * Math.min(1, u / run, (base - u) / run)
+        const lin = Math.min(1, u / run, (base - u) / run)
+        const h = H * w * (0.5 - 0.5 * Math.cos(Math.PI * lin)) // rounded shoulders, no sharp edge on the grid
         const k = r * cols + c
         if (h > raise[k]) raise[k] = h
       }
