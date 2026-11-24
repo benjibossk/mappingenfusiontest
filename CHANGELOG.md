@@ -8,18 +8,36 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
-### Changed
-- **Atelier and asset library in the Reforger look**: sentence case, Roboto Condensed, square corners, active A0–A6 tab filled amber; Atelier top bar on one line and steps as a scrolling strip on phones (no more horizontal page scroll); library: the data files `prefabs-catalogue.json` / `prefabs-captions.json` were loaded as packs and showed two red errors, now skipped.
-- **App log** (`src/ui/console.ts`): a "Log" button in the status bar opens a semi-opaque panel over the map with every message (each step's log tagged with the step, notifications, JavaScript errors), whatever step is open; All / Errors filter, Copy, Clear; unread counter on the button (red when an error came in); open/closed remembered.
-- **Calmer step panels**: one amber button per step; step 7 starts with the connection guide then a full-width "Send everything", with the check, the off-map ring and the Workbench project folded below; Countryside step: zone coordinates, second hint and forest-edge option folded; Water: riverbank vegetation folded; village density as a slider (Sparse / Normal / Dense), the old/new village generator switch only in dev mode; step 6 renamed "Countryside" everywhere; the Sculpt step state is saved in the project.
-- **Beginner audit A8–A14 + UI bugs**: per-step sends folded under "Partial send to the Workbench" (step 7 sends everything); Villages shows "Draw roads first" without roads, options folded, checkboxes left of their labels; road and water lists start with the common types; "Test tools" hidden unless `localStorage['reforger-mapper.dev'] = '1'`; brush info only on Sculpt, mouse help merged into the status bar; plainer French labels (draw number, heightmap, riverbank vegetation, relay); steps without their base greyed with "Do first: …". Fixed: Real place dialog (one primary button, sentence case, search field width, title on phone), Collaboration "Join a room" button on 3 lines, seed explorer without backdrop, 3D help line off screen.
-- **Beginner onboarding** (`docs/UI_AUDIT_DEBUTANT.md` A1–A7): the welcome screen shows only the logo, language and a labelled Help button, plus a "First time? Guided tour in 1 minute" link that creates an island and starts the tour; after the first island a single message (the "Here is your island" bubble) instead of four; step 2 Sculpt is ticked only once the ground was actually sculpted; step 1 keeps Biome / Generate / Reroll and folds the rest into "More options"; "How do I do this?" link under every step opens the help; the Workbench chip and camera only show on the Send step (or once connected), where a "Connect the Workbench" box opens the 3-step help.
+### Added
+- **Gaea-style eroded relief**: ridges, river incision (stream power), droplet gullies and a thermal pass, with flow / wear / deposit masks; a "mountains" option for real high ground, 8 m detail kept.
+- **Import from Gaea** via Advanced Terrain Tools: bring an eroded heightmap made in Gaea straight into the project.
+- **Mountain pass roads**: when a link cannot climb directly, the router builds hairpin switchbacks at a comfortable 10-15 % grade, with flat platforms carved at each bend.
+- **Several projects**: projects are saved in the browser, the 3 most recent are shown on the welcome screen, and an open project gets a dashboard (Terrain, Atelier, Masks...).
+- **Vanilla pieces everywhere**: whole vanilla harbours chosen by biome (big ports for towns), RP sites (mine, garage, depot, farm, beehives, lumberjack, sawmill), 370 vanilla parcels and 109 farmsteads, 712 vanilla rock groups.
+- **Gameplay score**: cover rules and a compatibility score per scenario (Conflict, Combat Ops, Freedom Fighters, King of the Hill, Game Master).
+- **Automatic diagnosis after each send**: checks the base entities of a playable world (World Setup list) and reports problems; the Workbench tab shows the state of each layer (empty, ready, sent, to resend).
+- **Textured satmap and topographic Atelier background**: 37 vanilla ground textures on the satellite map; altitude tints, hillshade and contour lines behind the Atelier.
+- **Power grid like vanilla**: low-voltage stars around villages, MV spurs and pole transformers for remote farms, cleared corridors through forests, lines start at the power plant.
+- **Roadside details**: noise berms along big roads at town edges, crash barriers on dams, street lamps on lit streets, give-way signs at each roundabout entry, desire paths from house doors.
+- **App log panel**: a "Log" button in the status bar shows every message (step logs, notifications, JavaScript errors) whatever the step.
+- **Comments in 3D**: click a comment to fly the camera there; comments become markers in the World Editor.
 
 ### Changed
-- **UI kit v2** (`src/ui/kit.css`, loaded after `style.css`): one set of spacing / size tokens, buttons, fields, data tables, status badges and tool drawers built on the MILSPEC tokens. Top bar stays on one line and folds in steps (container queries: secondary actions become icon-only, then every action, then version badge / app name / Workbench chip; on phones the advanced tools leave the bar); no more text spilling out of buttons or the bar running under the side panel. Workbench camera toggle is now an icon button like the others and its readout moved to the status bar. Seeds / Life economy buttons use stroke icons instead of emoji. Side panel: button pairs share the width and keep equal heights, the reference-map select gets its own line, reference stats table readable (12 px). Toasts move to the top of the map while a drawer is open.
-- **Reforger look** (`src/ui/kit.css`, `index.html`): Roboto Condensed in sentence case instead of Oswald / Barlow / Share Tech Mono capitals, square corners, translucent charcoal panels, active step filled amber with dark text, alternating list rows with an amber outline on the selected one (taken from the game's main menu, Admin menu and Settings screens).
-- **Collapsible side panel** (desktop): a tab on the panel's edge hides it and gives the map the full width; remembered between sessions.
-- **Life economy panel** (`src/ui/lifeEconomyTab.ts`): now a drawer docked at the bottom of the map (the route stays visible), 6 columns instead of 12 (chain + route as a sub-line, vehicle, price, trip, profit/h, status badge), click a row for driving time / load / revenue, missing-place rows greyed at the bottom, vehicle settings as a collapsible table, LF sources collapsed.
+- **Mountain flanks**: grass on the slopes, rock and scree in bands, rocks and granite cliffs on ground steeper than ~37 deg.
+- **Woods on slopes**: forests now climb flanks up to 35 deg; merged woods no longer open holes.
+- **Houses and parcels off steep ground**: farms, fields and lots avoid steep slopes; houses that a lane runs over are dropped.
+- **Graded forest and field tracks**: kept at 15 % or less, with switchbacks where possible, otherwise dropped.
+- **Villages and towns closer to Bohemia maps**: oblique village streets, smaller town blocks, sheds behind houses, every built lot fenced, density per biome, farm rows on Kolguyev and Arland.
+- **Reforger-look UI**: Roboto Condensed in sentence case, square corners, one-line top bar, collapsible side panel, calmer step panels and a guided first-time tour.
+- **3D view**: the km grid is off by default.
+- **Life economy** panel docked at the bottom of the map, 6 columns, English names.
+
+### Fixed
+- **Send no longer fails on forests**: geometry errors ("Unable to complete output ring") are caught instead of aborting the whole send.
+- **Surfaces**: no more black SeaBed on land, softer borders, beaches only from the real sea and below 12 deg.
+- **Object rotation**: objects with a decimal yaw no longer stand at 0 deg (about 1 in 7 objects were affected).
+- **Mask import** saves through the NET API (no keystrokes, no focus stealing), waits for the normal map and reports a failed import.
+- Hedges, trees and power poles kept off every road and track; harbours and forests kept clear of other zones; village paths without steps under platforms.
 
 ## [0.7.0] - 2026-11-19
 

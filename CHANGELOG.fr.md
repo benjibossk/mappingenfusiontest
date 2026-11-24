@@ -4,18 +4,36 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
-### Modifié
-- **Atelier et bibliothèque d'assets au style Reforger** : casse normale, Roboto Condensed, angles droits, onglet A0–A6 actif plein ambre ; barre du haut de l'Atelier sur une ligne et étapes en bande défilante sur téléphone (plus de défilement horizontal de la page) ; bibliothèque : les fichiers de données `prefabs-catalogue.json` / `prefabs-captions.json` étaient chargés comme des packs et affichaient deux erreurs rouges, ils sont maintenant ignorés.
-- **Journal de l'app** (`src/ui/console.ts`) : un bouton « Journal » dans la barre d'état ouvre un panneau semi-opaque sur la carte avec tous les messages (journal de chaque étape avec son nom, notifications, erreurs JavaScript), quelle que soit l'étape ouverte ; filtre Tout / Erreurs, Copier, Vider ; compteur de messages non lus sur le bouton (rouge si une erreur est arrivée) ; ouvert / fermé mémorisé.
-- **Volets d'étape plus calmes** : un seul bouton ambre par étape ; l'étape 7 commence par le guide de connexion puis un grand « Tout envoyer », vérification, anneau hors carte et projet Workbench repliés dessous ; étape Campagne : coordonnées de zone, second texte d'aide et lisières repliés ; Eau : végétation de berge repliée ; densité des villages en curseur (Clairsemée / Normale / Dense), le choix ancien/nouveau générateur seulement en mode dev ; étape 6 renommée « Campagne » partout ; l'état de l'étape Sculpter est enregistré dans le projet.
-- **Audit débutant A8–A14 + bugs UI** : envois par étape repliés dans « Envoi partiel au Workbench » (l'étape 7 envoie tout) ; Villages affiche « Trace d'abord des routes » sans route, options repliées, cases à gauche des libellés ; listes de routes et d'eau commencent par les types courants ; « Outils de test » masqués sauf `localStorage['reforger-mapper.dev'] = '1'` ; infos pinceau seulement à Sculpter, aide souris fusionnée dans la barre d'état ; libellés plus simples (n° de tirage, carte de hauteurs, végétation de berge, relais) ; étapes sans base grisées avec « Fais d'abord : … ». Corrigé : dialogue Lieu réel (un seul bouton principal, casse normale, champ de recherche, titre sur téléphone), bouton « Rejoindre un salon » sur 3 lignes, explorateur de graines sans fond, ligne d'aide 3D hors écran.
-- **Prise en main débutant** (`docs/UI_AUDIT_DEBUTANT.md` A1–A7) : l'accueil ne montre que le logo, la langue et un bouton « Aide » avec libellé, plus un lien « Première fois ? Visite guidée en 1 minute » qui crée une île et lance la visite ; après la première île, un seul message (la bulle « Voilà ton île ») au lieu de quatre ; l'étape 2 Sculpter n'est cochée qu'après avoir vraiment sculpté ; l'étape 1 garde Biome / Générer / Autre tirage et replie le reste dans « Plus d'options » ; lien « Comment faire ? » sous chaque étape vers l'aide ; puce et caméra Workbench seulement à l'étape Envoyer (ou une fois connecté), avec un encart « Connecte le Workbench » qui ouvre l'aide en 3 étapes.
+### Ajouté
+- **Relief érodé façon Gaea** : crêtes, incision des rivières (stream power), ravines par gouttelettes et passe thermique, avec masques flow / wear / deposits ; option « montagnes » pour de vrais reliefs, détail 8 m conservé.
+- **Import depuis Gaea** via Advanced Terrain Tools : un relief érodé fait dans Gaea arrive directement dans le projet.
+- **Routes de col** : quand une liaison ne peut pas monter en direct, le routeur trace des lacets à 10-15 % de pente confortable, avec une plateforme plate à chaque virage.
+- **Plusieurs projets** : projets enregistrés dans le navigateur, les 3 récents sur l'accueil, et un tableau de bord du projet ouvert (Terrain, Atelier, Masques...).
+- **Pièces vanilla partout** : ports vanilla entiers choisis par biome (grands ports pour les villes), sites RP (mine, garage, dépôt, ferme, ruches, bûcheron, scierie), 370 parcelles et 109 fermes vanilla, 712 groupes de rochers vanilla.
+- **Score gameplay** : règles de couvert et compatibilité par scénario (Conflict, Combat Ops, Freedom Fighters, King of the Hill, Game Master).
+- **Diagnostic automatique après chaque envoi** : vérifie les entités de base d'un monde jouable (liste World Setup) et signale les problèmes ; l'onglet Workbench montre l'état de chaque couche (vide, prête, envoyée, à réenvoyer).
+- **Satmap texturée et fond topographique dans l'Atelier** : 37 textures de sol vanilla sur l'image satellite ; teintes d'altitude, ombrage et courbes de niveau derrière l'Atelier.
+- **Réseau électrique comme en vanilla** : étoiles basse tension autour des villages, antennes moyenne tension et transformateurs sur poteau pour les fermes isolées, couloirs dégagés en forêt, lignes qui partent de la centrale.
+- **Détails de bord de route** : merlons antibruit le long des grandes routes en bord de ville, glissières sur les barrages, lampadaires sur les rues éclairées, cédez-le-passage à chaque entrée de rond-point, sentiers depuis les portes des maisons.
+- **Panneau de log de l'appli** : un bouton « Log » dans la barre d'état montre tous les messages (logs des étapes, notifications, erreurs JavaScript), quelle que soit l'étape.
+- **Commentaires en 3D** : clic sur un commentaire pour y amener la caméra ; les commentaires deviennent des repères dans le World Editor.
 
 ### Modifié
-- **Kit UI v2** (`src/ui/kit.css`, chargé après `style.css`) : un seul jeu de tokens d'espacement / tailles, boutons, champs, tableaux de données, badges d'état et tiroirs d'outils, sur les tokens MILSPEC. La barre du haut reste sur une ligne et se replie par paliers (container queries : actions secondaires en icône seule, puis toutes les actions, puis badge de version / nom de l'app / puce Workbench ; sur téléphone les outils avancés sortent de la barre) ; plus de texte qui sort des boutons ni de barre qui passe sous le panneau latéral. Le bouton caméra Workbench devient un bouton icône comme les autres et sa lecture passe dans la barre d'état. Boutons Graines / Économie Life avec icônes au trait au lieu d'emoji. Panneau latéral : boutons par paire à largeur et hauteur égales, la liste des cartes de référence sur sa propre ligne, tableau de stats lisible (12 px). Les toasts passent en haut de la carte quand un tiroir est ouvert.
-- **Style Reforger** (`src/ui/kit.css`, `index.html`) : Roboto Condensed en casse normale au lieu des capitales Oswald / Barlow / Share Tech Mono, angles droits, panneaux anthracite translucides, étape active pleine ambre texte sombre, listes à lignes alternées avec liseré ambre sur la ligne choisie (relevé sur le menu principal, l'Admin Menu et les Paramètres du jeu).
-- **Panneau latéral rétractable** (bureau) : un onglet sur le bord du panneau le masque et donne toute la largeur à la carte ; mémorisé d'une session à l'autre.
-- **Panneau Économie Life** (`src/ui/lifeEconomyTab.ts`) : tiroir ancré en bas de la carte (le trajet reste visible), 6 colonnes au lieu de 12 (filière + circuit en sous-ligne, véhicule, prix, trajet, profit/h, badge d'état), clic sur une ligne pour le temps de route / la charge / la recette, lignes « lieu absent » grisées en bas, paramètres véhicules en tableau repliable, sources LF repliées.
+- **Flancs de montagne** : herbe sur les pentes, roche et éboulis en bandes, rochers et falaises de granit au-delà d'environ 37 degrés.
+- **Forêts sur les pentes** : les bois montent sur les flancs jusqu'à 35 degrés ; les bois fusionnés n'ont plus de trous.
+- **Maisons et parcelles hors des pentes raides** : fermes, champs et lots évitent les pentes fortes ; les maisons traversées par une ruelle sont retirées.
+- **Chemins forestiers et agricoles nivelés** : 15 % maximum, avec lacets si possible, sinon supprimés.
+- **Villages et villes plus proches des cartes Bohemia** : rues de village obliques, îlots de ville plus petits, cabanons derrière les maisons, chaque lot bâti clôturé, densité par biome, rangées de fermes à Kolguyev et Arland.
+- **Interface au look Reforger** : Roboto Condensed en casse normale, coins carrés, barre du haut sur une ligne, panneau latéral repliable, panneaux d'étape plus calmes et visite guidée pour la première fois.
+- **Vue 3D** : la grille km est désactivée par défaut.
+- **Économie Life** : panneau ancré en bas de la carte, 6 colonnes, noms en anglais.
+
+### Corrigé
+- **L'envoi n'échoue plus sur les forêts** : les erreurs de géométrie (« Unable to complete output ring ») sont rattrapées au lieu d'interrompre tout l'envoi.
+- **Surfaces** : plus de SeaBed noir sur la terre, bords plus doux, plages seulement depuis la vraie mer et sous 12 degrés.
+- **Rotation des objets** : les objets à lacet décimal ne restent plus à 0 degré (environ 1 objet sur 7 touché).
+- **Import des masques** : sauvegarde par la NET API (sans clavier ni vol de focus), attend la normal map et signale un import raté.
+- Haies, arbres et poteaux tenus hors de toutes les routes et pistes ; ports et forêts écartés des autres zones ; chemins de village sans marche sous les plateformes.
 
 ## [0.7.0] - 2026-11-19
 
