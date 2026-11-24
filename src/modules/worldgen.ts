@@ -18,7 +18,7 @@ import { fr } from '../i18n'
 import { computeSurfaces, settlementMask, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
 import { addRoundabouts, dropOrphanRings, overlapJunctions, squareRoundabout } from './roundabouts'
 import { computeRivers } from './hydro'
-import { carveWater, placeLakes, traceRivers, WATER_TYPES, type Water } from './water'
+import { carveWater, placeLakes, riverCourse, traceRivers, WATER_TYPES, type Water } from './water'
 import { damFootprint, damZone, placeDams, snapRoadsToCrest } from './dam'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { clipLine, Corridors, ringOnRoad } from './roadClip'
@@ -102,6 +102,10 @@ export interface WorldParams {
   biome?: string // BiomeId (docs/BIOMES_LIBRARY.md): forests and village parcels; default Everon = unchanged
 }
 export const WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { size: 4096, towns: 1, villages: 1, hamlets: 1, industry: 1, military: 1, airfield: true, power: true, forests: 1 }
+/** the web app's "random world" dialog defaults (main.ts worldGo with untouched controls): probes use it to
+ *  reproduce exactly what the app generates and sends */
+export const APP_WORLD_DEFAULTS: Omit<WorldParams, 'seed'> = { ...WORLD_DEFAULTS, fieldTrees: 1, biome: 'temperate_everon', motorway: false, dams: false, vanillaSites: true, villageTemplates: true, powerDistrib: 'auto', relief: 'eroded' }
+export function appWorldParams(seed: number, over: Partial<WorldParams> = {}): WorldParams { return { ...APP_WORLD_DEFAULTS, seed, ...over } as WorldParams }
 
 export const WORLD_STAGES = ['relief', 'water', 'sites', 'airfield', 'military', 'roads', 'industry', 'villages', 'power', 'forests', 'surfaces'] as const
 export type WorldStage = (typeof WORLD_STAGES)[number]
@@ -182,6 +186,29 @@ export function composeHeights(base: number[], g: Grid, waters: Water[], zones: 
   const sim = computeRivers(h, g.cols, g.rows, g.step, { rain: WORLD.water.rain, windAngle: 0, threshold: auto ? riverThreshold(g.step) : WORLD.water.threshold, depth: auto ? 0 : 4 })
   if (beds && !auto) { layBeds(h, beds); if (pf) layPads(h, pf, beds.weight) }
   return { heights: h, sim, wet: wl?.wet }
+}
+
+/** stretches of a road (arc length along centreLine(pts, 20), worstGrade's measure) within a river's half width
+ *  + 4 m, the gap splitAtWater cuts at export (worstGrade adds its 20 m abutment margin around each) */
+export function riverSpans(pts: number[], waters: Water[]): { from: number; to: number }[] {
+  const courses = waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).map((w) => ({ c: riverCourse(w.pts, w.width), half: w.width / 2 + 4 }))
+  if (!courses.length) return []
+  const wet = (x: number, z: number) => courses.some(({ c, half }) => {
+    for (let i = 0; i + 3 < c.length; i += 2) {
+      const ax = c[i], az = c[i + 1], dx = c[i + 2] - ax, dz = c[i + 3] - az, L2 = dx * dx + dz * dz || 1
+      const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
+      if (Math.hypot(x - ax - dx * t, z - az - dz * t) < half) return true
+    }
+    return false
+  })
+  const line = centreLine(pts, 20), out: { from: number; to: number }[] = []
+  let acc = 0
+  for (let i = 2; i + 1 < line.length; i += 2) {
+    const d = Math.hypot(line[i] - line[i - 2], line[i + 1] - line[i - 1])
+    if (wet((line[i] + line[i - 2]) / 2, (line[i + 1] + line[i - 1]) / 2)) out.push({ from: acc, to: acc + d })
+    acc += d
+  }
+  return out
 }
 
 /** river threshold in grid cells for the generated world: a catchment area, whatever the grid step */
@@ -460,7 +487,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 6. road network (places + zone gates)
   await step('roads')
   const net = { sites: sites.length, spacing: 300, maxSlope: WORLD.roads.maxSlope, seed: ss('roads', 'roads'), main: WORLD.roads.main as RoadType, minor: WORLD.roads.minor as RoadType, lane: WORLD.roads.lane as RoadType,
-    loops: Math.round(WORLD.roads.loopsPerKm2 * landKm2), loopDetour: WORLD.roads.loopDetour, loopMaxM: WORLD.roads.loopMaxM, loopType: WORLD.roads.loopType as RoadType, v2: p.roadsV2 !== false,
+    loops: Math.round(WORLD.roads.loopsPerKm2 * landKm2), loopDetour: WORLD.roads.loopDetour, loopMaxM: WORLD.roads.loopMaxM, loopType: WORLD.roads.loopType as RoadType, v2: p.roadsV2 !== false, mountains: p.relief === 'mountains',
     // no road through a base / airfield / stamped site (pre-send: 18 base objects on a road crossing MIL_1, seed 42); the disc stops 2 cells short of the gate
     avoid: zones.filter((z) => z.kind === 'military' || z.kind === 'airfield' || z.sub?.startsWith('vanilla:')).map((z) => { const d = zoneDisc(z), ga = z.access ? Math.hypot(z.access[0] - d.x, z.access[1] - d.z) - 2 * g.step : Infinity; return { x: d.x, z: d.z, r: Math.min(d.r * 0.8, ga) } }).filter((d) => d.r > g.step) }
   const rid = roadIdMaker()
@@ -484,6 +511,13 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   if (dm) snapRoadsToCrest(roads, dm.dams) // the access road runs onto the crest track, not into the wall's end
   cur = composeHeights(base, g, waters, zones, roads)
   const steep = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
+  // mountains: the dip where a paved road meets a river is not its grade (the export splits the road there and
+  // bridges the gap, splitAtWater): measured without it, a town link is not downgraded to dirt for its ford
+  // (seed 21: the only village-town asphalt went dirt at 13 % on a stream, the town fell off the paved network)
+  // (a dip steeper than 1.6 x the limit is a gorge, not a ford: the usual downgrade then)
+  const fordOnly = (r: Road) => p.relief === 'mountains' && isPaved(r.type) && worstGrade(r.pts, cur.heights, g, r.spans).grade <= maxGrade(r.type) * 1.6 &&
+    worstGrade(r.pts, cur.heights, g, [...(r.spans ?? []), ...riverSpans(r.pts, waters)]).grade <= maxGrade(r.type)
+  for (const r of roads) if (steep.has(r.id) && fordOnly(r)) steep.delete(r.id)
   // a road the carving left too steep for its type is first downgraded (dirt road, then dirt trail: steeper
   // limits), dropped only when even a trail cannot climb it, so the tree is not cut for one junction bump
   if (steep.size) {
@@ -495,6 +529,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     roads = roads.filter((r) => !steep.has(r.id))
     cur = composeHeights(base, g, waters, zones, roads)
     const still = new Set(validate({ roads, sites, settled: [], refusedGaps: [], heights: cur.heights, grid: g }).filter((i) => i.kind === 'steepRoad').map((i) => i.id))
+    for (const r of roads) if (still.has(r.id) && fordOnly(r)) still.delete(r.id)
     if (still.size) { roads = roads.filter((r) => !still.has(r.id)); cur = composeHeights(base, g, waters, zones, roads) }
   }
   // a ring whose branches were dropped as too steep goes too

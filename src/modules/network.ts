@@ -92,6 +92,10 @@ export interface NetworkParams {
    *  rounded into line + arc fillets (radius >= class Rmin when there is room), junction points kept exactly.
    *  A fillet is kept only when the carved road stays under its grade limit. false = the old output. */
   v2?: boolean
+  /** 'mountains' relief: the pass router also runs when the usual search kept the wanted class but climbs steeper
+   *  than its comfortable grade (lacets instead of a straight 12 % ramp), and a paved link tries lacets up to its
+   *  hard limit before falling back to dirt (towns stay on the paved network). Off = the gentle maps unchanged. */
+  mountains?: boolean
   /** zone footprints (bases, airfields, vanilla sites) no road may cross; a road still reaches its gate (the goal) */
   avoid?: { x: number; z: number; r: number }[]
 }
@@ -243,7 +247,7 @@ function pinArc(c: number, r: number, ux: number, uz: number, nx: number, nz: nu
 //! The state is (cell, heading): a step may turn by one heading notch at most (~25 degrees), which
 //! keeps hairpins wide enough for the road generator; cliffs beside the road and the coast cost extra.
 //! fine: the 40-heading mountain move set (long moves check every cell they pass over)
-function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Uint8Array, from: number, goal: Set<number>, goalXY: [number, number], maxSlope: number, hardGrade = Infinity, block?: Uint8Array, fine = false): number[] | null {
+function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Uint8Array, from: number, goal: Set<number>, goalXY: [number, number], maxSlope: number, hardGrade = Infinity, block?: Uint8Array, fine = false, pinCost = 120): number[] | null {
   const MV = fine ? FINE : DIRS
   const n = g.cols * g.rows, D = MV.length
   const cost = new Float32Array(n * D).fill(Infinity)
@@ -315,7 +319,8 @@ function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Ui
       if (bad) continue
       const j = lr * g.cols + lc
       const g2 = gr / (maxSlope / 100)
-      const w = arc * (1 + g2 * g2 * 3) + 120 + arc * Math.max(0, gr / hardGrade - 1) * 20 + legW // platform cut / fill
+      // pinCost: the fixed price of a lacet (120 = winding preferred; 30 on a mountain relief, where a pass climbs in lacets)
+      const w = arc * (1 + g2 * g2 * 3) + pinCost + arc * Math.max(0, gr / hardGrade - 1) * 20 + legW // platform cut / fill
       const sj = j * D + dn, nc = cost[st] + w
       if (nc < cost[sj]) { cost[sj] = nc; prev[sj] = st; pinAt[sj] = sd; heap.push(sj, nc + heur(j)) }
     }
@@ -513,13 +518,13 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     // router (ROAD_MOUNTAIN: 40 headings, hairpins as moves) try each type under that comfortable grade; its link
     // replaces the first one. A link found in its wanted class is kept as it was (gentle maps unchanged).
     let gotGrade = Infinity
-    const runSteps = (steps: { tt: RoadType; cap: number; fine: boolean }[]) => {
-    search: for (const { tt, cap, fine: fineStep } of steps)
+    const runSteps = (steps: { tt: RoadType; cap: number; fine: boolean; accept?: number }[]) => {
+    search: for (const { tt, cap, fine: fineStep, accept } of steps)
       for (const f of [1.25, 1, 0.8, 0.6, 0.45]) {
         // the per-step limit stays the type's one (an 8 m step sees bumps the carving evens out, and the move
         // directions give no grade between 0 and 18 % on a 40 % flank); the slope cost is centred on the cap,
         // so the path prefers longer lacets, and the carved bed is what is tested against the cap
-        const path = route(h, g, river, onRoad, start, goal, aim, Math.min(p.maxSlope, (cap / 0.9) * 80), (cap / 0.9) * f, block, fineStep)
+        const path = route(h, g, river, onRoad, start, goal, aim, Math.min(p.maxSlope, (cap / 0.9) * 80), (cap / 0.9) * f, block, fineStep, p.mountains ? 30 : 120)
         if (!path || path.length < 2) break // no way under this limit: a tighter one will not find any either
         // stop where the path joins an existing road (it would only run on top of it)
         let end = path.length - 1
@@ -545,7 +550,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
           const test = h.slice()
           carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }], NOPIN)
           const wg = worstGrade(cand, test, g).grade
-          if (wg <= cap && roads.every((o) => { const gr = worstGrade(swap(o).pts, test, g).grade; return gr <= maxGrade(o.type) || gr <= (gradeBefore().get(o) ?? 0) + 0.005 })) {
+          if (wg <= (accept ?? cap) && roads.every((o) => { const gr = worstGrade(swap(o).pts, test, g).grade; return gr <= maxGrade(o.type) || gr <= (gradeBefore().get(o) ?? 0) + 0.005 })) {
             pts = cand; cells = cl; type = tt; joined = hitCopy && hitCopy.pts; fineLink = fineStep; gotGrade = wg
             break search
           }
@@ -556,7 +561,18 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     if (pts.length < 4 || type !== want) {
       const keep = { pts, cells, type, joined, gotGrade } // the fine link may not be of a lower class than this one
       pts = []
-      runSteps(ladder.filter((tt, k) => comfortGrade(tt) < maxGrade(tt) * 0.9 && (keep.pts.length < 4 || k <= ladder.indexOf(keep.type))).map((tt) => ({ tt, cap: comfortGrade(tt), fine: true })))
+      const steps: { tt: RoadType; cap: number; fine: boolean; accept?: number }[] = ladder.filter((tt, k) => comfortGrade(tt) < maxGrade(tt) * 0.9 && (keep.pts.length < 4 || k <= ladder.indexOf(keep.type))).map((tt) => ({ tt, cap: comfortGrade(tt), fine: true }))
+      // mountains: the wanted class with lacets up to its hard limit comes before any lower class (a town left on a
+      // dirt link is off the paved network: no FF traffic / convoys)
+      if (p.mountains && steps[0]?.tt === want) steps.splice(1, 0, { tt: want, cap: maxGrade(want) * 0.9, fine: true, accept: maxGrade(want) })
+      runSteps(steps)
+      if (pts.length < 4) { ({ pts, cells, type, joined, gotGrade } = keep); fineLink = false }
+    } else if (p.mountains && gotGrade > comfortGrade(want) + 0.005) {
+      // mountains: the link kept its class but climbs over the comfortable grade: lacets under it when the pass
+      // router finds them, else the straight climb stays
+      const keep = { pts, cells, type, joined, gotGrade }
+      pts = []
+      runSteps([{ tt: want, cap: comfortGrade(want), fine: true }])
       if (pts.length < 4) { ({ pts, cells, type, joined, gotGrade } = keep); fineLink = false }
     }
     if (pts.length < 4) continue
