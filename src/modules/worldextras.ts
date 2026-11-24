@@ -19,6 +19,9 @@ export interface ProdWorldOptions {
   ground?: (x: number, z: number) => number
   /** ground a track must not cross (zones, buildings): such a track is dropped (seed 21, cover 0.5: a link track through a military base) */
   blocked?: (x: number, z: number) => boolean
+  /** grade check of a track: the track as is, a gentler re-route (switchbacks), or null = dropped. A forest whose
+   *  spine is dropped gets no tracks (its branches would hang); seed 21 mountains: a spine straight up at 107 % */
+  fix?: (pts: number[]) => number[] | null
 }
 export interface ProdWorldResult<A> { areas: (A | ProdArea)[]; tracks: { id: string; type: 'dirt'; pts: number[]; auto: true }[]; outlines: number[][]; count: number }
 
@@ -50,7 +53,9 @@ export function addProdForests<A extends { id: string; kind: string; leaf?: 'bro
     n++
     outlines.push(a.pts)
     const crosses = (pts: number[]) => { if (!o.blocked) return false; for (let k = 2; k < pts.length; k += 2) { const L = Math.hypot(pts[k] - pts[k - 2], pts[k + 1] - pts[k - 1]), n = Math.max(1, Math.ceil(L / 4)); for (let t = 0; t <= n; t++) if (o.blocked(pts[k - 2] + (pts[k] - pts[k - 2]) * t / n, pts[k - 1] + (pts[k + 1] - pts[k - 1]) * t / n)) return true } return false }
-    pf.tracks.forEach((pts, j) => { if (pts.length >= 4 && !crosses(pts)) { tracks.push({ id: `ROAD_PROD_W${n}_${j + 1}`, type: 'dirt', pts, auto: true }); roads.push(pts) } })
+    const fixed = pf.tracks.map((pts) => (o.fix && pts.length >= 4 ? o.fix(pts) : pts))
+    if (o.fix && pf.tracks.length && !fixed[0]) fixed.fill(null)
+    fixed.forEach((pts, j) => { if (pts && pts.length >= 4 && !crosses(pts)) { tracks.push({ id: `ROAD_PROD_W${n}_${j + 1}`, type: 'dirt', pts, auto: true }); roads.push(pts) } })
     // log piles off the other roads (seed 21 live audit: a pile on ROAD_TERRE_1 next to a production track);
     // smoothed lines, a pile is ~4 m long and 2 m wide: >= 7 m from any other road's axis
     const other = o.roads.map((r) => centreLine(r, 4))

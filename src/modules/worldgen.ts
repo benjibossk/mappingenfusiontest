@@ -741,9 +741,42 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 10b. countryside: plots + hedges (campaign.ts, Tanin AgriFieldGenerator method) on the open, gentle
   // ground around each settlement; never in a forest, a lake, a zone or the settlement core
   // 10a. production forests on part of the large conifer / mixed woods, tracks linked to the road network
-  const prod = addProdForests(areas, { seed: ss('forests', 'prodforest'), roads: allRoads.map((r) => r.pts), ground: (x, z) => hAt(x, z),
+  // forest / field tracks are graded like real ones (<= 15 %, short pitches 18 %): seed 21 mountains had a production
+  // spine straight up a 107 % flank, field tracks at 22-29 %. A steep one is re-routed in switchbacks (network.ts
+  // router at 15 %), else kept only under 18 %, else dropped. Field tracks are never re-routed (their plots are cut
+  // along them): only dropped.
+  const TRACK_GRADE = 0.15, TRACK_PITCH = 0.18
+  const trackGrade = (pts: number[]) => worstGrade(pts, cur.heights, g).grade
+  const carved = new WeakSet<number[]>() // re-routed tracks: their bed is carved like a road's
+  const tameTrack = (pts: number[], reroute = true): number[] | null => {
+    const g0 = trackGrade(pts)
+    if (g0 <= TRACK_GRADE) return pts
+    if (reroute) {
+      const r = routeLink(cur.heights, g, cur.sim.river, [pts[0], pts[1]], [pts[pts.length - 2], pts[pts.length - 1]], 'dirt', WORLD.roads.maxSlope, TRACK_GRADE, true)
+      if (r) {
+        // a switchback track is cut into the flank (bed carved, hairpin platforms): graded on that bed
+        const t = cur.heights.slice()
+        carveRoads(t, g, [{ id: 'track', type: 'dirt', pts: r, flatten: true }])
+        const gr = worstGrade(r, t, g).grade
+        if (gr <= TRACK_PITCH && gr < g0) { carved.add(r); return r }
+      }
+    }
+    return g0 <= TRACK_PITCH ? pts : null
+  }
+  const prod = addProdForests(areas, { seed: ss('forests', 'prodforest'), roads: allRoads.map((r) => r.pts), ground: (x, z) => hAt(x, z), fix: (pts) => tameTrack(pts),
     blocked: (x, z) => discs.some((d) => Math.hypot(x - d.x, z - d.z) < d.r + 10) || settlement.placed.some((b) => Math.abs(b.x - x) < 14 && Math.abs(b.z - z) < 14) })
+  for (const tr of prod.tracks) if (carved.has(tr.pts)) (tr as Road).flatten = true
   if (prod.count) { areas.splice(0, areas.length, ...(prod.areas as WorldArea[])); roads.push(...prod.tracks); allRoads.push(...prod.tracks) }
+  if (prod.tracks.some((tr) => carved.has(tr.pts))) {
+    const recompose = () => { cur = composeHeights(base, g, waters, zones, roads, padFoot, settlement.lanes.map((l) => l.pts)) } // switchback beds cut in (pads kept)
+    recompose()
+    // last check on the composed ground (other beds, pads and banks overlap the trial carve): still too steep = dropped
+    const bad = new Set(prod.tracks.filter((tr) => trackGrade(tr.pts) > TRACK_PITCH + 0.02).map((tr) => tr.id))
+    if (bad.size) {
+      for (const list of [roads, allRoads]) list.splice(0, list.length, ...list.filter((r) => !bad.has(r.id)))
+      if (prod.tracks.some((tr) => bad.has(tr.id) && carved.has(tr.pts))) recompose()
+    }
+  }
   const forestRings = [...areas.map((a) => a.pts), ...prod.outlines]
   const topH = cur.heights.reduce((a, b) => Math.max(a, b), 0)
   const camp: CampaignResult = { fields: [], hedges: [], shapes: [] }
@@ -799,6 +832,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         // a field track never runs through a house or a power station (they are placed before the countryside;
         // seed 21 audit: SET_VILLAGE_1_H25 on ROAD_FIELD_2_3_1, PSTA_MVLV_7 on ROAD_FIELD_7_1): the track is dropped
         if (trackHits(centreLine(pts, 4), 3.5)) continue
+        if (!tameTrack(pts, false)) continue // steeper than a field track can be (seed 42 mountains: 29 %)
         const tr: Road = { id: `ROAD_FIELD_${id}_${j + 1}`, type: 'dirt', pts, auto: true }
         roads.push(tr); allRoads.push(tr) // later sites' plots are cut by the track too
       }

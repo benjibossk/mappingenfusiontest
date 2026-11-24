@@ -17,6 +17,8 @@ export interface Site { id: string; x: number; z: number; kind: SiteKind }
 export const SITE_RADIUS: Record<SiteKind, number> = { town: 250, village: 120, hamlet: 50 }
 // steepest grade a vehicle copes with, by road family (shared with the pre-send check in validate.ts)
 const MAX_GRADE: Partial<Record<RoadType, number>> = { dirt: 0.2, dirt2: 0.2, forest: 0.22, trailDirt: 0.3, trailGravel: 0.3, trailForest: 0.3, coal: 0.2, trailCoal: 0.3, concretePath: 0.3, motorway: 0.06 }
+// trial carves of the router: no hairpin platforms (they would shift the routes it already validated)
+const NOPIN = { pins: false }
 export const maxGrade = (t: RoadType) => MAX_GRADE[t] ?? 0.12
 /** grade a road is laid under when the relief allows it (mountain pass design): paved 10 %, tracks 15 %,
  *  trails their hard limit. The network router tries this first, maxGrade only as a fallback. */
@@ -499,7 +501,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     const gradeBefore = () => {
       if (!before) {
         const t = h.slice()
-        carveRoads(t, g, [...existing, ...roads])
+        carveRoads(t, g, [...existing, ...roads], NOPIN)
         before = new Map(roads.map((o) => [o, worstGrade(o.pts, t, g).grade]))
       }
       return before
@@ -541,7 +543,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
           }
           const swap = (r: Road) => (r === hit ? hitCopy! : r)
           const test = h.slice()
-          carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }])
+          carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }], NOPIN)
           const wg = worstGrade(cand, test, g).grade
           if (wg <= cap && roads.every((o) => { const gr = worstGrade(swap(o).pts, test, g).grade; return gr <= maxGrade(o.type) || gr <= (gradeBefore().get(o) ?? 0) + 0.005 })) {
             pts = cand; cells = cl; type = tt; joined = hitCopy && hitCopy.pts; fineLink = fineStep; gotGrade = wg
@@ -602,7 +604,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     // the real test, like the checker: carved together, no filleted road may end over its limit
     for (let pass = 0; pass < 3 && old.size; pass++) {
       const t = h.slice()
-      carveRoads(t, g, [...existing, ...roads])
+      carveRoads(t, g, [...existing, ...roads], NOPIN)
       let back = 0
       for (const [r, pts] of old) if (worstGrade(r.pts, t, g).grade > maxGrade(r.type)) { r.pts = pts; old.delete(r); back++ }
       if (!back) break
@@ -689,9 +691,9 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
           insertPoint(cp, jx, jz)
         }
         const swap = (r: Road) => copies.get(r) ?? r
-        const base = () => (t0 ??= (() => { const t = h.slice(); carveRoads(t, g, [...existing, ...roads]); return t })())
+        const base = () => (t0 ??= (() => { const t = h.slice(); carveRoads(t, g, [...existing, ...roads], NOPIN); return t })())
         const test = h.slice()
-        carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }])
+        carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }], NOPIN)
         if (worstGrade(cand, test, g).grade > maxGrade(tt) * 0.9) continue
         if (!roads.every((o) => { const gr = worstGrade(swap(o).pts, test, g).grade; return gr <= maxGrade(o.type) || gr <= worstGrade(o.pts, base(), g).grade + 0.005 })) continue
         copies.forEach((cp, hr) => { hr.pts = cp.pts })
@@ -750,15 +752,16 @@ export function insertPoint(road: Road, x: number, z: number) {
 }
 
 //! Slope-aware link between two points (V2 island auto-connect): the A* of the network, then the same
-//! simplification. Returns a polyline from a to b exactly, or null when no route keeps under the type's grade.
-export function routeLink(h: number[], g: Grid, river: Float32Array | undefined, a: [number, number], b: [number, number], type: RoadType, maxSlope: number): number[] | null {
+//! simplification. Returns a polyline from a to b exactly, or null when no route keeps under the type's grade
+//! (or under `grade`: forest / field tracks ask for 15 %, worldgen.ts tameTrack).
+export function routeLink(h: number[], g: Grid, river: Float32Array | undefined, a: [number, number], b: [number, number], type: RoadType, maxSlope: number, grade = maxGrade(type), fine = false): number[] | null {
   const cellOf = (x: number, z: number) =>
     Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))
-  const path = route(h, g, river, new Uint8Array(g.cols * g.rows), cellOf(a[0], a[1]), new Set([cellOf(b[0], b[1])]), b, Math.min(maxSlope, maxGrade(type) * 80), maxGrade(type))
+  const path = route(h, g, river, new Uint8Array(g.cols * g.rows), cellOf(a[0], a[1]), new Set([cellOf(b[0], b[1])]), b, Math.min(maxSlope, grade * 80), grade, undefined, fine)
   if (!path || path.length < 2) return null
   const flat: number[] = []
   for (const i of path) flat.push(g.minX + (i % g.cols) * g.step, g.minZ + Math.floor(i / g.cols) * g.step)
-  const pts = easeCorners(simplify(flat, g.step * 0.9), 60)
+  const pts = easeCorners(fine ? flat : simplify(flat, g.step * 0.9), 60) // fine (hairpins): cells kept, as buildNetwork
   if (pts.length < 4) return null
   pts[0] = a[0]; pts[1] = a[1]; pts[pts.length - 2] = b[0]; pts[pts.length - 1] = b[1]
   return pts

@@ -7,7 +7,7 @@ import { embankRoads } from './embank'
 import type { Grid } from './island'
 import { t } from '../i18n'
 import type { ProjectEntity, ProjectShape } from '../project'
-import { arcLength, profileLine } from './roadgeom'
+import { arcLength, hairpinSpots, profileLine } from './roadgeom'
 import { ROAD_CLASSES, classOf } from './roadgraph-classes'
 
 export type RoadType = 'asphalt' | 'asphaltLine' | 'asphaltNarrow' | 'asphalt2' | 'asphalt3' | 'cobble' | 'cobbleRough' | 'concrete' | 'concretePanel' | 'dirt' | 'dirt2' | 'forest' | 'trailDirt' | 'trailGravel' | 'trailForest' | 'motorway' | 'concreteLine' | 'concreteNarrow' | 'concretePath' | 'coal' | 'trailCoal'
@@ -141,7 +141,7 @@ export function snap(roads: Road[], x: number, z: number, dist: number): [number
 //! never fill open water (the bridges span it). `widthMul` over-widens the flat band (ARTE: 1.15).
 //! Anti-submersion, cosine edge and width multiplier ported from ARTE (01_engineer.py:518-551),
 //! MIT licence, Copyright (c) 2026 Icebird. See CREDITS.md.
-export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: { water?: WaterLevels; widthMul?: number; legacyProfile?: boolean } = {}) {
+export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: { water?: WaterLevels; widthMul?: number; legacyProfile?: boolean; /** hairpin platforms (default on; off in the router's trial carves, network.ts) */ pins?: boolean } = {}) {
   const water = opts.water, widthMul = opts.widthMul ?? 1.15
   const { cols, rows, step } = grid
   const at = (x: number, z: number) => {
@@ -172,6 +172,35 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
     const m = line.length / 2
     if (m < 2) continue
     const prof = roadProfile(road, line, at, step / 2, opts.legacyProfile)
+    // hairpin platforms (before the junction grading, which keeps the last word at a crossing): over each lacet the profile is eased towards its mean (grade along the turn cut by PIN_PULL) and the
+    // flat band widens by up to PIN_WIDEN m on the inside of the turn, so the hairpin sits on a level cut / fill
+    // terrace (seed 21 mountains: the two legs of a lacet met on a 8 % cross-slope)
+    const pinW = new Float32Array(m), pinS = new Int8Array(m)
+    const pins = (opts.legacyProfile || opts.pins === false ? [] : hairpinSpots(road.pts))
+      // two turn-backs within 30 m = a zigzag spike of the polyline, not a lacet (seed 42 mountains, flat ground)
+      .filter((hp, _, all) => !all.some((q) => q !== hp && Math.hypot(q.x - hp.x, q.z - hp.z) < 30))
+    if (pins.length) {
+      const sa = arcLength(line)
+      for (const hp of pins) {
+        // a turn-back at a road end is a junction kink, not a lacet (seed 42: a spur on flat ground)
+        if (hp.from < 15 || hp.to > sa[m - 1] - 15) continue
+        // the turn proper: +-PIN_CORE m of road round the apex, eased back to the own profile over PIN_RAMP m
+        let ai = 0, ad = Infinity
+        for (let i = 0; i < m; i++) { const d = Math.hypot(line[i * 2] - hp.x, line[i * 2 + 1] - hp.z); if (d < ad) { ad = d; ai = i } }
+        const s0 = sa[ai]
+        let sum = 0, n = 0
+        for (let i = 0; i < m; i++) if (Math.abs(sa[i] - s0) <= PIN_CORE) { sum += prof[i]; n++ }
+        if (!n) continue
+        const mean = sum / n
+        for (let i = 0; i < m; i++) {
+          const e = Math.abs(sa[i] - s0)
+          if (e > PIN_CORE + PIN_RAMP) continue
+          const bump = e <= PIN_CORE ? 1 : 1 - smooth01((e - PIN_CORE) / PIN_RAMP)
+          prof[i] += (mean - prof[i]) * PIN_PULL * bump
+          if (bump > pinW[i] / PIN_WIDEN) { pinW[i] = PIN_WIDEN * bump; pinS[i] = hp.sign }
+        }
+      }
+    }
     // T junction: an end that lands on a bed already carved eases onto its height over ~60 m (no step)
     const ramp = Math.max(2, Math.round(60 / (step / 2)))
     for (const [e, dir] of [[0, 1], [m - 1, -1]]) {
@@ -191,7 +220,7 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
       b.push(line[i * 2], line[i * 2 + 1], prof[i], roadHalf(road))
     }
     const flat = roadHalf(road) * widthMul + T.edge + step
-    const reach = flat + 3 * step
+    const reach = flat + 3 * step + (pins.length ? PIN_WIDEN : 0)
     const sl = road.spans?.length ? arcLength(line) : null
     const decks = water ? waterDecks(road, water.wet, grid) : []
     const underDeck = (x: number, z: number) => decks.some((d) => nearLine(d, x, z) < reach)
@@ -199,6 +228,7 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
       if (sl && road.spans!.some((sp) => sl[i + 1] > sp.from && sl[i] < sp.to)) continue // under a bridge deck
       const ax = line[i * 2], az = line[i * 2 + 1], bx = line[i * 2 + 2], bz = line[i * 2 + 3]
       const dx = bx - ax, dz = bz - az, len2 = dx * dx + dz * dz || 1
+      const pw = Math.max(pinW[i], pinW[i + 1]), ps = pinS[i] || pinS[i + 1]
       const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - reach) / step)), c1 = Math.min(cols - 1, Math.ceil((Math.max(ax, bx) + reach) / step))
       const r0 = Math.max(0, Math.floor((Math.min(az, bz) - reach) / step)), r1 = Math.min(rows - 1, Math.ceil((Math.max(az, bz) + reach) / step))
       for (let r = r0; r <= r1; r++)
@@ -206,8 +236,11 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
           const x = c * step, z = r * step
           const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / len2))
           const d = Math.hypot(x - ax - t * dx, z - az - t * dz)
-          if (d >= reach) continue
-          const u = d <= flat ? 1 : 1 - (d - flat) / (reach - flat)
+          // inside of a hairpin (cross > 0 = left of the travel, the side a positive turn bends to): wider flat band
+          const fl = pw > 0 && Math.sign(dx * (z - az) - dz * (x - ax)) === ps ? flat + pw : flat
+          const re = fl + 3 * step
+          if (d >= re) continue
+          const u = d <= fl ? 1 : 1 - (d - fl) / (re - fl)
           const w = 0.5 - 0.5 * Math.cos(Math.PI * u) // cosine ramp
           const k = r * cols + c
           // open water under a bridge deck: left to the bridge generator. Wet with no deck over it (a stream
@@ -229,6 +262,10 @@ export function carveRoads(heights: number[], grid: Grid, roads: Road[], opts: {
   if (!opts.legacyProfile) embankRoads(heights, grid, { target, weight }, open) // fill shoulders 1:2
   return { target, weight }
 }
+//! extra flat width (m) on the inside of a hairpin (carveRoads platform)
+export const PIN_WIDEN = 5
+//! share of the height difference to the lacet mean taken out of the profile over the turn
+export const PIN_PULL = 0.25, PIN_CORE = 15, PIN_RAMP = 60 // 0.25: more steepens the approaches past the comfort grade (tests/library/mountain-pass 40 % flank)
 const rankOf = (r: Road) => ROAD_CLASSES[classOf(r.type)]?.rank ?? 0
 const smooth01 = (u: number) => { const v = Math.min(1, Math.max(0, u)); return v * v * (3 - 2 * v) }
 //! Grades a road's profile onto the beds already laid (higher classes) near a junction or crossing: full

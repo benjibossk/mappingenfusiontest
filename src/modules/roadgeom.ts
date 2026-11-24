@@ -313,3 +313,25 @@ export function levelGraph(g: RoadGraph, heightAt: (x: number, z: number) => num
     e.profile = profileLine(s, ground, { maxGrade: spec.design, curve: spec.kCrest * 4, pinStart: A.y, pinEnd: B.y })
   }
 }
+//! Hairpins of a road (same rule as roadCurveStats: > 135 deg of heading change within 80 m), as arc-length
+//! windows [from, to] (m along centreLine(pts, 5)) with the apex point and the turn sign (+1 = left, CCW in x/z).
+//! The road bed (roads.ts carveRoads) widens into a level platform over them.
+export function hairpinSpots(pts: number[]): { from: number; to: number; x: number; z: number; sign: number }[] {
+  const L = centreLine(pts, 5), n = L.length / 2
+  const s = [0]
+  for (let i = 1; i < n; i++) s.push(s[i - 1] + Math.hypot(L[i * 2] - L[i * 2 - 2], L[i * 2 + 1] - L[i * 2 - 1]))
+  const hd: number[] = []
+  for (let i = 0; i + 2 < n; i += 2) hd.push(Math.atan2(L[(i + 2) * 2 + 1] - L[i * 2 + 1], L[(i + 2) * 2] - L[i * 2]))
+  const dif = (a: number, b: number) => Math.atan2(Math.sin(b - a), Math.cos(b - a))
+  const out: { from: number; to: number; x: number; z: number; sign: number }[] = []
+  for (let k = 0; k + 8 < hd.length; ) {
+    let acc = 0, best = 0, apex = k
+    for (let j = k + 1; j <= k + 8; j++) { const d = dif(hd[j - 1], hd[j]); acc += d; if (Math.abs(d) > best) { best = Math.abs(d); apex = j } }
+    if (Math.abs(acc) > (135 * Math.PI) / 180) {
+      const ai = Math.min(n - 1, apex * 2)
+      out.push({ from: s[Math.min(n - 1, k * 2)], to: s[Math.min(n - 1, (k + 8) * 2 + 2)], x: L[ai * 2], z: L[ai * 2 + 1], sign: Math.sign(acc) })
+      k += 8
+    } else k++
+  }
+  return out
+}
