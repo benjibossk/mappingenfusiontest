@@ -548,6 +548,8 @@ const CHEVRON = {
   right: '{CD18971542C21223}Prefabs/Structures/Signs/Warnings/SignDangerCurve_01_right.et',
 }
 
+/** a roundabout ring: a closed loop (first and last control points within 1 m) or an RB_ road */
+const isRing = (r: Road) => r.id.startsWith('RB_') || (r.pts.length >= 8 && Math.hypot(r.pts[0] - r.pts[r.pts.length - 2], r.pts[1] - r.pts[r.pts.length - 1]) < 1)
 export function roadSigns(roads: Road[], driveLeft = false): ProjectEntity[] {
   const out: ProjectEntity[] = []
   const rank = (r: Road) => (isPaved(r.type) ? 3 : r.type.startsWith('trail') ? 1 : 2)
@@ -574,9 +576,40 @@ export function roadSigns(roads: Road[], driveLeft = false): ProjectEntity[] {
     out.push({ id, prefab, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw: Math.round(yaw) })
   }
   const lines = roads.map((r) => centreLine(r.pts, 5))
+  // roundabouts (closed rings): the crossing roads still run through the centre in the data, so their junction /
+  // bend signs landed on the island, and the ring itself read as a sharp bend (bend signs + chevrons on its
+  // asphalt; seed 21 RB_TOWN_1). Nothing goes inside a ring; each road entering it gets a give-way at the entry
+  const rings = roads.flatMap((r) => {
+    if (!isRing(r)) return []
+    const n = r.pts.length / 2
+    let cx = 0, cz = 0
+    for (let k = 0; k < n; k++) { cx += r.pts[k * 2]; cz += r.pts[k * 2 + 1] }
+    cx /= n; cz /= n
+    let R = 0
+    for (let k = 0; k < n; k++) R = Math.max(R, Math.hypot(r.pts[k * 2] - cx, r.pts[k * 2 + 1] - cz))
+    return [{ cx, cz, R: R + roadHalf(r) + 3, road: r }]
+  })
+  const inRing = (x: number, z: number) => rings.some((g) => Math.hypot(x - g.cx, z - g.cz) < g.R)
+  const placeAll = place
+  const placeOut = (id: string, prefab: string, line: number[], i: number, dir: number, back: number, side: number) => {
+    const before = out.length
+    placeAll(id, prefab, line, i, dir, back, side)
+    if (out.length > before && inRing(out[out.length - 1].x, out[out.length - 1].z)) out.pop()
+  }
   roads.forEach((road, ri) => {
     const line = lines[ri]
     const side = roadHalf(road) + 1.5
+    const place = placeOut
+    if (isRing(road)) return // a roundabout ring: no junction / bend signs on it
+    // give-way where the road enters a ring, for traffic heading into it
+    for (const g of rings) {
+      const n = line.length / 2
+      for (let k = 0; k + 1 < n; k++) {
+        const a = Math.hypot(line[k * 2] - g.cx, line[k * 2 + 1] - g.cz) >= g.R, b = Math.hypot(line[k * 2 + 2] - g.cx, line[k * 2 + 3] - g.cz) >= g.R
+        if (a && !b) placeAll(`${road.id}_RBGIVE_${k}_1`, SIGN('SignGiveWay_01'), line, k, 1, 0, side)
+        if (!a && b) placeAll(`${road.id}_RBGIVE_${k}_-1`, SIGN('SignGiveWay_01'), line, k + 1, -1, 0, side)
+      }
+    }
     // junctions: control points shared with another road
     for (let p = 0; p < road.pts.length; p += 2) {
       const [jx, jz] = [road.pts[p], road.pts[p + 1]]
