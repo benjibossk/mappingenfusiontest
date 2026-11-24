@@ -69,6 +69,8 @@ import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite
 
 export interface WorldParams {
   seed: number
+  /** relief style of the island (island.ts); missing = 'classic' so older seeds / replays stay the same */
+  relief?: 'classic' | 'eroded'
   size: number // 2048 / 4096 / 8192 m
   towns: number // density multipliers, 0..2 (1 = measured average)
   villages: number
@@ -360,7 +362,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   await step('relief')
   const isl: IslandParams = {
     size: p.size, step: Math.max(4, p.size / 512), maxHeight: WORLD.island.maxHeight(p.size), seaDepth: WORLD.island.seaDepth,
-    landRatio: WORLD.island.landRatio, roughness: WORLD.island.roughness, seed: ss('relief', 'island'), islands: 1,
+    landRatio: WORLD.island.landRatio, roughness: WORLD.island.roughness, seed: ss('relief', 'island'), islands: 1, relief: p.relief ?? 'classic',
   }
   const island = generateIsland(isl)
   // the relief the page builds from this island (main.ts applyWorld -> tGen -> Sculpt.compose: 32 m macro + its own

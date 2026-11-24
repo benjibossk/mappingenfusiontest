@@ -132,6 +132,8 @@ import { validate, type Issue } from './modules/validate'
 import { applyFixes, bridgeChecks, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
 import { worldToIsland } from './modules/importWorld'
+import { applySurfaceMasks, heightsFromImage, maskKind, maskOnGrid, readHeightFile, readPngImage, reliefMasks, type SurfaceMask } from './modules/gaeaImport'
+import type { ReliefMasks } from './modules/gaeaRelief'
 import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, maskOutlines, mapStats, treesPerHa, polyArea, type RefMap, type RefMapId, type MapStats, type StatRoad } from './modules/refMap'
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
@@ -497,6 +499,17 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="row">
         <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
         <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
+        <button id="tGaea" type="button" class="secondary" title="${t('hint.tGaea')}">${t('btn.tGaea')}</button>
+      </div>
+      <div id="gaeaBox" class="form" hidden>
+        <p class="hint">${t('gaea.help')}</p>
+        <label>${t('gaea.height')} <input id="gaeaHeight" type="file" accept=".png,.r16,.raw,.r32"></label>
+        <label>${t('gaea.masks')} <input id="gaeaMasks" type="file" accept=".png" multiple></label>
+        <label>${t('gaea.size')} <input id="gaeaSize" type="number" value="4096" step="1"></label>
+        <label>${t('gaea.min')} <input id="gaeaMin" type="number" value="-30" step="1"></label>
+        <label>${t('gaea.max')} <input id="gaeaMax" type="number" value="300" step="1"></label>
+        <button id="gaeaGo" type="button">${t('gaea.go')}</button>
+        <span id="gaeaMsg" class="hint"></span>
       </div>
       <div class="row">
         <select id="tRefMap" title="${t('hint.tRef')}">${REF_MAPS.map((m) => `<option value="${m}">${t(('ref.map.' + m) as Key)}</option>`).join('')}</select>
@@ -513,6 +526,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.tLand')} <input id="tLand" type="number" step="0.05" value="0.55"></label>
         <label>${t('lbl.tRough')} <input id="tRough" type="number" step="0.1" value="0.6"></label>
         <label>${t('lbl.tSeed')} <input id="tSeed" type="number" value="1"></label>
+        <label>${t('lbl.tRelief')} <select id="tRelief"><option value="eroded" selected>${t('relief.eroded')}</option><option value="classic">${t('relief.classic')}</option></select></label>
         <label>${t('lbl.tSeaLevel')} <input id="tSeaLevel" type="number" step="1" value="0"></label>
       </div>
       </details>
@@ -1708,8 +1722,9 @@ function recompose(final: boolean) {
     if (beds && !waters.some((w) => w.auto) && num('rDepth') > 0) { layBeds(island.heights, beds); if (pads) layPads(island.heights, pads, beds.weight) }
   }
   if (final) {
-    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined)
+    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks)
     island.colours = { ...SURFACE_COLOURS, ...island.colours }
+    if (island.surfaceMasks?.length) applySurfaceMasks(island.surfaces, island.surfaceMasks, (name) => { island!.colours[name] ??= [128, 120, 110] })
     const bad = overfullBlocks(island.surfaces)
     $<HTMLSpanElement>('brushInfo').dataset.warn = bad ? '1' : ''
     if (bad) logEl.textContent = t('log.overfull', { n: bad })
@@ -2444,6 +2459,7 @@ $<HTMLButtonElement>('tGen').addEventListener('click', () => {
     roughness: num('tRough'),
     seed: num('tSeed'),
     islands: num('tIslands'),
+    relief: ($<HTMLSelectElement>('tRelief').value === 'classic' ? 'classic' : 'eroded') as 'classic' | 'eroded',
   }
   const use = (isl: Island) => {
     imported = null
@@ -2492,6 +2508,34 @@ function useWorld(w: WorldExport) {
   view.z = minZ + (rows * step) / 2
   view.mpp = (cols * step) / map.width
 }
+// --- relief made in Gaea (or any terrain tool): heightmap + optional masks; roads, villages... are generated on it ---
+$<HTMLButtonElement>('tGaea').addEventListener('click', () => { const b = $<HTMLDivElement>('gaeaBox'); b.hidden = !b.hidden })
+$<HTMLButtonElement>('gaeaGo').addEventListener('click', () => void (async () => {
+  const msg = $<HTMLSpanElement>('gaeaMsg')
+  const f = $<HTMLInputElement>('gaeaHeight').files?.[0]
+  if (!f) { msg.textContent = t('gaea.noFile'); return }
+  try {
+    const size = num('gaeaSize'), lo = num('gaeaMin'), hi = num('gaeaMax')
+    const img = await readHeightFile(f.name, await f.arrayBuffer())
+    const w = heightsFromImage(img, { size, minHeight: lo, maxHeight: hi })
+    const got: Partial<ReliefMasks> = {}, surf: SurfaceMask[] = []
+    for (const m of Array.from($<HTMLInputElement>('gaeaMasks').files ?? [])) {
+      const g = maskOnGrid(await readPngImage(await m.arrayBuffer(), m.name), w)
+      const k = maskKind(m.name)
+      if (typeof k === 'string') got[k] = g
+      else surf.push({ name: k.surface, weights: g })
+    }
+    $<HTMLInputElement>('tSize').value = String(size)
+    useWorld(w)
+    imported = null // a new relief, not the world open in the Workbench
+    island!.masks = Object.keys(got).length ? reliefMasks(w.cols * w.rows, got) : undefined
+    island!.surfaceMasks = surf.length ? surf : undefined
+    $<HTMLInputElement>('tMax').value = String(Math.max(1, Math.ceil(hi)))
+    $<HTMLInputElement>('tSeaLevel').value = '0'
+    recompose(true)
+    msg.textContent = logEl.textContent = t('gaea.ok', { cols: w.cols, rows: w.rows, step: w.step, masks: Object.keys(got).length + surf.length })
+  } catch (e) { msg.textContent = (e as Error).message }
+})())
 $<HTMLButtonElement>('tImport').addEventListener('click', () =>
   run(t('run.l.import'), async () => {
     const w = await getWorld(8)
@@ -5411,6 +5455,7 @@ function applyWorld(w: WorldResult) {
   set('tSize', w.island.size); set('tSeed', w.island.seed); set('tMax', w.island.maxHeight); set('tSea', w.island.seaDepth)
   set('tLand', w.island.landRatio); set('tRough', w.island.roughness); set('tIslands', 1); set('tSeaLevel', 0)
   set('rThreshold', 400); set('rRain', 1); set('rWind', 0)
+  $<HTMLSelectElement>('tRelief').value = w.island.relief ?? 'classic' // the page rebuilds the same island
   $<HTMLInputElement>('rLive').checked = true
   islandNow() // same island (same function and seed), fresh sculpt + history base
   waters = w.waters
@@ -5468,6 +5513,7 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
     vanillaSites: $<HTMLInputElement>('rwVanillaSites').checked, villageTemplates: $<HTMLInputElement>('rwVillageTpl').checked,
     powerDistrib: $<HTMLSelectElement>('rwPowDistrib').value as PowerDistrib,
     layerSeeds: layerSeedTable(),
+    relief: ($<HTMLSelectElement>('tRelief').value === 'classic' ? 'classic' : 'eroded') as 'classic' | 'eroded',
   }
   const params = (replayParams as unknown as typeof fromDlg | undefined) ?? fromDlg
   // the whole pipeline runs in the generator worker: the page (busy panel, bar, Cancel) stays live.

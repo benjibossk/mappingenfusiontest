@@ -2,6 +2,7 @@
 // Grids are row 0 = south, west to east, like the bridge expects.
 import { groundWeights, terrainShape } from './groundMasks'
 import { rockMasks } from './rockMask'
+import { erodeIsland, type ReliefMasks } from './gaeaRelief'
 
 export interface IslandParams {
   size: number // terrain size in metres (X = Z)
@@ -12,6 +13,8 @@ export interface IslandParams {
   roughness: number // 0..1, noise weight on the coastline and relief
   seed: number
   islands: number // number of islands (1 = one centred island)
+  /** 'eroded' = ridges + stream power + thermal pass (gaeaRelief.ts); default 'classic' */
+  relief?: 'classic' | 'eroded'
 }
 
 export interface Grid {
@@ -32,6 +35,10 @@ export interface Island {
   heights: number[]
   surfaces: SurfaceGrid[]
   colours: Record<string, [number, number, number]>
+  /** flow / wear / deposits 0..1 per vertex (eroded relief or a Gaea import), read by computeSurfaces */
+  masks?: ReliefMasks
+  /** imported surface masks (Gaea import), painted over the computed surfaces */
+  surfaceMasks?: { name: string; weights: Float32Array }[]
 }
 
 // approximate average colours of the vanilla surfaces used here (sRGB)
@@ -140,11 +147,13 @@ export function generateIsland(p: IslandParams): Island {
       heights.push(h)
     }
   }
+  const masks = p.relief === 'eroded' ? erodeIsland(heights, cols, cols, p.step, { seed: p.seed, maxHeight: p.maxHeight, roughness: p.roughness }) : undefined
   return {
     grid,
     heights,
-    surfaces: computeSurfaces(grid, heights, p.maxHeight),
+    surfaces: computeSurfaces(grid, heights, p.maxHeight, undefined, undefined, undefined, masks),
     colours: COLOURS,
+    ...(masks ? { masks } : {}),
   }
 }
 
@@ -176,7 +185,7 @@ export function settlementMask(grid: Grid, footprints: number[][], margin = SETT
 }
 
 //! `settle` (settlementMask): no bare Rock_01 in and around the villages; that ground goes to a grass / dirt blend.
-export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array, settle?: Float32Array): SurfaceGrid[] {
+export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array, settle?: Float32Array, masks?: ReliefMasks): SurfaceGrid[] {
   const { cols, rows, step } = grid
   const names = Object.keys(COLOURS).concat(cover ? Object.keys(COVER) : [])
   const weights: Record<string, number[]> = Object.fromEntries(names.map((k) => [k, []]))
@@ -236,9 +245,11 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const inland = band(h, 10, 16)
     const gw = groundWeights(slope, shape.tpi[i], shape.curv[i], variants((c * step) / 300, (r * step) / 300))
     // gw.rock is left to rockMasks (crests are part of its relief context); gravel only on gentle ridges
-    const gravel = gw.gravel * (1 - band(slope, 0.3, 0.5))
+    // relief masks (gaeaRelief.ts / Gaea import): worn ground -> gravel, deposits -> scree, drained lines -> moist grass
+    const mk = masks && masks.flow.length === heights.length ? masks : null
+    const gravel = Math.min(1, gw.gravel * (1 - band(slope, 0.3, 0.5)) + (mk ? 0.35 * band(mk.wear[i], 0.25, 0.8) + 0.5 * band(mk.deposits[i], 0.2, 0.7) : 0))
     scree += free * inland * gravel
-    const moist = covered0(i, h) ? 0 : free * inland * gw.moist
+    const moist = covered0(i, h) ? 0 : free * inland * (mk ? Math.min(1 - gravel, gw.moist + 0.5 * band(mk.flow[i], 0.55, 0.85)) : gw.moist)
     free -= free * inland * gravel + moist
     const rest = Math.max(free, 0)
     weights.SeaBed_01.push(deep)
