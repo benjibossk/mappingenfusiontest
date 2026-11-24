@@ -2,7 +2,7 @@
 // Grids are row 0 = south, west to east, like the bridge expects.
 import { groundWeights, terrainShape } from './groundMasks'
 import { rockMasks } from './rockMask'
-import { erodeIsland, type ReliefMasks } from './gaeaRelief'
+import { erodeIsland, mountainBase, type ReliefMasks } from './gaeaRelief'
 
 export interface IslandParams {
   size: number // terrain size in metres (X = Z)
@@ -14,7 +14,7 @@ export interface IslandParams {
   seed: number
   islands: number // number of islands (1 = one centred island)
   /** 'eroded' = ridges + stream power + thermal pass (gaeaRelief.ts); default 'classic' */
-  relief?: 'classic' | 'eroded'
+  relief?: 'classic' | 'eroded' | 'mountains'
 }
 
 export interface Grid {
@@ -126,6 +126,7 @@ export function generateIsland(p: IslandParams): Island {
   }
   const scale = count === 1 ? 1 : Math.sqrt(count) * 1.35 // smaller islands, sea between them
   const heights: number[] = []
+  const genMax = p.relief === 'mountains' ? mountainBase(p.maxHeight) : p.maxHeight
 
   for (let r = 0; r < cols; r++) {
     for (let c = 0; c < cols; c++) {
@@ -142,12 +143,12 @@ export function generateIsland(p: IslandParams): Island {
       const margin = Math.max(0, (0.2 - edge) / 0.2) * 1.2
       const land = p.landRatio + (k - 0.5) * p.roughness - d - margin // > 0 = land
       const h = land > 0
-        ? Math.pow(clamp01(land / p.landRatio), 1.3) * p.maxHeight * (0.6 + 0.8 * k * p.roughness) + 1
+        ? Math.pow(clamp01(land / p.landRatio), 1.3) * genMax * (0.6 + 0.8 * k * p.roughness) + 1
         : Math.max(land * p.seaDepth * 6, -p.seaDepth)
       heights.push(h)
     }
   }
-  const masks = p.relief === 'eroded' ? erodeIsland(heights, cols, cols, p.step, { seed: p.seed, maxHeight: p.maxHeight, roughness: p.roughness }) : undefined
+  const masks = p.relief === 'eroded' || p.relief === 'mountains' ? erodeIsland(heights, cols, cols, p.step, { seed: p.seed, maxHeight: p.maxHeight, roughness: p.roughness, mountains: p.relief === 'mountains' }) : undefined
   return {
     grid,
     heights,

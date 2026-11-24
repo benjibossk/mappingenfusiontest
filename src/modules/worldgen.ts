@@ -70,7 +70,7 @@ import { applyZones, makeAirfield, makeIndustrial, makeMilitary, makeVanillaSite
 export interface WorldParams {
   seed: number
   /** relief style of the island (island.ts); missing = 'classic' so older seeds / replays stay the same */
-  relief?: 'classic' | 'eroded'
+  relief?: 'classic' | 'eroded' | 'mountains'
   size: number // 2048 / 4096 / 8192 m
   towns: number // density multipliers, 0..2 (1 = measured average)
   villages: number
@@ -361,14 +361,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 1. relief
   await step('relief')
   const isl: IslandParams = {
-    size: p.size, step: Math.max(4, p.size / 512), maxHeight: WORLD.island.maxHeight(p.size), seaDepth: WORLD.island.seaDepth,
+    size: p.size, step: Math.max(4, p.size / 512), maxHeight: p.relief === 'mountains' ? Math.max(340, WORLD.island.maxHeight(p.size) * 2.2) : WORLD.island.maxHeight(p.size), seaDepth: WORLD.island.seaDepth,
     landRatio: WORLD.island.landRatio, roughness: WORLD.island.roughness, seed: ss('relief', 'island'), islands: 1, relief: p.relief ?? 'classic',
   }
   const island = generateIsland(isl)
   // the relief the page builds from this island (main.ts applyWorld -> tGen -> Sculpt.compose: 32 m macro + its own
   // detail noise) is what is drawn and sent: place everything on that one, not on the raw island (seed 21 live:
   // 32 % of land cells up to 9 m off, rocks buried, slopes / shores judged on another terrain)
-  { const sc = new Sculpt(island.grid.cols, island.grid.step, isl.maxHeight, isl.seed, island.heights); sc.seaDepth = isl.seaDepth; island.heights = sc.compose().slice() }
+  { const sc = new Sculpt(island.grid.cols, island.grid.step, isl.maxHeight, isl.seed, island.heights, 32, isl.relief !== 'classic'); sc.seaDepth = isl.seaDepth; island.heights = sc.compose().slice() }
   const g = island.grid, base = island.heights
   // 2. rivers + lakes (same as the Water step's "Generate")
   await step('water')

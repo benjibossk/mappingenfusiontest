@@ -526,7 +526,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.tLand')} <input id="tLand" type="number" step="0.05" value="0.55"></label>
         <label>${t('lbl.tRough')} <input id="tRough" type="number" step="0.1" value="0.6"></label>
         <label>${t('lbl.tSeed')} <input id="tSeed" type="number" value="1"></label>
-        <label>${t('lbl.tRelief')} <select id="tRelief"><option value="eroded" selected>${t('relief.eroded')}</option><option value="classic">${t('relief.classic')}</option></select></label>
+        <label>${t('lbl.tRelief')} <select id="tRelief"><option value="eroded" selected>${t('relief.eroded')}</option><option value="mountains">${t('relief.mountains')}</option><option value="classic">${t('relief.classic')}</option></select></label>
         <label>${t('lbl.tSeaLevel')} <input id="tSeaLevel" type="number" step="1" value="0"></label>
       </div>
       </details>
@@ -2447,6 +2447,10 @@ async function runJob(label: string, f: () => Promise<string>, onOk?: () => void
 }
 
 /** the island now, on this thread (callers that use it on the next line) */
+function reliefKind(): 'classic' | 'eroded' | 'mountains' {
+  const v = $<HTMLSelectElement>('tRelief').value
+  return v === 'classic' || v === 'mountains' ? v : 'eroded'
+}
 function islandNow() { islandSync = true; try { $<HTMLButtonElement>('tGen').click() } finally { islandSync = false } }
 let islandSync = false // applyWorld: the same island right now, on this thread (the world is applied in one go)
 $<HTMLButtonElement>('tGen').addEventListener('click', () => {
@@ -2461,14 +2465,14 @@ $<HTMLButtonElement>('tGen').addEventListener('click', () => {
     roughness: num('tRough'),
     seed: num('tSeed'),
     islands: num('tIslands'),
-    relief: ($<HTMLSelectElement>('tRelief').value === 'classic' ? 'classic' : 'eroded') as 'classic' | 'eroded',
+    relief: reliefKind(),
   }
   const use = (isl: Island) => {
     imported = null
     existing = { objects: [], shapes: [] }
     island = isl
     sink = undefined
-    sculpt = new Sculpt(island.grid.cols, island.grid.step, num('tMax'), num('tSeed'), island.heights)
+    sculpt = new Sculpt(island.grid.cols, island.grid.step, num('tMax'), num('tSeed'), island.heights, 32, p.relief !== 'classic')
     rivers = undefined
     view.x = view.z = size / 2
     view.mpp = size / map.width
@@ -5515,7 +5519,7 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
     vanillaSites: $<HTMLInputElement>('rwVanillaSites').checked, villageTemplates: $<HTMLInputElement>('rwVillageTpl').checked,
     powerDistrib: $<HTMLSelectElement>('rwPowDistrib').value as PowerDistrib,
     layerSeeds: layerSeedTable(),
-    relief: ($<HTMLSelectElement>('tRelief').value === 'classic' ? 'classic' : 'eroded') as 'classic' | 'eroded',
+    relief: reliefKind(),
   }
   const params = (replayParams as unknown as typeof fromDlg | undefined) ?? fromDlg
   // the whole pipeline runs in the generator worker: the page (busy panel, bar, Cancel) stays live.

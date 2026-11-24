@@ -14,6 +14,7 @@ export class Sculpt {
   private step: number
   private maxHeight: number
   seaDepth = 30
+  private keepFine = false
 
   constructor(
     cols: number,
@@ -22,6 +23,8 @@ export class Sculpt {
     seed: number,
     fine: number[], // initial fine heights (generated island)
     macroCell = 32,
+    /** keep the fine relief (eroded island): detail = what the 32 m macro misses, no extra noise */
+    keepFine = false,
   ) {
     this.cols = cols
     this.step = step
@@ -48,6 +51,10 @@ export class Sculpt {
     this.detail = new Float32Array(cols * cols)
     for (let r = 0; r < cols; r++)
       for (let c = 0; c < cols; c++) this.detail[r * cols + c] = nz((c * step) / 140, (r * step) / 140) - 0.5
+    // eroded relief: gullies and crests are finer than the macro cell, keep them as the detail itself
+    this.keepFine = keepFine
+    if (keepFine) for (let r = 0; r < cols; r++)
+      for (let c = 0; c < cols; c++) this.detail[r * cols + c] = fine[r * cols + c] - this.macroAt(c * step, r * step)
     this.heights = new Array(cols * cols)
     this.compose()
   }
@@ -73,7 +80,7 @@ export class Sculpt {
       for (let c = 0; c < cols; c++) {
         const m = this.macroAt(c * step, r * step)
         const rough = m > 0 ? 3 + 0.12 * Math.min(m, this.maxHeight) : 1.5
-        let h = m + this.detail[r * cols + c] * rough
+        let h = this.keepFine ? m + this.detail[r * cols + c] : m + this.detail[r * cols + c] * rough
         // the map edge stays sea whatever is painted: no land cut by the border
         const edge = Math.min(c, r, cols - 1 - c, cols - 1 - r) / (cols - 1)
         if (edge < 0.06) {
