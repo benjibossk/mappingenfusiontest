@@ -170,6 +170,27 @@ export function minRadius(pts: number[]): number {
   return best
 }
 
+//! Horizontal quality of a road as built (centre line every 5 m): sharpest heading change between consecutive
+//! 10 m chords (deg), tightest radius (heading change over 20 m of road), and hairpins = places where the heading
+//! turns by more than 135 deg within 80 m of road (a lacet). Used by the mountain-road probe and tests.
+export function roadCurveStats(pts: number[]): { maxTurn: number; minRadius: number; hairpins: number; length: number } {
+  const L = centreLine(pts, 5), n = L.length / 2
+  const hd: number[] = []
+  for (let i = 0; i + 2 < n; i += 2) hd.push(Math.atan2(L[(i + 2) * 2 + 1] - L[i * 2 + 1], L[(i + 2) * 2] - L[i * 2]))
+  const dif = (a: number, b: number) => Math.atan2(Math.sin(b - a), Math.cos(b - a))
+  let maxTurn = 0, minR = Infinity, hairpins = 0, length = 0
+  for (let i = 1; i < n; i++) length += Math.hypot(L[i * 2] - L[i * 2 - 2], L[i * 2 + 1] - L[i * 2 - 1])
+  for (let k = 1; k < hd.length; k++) maxTurn = Math.max(maxTurn, Math.abs(dif(hd[k - 1], hd[k])) * 180 / Math.PI)
+  for (let k = 2; k < hd.length; k++) { const a = Math.abs(dif(hd[k - 2], hd[k])); if (a > 1e-3) minR = Math.min(minR, 20 / a) }
+  // hairpins: cumulative signed turn over a sliding 80 m window (8 chords), counted once per event
+  for (let k = 0; k + 8 < hd.length; ) {
+    let acc = 0
+    for (let j = k + 1; j <= k + 8; j++) acc += dif(hd[j - 1], hd[j])
+    if (Math.abs(acc) > (135 * Math.PI) / 180) { hairpins++; k += 8 } else k++
+  }
+  return { maxTurn, minRadius: minR, hairpins, length }
+}
+
 // --- stage 6: vertical profile ---
 
 export interface ProfileOpts {

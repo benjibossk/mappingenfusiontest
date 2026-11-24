@@ -18,6 +18,9 @@ export const SITE_RADIUS: Record<SiteKind, number> = { town: 250, village: 120, 
 // steepest grade a vehicle copes with, by road family (shared with the pre-send check in validate.ts)
 const MAX_GRADE: Partial<Record<RoadType, number>> = { dirt: 0.2, dirt2: 0.2, forest: 0.22, trailDirt: 0.3, trailGravel: 0.3, trailForest: 0.3, coal: 0.2, trailCoal: 0.3, concretePath: 0.3, motorway: 0.06 }
 export const maxGrade = (t: RoadType) => MAX_GRADE[t] ?? 0.12
+/** grade a road is laid under when the relief allows it (mountain pass design): paved 10 %, tracks 15 %,
+ *  trails their hard limit. The network router tries this first, maxGrade only as a fallback. */
+export const comfortGrade = (t: RoadType) => Math.min(maxGrade(t), maxGrade(t) >= 0.25 ? maxGrade(t) : maxGrade(t) > 0.12 ? 0.15 : 0.1)
 /** steepest grade along a road, over 20 m steps (the grid is coarse: shorter steps only measure noise).
  *  The pre-send check (validate.ts) uses this same measure. */
 export function worstGrade(pts: number[], h: ArrayLike<number>, g: Grid, spans?: { from: number; to: number }[]): { grade: number; x: number; z: number } {
@@ -207,13 +210,43 @@ const HEAD = DIRS.map(([dc, dr]) => Math.atan2(dr, dc))
 const DIR_ORDER = DIRS.map((_, k) => k).sort((a, b) => HEAD[a] - HEAD[b])
 const RANK = DIR_ORDER.map((_, k) => DIR_ORDER.indexOf(k))
 
+// mountain-pass move set (ROAD_MOUNTAIN): the 16 moves plus (3,1), (4,1), (3,2) families = 40 headings
+// (~8-14 degrees apart). On a uniform 40 % flank the 16 moves only offer 0, 18 or 28 % grades; (4,1) climbs it
+// at 9.7 % and (3,1) at 12.6 %, so a 10 % asphalt traverse exists. A step may turn by up to 27.5 degrees.
+const FINE: number[][] = (() => {
+  const out = DIRS.map((d) => d.slice())
+  for (const [a, b] of [[3, 1], [4, 1], [3, 2]]) for (const [x, y] of [[a, b], [b, a]]) for (const sx of [1, -1]) for (const sy of [1, -1]) out.push([x * sx, y * sy])
+  return out
+})()
+const turnOk = (dirs: number[][], lim: number) => {
+  const hd = dirs.map(([dc, dr]) => Math.atan2(dr, dc))
+  return dirs.map((_, a) => dirs.map((__, b) => Math.abs(Math.atan2(Math.sin(hd[b] - hd[a]), Math.cos(hd[b] - hd[a]))) <= lim))
+}
+const FINE_TURN = turnOk(FINE, (27.5 * Math.PI) / 180)
+
+// hairpin of the fine router: legs 2 * PIN_CELLS cells apart (4 cells of 8 m = radius 16 m on the centre line)
+const PIN_CELLS = 4, PIN_LEG = 6
+//! the cells of a hairpin's half circle from (c, r) heading (ux, uz), turning towards (nx, nz), ends excluded:
+//! centre PIN_CELLS / 2 aside, the arc bulges forward by the radius
+function pinArc(c: number, r: number, ux: number, uz: number, nx: number, nz: number): [number, number][] {
+  const R = PIN_CELLS / 2, ox = c + nx * R, oz = r + nz * R, out: [number, number][] = []
+  for (let k = 1; k < 6; k++) {
+    const t = (Math.PI * k) / 6
+    out.push([Math.round(ox - nx * R * Math.cos(t) + ux * R * Math.sin(t)), Math.round(oz - nz * R * Math.cos(t) + uz * R * Math.sin(t))])
+  }
+  return out
+}
+
 //! A* from `from` to any cell of `goal`; returns the cell path or null.
 //! The state is (cell, heading): a step may turn by one heading notch at most (~25 degrees), which
 //! keeps hairpins wide enough for the road generator; cliffs beside the road and the coast cost extra.
-function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Uint8Array, from: number, goal: Set<number>, goalXY: [number, number], maxSlope: number, hardGrade = Infinity, block?: Uint8Array): number[] | null {
-  const n = g.cols * g.rows, D = DIRS.length
+//! fine: the 40-heading mountain move set (long moves check every cell they pass over)
+function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Uint8Array, from: number, goal: Set<number>, goalXY: [number, number], maxSlope: number, hardGrade = Infinity, block?: Uint8Array, fine = false): number[] | null {
+  const MV = fine ? FINE : DIRS
+  const n = g.cols * g.rows, D = MV.length
   const cost = new Float32Array(n * D).fill(Infinity)
   const prev = new Int32Array(n * D).fill(-1)
+  const pinAt = new Int8Array(fine ? n * D : 0) // state reached by a hairpin: its side (+1 / -1)
   const heap = new Heap()
   const gc = (goalXY[0] - g.minX) / g.step, gr = (goalXY[1] - g.minZ) / g.step
   const heur = (i: number) => Math.hypot((i % g.cols) - gc, Math.floor(i / g.cols) - gr) * g.step * 0.3
@@ -228,19 +261,73 @@ function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Ui
     const i = Math.floor(st / D), d0 = st % D
     if (goal.has(i)) {
       const path = [i]
-      for (let k = prev[st]; k >= 0; k = prev[k]) {
+      for (let s1 = st, k = prev[st]; k >= 0; s1 = k, k = prev[k]) {
         const ci = Math.floor(k / D)
+        if (fine && pinAt[s1]) { // the half circle of the hairpin, walked backwards
+          const c0 = ci % g.cols, r0 = (ci - c0) / g.cols, [ux0, uz0] = MV[k % D], ul = Math.hypot(ux0, uz0)
+          const ux = ux0 / ul, uz = uz0 / ul, nx = -uz * pinAt[s1], nz = ux * pinAt[s1]
+          const pc = Math.round(c0 + nx * PIN_CELLS), pr = Math.round(r0 + nz * PIN_CELLS), dn = s1 % D
+          const leg: number[] = []
+          for (let k = 0; k <= PIN_LEG; k++) leg.push((pr + MV[dn][1] * k) * g.cols + pc + MV[dn][0] * k)
+          for (const q of leg.reverse()) if (q !== path[path.length - 1]) path.push(q)
+          for (const [ax, az] of pinArc(c0, r0, ux, uz, nx, nz).reverse()) { const q = az * g.cols + ax; if (q !== path[path.length - 1]) path.push(q) }
+        }
         if (ci !== path[path.length - 1]) path.push(ci)
       }
       return path.reverse()
     }
     const c = i % g.cols, r = (i - c) / g.cols
     const start = cost[st] === 0 && i === from
+    // fine mode: a hairpin (lacet) as one move. The road turns back on a half circle of PIN_R to a leg 2 PIN_R
+    // aside, up or down the flank. Its rise is spread over the arc (and the carved bed spreads it further over
+    // the legs); it may be steeper than a leg, as on a real pass the turn is laid on a cut / fill platform.
+    if (fine && !start) for (const sd of [1, -1]) {
+      const [ux0, uz0] = MV[d0], ul = Math.hypot(ux0, uz0), ux = ux0 / ul, uz = uz0 / ul
+      const nx = -uz * sd, nz = ux * sd
+      const pc = Math.round(c + nx * PIN_CELLS), pr = Math.round(r + nz * PIN_CELLS)
+      if (pc < 1 || pr < 1 || pc >= g.cols - 1 || pr >= g.rows - 1) continue
+      const pj = pr * g.cols + pc
+      const arc = Math.PI * PIN_CELLS * g.step / 2
+      const gr = Math.abs(h[pj] - h[i]) / arc
+      if (gr > hardGrade * 2.5 || gr < hardGrade * 0.5) continue // a hairpin only where a straight climb would not do
+      let bad = false
+      for (const [ax, az] of pinArc(c, r, ux, uz, nx, nz)) {
+        const q = az * g.cols + ax
+        if (ax < 1 || az < 1 || ax >= g.cols - 1 || az >= g.rows - 1 || h[q] <= 0.3 || (block && block[q] && !block[i]) || (river && river[q] > 0)) { bad = true; break }
+      }
+      if (bad) continue
+      let dn = 0, best = -2
+      for (let k = 0; k < D; k++) { const [a, b] = MV[k], dot = -(a * ux + b * uz) / Math.hypot(a, b); if (dot > best) { best = dot; dn = k } }
+      // then the next leg, PIN_LEG straight moves (no hairpin right after a hairpin), each under the limit
+      let lc = pc, lr = pr, legW = 0
+      for (let k = 0; k < PIN_LEG && !bad; k++) {
+        const nc2 = lc + MV[dn][0], nr2 = lr + MV[dn][1]
+        if (nc2 < 1 || nr2 < 1 || nc2 >= g.cols - 1 || nr2 >= g.rows - 1) { bad = true; break }
+        const a = lr * g.cols + lc, b = nr2 * g.cols + nc2, run = Math.hypot(MV[dn][0], MV[dn][1]) * g.step
+        const sg = Math.abs(h[b] - h[a]) / run
+        if (h[b] <= 0.3 || sg > hardGrade || (block && block[b] && !goal.has(b)) || (river && river[b] > 0) || onRoad[b]) { bad = true; break }
+        const q2 = sg / (maxSlope / 100)
+        legW += run * (1 + q2 * q2 * 3 + (q2 > 1 ? (q2 - 1) * 20 : 0))
+        lc = nc2; lr = nr2
+      }
+      if (bad) continue
+      const j = lr * g.cols + lc
+      const g2 = gr / (maxSlope / 100)
+      const w = arc * (1 + g2 * g2 * 3) + 120 + arc * Math.max(0, gr / hardGrade - 1) * 20 + legW // platform cut / fill
+      const sj = j * D + dn, nc = cost[st] + w
+      if (nc < cost[sj]) { cost[sj] = nc; prev[sj] = st; pinAt[sj] = sd; heap.push(sj, nc + heur(j)) }
+    }
     for (let d = 0; d < D; d++) {
-      let turn = Math.abs(RANK[d] - RANK[d0])
-      turn = Math.min(turn, D - turn)
-      if (!start && turn > 1) continue
-      const [dc, dr] = DIRS[d]
+      let turn: number
+      if (fine) {
+        turn = d === d0 ? 0 : 1
+        if (!start && !FINE_TURN[d0][d]) continue
+      } else {
+        turn = Math.abs(RANK[d] - RANK[d0])
+        turn = Math.min(turn, D - turn)
+        if (!start && turn > 1) continue
+      }
+      const [dc, dr] = MV[d]
       const cc = c + dc, rr = r + dr
       if (cc < 1 || rr < 1 || cc >= g.cols - 1 || rr >= g.rows - 1) continue
       const j = rr * g.cols + cc
@@ -248,6 +335,18 @@ function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Ui
       if (block && block[j] && !goal.has(j) && !block[i]) continue // zone footprint (military base, airfield...): enter only at its goal cell
       const run = Math.hypot(dc, dr) * g.step
       if (Math.abs(h[j] - h[i]) / run > hardGrade) continue // steeper than the check allows for this road type
+      const span = Math.max(Math.abs(dc), Math.abs(dr))
+      if (span > 2) { // a long move: no sea, zone or cliff step on the cells it passes over
+        let bad = false, hp = h[i]
+        for (let k = 1; k < span && !bad; k++) {
+          const fx = c + (dc * k) / span, fz = r + (dr * k) / span, x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0
+          const hq = (at(x0, z0) * (1 - tx) + at(x0 + 1, z0) * tx) * (1 - tz) + (at(x0, z0 + 1) * (1 - tx) + at(x0 + 1, z0 + 1) * tx) * tz
+          const q = Math.round(fz) * g.cols + Math.round(fx)
+          if (h[q] <= 0.3 || (block && block[q] && !block[i]) || Math.abs(hq - hp) / (run / span) > hardGrade * 1.5) bad = true
+          hp = hq
+        }
+        if (bad || Math.abs(h[j] - hp) / (run / span) > hardGrade * 1.5) continue
+      }
       const grade = Math.abs(h[j] - h[i]) / run / (maxSlope / 100)
       let w = run * (1 + grade * grade * 3 + (grade > 1 ? (grade - 1) * 20 : 0))
       // cross slope: terrain falling sideways = cliff edge or a bench cut into the hill
@@ -263,6 +362,7 @@ function route(h: number[], g: Grid, river: Float32Array | undefined, onRoad: Ui
       if (nc < cost[sj]) {
         cost[sj] = nc
         prev[sj] = st
+        if (fine) pinAt[sj] = 0
         heap.push(sj, nc + heur(j))
       }
     }
@@ -328,6 +428,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     }
   }
   const roads: Road[] = []
+  const lacets = new Set<Road>() // links routed by the fine mountain router (hairpins kept by the V2 finish)
   const keep = new Set<string>() // control points that must survive the fillets (a place checks it is served)
   // cell -> [road, index of the control point that sits on it] for T junctions
   const owner = new Map<number, Road>()
@@ -391,7 +492,7 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     // the bed once carved (cut/fill over ~80 m, see bedGrade), not of the raw bumpy ground. The per-step limit
     // starts a bit above the type's limit (carving evens the bumps) and tightens on each retry; only when no
     // route keeps the bed under the limit does the link fall back to a dirt track (steeper limit).
-    let type = want, pts: number[] = [], cells: number[] = [], joined: number[] | null = null
+    let type = want, pts: number[] = [], cells: number[] = [], joined: number[] | null = null, fineLink = false
     // grade of every road as it stands now: a new link may not push one over its limit, but a road already
     // over it (a junction carved earlier) must not veto every later link either
     let before: Map<Road, number> | null = null
@@ -405,9 +506,18 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     }
     // fallback ladder: asphalt -> dirt road -> dirt trail (each one steeper)
     const ladder = [want, ...(['dirt', 'trailDirt'] as RoadType[]).filter((x) => maxGrade(x) > maxGrade(want))]
-    search: for (const tt of ladder)
+    // the usual search first (each type under its hard limit, then the steeper type). Only when the link it found
+    // fell back to a lower class (the relief too steep for the wanted one), or none was found, does the mountain-pass
+    // router (ROAD_MOUNTAIN: 40 headings, hairpins as moves) try each type under that comfortable grade; its link
+    // replaces the first one. A link found in its wanted class is kept as it was (gentle maps unchanged).
+    let gotGrade = Infinity
+    const runSteps = (steps: { tt: RoadType; cap: number; fine: boolean }[]) => {
+    search: for (const { tt, cap, fine: fineStep } of steps)
       for (const f of [1.25, 1, 0.8, 0.6, 0.45]) {
-        const path = route(h, g, river, onRoad, start, goal, aim, Math.min(p.maxSlope, maxGrade(tt) * 80), maxGrade(tt) * f, block)
+        // the per-step limit stays the type's one (an 8 m step sees bumps the carving evens out, and the move
+        // directions give no grade between 0 and 18 % on a 40 % flank); the slope cost is centred on the cap,
+        // so the path prefers longer lacets, and the carved bed is what is tested against the cap
+        const path = route(h, g, river, onRoad, start, goal, aim, Math.min(p.maxSlope, (cap / 0.9) * 80), (cap / 0.9) * f, block, fineStep)
         if (!path || path.length < 2) break // no way under this limit: a tighter one will not find any either
         // stop where the path joins an existing road (it would only run on top of it)
         let end = path.length - 1
@@ -415,9 +525,10 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
         const cl = path.slice(0, end + 1)
         const flat: number[] = []
         cl.forEach((i) => flat.push(...xyOf(i)))
-        for (const tol of [0.9, 0.4, 0]) {
+        // a fine (mountain) path keeps its cells: simplifying a hairpin arc leaves one sharp corner that easeCorners cuts
+        for (const tol of fineStep ? [0] : [0.9, 0.4, 0]) {
           const cand = easeCorners(tol ? simplify(flat, g.step * tol) : flat, 60)
-          if (cand.length < 4 || bedGrade(cand, h, g) > maxGrade(tt)) continue
+          if (cand.length < 4 || bedGrade(cand, h, g) > cap / 0.9) continue
           // the real test: carve it with the roads already there (junctions included), measure like the check
           // (the T junction adds a control point to the road it reaches: tested on a copy of that road)
           const hit = owner.get(cl[cl.length - 1])
@@ -431,14 +542,24 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
           const swap = (r: Road) => (r === hit ? hitCopy! : r)
           const test = h.slice()
           carveRoads(test, g, [...existing.map(swap), ...roads.map(swap), { id: 'test', type: tt, pts: cand, flatten: true }])
-          if (worstGrade(cand, test, g).grade <= maxGrade(tt) * 0.9 && roads.every((o) => { const gr = worstGrade(swap(o).pts, test, g).grade; return gr <= maxGrade(o.type) || gr <= (gradeBefore().get(o) ?? 0) + 0.005 })) {
-            pts = cand; cells = cl; type = tt; joined = hitCopy && hitCopy.pts
+          const wg = worstGrade(cand, test, g).grade
+          if (wg <= cap && roads.every((o) => { const gr = worstGrade(swap(o).pts, test, g).grade; return gr <= maxGrade(o.type) || gr <= (gradeBefore().get(o) ?? 0) + 0.005 })) {
+            pts = cand; cells = cl; type = tt; joined = hitCopy && hitCopy.pts; fineLink = fineStep; gotGrade = wg
             break search
           }
         }
       }
+    }
+    runSteps(ladder.map((tt) => ({ tt, cap: maxGrade(tt) * 0.9, fine: false })))
+    if (pts.length < 4 || type !== want) {
+      const keep = { pts, cells, type, joined, gotGrade } // the fine link may not be of a lower class than this one
+      pts = []
+      runSteps(ladder.filter((tt, k) => comfortGrade(tt) < maxGrade(tt) * 0.9 && (keep.pts.length < 4 || k <= ladder.indexOf(keep.type))).map((tt) => ({ tt, cap: comfortGrade(tt), fine: true })))
+      if (pts.length < 4) { ({ pts, cells, type, joined, gotGrade } = keep); fineLink = false }
+    }
     if (pts.length < 4) continue
     const road: Road = { id: `ROAD_AUTO_${++n}`, type, pts, flatten: true } // cut/fill: the bed follows the smoothed profile bedGrade measured
+    if (fineLink) lacets.add(road)
     // T junction: the end point must also be a control point of the road it reaches
     const hit = owner.get(cells[cells.length - 1])
     if (hit && joined) hit.pts = joined
@@ -468,10 +589,13 @@ export function buildNetwork(h: number[], g: Grid, river: Float32Array | undefin
     const fixed = (x: number, z: number) => keep.has(`${x},${z}`) || (uses.get(`${x},${z}`) ?? 0) > 1
     const old = new Map<Road, number[]>()
     for (const r of roads) {
-      const f = smoothRoad(r.pts, rMinOf(r.type), { spacing: SPACING, fixed, frozen: inPlace, merge: 12, minKeep: 0.5 })
+      // a mountain road keeps its hairpins: no corner merging (a 180 degree turn has no intersection point, the
+      // merge squared it), and the smoothed line must stay under the comfortable grade it was routed for
+      const pin = lacets.has(r)
+      const f = smoothRoad(r.pts, rMinOf(r.type), { spacing: SPACING, fixed, frozen: inPlace, merge: pin ? 0 : 12, minKeep: 0.5 })
       if (!f.corners) continue
       const pts = f.pts
-      if (bedGrade(pts, h, g) > maxGrade(r.type) * 0.9) continue
+      if (bedGrade(pts, h, g) > (pin ? comfortGrade(r.type) / 0.9 : maxGrade(r.type) * 0.9)) continue
       old.set(r, r.pts)
       r.pts = pts
     }
