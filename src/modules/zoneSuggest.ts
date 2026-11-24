@@ -160,7 +160,7 @@ export function suggestZone(poly: number[], w: SuggestWorld, max = 5): Suggestio
   const out: Suggestion[] = []
   const add = (id: ZoneFillType, s: number, key: string, vars: Suggestion['vars'] = {}, params: Suggestion['params'] = {}) => { if (s > 0.05) out.push({ id, score: Math.round(s * 100), key, vars, params }) }
   const town = fin(f.townM), vil = fin(f.villageM), place = fin(f.placeM), road = fin(f.roadM), paved = fin(f.pavedM)
-  const slopePct = Math.round(f.meanSlope * 100), ha = Math.round(f.areaHa * 10) / 10
+  const slopePct = Math.round(f.meanSlope * 100)
   const flatOk = (lim: number) => lin(lim * 1.6 - f.meanSlope, 0, lim * 0.6) // 1 under the limit, 0 at 1.6x
   const sc = w.scenario
   // military base / Conflict HQ: flat, far from towns (HQ spacing 2 km), road access
@@ -221,11 +221,11 @@ export interface GapOpts { cellM?: number; emptyM?: number; minKm2?: number; max
   dismissed?: { x: number; z: number }[] }
 
 export function findGaps(w: SuggestWorld, o: GapOpts = {}): Gap[] {
-  const cell = o.cellM ?? 250, emptyM = o.emptyM ?? 600, minKm2 = o.minKm2 ?? 0.75, maxKm2 = o.maxKm2 ?? 3, reachM = o.reachM ?? 1500
+  const cell = o.cellM ?? 250, emptyM = o.emptyM ?? 300, minKm2 = o.minKm2 ?? 0.4, maxKm2 = o.maxKm2 ?? 3, reachM = o.reachM ?? 1500
   const s = sampler(w), sea = w.sea ?? 0
   const nc = Math.max(1, Math.floor((s.x1 - s.x0) / cell)), nr = Math.max(1, Math.floor((s.z1 - s.z0) / cell))
   // occupied: distance field by spatial hash (coarse: any object within emptyM of the cell centre)
-  const occ = new Uint8Array(nc * nr), k = Math.ceil(emptyM / cell)
+  const occ = new Uint8Array(nc * nr), k = Math.ceil((emptyM + 450) / cell)
   const mark = (x: number, z: number, r = emptyM) => {
     const c0 = Math.floor((x - s.x0) / cell), r0 = Math.floor((z - s.z0) / cell)
     for (let j = -k - 1; j <= k + 1; j++) for (let i = -k - 1; i <= k + 1; i++) {
@@ -235,7 +235,7 @@ export function findGaps(w: SuggestWorld, o: GapOpts = {}): Gap[] {
     }
   }
   for (const p of w.houses) mark(p.x, p.z)
-  for (const p of w.places) mark(p.x, p.z, emptyM + (isTown(p.kind) ? 250 : 120))
+  for (const p of w.places) mark(p.x, p.z, emptyM + (isTown(p.kind) ? 250 : 100))
   for (const q of w.zones ?? []) mark(q.x, q.z)
   // reachable: within reachM of a road (sampled every ~cell along the roads) when the map has roads
   const reach = new Uint8Array(nc * nr)
