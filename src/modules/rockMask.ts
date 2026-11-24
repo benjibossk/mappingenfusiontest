@@ -15,17 +15,17 @@ export interface RockMasks {
 }
 
 export interface RockOptions {
-  /** max share of the land (h > 1 m) that may be rock (default 0.05; [M] Everon bare Rock_01 1.4 %, Kolguyev 0, Arland 0.1 %) */
+  /** max share of the land (h > 1 m) that may be rock (default 0.025; [M] Everon bare Rock_01 1.4 %, Kolguyev 0, Arland 0.1 %) */
   maxShare?: number
 }
 
-/** slope (rise/run) of every vertex, central differences */
-export function slopes(heights: ArrayLike<number>, cols: number, rows: number, step: number): Float32Array {
+/** slope (rise/run) of every vertex, central differences over +-k cells (k > 1 reads through small roughness) */
+export function slopes(heights: ArrayLike<number>, cols: number, rows: number, step: number, k = 1): Float32Array {
   const at = (c: number, r: number) => heights[Math.min(Math.max(r, 0), rows - 1) * cols + Math.min(Math.max(c, 0), cols - 1)]
   const out = new Float32Array(cols * rows)
   for (let i = 0; i < out.length; i++) {
     const c = i % cols, r = (i - c) / cols
-    out[i] = Math.hypot(at(c + 1, r) - at(c - 1, r), at(c, r + 1) - at(c, r - 1)) / (2 * step)
+    out[i] = Math.hypot(at(c + k, r) - at(c - k, r), at(c, r + k) - at(c, r - k)) / (2 * k * step)
   }
   return out
 }
@@ -84,14 +84,15 @@ function blur(src: Float32Array, cols: number, rows: number, k: number): Float32
 }
 
 const TAN35 = Math.tan((35 * Math.PI) / 180), TAN45 = 1
-const TAN15 = Math.tan((15 * Math.PI) / 180)
 
 //! Rock and scree weights for the whole grid. `shape` is terrainShape(heights, ...) (TPI + curvature).
 export function rockMasks(heights: ArrayLike<number>, cols: number, rows: number, step: number, maxHeight: number,
   shape: TerrainShape, opts: RockOptions = {}): RockMasks {
-  const maxShare = opts.maxShare ?? 0.05
+  const maxShare = opts.maxShare ?? 0.025
   const n = cols * rows
-  const slope = slopes(heights, cols, rows, step)
+  // the slope of the face, not of its 8 m roughness (eroded relief: ravine walls and droplet grooves read
+  // 35-45 deg cell to cell on a 25 deg flank, which painted whole flanks as rock)
+  const slope = slopes(heights, cols, rows, step, Math.max(1, Math.round(12 / step)))
   const relief = localRelief(heights, cols, rows, step, 30)
   const score = new Float32Array(n)
   let land = 0
@@ -100,7 +101,7 @@ export function rockMasks(heights: ArrayLike<number>, cols: number, rows: number
     if (h <= -2) continue
     if (h > 1) land++
     // [M] FIELDS_SURFACES_VANILLA §3 (Everon): Rock_01 only above 35 deg (19 % of the pixels at 35-45 deg, 45 % beyond 45)
-    const steep = 0.19 * ramp(slope[i], TAN35 - 0.04, TAN35 + 0.04) + 0.26 * ramp(slope[i], TAN45 - 0.06, TAN45 + 0.06)
+    const steep = 0.19 * ramp(slope[i], TAN35, TAN35 + 0.08) + 0.26 * ramp(slope[i], TAN45 - 0.06, TAN45 + 0.06)
     if (steep <= 0) continue
     // relief context, each 0..1
     const crest = ramp(shape.tpi[i], 1, 8) * ramp(shape.curv[i], 0, -0.01)
@@ -137,9 +138,9 @@ export function rockMasks(heights: ArrayLike<number>, cols: number, rows: number
     if (heights[i] <= -2) continue
     // foot = below the local mean (negative TPI, not the plateau edge above the face), not itself steep
     const foot = Math.max(ramp(-shape.tpi[i], 0, 3), ramp(shape.curv[i], 0, 0.004)) * (1 - ramp(slope[i], 0.35, 0.6)) * ramp(-shape.tpi[i], -1, 0.5)
-    // + scree-grass rising with the slope ([M] Everon Debris_Rock_01 13 % at 15 deg -> 32-34 % at 30-35 deg)
-    const bySlope = 0.13 * ramp(slope[i], TAN15 * 0.7, TAN15) + 0.2 * ramp(slope[i], TAN15, TAN35)
-    scree[i] = Math.min(1 - rock[i], Math.max(bySlope, clamp01(foot * ramp(near[i], 0.05, 0.3))))
+    // only at the foot of the rock faces: a plain grassy flank keeps its grass, however steep (before, 13-33 %
+    // scree on every slope over 10 deg left the flanks of a 300 m mountain grey from top to bottom)
+    scree[i] = Math.min(1 - rock[i], clamp01(foot * ramp(near[i], 0.05, 0.3)))
   }
   return { rock, scree }
 }

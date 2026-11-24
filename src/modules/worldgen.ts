@@ -37,6 +37,7 @@ import { SITE_RADIUS, buildNetwork, insertPoint, maxGrade, nearestOn, routeLink,
 import { validate, type Issue } from './validate'
 import { settleVillages, type VillageParcel } from './village'
 import { parcelShareOf } from './parcelTemplates'
+import { MAX_PARCEL_GRADE, meanGrade } from './gen-common'
 import { pastureFences, pastureDensity, pastureStyles } from './pastures'
 import { addProdForests, lotFences, makeBlocker, townLots, type FenceLot } from './worldextras'
 import { generateTown } from './town'
@@ -261,6 +262,8 @@ function placeFarms(h: ArrayLike<number>, g: Grid, roads: Road[], sites: Site[],
     if (y <= 3) continue
     const sl = Math.max(Math.abs(at(qx + 20, qz) - at(qx - 20, qz)), Math.abs(at(qx, qz + 20) - at(qx, qz - 20))) / 40
     if (sl > F.maxSlope) continue
+    // the whole farmyard (house, barns, fenced yards ~ 60 m across) on gentle ground, not just its centre
+    if (meanGrade(Array.from({ length: 16 }, (_, k) => (k % 2 ? qz + Math.sin((k >> 1) * 0.785) * 55 : qx + Math.cos((k >> 1) * 0.785) * 55)), at, 8) > MAX_PARCEL_GRADE) continue
     let dry = true
     for (let a = 0; a < 8 && dry; a++) if (at(qx + Math.cos(a * 0.785) * 60, qz + Math.sin(a * 0.785) * 60) <= 1) dry = false
     if (!dry) continue

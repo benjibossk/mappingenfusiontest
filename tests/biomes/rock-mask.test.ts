@@ -10,7 +10,8 @@ test('rockMask: a steep synthetic island keeps the rock share bounded', () => {
   const rock = s.find((g) => g.name === 'Rock_01')!.weights
   const share = rockShare(isl.heights, rock)
   assert.ok(share < 0.4, `rock share ${share}`)
-  assert.ok(share > 0.02, `some rock remains ${share}`)
+  // cap 2.5 % since the mountain flanks fix ([M] Everon bare Rock_01 1.4 %)
+  assert.ok(share > 0.005, `some rock remains ${share}`)
 })
 
 test('rockMask: a long uniform slope stays vegetated, a tall cliff turns to rock', () => {

@@ -8,6 +8,7 @@
 import type { Grid } from './island'
 import type { Site, SiteKind } from './network'
 import { SITE_RADIUS } from './network'
+import { MAX_PARCEL_GRADE, meanGrade } from './gen-common'
 import type { Road } from './roads'
 import { centreLine, roadHalf } from './roads'
 import type { Water } from './water'
@@ -491,6 +492,8 @@ export function settleVillages(sites: Site[], roads: Road[], waters: Water[], he
       // Zone tool: the fill follows the chosen density everywhere in the polygon (not the centre / edge rings)
       const fill = o.polygon ? Math.min(0.95, 0.25 + 0.3 * o.density) * (row ? 0.85 : 1) : P.fill[k] * o.density
       if (rand() > fill) continue
+      // no house, yard or fenced parcel on a steep lot (seed 21 mountains: farmyards at 23 deg mean up the flank)
+      if (meanGrade(rec.corners, at) > MAX_PARCEL_GRADE) continue
       if (parcelDebt >= 1) { parcelDebt -= 1; rec.used = true; continue } // the paid-back lot stays a fenced yard
       // a lot already covered by a building of a crossing street (corner lots overlap) is not a free lot
       if (placed.some((q) => Math.abs(q.x - lot.cx) < 60 && Math.abs(q.z - lot.cz) < 60 && overlap(rec.corners, q.corners, 0) && inside(rec.corners, q.x, q.z))) continue

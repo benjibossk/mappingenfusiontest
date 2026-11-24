@@ -246,9 +246,12 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const inland = band(h, 10, 16)
     const gw = groundWeights(slope, shape.tpi[i], shape.curv[i], variants((c * step) / 300, (r * step) / 300))
     // gw.rock is left to rockMasks (crests are part of its relief context); gravel only on gentle ridges
-    // relief masks (gaeaRelief.ts / Gaea import): worn ground -> gravel, deposits -> scree, drained lines -> moist grass
+    // relief masks (gaeaRelief.ts / Gaea import): deposit cones -> scree, drained lines -> moist grass
     const mk = masks && masks.flow.length === heights.length ? masks : null
-    const gravel = Math.min(1, gw.gravel * (1 - band(slope, 0.3, 0.5)) + (mk ? 0.35 * band(mk.wear[i], 0.25, 0.8) + 0.5 * band(mk.deposits[i], 0.2, 0.7) : 0))
+    // worn ground stays grass (wear covers every flank of an eroded relief); deposits give scree only where they
+    // settle: the gentle, concave ground of the deposit cones and ravine mouths, not the slope above
+    const cone = mk ? band(mk.deposits[i], 0.2, 0.7) * (1 - band(slope, 0.25, 0.45)) * band(-shape.tpi[i], -0.5, 1) : 0
+    const gravel = Math.min(1, gw.gravel * (1 - band(slope, 0.3, 0.5)) + 0.5 * cone)
     scree += free * inland * gravel
     const moist = covered0(i, h) ? 0 : free * inland * (mk ? Math.min(1 - gravel, gw.moist + 0.5 * band(mk.flow[i], 0.55, 0.85)) : gw.moist)
     free -= free * inland * gravel + moist

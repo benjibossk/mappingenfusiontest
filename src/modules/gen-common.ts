@@ -136,6 +136,30 @@ export function maxSlope(heights: ArrayLike<number>, g: Grid, x: number, z: numb
   return m
 }
 
+/** steepest mean slope (rise/run) allowed under a parcel, a field or a farmyard: ~12 deg */
+export const MAX_PARCEL_GRADE = Math.tan((12 * Math.PI) / 180)
+
+//! Mean slope (rise/run) over a polygon [x0, z0, x1, z1, ...], sampled every `s` metres inside it.
+//! `at(x, z)` is the ground height. The slope at each sample is measured over +-s, so a parcel
+//! laid across a steep flank reads steep even when a single point (its centre) happens to be flat.
+export function meanGrade(poly: ArrayLike<number>, at: (x: number, z: number) => number, s = 4): number {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+  for (let i = 0; i + 1 < poly.length; i += 2) { x0 = Math.min(x0, poly[i]); x1 = Math.max(x1, poly[i]); z0 = Math.min(z0, poly[i + 1]); z1 = Math.max(z1, poly[i + 1]) }
+  if (!(x1 > x0) || !(z1 > z0)) return 0
+  const d = Math.max(1, Math.min(s, (x1 - x0) / 3, (z1 - z0) / 3))
+  const grade = (x: number, z: number) => Math.hypot(at(x + s, z) - at(x - s, z), at(x, z + s) - at(x, z - s)) / (2 * s)
+  let sum = 0, n = 0
+  for (let z = z0 + d / 2; z < z1; z += d) for (let x = x0 + d / 2; x < x1; x += d) {
+    let o = false
+    for (let i = 0, j = poly.length - 2; i + 1 < poly.length; j = i, i += 2) {
+      const xi = poly[i], zi = poly[i + 1], xj = poly[j], zj = poly[j + 1]
+      if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) o = !o
+    }
+    if (o) { sum += grade(x, z); n++ }
+  }
+  return n ? sum / n : grade((x0 + x1) / 2, (z0 + z1) / 2)
+}
+
 /** a placed object of a generated site, with its footprint (for overlap tests and previews) */
 export interface SitePlacement { role: string; prefab: string; box: Box }
 
