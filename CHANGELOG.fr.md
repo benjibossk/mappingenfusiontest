@@ -21,6 +21,7 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 - **Commentaires en 3D** : clic sur un commentaire pour y amener la caméra ; les commentaires deviennent des repères dans le World Editor.
 
 ### Modifié
+- **Page Bibliothèque d'assets retravaillée** : la colonne de filtres tient sans défiler (recherche en premier, biome avec une description courte, Type et Source côte à côte, 12 mots-clés par défaut avec « Tous les mots-clés », « Effacer les filtres » à côté du compteur) ; packs, mods Workshop et imports déplacés dans un tiroir « Packs et mods » ; lignes de la liste avec le nom d'abord et un badge de type ; fiche de l'asset avec type, taille, source et biomes, et un bouton « Copier le GUID » ; l'aperçu 3D prend toute la hauteur restante ; sur écran étroit, un clic dans la liste amène à l'aperçu.
 - **README** (EN/FR) rafraîchi pour la 0.8.0 : galerie montagnes, fonctionnalités, problèmes connus, nouvelles captures.
 - **Encadré d'import Gaea** : aide courte sur toute la largeur, nuages d'arbres et masques repliés, champs fichier et Relief pleine largeur.
 - **Routes de montagne dans le monde généré** : les liaisons raides entre villes passent en lacets au lieu d'être déclassées, et les gués ne transforment plus une route de ville en piste.

@@ -25,6 +25,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - **Comments in 3D**: click a comment to fly the camera there; comments become markers in the World Editor.
 
 ### Changed
+- **Asset library page reworked**: the filter column fits without scrolling (search first, biome with a short description, Type and Source side by side, 12 keywords by default with "All keywords", "Clear filters" next to the count); packs, Workshop mods and imports moved to a "Packs & mods" drawer; list rows show the name first with a kind badge; the asset sheet lists type, size, source and biomes, with a "Copy the GUID" button; the 3D preview takes the remaining height; on narrow screens a click in the list scrolls to the preview.
 - **README** (EN/FR) refreshed for 0.8.0: mountains gallery, feature list, known issues, new screenshots.
 - **Gaea import box**: short help across the full width, tree-cloud and mask options folded away, file and Relief fields full width.
 - **Mountain roads in the generated world**: steep links between towns use hairpins instead of being downgraded, and river fords no longer turn a town road into a track.
