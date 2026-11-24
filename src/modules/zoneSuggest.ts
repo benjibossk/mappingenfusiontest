@@ -149,7 +149,7 @@ export function zoneFeatures(poly: number[], w: SuggestWorld): ZoneFeatures {
   }
 }
 
-const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`)
+const km = (m: number) => (m < 50 ? "< 50 m" : m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`)
 const lin = (v: number, a: number, b: number) => Math.max(0, Math.min(1, (v - a) / (b - a))) // 0 at a, 1 at b
 const fin = (m: number) => (Number.isFinite(m) ? m : 1e5)
 
