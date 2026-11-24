@@ -78,7 +78,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
     <label class="v3d-relief">${T.exag} <input type="range" min="1" max="3" step="0.25" value="1" data-k="exag" aria-label="${T.exag}"><output data-k="exagV">×1</output></label>
     <span class="v3d-sep"></span>
     <label class="v3d-tog"><input type="checkbox" checked data-k="trees"> ${T.trees}</label>
-    <label class="v3d-tog"><input type="checkbox" checked data-k="grid"> ${T.grid}</label>
+    <label class="v3d-tog"><input type="checkbox" data-k="grid"> ${T.grid}</label>
     <span class="v3d-sep"></span>
     <label class="v3d-relief">${T.quality ?? 'Quality'} <select data-k="quality" aria-label="${T.quality ?? 'Quality'}"><option value="low">${T.qLow ?? 'Low'}</option><option value="medium">${T.qMed ?? 'Medium'}</option><option value="high">${T.qHigh ?? 'High'}</option></select></label>
     <span class="grow"></span>
@@ -148,7 +148,7 @@ export async function open3d(host: HTMLElement, data: View3DData, o: View3DOptio
   geo.computeBoundingSphere()
   const terrainMat = new MeshStandardMaterial({ color: 0x8a8f78, roughness: 1, metalness: 0 })
   // draped km grid (as OpsTrack): lines of constant pixel width from the world position, toggled by a uniform
-  const gridU = { value: 1 }
+  const gridU = { value: 0 } // off by default: the lines read as terrain features and look bad (Benji 2026-11-24)
   terrainMat.onBeforeCompile = (sh) => {
     sh.uniforms.uGrid = gridU
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWxz;')
