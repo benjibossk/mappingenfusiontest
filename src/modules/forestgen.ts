@@ -37,7 +37,7 @@ export function forestBias(a: number, slope: number, concavity: number): number 
 }
 
 /** steepest slope (rise/run) a wood grows on: steeper is scree / bare rock */
-export const FOREST_MAX_SLOPE = 0.55
+export const FOREST_MAX_SLOPE = 0.7 // ~35 deg: managed and natural woods stand on 30-40 deg flanks
 /** can a wood grow on this cell? Not on very steep cells, nor on the exposed rocky ridges just under the
  *  tree line (strongly convex cell: centre well above its corners). a / treeLine relative 0..1 */
 export function forestCellOk(a: number, slope: number, concavity: number, treeLine = 1): boolean {
@@ -67,7 +67,9 @@ export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions)
       // the whole cell must be dry
       const hs = [at(x, z), at(x - C / 2, z - C / 2), at(x + C / 2, z - C / 2), at(x - C / 2, z + C / 2), at(x + C / 2, z + C / 2)]
       if (Math.min(...hs) < 3) continue
-      const slope = (Math.max(...hs) - Math.min(...hs)) / C
+      // corners are C * sqrt2 apart: dividing the range by C read a 25 deg flank as 34 deg and kept woods off every
+      // mountain flank steeper than ~21 deg (seen on the mountains relief, seed 21)
+      const slope = (Math.max(...hs) - Math.min(...hs)) / (C * Math.SQRT2)
       if (o.sites.some((s) => Math.hypot(s.x - x, s.z - z) < SITE_RADIUS[s.kind] + 60)) continue
       const n = noise(x / 420, z / 420, o.seed) * 0.7 + noise(x / 130, z / 130, o.seed + 7) * 0.3
       // a bit more wood on the slopes and mid heights, less on the coast and the summits

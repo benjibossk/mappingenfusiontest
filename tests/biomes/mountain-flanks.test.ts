@@ -58,3 +58,14 @@ test('village lots: no house or parcel on a lot steeper than 12 deg on average',
   for (const q of res.placed) assert.ok(q.x < 215, `${q.id} built on the 20 deg side at x ${q.x.toFixed(0)}`)
   for (const l of res.lots.filter((l) => l.used)) assert.ok(meanGrade(l.corners, at) <= MAX_PARCEL_GRADE, 'a used lot on steep ground')
 })
+
+test('mountain flanks: woods grow on a 25-30 deg flank (cell slope over the C*sqrt2 diagonal)', async () => {
+  const { generateForests } = await import('../../src/modules/forestgen.ts')
+  for (const deg of [25, 30]) {
+    const { grid, h } = cone(deg)
+    const f = generateForests(h, grid as never, { seed: 3, cover: 0.6, sites: [] } as never)
+    let onFlank = 0
+    for (const w of f) { const x = w.pts[0], z = w.pts[1], d = Math.hypot(x - 640, z - 640); if (d > 150 && d < 500) onFlank++ }
+    assert.ok(onFlank > 2, `${deg} deg: ${onFlank} woods on the flank`)
+  }
+})

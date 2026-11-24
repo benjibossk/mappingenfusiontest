@@ -67,6 +67,11 @@ test('seed 21 fields: road / radial orientation, vanilla sizes, size gradient, c
     const dx = s[2] - s[0], dz = s[3] - s[1], L = dx * dx + dz * dz || 1, u = Math.max(0, Math.min(1, ((x - s[0]) * dx + (z - s[1]) * dz) / L))
     return Math.hypot(s[0] + u * dx - x, s[1] + u * dz - z) < 3
   })
+  const rpts = w.roads.flatMap((r) => { const o: number[][] = []; for (let i = 0; i + 3 < r.pts.length; i += 2) o.push([r.pts[i], r.pts[i + 1], r.pts[i + 2], r.pts[i + 3]]); return o })
+  const onRoad = (x: number, z: number) => rpts.some((s) => {
+    const dx = s[2] - s[0], dz = s[3] - s[1], L = dx * dx + dz * dz || 1, u = Math.max(0, Math.min(1, ((x - s[0]) * dx + (z - s[1]) * dz) / L))
+    return Math.hypot(s[0] + u * dx - x, s[1] + u * dz - z) < 8
+  })
   let shared = 0, withHedge = 0
   adj.forEach((n, i) => n.forEach((j) => {
     if (j < i) return
@@ -76,6 +81,8 @@ test('seed 21 fields: road / radial orientation, vanilla sizes, size gradient, c
       return Math.hypot(a[0] + u * dx - p[0], a[1] + u * dz - p[1]) < 2
     }))
     if (!on.length) return
+    // a road or track along the border clips its hedge on purpose (clipVegetation): not a hedged border
+    if (on.filter((p) => onRoad(p[0], p[1])).length >= on.length * 0.5) return
     shared++
     if (on.filter((p) => hedged(p[0], p[1])).length >= on.length * 0.5) withHedge++
   }))
