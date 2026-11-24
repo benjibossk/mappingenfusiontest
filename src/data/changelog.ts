@@ -7,6 +7,19 @@ export interface ChangelogEntry { version: string; date: string; items: Changelo
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.8.0',
+    date: '2026-11-25',
+    items: [
+      { en: "Eroded mountain relief, and import of a relief made in Gaea", fr: "Relief de montagne érodé, et import d'un relief fait dans Gaea" },
+      { en: "Mountain pass roads with hairpin bends", fr: "Routes de col en lacets" },
+      { en: "Several projects, with the 3 most recent on the welcome screen", fr: "Plusieurs projets, les 3 plus récents sur l'accueil" },
+      { en: "Vanilla harbours, RP sites, parcels, farmsteads and rock groups", fr: "Ports, sites RP, parcelles, fermes et groupes de rochers vanilla" },
+      { en: "Gameplay score per scenario and automatic check after each send", fr: "Score gameplay par scénario et diagnostic automatique après envoi" },
+      { en: "Textured satellite map, vanilla-like power grid, roadside details", fr: "Satmap texturée, réseau électrique façon vanilla, détails de bord de route" },
+      { en: "Map labels now follow the interface language", fr: "Les libellés de la carte suivent la langue de l'interface" },
+    ],
+  },
+  {
     version: '0.7.0',
     date: '2026-11-19',
     items: [

@@ -4,6 +4,8 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+## [0.8.0] - 2026-11-25
+
 ### Ajouté
 - **Relief érodé façon Gaea** : crêtes, incision des rivières (stream power), ravines par gouttelettes et passe thermique, avec masques flow / wear / deposits ; option « montagnes » pour de vrais reliefs, détail 8 m conservé.
 - **Import depuis Gaea** via Advanced Terrain Tools : un relief érodé fait dans Gaea arrive directement dans le projet.
@@ -19,6 +21,9 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 - **Commentaires en 3D** : clic sur un commentaire pour y amener la caméra ; les commentaires deviennent des repères dans le World Editor.
 
 ### Modifié
+- **README** (EN/FR) rafraîchi pour la 0.8.0 : galerie montagnes, fonctionnalités, problèmes connus, nouvelles captures.
+- **Encadré d'import Gaea** : aide courte sur toute la largeur, nuages d'arbres et masques repliés, champs fichier et Relief pleine largeur.
+- **Routes de montagne dans le monde généré** : les liaisons raides entre villes passent en lacets au lieu d'être déclassées, et les gués ne transforment plus une route de ville en piste.
 - **Flancs de montagne** : herbe sur les pentes, roche et éboulis en bandes, rochers et falaises de granit au-delà d'environ 37 degrés.
 - **Forêts sur les pentes** : les bois montent sur les flancs jusqu'à 35 degrés ; les bois fusionnés n'ont plus de trous.
 - **Maisons et parcelles hors des pentes raides** : fermes, champs et lots évitent les pentes fortes ; les maisons traversées par une ruelle sont retirées.
@@ -29,6 +34,8 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 - **Économie Life** : panneau ancré en bas de la carte, 6 colonnes, noms en anglais.
 
 ### Corrigé
+- **Plus d'erreur JS à la fin d'un monde aléatoire** quand la carte du guide est absente (« Cannot set properties of null »).
+- **Les libellés de la carte suivent la langue de l'interface** : les badges des lieux RP (FERME, SCIERIE, VENTE...) restaient en français.
 - **L'envoi n'échoue plus sur les forêts** : les erreurs de géométrie (« Unable to complete output ring ») sont rattrapées au lieu d'interrompre tout l'envoi.
 - **Surfaces** : plus de SeaBed noir sur la terre, bords plus doux, plages seulement depuis la vraie mer et sous 12 degrés.
 - **Rotation des objets** : les objets à lacet décimal ne restent plus à 0 degré (environ 1 objet sur 7 touché).
@@ -133,6 +140,7 @@ La grande version « débutant » : une interface guidée, un monde aléatoire e
 
 Les versions 0.1.0 à 0.4.8 sont décrites (en anglais) dans le [CHANGELOG.md](CHANGELOG.md#048---2026-10-17).
 
-[Non publié]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[Non publié]: https://github.com/benjibossk/mappingenfusiontest/compare/v0.8.0...main
+[0.8.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.8.0
 [0.7.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.7.0
 [0.5.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.5.0

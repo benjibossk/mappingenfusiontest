@@ -1,6 +1,7 @@
 import { dedupeLines, trimCrossings, densify } from './modules/fenceDedupe'
 import { gameplayReport, settlementClusters, type GameplayReport, type GameplayKey } from './modules/gameplay'
 import { scenarioFit } from './modules/scenarioFit'
+import { drawGaps, initZoneSuggest, zsHtml, zsRefresh } from './ui/zoneSuggestUi'
 import { exportStates } from './modules/exportStates'
 import { PLATFORMS, PLATFORM_BUDGETS, densityGrid, type DensityGrid, type Platform } from './modules/platformBudget'
 import { drawDensityHeat } from './modules/densityLayer'
@@ -758,6 +759,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label id="zoneHaRow" hidden>${t('lbl.zoneHa')} <input id="zoneHa" type="number" min="2" max="200" step="1" value="8"></label>
       </div>
       ${hint('hint.zone')}
+      ${zsHtml()}
       <div class="row">
         <button id="generate" type="button">${t('btn.generate')}</button>
         <button id="clearZone" type="button" class="secondary">${t('btn.clearZone')}</button>
@@ -923,6 +925,7 @@ function setZone(flat: number[]) {
   for (let i = 0; i + 1 < flat.length; i += 2) pairs.push(`${Math.round(flat[i])} ${Math.round(flat[i + 1])}`)
   zoneEl.value = pairs.join(', ')
   checkpoint()
+  zsRefresh()
 }
 
 function path(ring: number[][], close: boolean) {
@@ -1038,6 +1041,7 @@ function draw() {
   if (layer('density') && density) drawDensityHeat(ctx, density, PLATFORM_BUDGETS[budgetPlatform()].perKm2, toScreen)
   if (layer('issues')) drawIssues()
   if (gpReport && $<HTMLDetailsElement>('gameplayBox')?.open) drawGameplay()
+  drawGaps(ctx, toScreen)
   if (!draping) drawComments()
   if (collab && !draping) drawPeers()
   drawWbCamera()
@@ -3008,7 +3012,9 @@ function coachAfter(kind: Entry) {
     if (busyDepth) return void setTimeout(render, 150)
     // a fresh world built in one go (random / real place): every step that has content counts as done
     if (kind === 'random' || kind === 'real') { doneSnap.fill(null); ownSnap.fill(''); refreshSteps() }
-    const el = $('coach')
+    const el = document.getElementById('coach')
+    // the coach card may be gone (removed by a script or an extension): skip it, never break the run
+    if (!el || !document.getElementById('coachSteps')) return
     const btns = [...document.querySelectorAll<HTMLButtonElement>('#tabs [data-tab]')]
     $('coachKicker').textContent = t('coach.kicker')
     $('coachTitle').textContent = t(('coach.' + kind + '.t') as K)
@@ -3897,7 +3903,8 @@ function drawRpPlaces() {
   ctx.font = 'bold 10px sans-serif'
   ctx.textAlign = 'center'
   for (const p of rpPlacesOf({ zones, sites })) {
-    const [col, lbl] = RP_STYLE[p.role] ?? ['#fff', p.role]
+    const [col] = RP_STYLE[p.role] ?? ['#fff']
+    const lbl = RP_STYLE[p.role] ? t(('rp.' + p.role) as Key) : p.role
     const [sx, sy] = toScreen(p.x, p.z)
     ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#000c'; ctx.stroke()
     if (view.mpp > 12) continue
@@ -5036,6 +5043,20 @@ $<HTMLSelectElement>('checkPlatform').addEventListener('change', () => { if (iss
 $<HTMLButtonElement>('checkRun').addEventListener('click', () => {
   const n = runChecks().length
   logEl.textContent = n ? t('log.checkIssues', { n }) : t('check.none')
+})
+
+// zone suggestions / empty areas / evolving fill (src/ui/zoneSuggestUi.ts)
+initZoneSuggest({
+  world: () => {
+    if (!island) return null
+    const houses = settled.map((b) => ({ x: b.x, z: b.z }))
+    const places = [...(sites.length ? sites.map((s) => ({ x: s.x, z: s.z, kind: s.kind as string }))
+      : settlementClusters(houses).map((c) => ({ x: c.x, z: c.z, kind: c.n >= 40 ? 'town' : c.n >= 10 ? 'village' : 'hamlet' })))]
+    return { heights: island.heights, grid: { cols: island.grid.cols, rows: island.grid.rows, cell: island.grid.step, minX: island.grid.minX, minZ: island.grid.minZ },
+      places, houses, roads: [...roads, ...existingRoads()].map((r) => ({ type: r.type, pts: r.pts })), waters: waters.map((w) => ({ type: w.type, pts: w.pts })),
+      forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts), zones: zones.map((z) => ({ x: z.x, z: z.z, kind: z.kind === 'site' ? z.sub : z.kind })) }
+  },
+  zone: zonePoints, setZone, redraw: () => draw(), save: () => autosave(), seed: () => num('seed'),
 })
 
 // restore the autosaved project last: loading it redraws, which needs every declaration above

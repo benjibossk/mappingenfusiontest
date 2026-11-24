@@ -8,6 +8,8 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-25
+
 ### Added
 - **Gaea-style eroded relief**: ridges, river incision (stream power), droplet gullies and a thermal pass, with flow / wear / deposit masks; a "mountains" option for real high ground, 8 m detail kept.
 - **Import from Gaea** via Advanced Terrain Tools: bring an eroded heightmap made in Gaea straight into the project.
@@ -23,6 +25,9 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - **Comments in 3D**: click a comment to fly the camera there; comments become markers in the World Editor.
 
 ### Changed
+- **README** (EN/FR) refreshed for 0.8.0: mountains gallery, feature list, known issues, new screenshots.
+- **Gaea import box**: short help across the full width, tree-cloud and mask options folded away, file and Relief fields full width.
+- **Mountain roads in the generated world**: steep links between towns use hairpins instead of being downgraded, and river fords no longer turn a town road into a track.
 - **Mountain flanks**: grass on the slopes, rock and scree in bands, rocks and granite cliffs on ground steeper than ~37 deg.
 - **Woods on slopes**: forests now climb flanks up to 35 deg; merged woods no longer open holes.
 - **Houses and parcels off steep ground**: farms, fields and lots avoid steep slopes; houses that a lane runs over are dropped.
@@ -33,6 +38,8 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - **Life economy** panel docked at the bottom of the map, 6 columns, English names.
 
 ### Fixed
+- **No JS error at the end of a random world** when the guide card is missing ("Cannot set properties of null").
+- **Map labels follow the UI language**: RP place badges (FARM, SAWMILL, SELL...) were always in French.
 - **Send no longer fails on forests**: geometry errors ("Unable to complete output ring") are caught instead of aborting the whole send.
 - **Surfaces**: no more black SeaBed on land, softer borders, beaches only from the real sea and below 12 deg.
 - **Object rotation**: objects with a decimal yaw no longer stand at 0 deg (about 1 in 7 objects were affected).
@@ -279,7 +286,8 @@ The big "newcomer" release: a guided interface, a one-click random world and man
 - Project scaffold (Vite + TypeScript) and the research, state-of-the-art and roadmap documents.
 - First Workbench plugin tests: shapes and generators created by script.
 
-[Unreleased]: https://github.com/benjibossk/mappingenfusiontest/commits/main
+[Unreleased]: https://github.com/benjibossk/mappingenfusiontest/compare/v0.8.0...main
+[0.8.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.8.0
 [0.7.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.7.0
 [0.5.0]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.5.0
 [0.4.8]: https://github.com/benjibossk/mappingenfusiontest/releases/tag/v0.4.8
