@@ -38,10 +38,10 @@ test('other biomes: deterministic, forests and gardens follow the biome', async 
   assert.ok((k1.settlement.parcels ?? []).some((p) => p.items.length || p.fences.length))
   const de = await generateWorld({ ...P, biome: 'desert' })
   assert.equal(de.areas.filter((a) => a.kind === 'forest').length, 0)
-  const broad = (w: typeof ev) => w.areas.filter((a) => a.leaf === 'broad').length / Math.max(1, w.areas.length)
+  // broadleaf share by AREA: a dense biome merges its woods into a few large massifs, so a count of forests misleads
+  const ring = (p: number[]) => { let a = 0; for (let i = 0; i < p.length; i += 2) { const j = (i + 2) % p.length; a += p[i] * p[j + 1] - p[j] * p[i + 1] } return Math.abs(a) / 2 }
+  const broad = (w: typeof ev) => { const f = w.areas.filter((a) => a.kind === 'forest'), t = f.reduce((s, a) => s + ring(a.pts), 0); return f.filter((a) => a.leaf === 'broad').reduce((s, a) => s + ring(a.pts), 0) / Math.max(1, t) }
   const ar = await generateWorld({ ...P, biome: 'woodland_arland' }), tr = await generateWorld({ ...P, biome: 'tropical' })
   assert.ok(broad(ar) < broad(ev), `arland broadleaf share ${broad(ar)} < everon ${broad(ev)}`)
-  // a handful of forests on this small world: tropical vs Everon is within one forest (0.5 vs 0.57 once the farms
-  // left the steep ground), so the robust order is tropical above the conifer-leaning Arland
-  assert.ok(broad(tr) > broad(ar), `tropical broadleaf share ${broad(tr)} > arland ${broad(ar)}`)
+  assert.ok(broad(tr) > broad(ev), `tropical broadleaf share ${broad(tr)} > everon ${broad(ev)}`)
 })
