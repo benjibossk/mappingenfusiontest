@@ -151,7 +151,7 @@ import { suggestAirfield, type AirfieldSize } from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { withSlopeTilt } from './modules/slopeAlign'
 import { LAYERS as GEN_LAYERS, withWbLayers, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
-import { applyPads, layPads } from './modules/pads'
+import { applyPads, gradeLanes, layPads } from './modules/pads'
 import { buildingFootprints, Cancelled, WORLD_DEFAULTS, WORLD_STAGES, type WorldResult } from './modules/worldgen'
 import { runGen } from './workers/genClient'
 import { mountSeedBrowser } from './ui/seedBrowser'
@@ -1699,11 +1699,11 @@ function recompose(final: boolean) {
   const wl = waters.length ? carveWater(island.heights, g, waters) : undefined
   if (zones.length) applyZones(island.heights, g, zones) // platforms / runway planes, before the road beds
   const padFoot = buildingFootprints(settled, zones)
-  const pads = padFoot.length ? applyPads(island.heights, g, padFoot) : null // building pads
+  const pads = padFoot.length ? applyPads(island.heights, g, padFoot, setLanes.map((l) => l.pts)) : null // building pads
   const beds = roads.length ? carveRoads(island.heights, g, roads, { water: wl }) : null
   if (beds) {
     const pre = import.meta.env.DEV ? island.heights.slice() : null
-    noiseBerms(island.heights, g, roads, settled, beds.weight, wl?.wet) // merlons along big roads at town edges
+    noiseBerms(island.heights, g, roads, settled, beds.weight, wl?.wet, { lanes: setLanes.map((l) => l.pts) }) // merlons along big roads at town edges
     if (pre) (window as unknown as { __bermRaise: number[] }).__bermRaise = island.heights.map((h, k) => h - pre[k]) // dev probe
   }
   if (pads) layPads(island.heights, pads, beds?.weight)
@@ -1721,6 +1721,8 @@ function recompose(final: boolean) {
     // under the road; real rivers, traced in the Water step, keep their bridges)
     if (beds && !waters.some((w) => w.auto) && num('rDepth') > 0) { layBeds(island.heights, beds); if (pads) layPads(island.heights, pads, beds.weight) }
   }
+  // lanes are not carved: last, their ground is graded (pads.ts gradeLanes) over pads, berms and runoff beds
+  gradeLanes(island.heights, g, setLanes.map((l) => l.pts), pads, beds?.weight)
   if (final) {
     island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks)
     island.colours = { ...SURFACE_COLOURS, ...island.colours }
@@ -5835,4 +5837,4 @@ btn3d.addEventListener('click', () => void (async () => {
 })())
 // dev-only probe for the Playwright checks: read the world state, move the 2D view
 wireOutside(() => terrain, (m) => { logEl.textContent = m })
-if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get worldBridges() { return worldBridges }, get pipeline() { return pipeline }, get result() { return result }, get zones() { return zones }, get settled() { return settled }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
+if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get worldBridges() { return worldBridges }, get pipeline() { return pipeline }, get result() { return result }, get zones() { return zones }, get settled() { return settled }, get setLanes() { return setLanes }, get preWater() { return preWater }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }

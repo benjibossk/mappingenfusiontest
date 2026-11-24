@@ -6,7 +6,7 @@ import type { Grid } from './island'
 import { ROAD_TYPES, centreLine, type Road } from './roads'
 
 export const BERM_ROADS = new Set(['motorway', 'asphalt', 'asphaltLine'])
-export interface BermOpts { height?: number; slope?: number; crest?: number; gap?: number; townReach?: number; houseClear?: number }
+export interface BermOpts { height?: number; slope?: number; crest?: number; gap?: number; townReach?: number; houseClear?: number; lanes?: number[][]; laneClear?: number }
 
 /** raises noise berms in place; returns the number of cells raised */
 export function noiseBerms(heights: number[], grid: Grid, roads: Road[], houses: { x: number; z: number }[], bedWeight?: Float32Array, wet?: Uint8Array, o: BermOpts = {}): number {
@@ -94,6 +94,23 @@ export function noiseBerms(heights: number[], grid: Grid, roads: Road[], houses:
       }
     }
   }
+  // a settlement lane crossing the berm band keeps its ground (lanes are not carved: it would climb the 4 m bank,
+  // seed 21 TOWN_1 LANE_S6): a gap of laneClear on each side of it
+  let laneCut: Uint8Array | null = null
+  if (o.lanes?.length) {
+    laneCut = new Uint8Array(heights.length)
+    const lc = o.laneClear ?? run + 4, rc = Math.ceil(lc / step)
+    for (const l of o.lanes) for (let i = 0; i + 3 < l.length; i += 2) {
+      const ax = l[i], az = l[i + 1], bx = l[i + 2], bz = l[i + 3], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 2))
+      for (let q = 0; q <= n; q++) {
+        const x = ax + ((bx - ax) * q) / n, z = az + ((bz - az) * q) / n, c0 = Math.round(x / step), r0 = Math.round(z / step)
+        for (let r = r0 - rc; r <= r0 + rc; r++) for (let c = c0 - rc; c <= c0 + rc; c++) {
+          if (r < 0 || c < 0 || r >= rows || c >= cols) continue
+          if (Math.hypot(c * step - x, r * step - z) <= lc) laneCut[r * cols + c] = 1
+        }
+      }
+    }
+  }
   let n = 0
   for (let k = 0; k < heights.length; k++) {
     if (!(raise[k] > 0.05)) continue
@@ -101,6 +118,7 @@ export function noiseBerms(heights: number[], grid: Grid, roads: Road[], houses:
     if (wet && wet[k]) continue
     const c = k % cols, r = (k - c) / cols
     if (near(c * step, r * step, clear)) continue
+    if (laneCut && laneCut[k]) continue
     heights[k] += raise[k]; n++
   }
   return n

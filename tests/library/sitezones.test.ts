@@ -55,8 +55,12 @@ test('parking: bays, cars on some, lamps, stripes, barrier open on the road side
   assert.ok(n(SITE_PREFABS.stripe) > 40)
   assert.ok(cars > 5 && cars < n(SITE_PREFABS.stripe))
   assert.ok(n(SITE_PREFABS.lamp) >= 2)
-  const bar = z.shapes.find((s) => s.generator === SITE_PREFABS.crashBarrier)!
-  assert.equal(bar.closed, false)
+  // the road runs 37 m off the lot: no crash barrier (only along a road)
+  assert.ok(!z.shapes.some((s) => s.generator === SITE_PREFABS.crashBarrier))
+  const z2 = makeSiteZone('parking', sq(40), { id: 'P', seed: 1, roads: [{ pts: [-400, -44, 400, -44], half: 3 }], ground: flat })
+  const bars = z2.shapes.filter((s) => s.generator === SITE_PREFABS.crashBarrier)
+  assert.ok(bars.length >= 1 && bars.every((b) => !b.closed))
+  for (const b of bars) for (let i = 1; i < b.points.length; i += 2) assert.ok(b.points[i] < -30, 'barrier on the road side only')
 })
 test('cemetery: brick wall, gravestones in rows with a central aisle', () => {
   const z = makeSiteZone('cemetery', sq(30), { id: 'C', seed: 2, roads: [road], ground: flat })

@@ -170,11 +170,11 @@ export function buildingFootprints(placed: { corners: number[] }[], zones: ZoneI
 }
 
 /** same chain as main.ts recompose(): water carving, zone platforms, road beds, then the runoff */
-export function composeHeights(base: number[], g: Grid, waters: Water[], zones: ZoneItem[], roads: Road[], pads?: number[][]) {
+export function composeHeights(base: number[], g: Grid, waters: Water[], zones: ZoneItem[], roads: Road[], pads?: number[][], lanes: number[][] = []) {
   const h = base.slice()
   const wl = waters.length ? carveWater(h, g, waters) : undefined
   applyZones(h, g, zones)
-  const pf = pads?.length ? applyPads(h, g, pads) : null // building pads (pads.ts)
+  const pf = pads?.length ? applyPads(h, g, pads, lanes) : null // building pads (pads.ts)
   const beds = roads.length ? carveRoads(h, g, roads, { water: wl }) : null
   if (pf) layPads(h, pf, beds?.weight) // again over the bed ramps and embankments: only the carriageway keeps the road
   const auto = waters.some((w) => w.auto)
@@ -720,7 +720,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   }
   // building pads: ground flattened under every house and industrial / military building (pads.ts)
   const padFoot = buildingFootprints(settlement.placed, zones)
-  if (padFoot.length) cur = composeHeights(base, g, waters, zones, roads, padFoot)
+  if (padFoot.length) cur = composeHeights(base, g, waters, zones, roads, padFoot, settlement.lanes.map((l) => l.pts))
   // 9. power grid: hierarchical planner (worldpower.ts -> powergrid.ts), stations + access tracks, pads flattened
   await step('power')
   const pw = p.power ? worldPowerGrid(cur.heights, g, sites, zones, allRoads.map((r) => r.pts), isLakeOrSea, p.size, 'eden', powerWorld([...allRoads, ...settlement.lanes], settlement.placed.map((q) => q.corners), builtLots.filter((l) => l.used).map((l) => l.corners), zones), p.powerDistrib ?? 'auto') : null
@@ -848,7 +848,10 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
         || (pw?.stations ?? []).some((st) => Math.hypot(st.x - x, st.z - z) < 30),
       avoid: camp.fields.map((f) => ({ x: f.reduce((a, q) => a + q[0], 0) / f.length, z: f.reduce((a, q) => a + q[1], 0) / f.length })),
       seed: ss('forests', 'gameplay') })
-    ;([['BELT', gc.belts], ['STRIP', gc.strips], ['COPSE', gc.copses]] as const).forEach(([tag, list]) => list.forEach((pts, j) => areas.push({ id: `FOREST_GP_${tag}_${j + 1}`, kind: 'forest', leaf: groveLeaf, pts })))
+    // the cover is cut by the woods already there (a belt crossing a small field grove: two overlapping outlines)
+    const gp: WorldArea[] = []
+    ;([['BELT', gc.belts], ['STRIP', gc.strips], ['COPSE', gc.copses]] as const).forEach(([tag, list]) => list.forEach((pts, j) => gp.push({ id: `FOREST_GP_${tag}_${j + 1}`, kind: 'forest', leaf: groveLeaf, pts })))
+    areas.push(...cutForests(gp, areas.filter((a) => a.kind === 'forest').map((a) => ({ pts: a.pts })) as never))
   }
   // 10d. trees of the open countryside: isolated field trees, corner clumps, hedgerow trees (fieldtrees.ts),
   // one 'site' zone of single vanilla tree entities (drawn, saved and sent like any zone)

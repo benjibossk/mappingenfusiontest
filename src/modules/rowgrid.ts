@@ -187,3 +187,22 @@ export function rectAt(x: number, z: number, yawDeg: number, w: number, d: numbe
   const r = (yawDeg * Math.PI) / 180, fx = Math.sin(r), fz = Math.cos(r), rx = fz, rz = -fx, hw = w / 2, hd = d / 2
   return [x - rx * hw - fx * hd, z - rz * hw - fz * hd, x + rx * hw - fx * hd, z + rz * hw - fz * hd, x + rx * hw + fx * hd, z + rz * hw + fz * hd, x - rx * hw + fx * hd, z - rz * hw + fz * hd]
 }
+
+//! a crash barrier only stands along a road: keeps the runs of the barrier polyline whose posts are within
+//! `reach` m of a road edge (half-width + reach from its centreline), each run its own open shape, runs under
+//! `minLen` dropped, posts within gap[2] of (gap[0], gap[1]) left out (the entrance). Seed 21 TOWN_1_SITE_8_barrier ran 31 posts along the lot edge down a slope, no road.
+export function roadsideRuns(shape: ProjectShape, roads: RoadLine[], reach = 6, minLen = 8, gap?: [number, number, number]): ProjectShape[] {
+  const p = shape.closed ? shape.points.concat(shape.points.slice(0, 2)) : shape.points
+  const near = (x: number, z: number) => !(gap && Math.hypot(x - gap[0], z - gap[1]) < gap[2]) && roads.some((r) => r.pts.length >= 4 && distLine(r.pts, x, z) - r.half <= reach)
+  const runs: number[][] = []
+  let cur: number[] = []
+  for (let i = 0; i + 1 < p.length; i += 2) {
+    if (near(p[i], p[i + 1])) cur.push(p[i], p[i + 1])
+    else { if (cur.length) runs.push(cur); cur = [] }
+  }
+  if (cur.length) runs.push(cur)
+  // a closed ring whose first and last runs touch the seam: one run
+  if (shape.closed && runs.length > 1 && near(p[0], p[1]) && near(p[p.length - 2], p[p.length - 1])) runs[0] = runs.pop()!.slice(0, -2).concat(runs[0])
+  const len = (r: number[]) => { let s = 0; for (let i = 2; i < r.length; i += 2) s += Math.hypot(r[i] - r[i - 2], r[i + 1] - r[i - 1]); return s }
+  return runs.filter((r) => r.length >= 4 && len(r) >= minLen).map((r, i) => ({ ...shape, id: i ? `${shape.id}${i + 1}` : shape.id, closed: false, points: r }))
+}

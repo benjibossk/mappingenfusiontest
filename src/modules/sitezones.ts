@@ -12,7 +12,7 @@ import { prefabDims } from '../library/dims.ts'
 import { makeCamp, makeJunkyard, type Faction, type ModuleOut } from './modules'
 import type { FlattenRequest as Platform } from './industrial'
 import { makeBeach, makeCemetery, makeConstruction, type ExtraOut } from './sitesextra'
-import { centroid, contourFrame, fencePerimeter, frameOf, inPoly, nearestPoint, polyArea, rectAt, rowGrid, slopeAt, type RoadLine } from './rowgrid'
+import { centroid, contourFrame, fencePerimeter, frameOf, inPoly, nearestPoint, polyArea, rectAt, roadsideRuns, rowGrid, slopeAt, type RoadLine } from './rowgrid'
 
 export type SiteType = 'pasture' | 'parking' | 'cemetery' | 'hunting' | 'orchard' | 'vineyard' | 'junkyard' | 'checkpoint' | 'camp' | 'construction' | 'beach'
 export const SITE_TYPES: SiteType[] = ['pasture', 'parking', 'cemetery', 'hunting', 'orchard', 'vineyard', 'junkyard', 'checkpoint', 'camp', 'construction', 'beach']
@@ -143,7 +143,11 @@ export function makeSiteZone(type: SiteType, polygon: number[], c: SiteContext):
       for (let u = u0; u <= u1; u += 15) if (rand() < 0.5) { const [x, z] = P(u + rand() * 10); if (inPoly(polygon, x, z)) decal(pick(SITE_PREFABS.cracks), x, z, rand() * 360) }
     }
     if (!lamp && bays.length) warnings.push('parking: no lamp')
-    shapes.push(fencePerimeter(polygon, SITE_PREFABS.crashBarrier, `${c.id}_barrier`, { openNear: f.road ? [f.road[0], f.road[1]] : undefined }))
+    // a crash barrier only along a road (roadsideRuns): the lot edge down a slope keeps nothing
+    // a crash barrier only along a road (roadsideRuns), an 8 m entrance where the frame road is nearest; a lot
+    // edge down a slope away from the roads keeps nothing (seed 21 TOWN_1_SITE_8)
+    const ent = f.road ? nearestPoint(polygon.concat(polygon.slice(0, 2)), f.road[0], f.road[1]) : undefined
+    shapes.push(...roadsideRuns(fencePerimeter(polygon, SITE_PREFABS.crashBarrier, `${c.id}_barrier`), c.roads ?? [], 6, 8, ent ? [ent[0], ent[1], 4] : undefined))
   } else if (type === 'cemetery' || type === 'construction' || type === 'beach') {
     // sitesextra.ts: terraced cemetery with gate + chapel, construction site, beach on the shore
     const xc = { id: c.id, rand, roads: c.roads, ground: c.ground, ok, water: c.water }
