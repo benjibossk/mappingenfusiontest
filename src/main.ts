@@ -501,15 +501,18 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
         <button id="tGaea" type="button" class="secondary" title="${t('hint.tGaea')}">${t('btn.tGaea')}</button>
       </div>
-      <div id="gaeaBox" class="form" hidden>
+      <div id="gaeaBox" hidden>
         <p class="hint">${t('gaea.help')}</p>
-        <label>${t('gaea.height')} <input id="gaeaHeight" type="file" accept=".png,.r16,.raw,.r32"></label>
-        <label>${t('gaea.masks')} <input id="gaeaMasks" type="file" accept=".png" multiple></label>
+        <details class="adv"><summary>${t('gaea.moreSum')}</summary><p class="hint">${t('gaea.more')}</p></details>
+        <div class="form">
+        <label class="wide">${t('gaea.height')} <input id="gaeaHeight" type="file" accept=".png,.r16,.raw,.r32"></label>
+        <label class="wide">${t('gaea.masks')} <input id="gaeaMasks" type="file" accept=".png" multiple></label>
         <label>${t('gaea.size')} <input id="gaeaSize" type="number" value="4096" step="1"></label>
         <label>${t('gaea.min')} <input id="gaeaMin" type="number" value="-30" step="1"></label>
         <label>${t('gaea.max')} <input id="gaeaMax" type="number" value="300" step="1"></label>
         <button id="gaeaGo" type="button">${t('gaea.go')}</button>
         <span id="gaeaMsg" class="hint"></span>
+        </div>
       </div>
       <div class="row">
         <select id="tRefMap" title="${t('hint.tRef')}">${REF_MAPS.map((m) => `<option value="${m}">${t(('ref.map.' + m) as Key)}</option>`).join('')}</select>
@@ -526,7 +529,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label>${t('lbl.tLand')} <input id="tLand" type="number" step="0.05" value="0.55"></label>
         <label>${t('lbl.tRough')} <input id="tRough" type="number" step="0.1" value="0.6"></label>
         <label>${t('lbl.tSeed')} <input id="tSeed" type="number" value="1"></label>
-        <label>${t('lbl.tRelief')} <select id="tRelief"><option value="eroded" selected>${t('relief.eroded')}</option><option value="mountains">${t('relief.mountains')}</option><option value="classic">${t('relief.classic')}</option></select></label>
+        <label class="wide">${t('lbl.tRelief')} <select id="tRelief"><option value="eroded" selected>${t('relief.eroded')}</option><option value="mountains">${t('relief.mountains')}</option><option value="classic">${t('relief.classic')}</option></select></label>
         <label>${t('lbl.tSeaLevel')} <input id="tSeaLevel" type="number" step="1" value="0"></label>
       </div>
       </details>
