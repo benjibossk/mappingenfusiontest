@@ -5021,7 +5021,7 @@ function scenarioHtml(): string {
     : settlementClusters(houses).map((c) => ({ x: c.x, z: c.z, kind: c.n >= 25 ? 'town' : 'village' }))
   const fits = scenarioFit({ heights: island!.heights, grid: { cols: island!.grid.cols, rows: island!.grid.rows, cell: island!.grid.step, minX: island!.grid.minX, minZ: island!.grid.minZ }, places, houses, roads: roads.map((r) => ({ type: r.type, pts: r.pts })) })
   const icon = { ok: '✔', partial: '◐', no: '✖' }
-  return `<b>${t('fit.title')}</b><ul class="issues">${fits.map((f) => `<li class="fit-${f.level}">${icon[f.level]} <b>${t(('fit.' + f.id) as K)}</b> : ${t(('fit.lvl.' + f.level) as K)}${f.lacks.length ? '<br><small>' + f.lacks.map((l) => t(('fit.lack.' + l.key) as K, l.vars)).join(' · ') + '</small>' : ''}</li>`).join('')}</ul>`
+  return `<b>${t('fit.title')}</b><ul class="issues">${fits.map((f) => `<li class="fit-${f.level}">${icon[f.level]} <b>${t(('fit.' + f.id) as K)}</b>${getLang() === 'fr' ? ' : ' : ': '}${t(('fit.lvl.' + f.level) as K)}${f.lacks.length ? '<br><small>' + f.lacks.map((l) => t(('fit.lack.' + l.key) as K, l.vars)).join(' · ') + '</small>' : ''}</li>`).join('')}</ul>`
 }
 function drawGameplay() {
   for (const sp of gpReport!.spots) {

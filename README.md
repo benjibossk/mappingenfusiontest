@@ -14,16 +14,19 @@ Unofficial, work-in-progress fan tool (Vite + TypeScript), MIT licensed, vanilla
 
 ## Features
 
-- 🧭 **Guided path in 7 steps** with Next / Previous; each step shows if it is done (green ✓), out of date after an earlier change (amber) or still to do (grey). Optional settings are folded under "Advanced settings".
-- 🏝️ **Relief**: procedural island, or a **real place** (Copernicus, IGN LiDAR, GeoTIFF, OpenStreetMap…), or the world open in the Workbench.
-- ⛰️ **Sculpt** brush, 🌊 **rivers and lakes** (drawn or found by a rain simulation), 🌉 bridges.
-- 🛣️ **Roads**: hand-drawn or a whole network between places, road signs and furniture, **⚡ power lines** (high-voltage pylons between the main places, low-voltage poles along roads).
-- 🏘️ **Villages** from house + garden parcels captured on the vanilla maps, 🌾 **fields and forests**.
-- 📤 **Send everything** to the Workbench in one click (shapes, generators, vanilla prefabs on their own layers), with a sent-vs-built report.
-- 👥 **Collaboration tab**: shared rooms, live cursors, **history** of who changed what, **comments** pinned on the map, **satellite / hillshade mini-map**.
-- ❓ **Help bubble**, a **guided tour** on first visit, FAQ and glossary.
-- 🌐 **Languages**: English and French built in; add your own with a JSON file.
-- 🎨 **MILSPEC** look: dark ink background, amber accents, cursor X / Z / altitude in the status bar.
+- 🧭 **Guided path in 7 steps** with Next / Previous; each step shows done (green ✓), out of date (amber) or to do (grey). Optional settings are folded under "Advanced settings".
+- 🗂️ **Several projects**: saved in the browser, the 3 latest on the welcome screen, a dashboard per project (Terrain, Atelier, Masks...).
+- 🏝️ **Relief**: procedural island, a **real place** (Copernicus, IGN LiDAR, GeoTIFF, OpenStreetMap...) or the world open in the Workbench.
+- 🏔️ **Gaea-style eroded relief** and a **"mountains"** option (ridges, river incision, gullies, scree), or **import from Gaea** via the Advanced Terrain Tools mod.
+- 🪨 **Mountain flanks**: grass on slopes, rock and scree bands, rocks and cliffs on steep ground; **woods climb slopes** up to 35 deg.
+- 🛣️ **Roads**: hand-drawn or a whole network, **mountain pass roads** with hairpins (10-15 % grade), signs, furniture and **⚡ power lines** like vanilla.
+- 🏘️ **Villages and towns** from vanilla parcels and farmsteads, vanilla harbours and RP sites, 🌾 **fields and forests**.
+- 🎯 **Gameplay score** and **scenario fit**: Conflict, Combat Ops, Freedom Fighters, King of the Hill, Game Master.
+- 📤 **Send everything** to the Workbench in one click, then an **automatic diagnosis** of the playable world.
+- 📜 **App log** panel ("Log" in the status bar): every message and error, whatever the step.
+- 👥 **Collaboration**: shared rooms, live cursors, history, comments on the map (and in 3D).
+- ❓ Help bubble, guided tour, FAQ and glossary · 🌐 English and French, add your own with a JSON file.
+- 🎨 **Reforger-look UI**: Roboto Condensed, square corners, one-line top bar, collapsible side panel.
 
 | Welcome | Help |
 |---|---|
@@ -78,11 +81,28 @@ Screenshots of the generators (Zone tool and random world), taken in the app.
 | **Collaboration** | **Language selector** |
 | <img src="docs/img/collab-en.jpg" alt="Collaboration tab"> | <img src="docs/img/lang-en.jpg" alt="Language selector"> |
 
+## Mountains / Gaea-style relief
+
+New in v0.8.0. Real World Editor captures of a generated map (left: before, right: after the eroded relief and the mountain flanks).
+
+| |
+|---|
+| <img src="docs/img/gallery/mountains-before-after-flank.jpg" alt="Mountain flank before and after: eroded ridges, rock and scree bands"> |
+| Flank before / after: eroded ridges, grass on slopes, rock and scree in bands, rocks on steep ground |
+| <img src="docs/img/gallery/mountains-before-after-top.jpg" alt="Seen from above, before and after"> |
+| Seen from above, before / after |
+
+| Woods on slopes | Valley village |
+|---|---|
+| <img src="docs/img/gallery/mountains-wooded-flanks.jpg" alt="Forests climbing the mountain flanks"> | <img src="docs/img/gallery/mountains-village-valley.jpg" alt="Grass flanks, rocks and woods around a valley"> |
+
+How: step 1 Relief, pick the **Relief** type "eroded (Gaea-like)" (default) or "mountains". For finer erosion, make the heightmap in Gaea and import it through the Advanced Terrain Tools mod.
+
 ## Quick start (no coding needed)
 
 1. Install [Node.js](https://nodejs.org) (LTS). Download this repository (green **Code** button → Download ZIP) and unzip it.
 2. Open a terminal in the folder and type `npm install`, then `npm run dev`. Open the address it prints (http://localhost:5173).
-3. On the welcome screen pick **New island** (recommended), **Real place**, **Join a room**, or **Open a file…** — then follow the steps.
+3. On the welcome screen pick **New island** (recommended), **Random world**, **Real place**, **Join a room**, or **Open a file…** — then follow the steps.
 
 Everything is saved in your browser. **Save…** / **Download the project file** keeps a copy on disk.
 
@@ -96,7 +116,7 @@ Everything is saved in your browser. **Save…** / **Download the project file**
 | 4 | **Roads** | Draw roads, or build a whole network between places. Power lines are here too. |
 | 5 | **Villages** | Fill the places along the roads with houses, lanes and squares. |
 | 6 | **Fields & forests** | Mark a zone to split into fields and hedges, then forests and areas. |
-| 7 | **Send** | Check the map, then send everything to the Workbench. |
+| 7 | **Send** | Check the map (gameplay score included), then send everything to the Workbench. |
 
 Mouse and keyboard: wheel = zoom, middle button = pan, right click = actions, Shift+wheel / Ctrl+wheel = brush radius / strength, Ctrl+Z / Ctrl+Y = undo / redo, Esc = cancel, keys 1–9 = sculpt tools. The **?** bubble (bottom left) reopens the help and the tour.
 
@@ -204,14 +224,14 @@ and keeps it in the project. A busy town can bring hundreds of roads: untick sma
 
 ## Known issues
 
-- 🌉 **Bridges**: deck height, length and alignment with the road are often off; some crossings get no bridge or a misplaced one.
-- 🌊 **Rivers**: the course and bed do not always sit right in the relief (water floating above or sunk under the banks); banks are still rough.
-- 💧 **Lakes**: shore and water level not always matched to the terrain; lake placement needs work.
-- 🪨 Rocks, 🌲 automatic forests and 🛤️ paths: not generated yet.
+- 🏔️ **Mountains**: fine Gaea-like gullies cannot be reached on the 8 m terrain grid (use a Gaea import for that); hairpin platforms on pass roads are modest.
+- 🌲 **Production forest tracks** in the mountains are mostly dropped (kept only at 15 % grade or less).
+- 🌉 **Bridges**: deck height, length and alignment are still rough on some crossings.
+- 🌊 **Rivers and 💧 lakes**: bed, banks and water level do not always sit right in the relief.
 - 🧱 Ground surfaces are not imported from an existing world (relief only).
 - 📊 Entity budget limits per platform are provisional (no measured FPS data yet).
 
-Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md). Help is welcome on: bridge, river and lake placement, riverbank / lake shore generation, rocks on steep slopes, automatic forests, paths and field zones, ground surface import, and FPS bench data per platform (Xbox Series S/X, PS5, PC) to calibrate the entity budget.
+Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md). Help is welcome on bridge, river and lake placement, riverbank and lake shore generation, mountain roads, ground surface import, and FPS data per platform (Xbox Series S/X, PS5, PC) to calibrate the entity budget.
 
 - **Vanilla assets** only: no third-party content is required or redistributed.
 - **No AI tool required**: the site, the bridge and the plugin are all you need.
