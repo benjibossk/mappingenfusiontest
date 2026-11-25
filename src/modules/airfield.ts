@@ -32,7 +32,7 @@
 import type { Grid } from './island'
 import type { ProjectEntity, ProjectShape } from '../project'
 import {
-  rng, toWorld, heightAt, bestPlane, earthwork, toEntity, roadShape, wallShape, round,
+  rng, toWorld, heightAt, planeAt, bestPlane, earthwork, toEntity, roadShape, wallShape, round,
   type Box, type FlattenRequest, type SitePlacement, type Disc,
 } from './gen-common'
 import { halfDims } from '../library/dims.ts'
@@ -146,6 +146,9 @@ export const AIRFIELD_SIZES: Record<AirfieldSize, { length: number; width: numbe
 export const MAX_RUNWAY_GRADE = 0.01
 /** transition surface 1:7 (height allowed = distance beyond the strip edge / 7) */
 export const TRANSITION_SLOPE = 1 / 7
+/** steepest embankment / cut slope where the flattened ground meets the terrain (1:3), widest blend (m) */
+export const EMBANK_SLOPE = 1 / 3
+export const MAX_FALLOFF = 150
 
 export interface AirfieldOptions { size: AirfieldSize; kind?: AirfieldKind; surface?: StripSurface; x: number; z: number; yaw: number; seed: number | string; side?: 1 | -1 }
 
@@ -174,6 +177,8 @@ export interface Airfield {
   access: [number, number]
   /** placements dropped by the rules (role: reason) */
   rejected: string[]
+  /** extra width (m) the embankments added to the site box on a slope (flattenAirfield) */
+  embank?: number
 }
 
 /** "military-large", "strip-small", legacy "medium" (= military) */
@@ -432,10 +437,32 @@ export function flattenAirfield(a: Airfield, heights: ArrayLike<number>, g: Grid
   const [h0, h1] = bestPlane(heights, g, s.box, MAX_RUNWAY_GRADE)
   s.h0 = round(h0); s.h1 = round(h1)
   p.h0 = s.h0; p.h1 = s.h1
+  // embankments / cuts: the falloff widens with the height step so the blend never exceeds EMBANK_SLOPE (the
+  // smoothstep's steepest point is 1.5x its mean); the site box (keep-out) grows by the same amount
+  let grow = 0
+  for (const f of a.flatten) {
+    const base = f.falloff
+    let F = base
+    for (let it = 0; it < 3; it++) {
+      let diff = 0
+      for (const d of [F * 0.5, F]) {
+        const hw = f.box.hw + d, hd = f.box.hd + d
+        for (let u = -hw; u <= hw; u += 20) for (const v of [-hd, hd]) diff = Math.max(diff, Math.abs(heightAt(heights, g, ...toWorld(f.box.x, f.box.z, f.box.yaw, u, v)) - planeAt(f, ...toWorld(f.box.x, f.box.z, f.box.yaw, u, v))))
+        for (let v = -hd; v <= hd; v += 20) for (const u of [-hw, hw]) diff = Math.max(diff, Math.abs(heightAt(heights, g, ...toWorld(f.box.x, f.box.z, f.box.yaw, u, v)) - planeAt(f, ...toWorld(f.box.x, f.box.z, f.box.yaw, u, v))))
+      }
+      F = Math.min(MAX_FALLOFF, Math.max(base, (diff * 1.5) / EMBANK_SLOPE))
+    }
+    f.falloff = Math.round(F)
+    grow = Math.max(grow, f.falloff - base)
+  }
+  a.site = { ...a.site, hw: a.site.hw + grow, hd: a.site.hd + grow }
+  a.embank = grow
   return Math.round(earthwork(heights, g, s, 10) + earthwork(heights, g, p, 10))
 }
 
-export interface AirfieldSuggestOptions { size: AirfieldSize; kind?: AirfieldKind | 'auto'; seaLevel?: number; keepOut?: Disc[]; count?: number; step?: number; angleStep?: number; maxMeanCut?: number }
+export interface AirfieldSuggestOptions { size: AirfieldSize; kind?: AirfieldKind | 'auto'; seaLevel?: number; keepOut?: Disc[]; count?: number; step?: number; angleStep?: number; maxMeanCut?: number
+  /** world check per candidate: null = forbidden spot (village, lake...), else a destruction penalty subtracted from the score */
+  judge?: (s: { x: number; z: number; yaw: number; kind: AirfieldKind; size: AirfieldSize }) => number | null }
 export interface AirfieldSuggestion { x: number; z: number; yaw: number; earthwork: number; meanCut: number; score: number; kind: AirfieldKind; size: AirfieldSize }
 
 const dimsOf = (size: AirfieldSize | { length: number; width: number }) => (typeof size === 'string' ? AIRFIELD_SIZES[size] : size)
@@ -482,7 +509,9 @@ export function suggestAirfield(heights: ArrayLike<number>, g: Grid, o: Airfield
       if (kind === 'auto' && meanCut > maxCut && rung !== ladder[ladder.length - 1]) continue
       // auto: bigger rungs score higher at equal flatness
       const bonus = kind === 'auto' ? S.length / 1500 : 0
-      out.push({ x: round(x), z: round(z), yaw: b.yaw, earthwork: b.earthwork, meanCut: round(meanCut), score: round(1 / (1 + meanCut) + bonus), kind: rung.kind, size: rung.size })
+      const pen = o.judge ? o.judge({ x, z, yaw: b.yaw, kind: rung.kind, size: rung.size }) : 0
+      if (pen === null) continue
+      out.push({ x: round(x), z: round(z), yaw: b.yaw, earthwork: b.earthwork, meanCut: round(meanCut), score: round(1 / (1 + meanCut) + bonus - pen), kind: rung.kind, size: rung.size })
       break
     }
   }

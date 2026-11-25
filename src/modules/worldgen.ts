@@ -58,6 +58,7 @@ import { countrysideZones, fillFieldZone, pointObstacle, roadObstacles } from '.
 import { colourCrops, cropCover } from './fieldlayout'
 import { rasterCover, type CoverArea } from './cover'
 import { suggestAirfield } from './airfield'
+import { airFootprint, airfieldConflicts, clearAirfield } from './airClear'
 import { suggestMilitary, type MilitaryKind } from './military'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly } from './industrial'
 import { fitPort, type VanillaTemplate } from './vanillaSites'
@@ -452,12 +453,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const dry = lakeAsSea(cur.heights, lakes0), keepOut = siteDiscs(WORLD.airfield.keepOutM)
     // a military base on the longest flat strip (the auto ladder, smaller types, stays a manual choice:
     // a fallback here would change every existing seed without a base)
-    const s = suggestAirfield(dry, g, { size, seaLevel: 0, keepOut, count: 1 })[0]
-    if (s) {
+    // the best strip whose whole footprint (fence + embankments) stays off the villages, lakes and big rivers
+    for (const s of suggestAirfield(dry, g, { size, seaLevel: 0, keepOut, count: 5 })) {
       const a = makeAirfield(cur.heights, g, { id: 'AIR_1', size: s.size, kind: s.kind, x: s.x, z: s.z, yaw: s.yaw, seed: ss('settlements', 'airfield') })
-      const ok = !zoneWet(a) // no dry ground: no airfield
-      if (ok) zones.push(a)
-      if (ok && a.access) access.push({ id: 'ACCESS_AIR_1', x: a.access[0], z: a.access[1], kind: 'hamlet' })
+      const ok = !zoneWet(a) && !airfieldConflicts(airFootprint(a)!, { sites, waters }).length // no dry ground: no airfield
+      if (!ok) continue
+      zones.push(a)
+      if (a.access) access.push({ id: 'ACCESS_AIR_1', x: a.access[0], z: a.access[1], kind: 'hamlet' })
+      break
     }
   }
   // 5. military: the main base near the airfield, outposts on high ground
@@ -1131,6 +1134,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const bad = new Set(harbourIssues(zn.entities, hAt).filter((i) => i.kind === 'sunk' || i.kind === 'floating' || i.kind === 'inWater').map((i) => i.id))
     zn.entities = zn.entities.filter((e) => !bad.has(e.id) || /PierConcrete_01_(20m|10m_end|corner_90)|Breakwater/i.test(e.prefab))
   }
+  // the airfield is built into the world: whatever later stages laid on its footprint is cleared / rerouted (airClear.ts)
+  for (const zn of zones.filter((z) => z.kind === 'airfield')) clearAirfield({ roads, lanes: settlement.lanes, paths: settlement.paths, squares: settlement.squares, settled: settlement.placed, parcels: settlement.parcels, fences: settlement.fences, sites, power, stations: pw?.stations, access: pw?.access, areas, campaign: camp, countryside, riparian, zones, waters }, zn)
   return { params: p, island: isl, grid: g, heights: cur.heights, waters, sites, roads, zones, settlement, power, ...(pw && { powerStations: pw.stations, powerAccess: pw.access, powerTopology: withLamps(gridTopology(pw), lamps) }), areas, surfaces, issues, overfull: overfullBlocks(surfaces), ...(camp.fields.length && { campaign: camp, countryside }), ...(bridgesOut.length && { bridges: bridgesOut }), ...(riparian.length && { riparian }), ...(lamps.length && { streetLights: lamps }) }
 }
 

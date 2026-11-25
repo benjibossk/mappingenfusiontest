@@ -148,7 +148,9 @@ import { applyZones, makeAirfield, makeIndustrial, makeLibraryParcel, makeMilita
 import { rpPlacesOf } from './modules/rpPlaces'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly, type IndustrialType } from './modules/industrial'
 import { suggestMilitary, type MilitaryKind } from './modules/military'
-import { suggestAirfield, parseAirfieldSub} from './modules/airfield'
+import { suggestAirfield, parseAirfieldSub, generateAirfield, flattenAirfield, type AirfieldKind, type AirfieldSize } from './modules/airfield'
+import { airFootprint, airfieldConflicts, airfieldCost, clearAirfield, inFoot, snapAirfield, type ClearReport, type ClearWorld } from './modules/airClear'
+import { heightAt as gridHeight } from './modules/gen-common'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { withSlopeTilt } from './modules/slopeAlign'
 import { LAYERS as GEN_LAYERS, withWbLayers, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
@@ -1724,6 +1726,14 @@ function recompose(final: boolean) {
     })
     rivers = sim.river
     riverSim = sim
+    // no runoff stream across an airfield: drained by the perimeter ditch, the runway stays dry (airClear.ts)
+    for (const zn of zones) {
+      if (zn.kind !== 'airfield') continue
+      const b = airFootprint(zn)
+      if (!b) continue
+      for (let k = 0; k < rivers.length; k++) if (rivers[k] && inFoot(b, g.minX + (k % g.cols) * g.step, g.minZ + Math.floor(k / g.cols) * g.step)) rivers[k] = 0
+      if (!waters.some((w) => w.auto) && num('rDepth') > 0) applyZones(island.heights, g, [zn]) // carved beds refilled
+    }
     // the runoff carved its beds into the relief, road beds included: lay the roads again on top (a culvert
     // under the road; real rivers, traced in the Water step, keep their bridges)
     if (beds && !waters.some((w) => w.auto) && num('rDepth') > 0) { layBeds(island.heights, beds); if (pads) layPads(island.heights, pads, beds.weight) }
@@ -1745,14 +1755,14 @@ function recompose(final: boolean) {
 }
 
 // --- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Maj+Z): one snapshot per finished action ---
-interface Snap { macro: Float32Array; sink?: Uint8Array; roads: string; power?: string; zone: string; sites: string; waters: string; settled: string }
+interface Snap { macro: Float32Array; sink?: Uint8Array; roads: string; power?: string; zone: string; sites: string; waters: string; settled: string; land?: string }
 const history: Snap[] = []
 let histAt = -1, restoring = false
 function checkpoint() {
   if (restoring || !sculpt) return
-  const snap: Snap = { macro: sculpt.macro.slice(), sink: sink?.slice(), roads: JSON.stringify(roads), power: JSON.stringify({ l: powerLines, s: powerStations, a: powerAccess }), zone: zoneEl.value, sites: JSON.stringify(sites), waters: JSON.stringify(waters), settled: setState() }
+  const snap: Snap = { macro: sculpt.macro.slice(), sink: sink?.slice(), roads: JSON.stringify(roads), power: JSON.stringify({ l: powerLines, s: powerStations, a: powerAccess }), zone: zoneEl.value, sites: JSON.stringify(sites), waters: JSON.stringify(waters), settled: setState(), land: JSON.stringify({ areas, result, countryside, riparian }) }
   const cur = history[histAt]
-  if (cur && cur.roads === snap.roads && cur.power === snap.power && cur.sites === snap.sites && cur.waters === snap.waters && cur.settled === snap.settled && cur.zone === snap.zone && cur.sink?.length === snap.sink?.length
+  if (cur && cur.roads === snap.roads && cur.power === snap.power && cur.sites === snap.sites && cur.waters === snap.waters && cur.settled === snap.settled && cur.land === snap.land && cur.zone === snap.zone && cur.sink?.length === snap.sink?.length
     && cur.macro.length === snap.macro.length && cur.macro.every((v, i) => v === snap.macro[i])
     && (!cur.sink || cur.sink.every((v, i) => v === snap.sink![i]))) return
   if (cur && !remoteApply) logChange(cur, snap)
@@ -1773,6 +1783,7 @@ function restore(to: number) {
   sites = JSON.parse(s.sites ?? '[]')
   waters = JSON.parse(s.waters ?? '[]')
   loadSetState(s.settled)
+  if (s.land) { const l = JSON.parse(s.land); areas = l.areas ?? []; result = l.result ?? null; countryside = l.countryside ?? []; riparian = l.riparian ?? []; ripaSig = ripaSigOf() }
   waterDraft = null
   waterInfo()
   roadDraft = null
@@ -5205,6 +5216,36 @@ function endPick() {
   draw()
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && zonePick) { endPick(); logEl.textContent = '' } })
+// --- airfield integration (airClear.ts): forbidden spots, destruction cost, clearing of every layer ---
+const AIR_MAX_HOUSES = 12
+const airSeed = () => num('milSeed') + zones.length
+function airBox(kind: AirfieldKind, size: AirfieldSize, x: number, z: number, yaw: number, quick = false) {
+  const a = generateAirfield({ kind, size, x, z, yaw, seed: airSeed() }) // same seed as the placement: same building side
+  if (!quick && island) flattenAirfield(a, island.heights, island.grid) // the real footprint: embankments widen it on a slope
+  return airFootprint({ boxes: [], site: a.site })!
+}
+const airDry = (x: number, z: number) => !!island && gridHeight(island.heights, island.grid, x, z) > 1
+/** null = forbidden (village, lake, big river, other site, sea), else the destruction penalty */
+function airJudge(kind: AirfieldKind, size: AirfieldSize, x: number, z: number, yaw: number): number | null {
+  if (airfieldConflicts(airBox(kind, size, x, z, yaw, true), { sites, waters, zones }, { dry: airDry }).length) return null // fast pre-check, no embankments
+  const b = airBox(kind, size, x, z, yaw)
+  if (airfieldConflicts(b, { sites, waters, zones }, { dry: airDry }).length) return null
+  if (settled.filter((p) => inFoot(b, p.x, p.z)).length > AIR_MAX_HOUSES) return null // a built-up area, even without a named place
+  return airfieldCost(b, clearWorld()) * 0.01
+}
+function airWhy(kind: AirfieldKind, size: AirfieldSize, x: number, z: number, yaw: number) {
+  const c = airfieldConflicts(airBox(kind, size, x, z, yaw), { sites, waters, zones }, { dry: airDry })
+  const why = [...new Set(c.map((q) => t(('air.why.' + q.kind) as K)))]
+  if (settled.filter((p) => inFoot(airBox(kind, size, x, z, yaw), p.x, p.z)).length > AIR_MAX_HOUSES) why.push(t('air.why.houses'))
+  return why.join(', ')
+}
+const clearWorld = (): ClearWorld => ({ roads, lanes: setLanes, paths: setPaths, squares: setSquares, gardens: setGardens, settled, parcels: setParcels, sites, power: powerLines, stations: powerStations, access: powerAccess, areas, campaign: result, countryside, riparian, zones, waters })
+function clearForAirfield(zn: ZoneItem): ClearReport {
+  const rep = clearAirfield(clearWorld(), zn, { accessType: zn.sub.startsWith('strip') ? 'dirt' : 'asphaltNarrow' })
+  ripaSig = ripaSigOf()
+  return rep
+}
+const airReport = (r: ClearReport) => t('air.cleared', { h: r.houses, s: r.sites.length, f: r.fields, fo: r.forests, r: r.roadsCut, rr: r.roadsRerouted, p: r.power + r.powerRerouted, w: r.streams, acc: r.accessRoad ? t('air.access') : '' })
 function placeZone(sx: number, sy: number) {
   if (!island || !zonePick) return
   const [wx, wz] = toWorld(sx, sy)
@@ -5218,7 +5259,22 @@ function placeZone(sx: number, sy: number) {
   if (kind === 'site' && sub.startsWith('parcel:')) return void placeLibraryParcel(sub.slice(7), at.x, at.z, best >= 0 ? at.yaw : null)
   if (kind === 'industrial') zn = makeIndustrial(island.heights, g, [...roads, ...existingRoads()], { id, type: sub as IndustrialType, x: at.x, z: at.z, seed: num('indSeed') + zones.length })
   else if (kind === 'military') zn = makeMilitary(island.heights, g, { id, kind: sub as MilitaryKind, x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
-  else zn = makeAirfield(island.heights, g, { id, ...parseAirfieldSub(("sub" in at && at.sub) || sub), x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
+  else {
+    const ps = parseAirfieldSub(("sub" in at && at.sub) || sub)
+    const yaws = [0, 90, 45, 135].map((d) => (at.yaw + d) % 180)
+    const spot = snapAirfield(at.x, at.z, (x, z) => { for (const yaw of yaws) if (airJudge(ps.kind, ps.size, x, z, yaw) !== null) return { yaw }; return null }, 125, 2500)
+    if (!spot) { endPick(); return void (logEl.textContent = t('air.refused', { why: airWhy(ps.kind, ps.size, at.x, at.z, at.yaw) })) }
+    const why = spot.moved ? airWhy(ps.kind, ps.size, at.x, at.z, at.yaw) : ''
+    zn = makeAirfield(island.heights, g, { id, ...ps, x: spot.x, z: spot.z, yaw: spot.yaw, seed: airSeed() })
+    endPick()
+    if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.zoneEmpty'))
+    zones.push(zn)
+    const rep = clearForAirfield(zn)
+    recompose(true)
+    setInfo(); zoneInfo(); powerInfo(); roadInfo(); waterInfo(); refreshSteps()
+    logEl.textContent = (spot.moved ? t('air.moved', { why, m: spot.moved }) + ' ' : '') + t('log.zoneMade', { name: t('zone.name.airfield', { n: id.replace(/\D+/g, '') }), b: zn.entities.length }) + ' ' + airReport(rep) + (zn.warnings.length ? ' · ' + zn.warnings.join(' · ') : '')
+    return
+  }
   endPick()
   if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.zoneEmpty'))
   zones.push(zn)
@@ -5330,7 +5386,7 @@ $<HTMLButtonElement>('milSuggest').addEventListener('click', () => {
   const keepOut = [...siteDiscs(300), ...zones.map((z) => { const d = zoneDisc(z); return { ...d, r: d.r + 100 } })]
   if (what.startsWith('air-')) {
     const sub = what.slice(4), auto = sub === 'auto', p = parseAirfieldSub(auto ? 'military-medium' : sub)
-    startPick('airfield', auto ? 'military-medium' : sub, suggestAirfield(island.heights, island.grid, { size: p.size, kind: auto ? 'auto' : p.kind, seaLevel: 0, keepOut, count: 5 }).map((q) => ({ x: q.x, z: q.z, yaw: q.yaw, sub: `${q.kind}-${q.size}` })))
+    startPick('airfield', auto ? 'military-medium' : sub, suggestAirfield(island.heights, island.grid, { size: p.size, kind: auto ? 'auto' : p.kind, seaLevel: 0, count: 5, judge: (q) => airJudge(q.kind, q.size, q.x, q.z, q.yaw) }).map((q) => ({ x: q.x, z: q.z, yaw: q.yaw, sub: `${q.kind}-${q.size}` })))
   } else {
     const kind = what as MilitaryKind
     startPick('military', kind, suggestMilitary(island.heights, island.grid, { kind, seaLevel: 0, keepOut, roads: [...roads, ...existingRoads()].map((r) => r.pts), count: 5 }).map((q) => ({ x: q.x, z: q.z, yaw: q.yaw })))
@@ -5502,6 +5558,7 @@ function applyWorld(w: WorldResult) {
   worldBridges = w.bridges ?? []
   countryside = w.countryside ?? []
   riparian = w.riparian ?? []; ripaSig = ripaSigOf(); $<HTMLInputElement>('wRipa').checked = riparian.length > 0
+  for (const zn of zones.filter((z) => z.kind === 'airfield')) clearForAirfield(zn) // built into the world (airClear.ts)
   pendingAct = 'rwGo'
   doneSnap.fill(null); ownSnap.fill('') // a fresh world: every step that has content counts as done
   waterInfo(); roadInfo(); powerInfo(); zoneInfo()
@@ -5865,4 +5922,4 @@ btn3d.addEventListener('click', () => void (async () => {
 })())
 // dev-only probe for the Playwright checks: read the world state, move the 2D view
 wireOutside(() => terrain, (m) => { logEl.textContent = m })
-if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get worldBridges() { return worldBridges }, get pipeline() { return pipeline }, get result() { return result }, get zones() { return zones }, get settled() { return settled }, get parcels() { return setParcels }, get island() { return island }, get setLanes() { return setLanes }, get preWater() { return preWater }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }
+if (import.meta.env.DEV) (window as unknown as { __app: unknown }).__app = { view, draw, toScreen, get zoneCands() { return zoneCands }, get terrain() { return terrain }, get roads() { return roads }, get sites() { return sites }, get areas() { return areas }, get waters() { return waters }, get riparian() { return riparian }, get countryside() { return countryside }, get powerLines() { return powerLines }, get powerStations() { return powerStations }, get worldBridges() { return worldBridges }, get pipeline() { return pipeline }, get result() { return result }, get zones() { return zones }, get settled() { return settled }, get parcels() { return setParcels }, get island() { return island }, get setLanes() { return setLanes }, get preWater() { return preWater }, isLand: (x: number, z: number) => !!terrain && isLand(terrain, x, z), height: (x: number, z: number) => (terrain ? heightAt(terrain, x, z) : 0) }

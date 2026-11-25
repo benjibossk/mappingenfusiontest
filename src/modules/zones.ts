@@ -4,7 +4,7 @@
 import type { Grid } from './island'
 import type { Road } from './roads'
 import type { ProjectEntity, ProjectShape } from '../project'
-import { applyFlatten, boxCorners, type FlattenRequest } from './gen-common'
+import { applyFlatten, boxCorners, type Box, type FlattenRequest } from './gen-common'
 import { generateIndustrial, applyFlatten as applyPlatform, type IndustrialType, type FlattenRequest as Platform } from './industrial'
 import { generateMilitary, flattenFor, type MilitaryKind } from './military'
 import { applyDam, type Dam } from './dam'
@@ -43,6 +43,10 @@ export interface ZoneItem {
   rpRole?: string
   /** surface core painted under the whole site box (parcelground.yardSurfaceMasks): RP yards (rpPlaces RP_GROUND) */
   ground?: string
+  /** airfield: whole footprint (fence, flatten, embankments): what airClear.ts clears */
+  site?: Box
+  /** airfield: width of the embankment band in the site box (trees may stay on its outer part) */
+  embank?: number
 }
 
 const tag = (zid: string, id: string) => `${zid}_${id.replace(/[^A-Za-z0-9_]+/g, '_')}`
@@ -58,7 +62,7 @@ export function makeAirfield(heights: number[], g: Grid, o: { id: string; size: 
   const boxes = [a.runway, ...a.taxiways, ...(a.apron.hw ? [a.apron] : [])].map((b, i) => ({ corners: boxCorners(b), role: i ? 'pave' : ground }))
   for (const p of a.placements) boxes.push({ corners: boxCorners(p.box), role: p.role })
   boxes.push({ corners: boxCorners(a.site), role: 'area' })
-  return { id: o.id, kind: 'airfield', sub: `${kind}-${o.size}`, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes, ...prefixed(o.id, a.shapes, a.entities), flat: a.flatten, plat: [], roads: [], warnings: a.rejected, access: a.access }
+  return { id: o.id, kind: 'airfield', sub: `${kind}-${o.size}`, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes, ...prefixed(o.id, a.shapes, a.entities), flat: a.flatten, plat: [], roads: [], warnings: a.rejected, access: a.access, site: a.site, embank: a.embank }
 }
 
 /** naval / quay-edge pieces of a vanilla base, never stamped (bases are placed inland) */
