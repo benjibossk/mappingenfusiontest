@@ -11,6 +11,7 @@
     "collab": "node collab/server.mjs",
     "check:changelog": "node scripts/check-changelog.mjs",
     "bench": "npx tsx scripts/bench/bench.ts",
+    "satmap:textures": "npx tsx scripts/harvest-terrain-middles.ts",
     "bench:presend": "npx tsx scripts/bench/presend-world.ts"
   },
   "devDependencies": {

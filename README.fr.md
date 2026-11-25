@@ -146,6 +146,8 @@ flowchart LR
 
 **Importer le monde ouvert** : relief, routes, rivières et lacs deviennent modifiables ; bâtiments et panneaux restent verrouillés ; les objets remplacés ne sont supprimés que par l'envoi qui les reconstruit (pas de doublons).
 
+Textures de la satmap : le mode vanilla utilise des textures générées localement depuis ta propre installation du jeu (`npm run satmap:textures`), jamais distribuées ; le mode « couleurs propres » n'utilise aucun fichier du jeu.
+
 ## Collaboration
 
 **Mode direct (par défaut, sans serveur) :** Partager → Rejoindre un salon… → **Créer un salon**, puis **Copier le lien** et l'envoyer en privé. Les autres ouvrent le lien, tapent un nom et sont dedans. Les navigateurs se connectent entre eux en WebRTC ([Trystero](https://github.com/dmotz/trystero), MIT) ; des relais Nostr publics servent seulement à se trouver, et tout ce qui y passe est chiffré avec la clé du salon (la partie `cle=` du lien, dans le `#`, donc jamais envoyée à un serveur). Chaque paire de navigateurs prouve aussi la clé par un défi HMAC. Le premier arrivé est l'hôte (copie de référence, donne carte + commentaires aux nouveaux) ; s'il part, le suivant le plus ancien prend le relais. Chaque navigateur garde une copie du salon (IndexedDB) : un salon rouvert reprend. STUN public seulement : certains réseaux stricts (entreprise, certains mobiles) bloquent ; au bout de 15 s l'outil le dit et propose le mode serveur, ou ajoute ton serveur TURN dans Réglages avancés.

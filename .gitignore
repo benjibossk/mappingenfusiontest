@@ -29,3 +29,6 @@ collab/data/
 
 # reference maps over 20 MB are gzipped and not committed
 public/refmaps/*.gz
+
+# BI-derived satmap textures: generated locally (npm run satmap:textures), never distributed
+library/terrain-middles.json

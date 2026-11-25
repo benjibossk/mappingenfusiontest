@@ -85,7 +85,7 @@ export const applyHeightmap = (grid: object) => post<{ message: string }>('/heig
 
 /** writes one mask PNG per surface + <world>_satellite.png, to import by hand in the Workbench */
 export const writeMasks = (body: object) =>
-  post<{ dir: string; written: string[]; satellite?: { file: string }; orderDir?: string; ordered?: string[] }>('/masks', body)
+  post<{ dir: string; written: string[]; satellite?: { file: string }; satNote?: string; orderDir?: string; ordered?: string[] }>('/masks', body)
 
 /** writes profile/MapGen/ingamemap.png from an RGBA buffer (renderIngameMap in modules/ingameMap.ts) */
 export function writeIngameMap(img: { width: number; height: number; data: Uint8ClampedArray }) {

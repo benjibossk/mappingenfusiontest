@@ -1,7 +1,8 @@
 // harvest-terrain-middles.ts - vanilla terrain textures for the textured satellite map (port of the idea of
 // MapGeneratorPro satmap_v2_textured: tile each surface's BCR "middle" texture, MIT (c) Giorbev; no code copied).
 //
-//   npx tsx scripts/harvest-terrain-middles.ts [<game dir>]  -> library/terrain-middles.json
+//   npm run satmap:textures [-- <game dir>]  -> library/terrain-middles.json (LOCAL file, git-ignored:
+//   BI-derived data, generated from your own game install, never distributed)
 //
 // Reads the game's .pak files (FORM / FILE index, zlib entries), every "TerrainMaterial" .emat, its
 // BCRMiddleMap (else BCRMap) texture, decodes it with src/atelier/formats/edds.ts and keeps a 32 x 32 RGB
@@ -11,7 +12,7 @@ import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import { decodeColor } from '../src/atelier/formats/edds.ts'
 
-const GAME = process.argv[2] ?? 'D:/SteamLibrary/steamapps/common/Arma Reforger'
+const GAME = process.argv[2] ?? process.env.ENFUSION_GAME_PATH ?? 'D:/SteamLibrary/steamapps/common/Arma Reforger'
 const OUT = join(import.meta.dirname, '..', 'library', 'terrain-middles.json')
 const SIDE = 32
 

@@ -146,6 +146,8 @@ flowchart LR
 
 Importing a world in progress (**Import the open world**): relief, roads, rivers and lakes become editable; buildings and signs stay locked; objects replaced are deleted only by the send that rebuilds them (no duplicates).
 
+Satmap textures: the vanilla mode uses textures generated locally from your own game install (`npm run satmap:textures`), never distributed; the "clean colours" mode uses no game file.
+
 ## Collaboration
 
 **Direct mode (default, no server):** Share → Join a room… → **Create a room**, then **Copy the link** and send it privately. Others open the link, type a name and are in. Browsers connect to each other over WebRTC ([Trystero](https://github.com/dmotz/trystero), MIT); public Nostr relays only help them find each other, and everything they relay is encrypted with the room key (the `cle=` part of the link, in the `#` hash so it never reaches any server). Each pair of browsers also proves the key with an HMAC challenge. The first mapper in the room is the host (reference copy, gives newcomers the map + comments); if they leave, the next oldest takes over. Every browser keeps a copy of the room (IndexedDB), so a re-opened room resumes. Public STUN only: some strict networks (company, some mobile) can't connect — after 15 s the tool says so and offers server mode; or add your own TURN server in Advanced settings.

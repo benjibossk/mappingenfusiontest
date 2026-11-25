@@ -839,6 +839,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <li><button id="tHeight" type="button" class="secondary">${t('btn.tHeight')}</button><span class="hint">${t('wb.open')}</span></li>
           <li><button id="tMasks" type="button" class="secondary">${t('btn.tMasks')}</button><span class="hint">${t('wb.thenImport')}</span></li>
         </ol>
+        <label>${t('lbl.satSource')} <select id="satSource"><option value="vanilla">${t('opt.satVanilla')}</option><option value="clean">${t('opt.satClean')}</option></select></label>
+        <div class="hint">${t('hint.satSource')}</div>
         <details id="gcBox"><summary>${t('gc.title')}</summary>
           <label><input id="gcOn" type="checkbox"> ${t('gc.on')}</label>
           <label>${t('gc.biome')} <select id="gcBiome">${CLIMATE_BIOME_IDS.map((b) => `<option value="${b}">${t(('gc.b.' + b) as K)}</option>`).join('')}</select></label>
@@ -2594,17 +2596,26 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
       world: txt('tWorld'),
       ...maskBody(island.surfaces),
     })
-    return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '')
+    return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '') + (r.satNote ? '\n' + t('hint.satNoVanilla') : '')
   }),
 )
 
+// satmap texture source (licensing doubt on the BI middle textures): vanilla (default) or clean (no BI pixel)
+const satSourceSel = $<HTMLSelectElement>('satSource')
+try { satSourceSel.value = localStorage.getItem('reforger-mapper.satSource') === 'clean' ? 'clean' : 'vanilla' } catch { /* private window */ }
+satSourceSel.addEventListener('change', () => { try { localStorage.setItem('reforger-mapper.satSource', satSourceSel.value) } catch { /* storage blocked */ } })
+/** clean mode also sends the height grid (hillshade) and the seed; the PNG written stays the same file / size / format */
+function satSourceBody(): Record<string, unknown> {
+  if (satSourceSel.value !== 'clean') return { satSource: 'vanilla' }
+  return { satSource: 'clean', seed: num('tSeed'), relief: island ? { ...island.grid, heights: Array.from(island.heights) } : undefined }
+}
 /** the mask body of every export (and of the preview's final masks, preview/finalMasks.ts) */
 function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
   return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
 }
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
 const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => {
-  const b = applyBiome(body, currentBiome)
+  const b = { ...applyBiome(body, currentBiome), ...satSourceBody() }
   // opt-in climate ground classes (biomes/groundMasks.ts): default output unchanged when unchecked
   if (!$<HTMLInputElement>('gcOn').checked || !island) return writeMasksRaw(b)
   return writeMasksRaw(groundBiomeBody(b, island.grid, island.heights, gcBiome(), gcSettings(), gcOverrides))

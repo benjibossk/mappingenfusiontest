@@ -22,7 +22,7 @@
 
 import { missingBaseEntities } from "./world-setup.mjs";
 import { createServer } from "node:http";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { Socket } from "node:net";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -30,7 +30,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { listTerrainMaterials, prepareTerrain } from "./terrain-file.mjs";
-import { maskSide, png, writeMasks, writeSatellite } from "./terrain-masks.mjs";
+import { maskSide, middlesPath, png, resetTerrainMiddles, terrainMiddles, writeMasks, writeSatellite } from "./terrain-masks.mjs";
 import { handleAtelier } from "./atelier.mjs";
 import { handleOutside } from "./outside.mjs";
 
@@ -419,14 +419,17 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/masks") {
-      const { addon, world, terrainSize, surfaces, colours, roads = [], fileNames, readme } = JSON.parse(await readBody(req));
+      const { addon, world, terrainSize, surfaces, colours, roads = [], fileNames, readme, satSource, relief, seed } = JSON.parse(await readBody(req));
       if (!/^[\w .-]+$/.test(addon ?? "") || !/^[\w/ .-]+$/.test(world ?? "") || world.includes(".."))
         return send(res, 400, { error: "addon / world invalid" });
       if (!(terrainSize > 0) || !Array.isArray(surfaces)) return send(res, 400, { error: "terrainSize / surfaces missing" });
       const side = maskSide(join(ADDONS_DIR, addon, world, basename(world) + ".terr"));
       const dir = join(PROFILE_DIR, "MapGen", "masks", basename(world));
       const result = writeMasks(dir, side, terrainSize, surfaces, roads, colours, { fileNames, readme });
-      if (colours) result.satellite = writeSatellite(join(dir, "..", basename(world) + "_satellite.png"), 4096, terrainSize, surfaces, colours, undefined, roads);
+      let source = satSource === "clean" ? "clean" : "vanilla";
+      if (source === "vanilla" && !vanillaTexturesReady()) { source = "clean"; result.satNote = "textures vanilla non générées: lance npm run satmap:textures"; }
+      if (colours) result.satellite = writeSatellite(join(dir, "..", basename(world) + "_satellite.png"), 4096, terrainSize, surfaces, colours, undefined, roads,
+        { source, relief: source === "clean" ? relief : undefined, seed });
       return send(res, 200, result);
     }
 
@@ -559,4 +562,30 @@ function compareBuilt(project, warnings) {
     (count.entFail ? `, ${count.entFail} object(s) not placed` : "") +
     (lines.length ? " - details in profile/MapGen/report.txt" : "");
   return { lines: [summary, "", ...lines], summary };
+}
+
+// vanilla satmap textures (BI-derived, never in the repo): generated once from the user's own game install
+// (scripts/harvest-terrain-middles.ts, ENFUSION_GAME_PATH or its default path); false = fall back to clean
+let triedHarvest = false;
+function vanillaTexturesReady() {
+  if (terrainMiddles().size) return true;
+  if (triedHarvest) return false;
+  triedHarvest = true;
+  try {
+    const game = findGameDir();
+    if (!game) return false;
+    spawnSync(`npx tsx scripts/harvest-terrain-middles.ts "${game}"`, { cwd: join(dirname(fileURLToPath(import.meta.url)), ".."), shell: true, stdio: "ignore", timeout: 300000 });
+  } catch { /* no game install: clean mode */ }
+  resetTerrainMiddles();
+  return existsSync(middlesPath()) && terrainMiddles().size > 0;
+}
+//! installed Arma Reforger (game, not Tools): ENFUSION_GAME_PATH, then every Steam library (libraryfolders.vdf)
+function findGameDir() {
+  const libs = [process.env.ENFUSION_GAME_PATH ? dirname(dirname(dirname(process.env.ENFUSION_GAME_PATH))) : null];
+  for (const steam of ["C:/Program Files (x86)/Steam", "C:/Program Files/Steam", "D:/Steam", "D:/SteamLibrary"]) {
+    libs.push(steam);
+    try { for (const m of readFileSync(join(steam, "steamapps", "libraryfolders.vdf"), "utf-8").matchAll(/"path"\s+"([^"]+)"/g)) libs.push(m[1].replace(/\\/g, "/")); } catch { /* no Steam here */ }
+  }
+  const cands = [process.env.ENFUSION_GAME_PATH, ...libs.filter(Boolean).map((l) => join(l, "steamapps", "common", "Arma Reforger"))];
+  return cands.find((d) => d && existsSync(join(d, "addons", "data"))) ?? null;
 }
