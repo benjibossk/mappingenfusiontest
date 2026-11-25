@@ -4,6 +4,10 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+### Ajouté
+
+- Aérodromes de tous types : base aérienne militaire (piste béton, voie de circulation parallèle, abris durcis pour avions, tour, dépôt de carburant, clôture et portail), aérodrome civil (piste en enrobé, aérogare et parking) et piste en herbe ou en terre au milieu des champs ; pièces et marquages de piste vanilla, bâtiments hors de la bande de piste et sous la pente 1:7 ; le choix Auto prend le plus grand type que le terrain plat permet.
+
 ## [0.8.0] - 2026-11-25
 
 ### Ajouté

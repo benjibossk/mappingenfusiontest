@@ -148,7 +148,7 @@ import { applyZones, makeAirfield, makeIndustrial, makeLibraryParcel, makeMilita
 import { rpPlacesOf } from './modules/rpPlaces'
 import { suggestIndustrialSites, INDUSTRIAL_TYPES, pointInPoly, type IndustrialType } from './modules/industrial'
 import { suggestMilitary, type MilitaryKind } from './modules/military'
-import { suggestAirfield, type AirfieldSize } from './modules/airfield'
+import { suggestAirfield, parseAirfieldSub} from './modules/airfield'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
 import { withSlopeTilt } from './modules/slopeAlign'
 import { LAYERS as GEN_LAYERS, withWbLayers, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
@@ -738,7 +738,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </details>
       <details class="adv" id="milBox"><summary>${t('legend.mil')} ${info('info.mil')}</summary>
         <div class="form">
-          <label>${t('lbl.milWhat')} <select id="milWhat"><option value="main">${t('opt.mil.main')}</option><option value="outpost">${t('opt.mil.outpost')}</option><option value="checkpoint">${t('opt.mil.checkpoint')}</option><option value="air-small">${t('opt.air.small')}</option><option value="air-medium">${t('opt.air.medium')}</option><option value="air-large">${t('opt.air.large')}</option></select></label>
+          <label>${t('lbl.milWhat')} <select id="milWhat"><option value="main">${t('opt.mil.main')}</option><option value="outpost">${t('opt.mil.outpost')}</option><option value="checkpoint">${t('opt.mil.checkpoint')}</option><option value="air-auto">${t('opt.air.auto')}</option><option value="air-military-large">${t('opt.air.military-large')}</option><option value="air-military-medium">${t('opt.air.military-medium')}</option><option value="air-civil-large">${t('opt.air.civil-large')}</option><option value="air-civil-medium">${t('opt.air.civil-medium')}</option><option value="air-civil-small">${t('opt.air.civil-small')}</option><option value="air-strip-medium">${t('opt.air.strip-medium')}</option><option value="air-strip-small">${t('opt.air.strip-small')}</option></select></label>
           <label>${t('lbl.zoneSeed')} <input id="milSeed" type="number" step="1" value="1"></label>
         </div>
         ${hint('hint.mil')}
@@ -1604,8 +1604,8 @@ let ripaSig = '', ripaTimer = 0 // before the first draw(): ripaWatch runs from 
 let worldBridges: ProjectEntity[] = [] // V2 valley bridges of the last random world (3D view only)
 let zones: ZoneItem[] = [] // industrial zones, military bases, airfields (tab Villages)
 let zonePick: { kind: ZoneKind; sub: string } | null = null
-let zoneCands: { x: number; z: number; yaw: number }[] = []
-const ZONE_FILL: Record<string, string> = { tree: '#2f6b2acc', sand: '#e6d39a99', pasture: '#9cc46a44', orchard: '#6fa04a44', grave: '#d8d8d8', lamp: '#ffe066', lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc', basin: '#2b6a9acc', apron: '#bdb8aacc', quay: '#6e6e6e', arm: '#5b5249', jetty: '#8a6a42' }
+let zoneCands: { x: number; z: number; yaw: number; sub?: string }[] = []
+const ZONE_FILL: Record<string, string> = { tree: '#2f6b2acc', sand: '#e6d39a99', pasture: '#9cc46a44', orchard: '#6fa04a44', grave: '#d8d8d8', lamp: '#ffe066', lot: '#c9b27a33', area: '#7d8a5a33', pave: '#9a9a9acc', strip: '#8fbf5acc', dirt: '#a08058cc', shelter: '#5f6b4a', fuel: '#b0703a', mark: '#f2f2f2', marker: '#ffffff', ops: '#7d8a5a', terminal: '#c9a27a', windsock: '#ff7a1a', main: '#b07a4a', annex: '#c99a6a', prop: '#8a8a8a', hq: '#6a7d4a', barracks: '#7d8a5a', tower: '#4a5a3a', hangar: '#9aa4b0', tower_ctrl: '#d0d6dc', basin: '#2b6a9acc', apron: '#bdb8aacc', quay: '#6e6e6e', arm: '#5b5249', jetty: '#8a6a42' }
 let satQ: Quantised | null = null
 let satSurf: string[] = []
 let satCanvas: HTMLCanvasElement | null = null
@@ -5191,7 +5191,7 @@ function zoneInfo() {
   $('indInfo').textContent = n('industrial') ? t('zone.info.ind', { n: n('industrial') }) : ''
   $('milInfo').textContent = n('military') || n('airfield') ? t('zone.info.mil', { n: n('military'), a: n('airfield') }) : ''
 }
-function startPick(kind: ZoneKind, sub: string, cands: { x: number; z: number; yaw: number }[]) {
+function startPick(kind: ZoneKind, sub: string, cands: { x: number; z: number; yaw: number; sub?: string }[]) {
   zonePick = { kind, sub }
   zoneCands = cands
   map.style.cursor = 'copy'
@@ -5218,7 +5218,7 @@ function placeZone(sx: number, sy: number) {
   if (kind === 'site' && sub.startsWith('parcel:')) return void placeLibraryParcel(sub.slice(7), at.x, at.z, best >= 0 ? at.yaw : null)
   if (kind === 'industrial') zn = makeIndustrial(island.heights, g, [...roads, ...existingRoads()], { id, type: sub as IndustrialType, x: at.x, z: at.z, seed: num('indSeed') + zones.length })
   else if (kind === 'military') zn = makeMilitary(island.heights, g, { id, kind: sub as MilitaryKind, x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
-  else zn = makeAirfield(island.heights, g, { id, size: sub as AirfieldSize, x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
+  else zn = makeAirfield(island.heights, g, { id, ...parseAirfieldSub(("sub" in at && at.sub) || sub), x: at.x, z: at.z, yaw: at.yaw, seed: num('milSeed') + zones.length })
   endPick()
   if (!zn.entities.length && !zn.shapes.length) return void (logEl.textContent = t('err.zoneEmpty'))
   zones.push(zn)
@@ -5329,8 +5329,8 @@ $<HTMLButtonElement>('milSuggest').addEventListener('click', () => {
   const what = $<HTMLSelectElement>('milWhat').value
   const keepOut = [...siteDiscs(300), ...zones.map((z) => { const d = zoneDisc(z); return { ...d, r: d.r + 100 } })]
   if (what.startsWith('air-')) {
-    const size = what.slice(4) as AirfieldSize
-    startPick('airfield', size, suggestAirfield(island.heights, island.grid, { size, seaLevel: 0, keepOut, count: 5 }).map((q) => ({ x: q.x, z: q.z, yaw: q.yaw })))
+    const sub = what.slice(4), auto = sub === 'auto', p = parseAirfieldSub(auto ? 'military-medium' : sub)
+    startPick('airfield', auto ? 'military-medium' : sub, suggestAirfield(island.heights, island.grid, { size: p.size, kind: auto ? 'auto' : p.kind, seaLevel: 0, keepOut, count: 5 }).map((q) => ({ x: q.x, z: q.z, yaw: q.yaw, sub: `${q.kind}-${q.size}` })))
   } else {
     const kind = what as MilitaryKind
     startPick('military', kind, suggestMilitary(island.heights, island.grid, { kind, seaLevel: 0, keepOut, roads: [...roads, ...existingRoads()].map((r) => r.pts), count: 5 }).map((q) => ({ x: q.x, z: q.z, yaw: q.yaw })))

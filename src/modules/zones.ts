@@ -11,7 +11,7 @@ import { applyDam, type Dam } from './dam'
 import { pickTemplate, stampTemplate, type VanillaTemplate } from './vanillaSites'
 import { wallPiecesToShapes } from './wallRuns'
 import { applyHarbour, type HarbourPlan } from './harbour'
-import { generateAirfield, flattenAirfield, type AirfieldSize } from './airfield'
+import { generateAirfield, flattenAirfield, type AirfieldSize, type AirfieldKind } from './airfield'
 import { parcelCorners, parcelTemplate } from '../library/parcelLib'
 import type { Composition } from '../library/schema'
 
@@ -50,12 +50,15 @@ function prefixed(zid: string, shapes: ProjectShape[], entities: ProjectEntity[]
   return { shapes: shapes.map((s) => ({ ...s, id: tag(zid, s.id) })), entities: entities.map((e) => ({ ...e, id: tag(zid, e.id) })) }
 }
 
-export function makeAirfield(heights: number[], g: Grid, o: { id: string; size: AirfieldSize; x: number; z: number; yaw: number; seed: number }): ZoneItem {
-  const a = generateAirfield({ size: o.size, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed })
+export function makeAirfield(heights: number[], g: Grid, o: { id: string; size: AirfieldSize; kind?: AirfieldKind; x: number; z: number; yaw: number; seed: number }): ZoneItem {
+  const kind = o.kind ?? 'military'
+  const a = generateAirfield({ size: o.size, kind, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed })
   flattenAirfield(a, heights, g)
-  const boxes = [a.runway, ...a.taxiways, a.apron].map((b) => ({ corners: boxCorners(b), role: 'pave' }))
+  const ground = a.surface === 'grass' ? 'strip' : a.surface === 'dirt' ? 'dirt' : 'pave'
+  const boxes = [a.runway, ...a.taxiways, ...(a.apron.hw ? [a.apron] : [])].map((b, i) => ({ corners: boxCorners(b), role: i ? 'pave' : ground }))
   for (const p of a.placements) boxes.push({ corners: boxCorners(p.box), role: p.role })
-  return { id: o.id, kind: 'airfield', sub: o.size, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes, ...prefixed(o.id, a.shapes, a.entities), flat: a.flatten, plat: [], roads: [], warnings: [], access: [a.apron.x, a.apron.z] }
+  boxes.push({ corners: boxCorners(a.site), role: 'area' })
+  return { id: o.id, kind: 'airfield', sub: `${kind}-${o.size}`, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed, boxes, ...prefixed(o.id, a.shapes, a.entities), flat: a.flatten, plat: [], roads: [], warnings: a.rejected, access: a.access }
 }
 
 /** naval / quay-edge pieces of a vanilla base, never stamped (bases are placed inland) */

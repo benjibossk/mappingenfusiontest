@@ -8,6 +8,10 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+### Added
+
+- Airfields of every kind: military air base (concrete runway, parallel taxiway, hardened aircraft shelters, tower, fuel depot, fence and gate), civil airfield (asphalt runway, terminal and car park) and grass or dirt field strip; vanilla runway pieces and markings, buildings kept out of the runway strip and under the 1:7 slope; an Auto choice picks the biggest type the flat ground allows.
+
 ## [0.8.0] - 2026-11-25
 
 ### Added

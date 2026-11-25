@@ -449,9 +449,12 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   const access: Site[] = zones.filter((z) => z.access).map((z) => ({ id: `ACCESS_${z.id}`, x: z.access![0], z: z.access![1], kind: 'hamlet' as const })) // gates the road network must reach (not settled); dam crests first
   if (p.airfield && p.size >= WORLD.airfield.minMapKm * 1000) {
     const size = WORLD.airfield.sizeFor(p.size)
-    const s = suggestAirfield(lakeAsSea(cur.heights, lakes0), g, { size, seaLevel: 0, keepOut: siteDiscs(WORLD.airfield.keepOutM), count: 1 })[0]
+    const dry = lakeAsSea(cur.heights, lakes0), keepOut = siteDiscs(WORLD.airfield.keepOutM)
+    // a military base on the longest flat strip (the auto ladder, smaller types, stays a manual choice:
+    // a fallback here would change every existing seed without a base)
+    const s = suggestAirfield(dry, g, { size, seaLevel: 0, keepOut, count: 1 })[0]
     if (s) {
-      const a = makeAirfield(cur.heights, g, { id: 'AIR_1', size, x: s.x, z: s.z, yaw: s.yaw, seed: ss('settlements', 'airfield') })
+      const a = makeAirfield(cur.heights, g, { id: 'AIR_1', size: s.size, kind: s.kind, x: s.x, z: s.z, yaw: s.yaw, seed: ss('settlements', 'airfield') })
       const ok = !zoneWet(a) // no dry ground: no airfield
       if (ok) zones.push(a)
       if (ok && a.access) access.push({ id: 'ACCESS_AIR_1', x: a.access[0], z: a.access[1], kind: 'hamlet' })
