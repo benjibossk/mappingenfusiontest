@@ -286,8 +286,14 @@ export function makeCemetery(polygon: number[], c: ExtraCtx, graves: readonly st
     if (rows.length > 12 && rows.indexOf(p.row) % crossEvery === crossEvery - 1) continue // cross aisle
     if (!b.free(p.x, p.z, 0.6) || rand() > 0.9) continue
     const fence = rand() < 0.1
+    // the whole grave (surround) clear of a road crossing the block, not only its centre (seed 3 TOWN_1_SITE_2:
+    // 4 graves 7.3 m off ROAD_ASPHALTE_LIGNE_POINTILLEE_1, RoadWidth 12, their ends on the verge)
+    const rc = rectAt(p.x, p.z, p.yaw, 1, fence ? 2.4 : 2)
+    let clear = true
+    for (let i = 0; i + 1 < rc.length; i += 2) if (!c.ok(rc[i], rc[i + 1])) { clear = false; break }
+    if (!clear) continue
     b.ent(fence ? pick(rand, EXTRA_PREFABS.graveFence) : pick(rand, graves), p.x, p.z, p.yaw + (rand() - 0.5) * 3)
-    o.boxes.push({ corners: rectAt(p.x, p.z, p.yaw, 1, fence ? 2.4 : 2), role: 'grave', h: 0.9 })
+    o.boxes.push({ corners: rc, role: 'grave', h: 0.9 })
   }
   // terraces: one flattened band every 2 rows when on a slope
   if (steep && c.ground) {

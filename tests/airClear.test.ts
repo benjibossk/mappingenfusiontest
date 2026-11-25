@@ -80,18 +80,21 @@ test('random world seed 3: a large military airfield clicked at the centre clear
   const before = w.settlement.placed.filter((p) => inFoot(b, p.x, p.z)).length + w.roads.filter((r) => crosses(r.pts, b)).length + (w.areas ?? []).filter((a) => anyIn(a.pts, b)).length
   assert.ok(before > 0, 'test scene: something to clear')
   L.zones!.push(zn)
+  const was = new Map(L.roads.map((r) => [r.id, JSON.stringify(r.pts)]))
   const rep = clearAirfield(L, zn)
   assertClear(L, zn.id, b, zn.embank)
   assert.ok(rep.accessRoad || L.roads.some((r) => { for (let i = 0; i + 1 < r.pts.length; i += 2) if (Math.hypot(r.pts[i] - zn.access![0], r.pts[i + 1] - zn.access![1]) < 40) return true; return false }), 'a road reaches the gate')
   // nothing stands on the access road laid over the world (seed 3 live: TREE_FIELD_2 on AIR_1_ACCESS)
-  const acc = L.roads.find((r) => r.id === 'AIR_9_ACCESS')
-  if (acc) for (const z of L.zones!) for (const e of z.entities) {
+  // ... nor on a through road rerouted round the footprint (seed 3 live: BELT_2 hazels on the ROAD_ASPHALTE_1 detour)
+  const laid = L.roads.filter((r) => r.id === 'AIR_9_ACCESS' || (!r.id.startsWith('AIR_9_') && was.has(r.id) && was.get(r.id) !== JSON.stringify(r.pts)))
+  assert.ok(laid.length > 1, 'test scene: a detour besides the access')
+  for (const acc of laid) for (const z of L.zones!) if (z.id !== zn.id) for (const e of z.entities) {
     let d = Infinity
     for (let i = 0; i + 3 < acc.pts.length; i += 2) {
       const ax = acc.pts[i], az = acc.pts[i + 1], dx = acc.pts[i + 2] - ax, dz = acc.pts[i + 3] - az, t = Math.max(0, Math.min(1, ((e.x - ax) * dx + (e.z - az) * dz) / (dx * dx + dz * dz || 1)))
       d = Math.min(d, Math.hypot(ax + dx * t - e.x, az + dz * t - e.z))
     }
-    assert.ok(d >= roadHalf(acc), `${e.id} on the access road (${d.toFixed(1)} m)`)
+    assert.ok(d >= roadHalf(acc), `${e.id} on ${acc.id} (${d.toFixed(1)} m)`)
   }
   // idempotent: a second pass finds nothing more
   const again = clearAirfield(L, zn)
@@ -120,4 +123,22 @@ test('embankments: the flatten blend never exceeds 1:3 on a hillside', () => {
     worst = Math.max(worst, Math.abs(out[k + 1] - out[k - 1]) / 20 - 0.08 * 0, Math.abs(out[k + g.cols] - out[k - g.cols]) / 20)
   }
   assert.ok(worst < 0.4, `steepest blend ${worst.toFixed(2)} (cliff edge)`)
+})
+
+test('clearAirfield: nothing of another zone stays on a through road rerouted round the footprint', () => {
+  const site: Box = { x: 0, z: 0, hw: 100, hd: 300, yaw: 0 }
+  const air = { id: 'AIR_7', kind: 'airfield', site, boxes: [], entities: [], shapes: [], roads: [], x: 0, z: 0, yaw: 0 } as unknown as Parameters<typeof clearAirfield>[1]
+  const world = (ents: { id: string; prefab: string; x: number; z: number; yaw: number }[]): ClearWorld => ({
+    roads: [{ id: 'ROAD_X', type: 'asphalt', pts: [-1000, 0, -500, 0, 500, 0, 1000, 0] }],
+    zones: [{ id: 'VEG_SCATTER', kind: 'site', x: 0, z: 0, yaw: 0, shapes: [], roads: [], boxes: [], entities: ents } as unknown as NonNullable<ClearWorld['zones']>[number]],
+  })
+  // where the detour runs: lay it once on an empty world, then put a bush on one of its vertices
+  const probe = world([]); clearAirfield(probe, air)
+  const r = probe.roads.find((q) => q.id === 'ROAD_X')!
+  let k = 0
+  for (let i = 0; i + 1 < r.pts.length; i += 2) if (Math.abs(r.pts[i]) < 200 && Math.abs(r.pts[i + 1]) > 300) { k = i; break }
+  assert.ok(k > 0, 'the road goes round the box')
+  const w = world([{ id: 'BELT_2_B38', prefab: 'hazel.et', x: r.pts[k] + 0.5, z: r.pts[k + 1], yaw: 0 }, { id: 'FAR', prefab: 'hazel.et', x: 0, z: 900, yaw: 0 }])
+  clearAirfield(w, air)
+  assert.deepEqual(w.zones![0].entities.map((e) => e.id), ['FAR'])
 })

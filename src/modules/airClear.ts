@@ -278,6 +278,16 @@ function clipLine(pts: number[], b: Box, reroute: boolean, off: number, minLen =
 }
 
 /** removes / adapts everything of `w` inside the airfield footprint. Mutates `w` in place. */
+/** drops the other zones' entities and the settled buildings standing on road `r` (half width + 0.5 m) */
+function clearAlong(w: ClearWorld, self: string, r: Road, rep: ClearReport) {
+  const lim = roadHalf(r) + 0.5
+  if (w.zones) for (const z of w.zones) if (z.id !== self) {
+    const keep = z.entities.filter((e) => lineDist(r.pts, e.x, e.z) >= lim)
+    if (keep.length !== z.entities.length) { z.entities = keep; rep.zones++ }
+  }
+  if (w.settled) replace(w.settled, w.settled.filter((q) => lineDist(r.pts, q.x, q.z) >= lim))
+}
+
 export function clearAirfield(w: ClearWorld, zn: ZoneItem & { site?: Box }, o: { accessType?: RoadType } = {}): ClearReport {
   const rep: ClearReport = { houses: 0, sites: [], props: 0, fields: 0, hedges: 0, forests: 0, roadsCut: 0, roadsRerouted: 0, accessRoad: false, power: 0, powerRerouted: 0, supply: false, streams: 0, zones: 0 }
   const b = airFootprint(zn)
@@ -307,13 +317,13 @@ export function clearAirfield(w: ClearWorld, zn: ZoneItem & { site?: Box }, o: {
     replace(list, parcels)
   }
   // roads: through roads around the perimeter, others cut at the footprint; lanes / paths of gone places dropped
-  const roadsOut: Road[] = []
+  const roadsOut: Road[] = [], detoured: Road[] = []
   for (const r of w.roads) {
     if (own(r.id)) { roadsOut.push(r); continue }
     const c = clipLine(r.pts, b, !!THROUGH[r.type], 25)
     if (!c.cut) { roadsOut.push(r); continue }
     if (c.rerouted) rep.roadsRerouted++; else rep.roadsCut++
-    c.parts.forEach((pts, k) => roadsOut.push({ ...stripArc(r), id: k ? `${r.id}_${k + 1}` : r.id, pts }))
+    c.parts.forEach((pts, k) => { const nr = { ...stripArc(r), id: k ? `${r.id}_${k + 1}` : r.id, pts }; roadsOut.push(nr); if (c.rerouted) detoured.push(nr) })
   }
   replace(w.roads, roadsOut)
   for (const list of [w.lanes, w.paths]) {
@@ -413,6 +423,9 @@ export function clearAirfield(w: ClearWorld, zn: ZoneItem & { site?: Box }, o: {
     }
     replace(w.zones, out)
   }
+  // a detour is new geometry laid over what the world holds: scattered trees, belt bushes, props on its carriageway
+  // go (seed 3 + large military airfield: 4 BELT_2 hazels on the ROAD_ASPHALTE_1 detour, 'on-road' audit)
+  for (const r of detoured) clearAlong(w, zn.id, r, rep)
   // access road to the gate: from the nearest road outside the footprint, never across it
   if (zn.access) {
     const [gx, gz] = zn.access
@@ -437,12 +450,7 @@ export function clearAirfield(w: ClearWorld, zn: ZoneItem & { site?: Box }, o: {
         rep.accessRoad = true
         // the access is laid last, over what the world already holds: scattered field trees, groves, props on its
         // carriageway go (seed 3 + large airfield: TREE_FIELD_2 on AIR_1_ACCESS, 'on-road' audit)
-        const lim = roadHalf(acc) + 0.5
-        if (w.zones) for (const z of w.zones) if (z.id !== zn.id) {
-          const keep = z.entities.filter((e) => lineDist(acc.pts, e.x, e.z) >= lim)
-          if (keep.length !== z.entities.length) { z.entities = keep; rep.zones++ }
-        }
-        if (w.settled) replace(w.settled, w.settled.filter((q) => lineDist(acc.pts, q.x, q.z) >= lim))
+        clearAlong(w, zn.id, acc, rep)
       }
     }
     // supply: a distribution line from the nearest pole outside to the gate

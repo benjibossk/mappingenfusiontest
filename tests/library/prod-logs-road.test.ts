@@ -15,3 +15,18 @@ test('log piles >= 7 m off every input road', () => {
   }
   assert.ok(piles > 0)
 })
+
+test('log piles stay off their own tracks once o.fix has re-routed them (seed 3: FOREST_PROD_W1_1_LOG_14 on ROAD_PROD_W1_4)', () => {
+  let piles = 0, checked = 0
+  for (let seed = 1; seed <= 6; seed++) for (const [ox, oz] of [[6.5, 0], [0, 6.5], [-6.5, 0], [0, -6.5]]) {
+    const roads = [[0, -20, 1400, -20]]
+    // the terrain fix moves each track sideways (a re-route round a steep bank)
+    const fix = (pts: number[]) => pts.map((q, i) => q + (i % 2 ? oz : ox))
+    const r = addProdForests([{ id: 'F', kind: 'forest', leaf: 'needle', pts: sq(0, 0, 1400) }], { seed, roads, share: 1, ground: () => 10, fix } as never)
+    for (const a of r.areas as { logs?: { x: number; z: number }[] }[]) for (const l of a.logs ?? []) {
+      piles++
+      for (const t of r.tracks) { checked++; assert.ok(dist(t.pts, l.x, l.z) >= 3.5, `pile ${l.x},${l.z} ${dist(t.pts, l.x, l.z).toFixed(1)} m off ${t.id}`) }
+    }
+  }
+  assert.ok(piles > 0 && checked > 0)
+})

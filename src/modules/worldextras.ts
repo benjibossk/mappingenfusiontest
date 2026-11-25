@@ -58,8 +58,11 @@ export function addProdForests<A extends { id: string; kind: string; leaf?: 'bro
     fixed.forEach((pts, j) => { if (pts && pts.length >= 4 && !crosses(pts)) { tracks.push({ id: `ROAD_PROD_W${n}_${j + 1}`, type: 'dirt', pts, auto: true }); roads.push(pts) } })
     // log piles off the other roads (seed 21 live audit: a pile on ROAD_TERRE_1 next to a production track);
     // smoothed lines, a pile is ~4 m long and 2 m wide: >= 7 m from any other road's axis
+    // + this forest's own tracks AFTER o.fix (re-routed onto the terrain, they can pass over a pile laid 6.5 m off
+    // the raw branch: seed 3 live audit, FOREST_PROD_W1_1_LOG_14 1.2 m off ROAD_PROD_W1_4): >= 4.5 m from their axis
     const other = o.roads.map((r) => centreLine(r, 4))
-    const logs = pf.logs.filter((l) => other.every((ln) => segDist(ln, l.x, l.z) >= 7))
+    const own = fixed.filter((pts): pts is number[] => !!pts && pts.length >= 4 && !crosses(pts)).map((r) => centreLine(r, 4))
+    const logs = pf.logs.filter((l) => other.every((ln) => segDist(ln, l.x, l.z) >= 7) && own.every((ln) => segDist(ln, l.x, l.z) >= 4.5))
     kept.forEach((c, j) => {
       const tall = c.stage === 'juvenile' ? 'low' : c.stage === 'thinned' ? 'mid' : 'high'
       out.push({ id: `FOREST_PROD_W${n}_${j + 1}`, kind: 'forest', leaf: a.leaf === 'mixed' ? 'mixed' : 'needle', tall, stage: c.stage, pts: c.pts, ...(j === 0 && logs.length ? { logs } : {}) })

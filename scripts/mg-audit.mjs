@@ -170,7 +170,9 @@ if (terrain)
 
 // on-road
 const roadHalf = (g) => (/Narrow/i.test(g) ? 2.6 : /Dirt/i.test(g) ? 2.0 : /DashedLine|Highway|Wide/i.test(g) ? 3.4 : 3.0);
-const roads = shapes.filter((s) => /\/RG_Road/.test(s.generator ?? "")).map((s) => ({ id: s.id, half: roadHalf(s.generator), p: pts(s) }));
+// airfield aprons / turn pads are paved AREAS drawn as parallel road lanes (airfield.ts lanes()): their ground
+// power units and fuel barrels stand on purpose on the service lane, not on a carriageway
+const roads = shapes.filter((s) => /\/RG_Road/.test(s.generator ?? "") && !/_(apron|pad[^_]*)(_\d+)?$/.test(s.id)).map((s) => ({ id: s.id, half: roadHalf(s.generator), p: pts(s) }));
 const roadAt = segIndex(roads);
 const roadside = /Sign|VergePost|CrashBarrier|Barrier|Guard|Bollard|Embankment|Probe|Bridge|Culvert|Crossing|Junction|Marking|Lamp|Pole/i;
 for (const e of sent) {
