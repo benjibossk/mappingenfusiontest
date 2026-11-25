@@ -7,6 +7,16 @@ export interface ChangelogEntry { version: string; date: string; items: Changelo
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.9.0',
+    date: '2026-11-25',
+    items: [
+      { en: "Airfields: military air base, civil airfield and grass field strip", fr: "Aérodromes : base aérienne militaire, aérodrome civil et piste en herbe" },
+      { en: "The airfield clears its ground and reroutes roads, nothing overlaps", fr: "L'aérodrome dégage son terrain et dévie les routes, rien ne se superpose" },
+      { en: "Runways and aprons painted as real concrete or asphalt in game", fr: "Pistes et tabliers peints en vrai béton ou enrobé dans le jeu" },
+      { en: "No more Workbench crash on a second send in a row", fr: "Plus de plantage du Workbench au deuxième envoi de suite" },
+    ],
+  },
+  {
     version: '0.8.0',
     date: '2026-11-25',
     items: [

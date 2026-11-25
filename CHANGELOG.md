@@ -8,9 +8,19 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-25
+
 ### Added
 
 - Airfields of every kind: military air base (concrete runway, parallel taxiway, hardened aircraft shelters, tower, fuel depot, fence and gate), civil airfield (asphalt runway, terminal and car park) and grass or dirt field strip; vanilla runway pieces and markings, buildings kept out of the runway strip and under the 1:7 slope; an Auto choice picks the biggest type the flat ground allows.
+- Natural integration: the airfield clears its footprint (buildings, fields, woods, power lines), cuts or reroutes the roads around it and links its gate to the network, nothing is left overlapping.
+- Runways, taxiways and aprons are painted into the ground (concrete, asphalt or dirt), so they show as real surfaces in the game.
+- Own Workbench NET API port per project (`wb-launch.ps1`, `MAPGEN_WB_PORT`), with a link test before any send.
+
+### Fixed
+
+- Workbench add-on: a second send in a row no longer crashes the Workbench.
+- Wide aprons and turn pads no longer come out empty; long fence and marking lines are split so they build.
 
 ## [0.8.0] - 2026-11-25
 

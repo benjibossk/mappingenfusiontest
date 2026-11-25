@@ -185,14 +185,10 @@ if (-not $NoSave) {
   Start-Sleep -Seconds $SaveDelaySec
   $wp0 = Get-Process -Id $wbpid -ErrorAction SilentlyContinue
   if (-not $wp0 -or (Get-Process -Name CrashReporter* -ErrorAction SilentlyContinue)) { 'WORKBENCH CRASHED before save'; exit 3 }
-  # save: menu Invoke once, else Ctrl+S
+  # save through the NET API only (wb-save.mjs): no keyboard, no focus, no UIA Invoke (both crashed or stole focus)
   $saved = $false
-  # ONE attempt only: repeated UIA Invokes on Save World crashed the Workbench (2026-11-20)
-  # UIA Invoke on File > Save World crashed the Workbench twice right after an import (2026-11-20): keyboard Ctrl+S only
-  $lastErr = 'Ctrl+S did not clear the * in the title'
+  $lastErr = 'NET API save did not clear the * in the title'
   if (-not $saved) {
-    # UIA Invoke on Save World can fault (RPC_E_SERVERFAULT) after the import box: fall back to Esc + Ctrl+S on the focused editor
-    # NET API save, no keyboard/focus (Benji plays on the same PC)
     node (Join-Path $PSScriptRoot 'wb-save.mjs')
     Start-Sleep -Seconds 6
     $wp = Get-Process -Id $wbpid -ErrorAction SilentlyContinue

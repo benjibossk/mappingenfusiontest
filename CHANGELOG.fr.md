@@ -4,9 +4,19 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+## [0.9.0] - 2026-11-25
+
 ### Ajouté
 
 - Aérodromes de tous types : base aérienne militaire (piste béton, voie de circulation parallèle, abris durcis pour avions, tour, dépôt de carburant, clôture et portail), aérodrome civil (piste en enrobé, aérogare et parking) et piste en herbe ou en terre au milieu des champs ; pièces et marquages de piste vanilla, bâtiments hors de la bande de piste et sous la pente 1:7 ; le choix Auto prend le plus grand type que le terrain plat permet.
+- Intégration naturelle : l'aérodrome dégage son emprise (bâtiments, champs, bois, lignes électriques), coupe ou dévie les routes autour et relie son portail au réseau, plus rien ne se superpose.
+- Pistes, voies et tabliers sont peints dans le sol (béton, enrobé ou terre) : ce sont de vraies surfaces dans le jeu.
+- Un port NET API Workbench par projet (`wb-launch.ps1`, `MAPGEN_WB_PORT`), avec test de la liaison avant tout envoi.
+
+### Corrigé
+
+- Addon Workbench : un deuxième envoi de suite ne fait plus planter le Workbench.
+- Les grands tabliers et aires de retournement ne sortent plus vides ; les longues clôtures et lignes de marquage sont découpées pour se construire.
 
 ## [0.8.0] - 2026-11-25
 
