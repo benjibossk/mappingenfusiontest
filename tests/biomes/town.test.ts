@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateTown } from '../../src/modules/town.ts'
+import { convexOverlap, generateTown } from '../../src/modules/town.ts'
 import { inside, lineDist, overlap } from '../../src/modules/settlements.ts'
 import type { Road } from '../../src/modules/roads.ts'
 import type { Water } from '../../src/modules/water.ts'
@@ -67,24 +67,28 @@ test('town: a through-road becomes a main street (graph on it, houses face it, n
   for (const b of r.placed) for (let i = 0; i < 8; i += 2) assert.ok(lineDist(roads[0].pts, b.corners[i], b.corners[i + 1]) > 5, 'house on the road')
 })
 
-test('town: blocks subdivided into street-front parcels, one per house, house inside facing the street', () => {
+test('town: blocks subdivided into street-front parcels reaching the block middle, none overlapping', () => {
   const r = generateTown(zone, roads, [pond], flat, grid, { seed: 3, prefix: 'T1' })
   assert.ok(r.parcels.length >= 30, `parcels ${r.parcels.length}`)
   const byId = new Map(r.placed.map((b) => [b.id, b]))
   const ids = new Set<string>()
+  let deep = 0
   for (const p of r.parcels) {
     assert.ok(!ids.has(p.building), 'one parcel per building'); ids.add(p.building)
     const b = byId.get(p.building)!
     assert.ok(b, 'parcel of a placed building')
-    assert.equal(p.corners.length, 8)
+    assert.ok(p.corners.length >= 6)
     assert.ok(inside(p.corners, b.x, b.z), p.id + ' house outside its parcel')
     assert.ok(p.block >= -1 && p.block < r.blocks.length)
-    // the house stands at the front edge (corners 0-1 = street side): its nearest corner within the setback
     let near = Infinity
-    for (let i = 0; i < 8; i += 2) near = Math.min(near, lineDist(p.corners.slice(0, 4), b.corners[i], b.corners[i + 1]))
+    for (let i = 0; i < 8; i += 2) near = Math.min(near, lineDist(p.front, b.corners[i], b.corners[i + 1]))
     assert.ok(near < 9, p.id + ' house not on the street front ' + near.toFixed(1))
+    let far = 0
+    for (let i = 0; i < p.corners.length; i += 2) far = Math.max(far, lineDist(p.front, p.corners[i], p.corners[i + 1]))
+    if (far > 25) deep++
   }
-  // deterministic
+  assert.ok(deep > r.parcels.length * 0.5, `deep parcels ${deep}/${r.parcels.length}`)
+  for (let i = 0; i < r.parcels.length; i++) for (let j = i + 1; j < r.parcels.length; j++) assert.ok(!convexOverlap(r.parcels[i].corners, r.parcels[j].corners, 0.3), `${r.parcels[i].id} overlaps ${r.parcels[j].id}`)
   const r2 = generateTown(zone, roads, [pond], flat, grid, { seed: 3, prefix: 'T1' })
   assert.deepEqual(r2.parcels, r.parcels)
 })
