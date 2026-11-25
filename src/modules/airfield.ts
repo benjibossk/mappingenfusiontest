@@ -222,7 +222,25 @@ export function generateAirfield(o: AirfieldOptions): Airfield {
     local.push(l)
     return l
   }
-  const line = (k: string, gen: string, a: [number, number], b: [number, number]) => shapes.push({ id: id(k), kind: 'spline', closed: false, points: pts(a, b).map(round), generator: gen })
+  /** local polyline with no leg longer than `step` m (the Workbench generators misbehave on legs > 400 m) */
+  const dense = (ts: [number, number][], step = 100): [number, number][] => {
+    const out: [number, number][] = [ts[0]]
+    for (let i = 1; i < ts.length; i++) {
+      const [t0, s0] = ts[i - 1], [t1, s1] = ts[i], n = Math.max(1, Math.ceil(Math.hypot(t1 - t0, s1 - s0) / step))
+      for (let k = 1; k <= n; k++) out.push([t0 + ((t1 - t0) * k) / n, s0 + ((s1 - s0) * k) / n])
+    }
+    return out
+  }
+  const line = (k: string, gen: string, a: [number, number], b: [number, number]) => shapes.push({ id: id(k), kind: 'spline', closed: false, points: pts(...dense([a, b])).map(round), generator: gen })
+  /** a wide paved area along s (apron, turn pad) as parallel lanes: one road spline wider than ~2x its point
+   *  spacing comes out EMPTY in the Workbench (apron at RoadWidth 110: RoadEntity with a zero bound) */
+  const lanes = (k: string, t0: number, s0: number, s1: number, w: number, gen: string, maxW = 20) => {
+    const n = Math.max(1, Math.ceil(w / maxW)), lw = w / n
+    for (let i = 0; i < n; i++) {
+      const tc = t0 - w / 2 + lw * (i + 0.5)
+      shapes.push(roadShape(id(i ? `${k}_${i}` : k), pts([tc, s0], [tc, s1]), gen, round(lw + 1)))
+    }
+  }
 
   // --- runway surface
   const runway = lbox(0, 0, hwR, L)
@@ -297,7 +315,7 @@ export function generateAirfield(o: AirfieldOptions): Airfield {
     for (const end of S.taxi ? [1] : [-1, 1]) {
       const s = end * (L - 20)
       taxiways.push(lbox(0, s, hwR + 15, 20))
-      shapes.push(roadShape(id(`pad${end}`), pts([0, s - 20], [0, s + 20]), AIR_GEN.asphalt, S.width + 30))
+      lanes(`pad${end}`, 0, s - 20, s + 20, S.width + 30, AIR_GEN.asphalt)
     }
   }
 
@@ -306,7 +324,7 @@ export function generateAirfield(o: AirfieldOptions): Airfield {
   if (S.apronD > 0) {
     const ac = side * (apronT0 + S.apronD / 2)
     apron = lbox(ac, az, S.apronD / 2, S.apronW / 2)
-    shapes.push(roadShape(id('apron'), pts([ac, az - S.apronW / 2], [ac, az + S.apronW / 2]), kind === 'military' ? AIR_GEN.panel : AIR_GEN.asphalt, S.apronD))
+    lanes('apron', ac, az - S.apronW / 2, az + S.apronW / 2, S.apronD, kind === 'military' ? AIR_GEN.panel : AIR_GEN.asphalt, kind === 'military' ? 12 : 20)
     const standD = S.apronD * 0.6, laneT = apronT0 + standD + 5
     const pitch = kind === 'military' ? 40 : 28
     const nStand = Math.max(1, Math.floor(S.apronW / pitch))
@@ -394,7 +412,7 @@ export function generateAirfield(o: AirfieldOptions): Airfield {
     // perimeter net fence (gap = gate on the building side, at the apron), inner perimeter road
     const fo = maxT + 30, fi = sh + 40, fs = L + 100, gS = az, gw = 6
     const ring = (o2: number, i2: number, e: number): [number, number][] => [[side * o2, gS + gw], [side * o2, e], [-side * i2, e], [-side * i2, -e], [side * o2, -e], [side * o2, gS - gw]]
-    shapes.push(wallShape(id('fence'), pts(...ring(fo, fi, fs)), AIR_GEN.fence))
+    shapes.push(wallShape(id('fence'), pts(...dense(ring(fo, fi, fs))), AIR_GEN.fence))
     shapes.push(roadShape(id('perim'), pts(...ring(fo - 10, fi - 10, fs - 10)), AIR_GEN.panel, 4))
     shapes.push(roadShape(id('gate'), pts([side * (fo + 15), gS], [side * (bandT0 || fo - 10), gS]), AIR_GEN.panel, 7))
     put('gate', AIR_PREFABS.barGate, side * fo, gS, 90, 'bump')
@@ -523,4 +541,21 @@ export function suggestAirfield(heights: ArrayLike<number>, g: Grid, o: Airfield
     if (keep.every((k) => Math.hypot(k.x - s.x, k.z - s.z) > Math.max(len, AIRFIELD_SPECS[k.kind][k.size].length))) keep.push(s)
   }
   return keep
+}
+
+/** terrain texture under the paved / dirt surfaces (runway, taxiways, links, apron lanes, pads, perimeter road):
+ *  the vanilla RG_Runway_* roads are DECAL overlays (material in Assets/Decals/Markings/Runway, Type Runway) that
+ *  draw nothing on their own (seen in the Workbench: no surface at all over grass), so like Everon the concrete is
+ *  the ground texture, painted with the masks. One band per road shape of the site, as wide as its RoadWidth. */
+export function airfieldGroundMasks(shapes: ProjectShape[]): { points: number[]; half: number; edge: number; core: string }[] {
+  const out: { points: number[]; half: number; edge: number; core: string }[] = []
+  for (const sh of shapes) {
+    if (!sh.generator.includes('/Roads/') || sh.points.length < 4) continue
+    const k = sh.paramKeys?.indexOf('RoadWidth') ?? -1
+    const w = k >= 0 ? Number(sh.paramValues?.[k]) : NaN
+    if (!(w > 0)) continue
+    const core = sh.generator.includes('/Concrete/') ? 'Concrete_01' : sh.generator.includes('/Asphalt/') ? 'Asphalt_01' : 'Dirt_01'
+    out.push({ points: sh.points, half: round(w / 2), edge: w >= 10 ? 3 : 1.5, core })
+  }
+  return out
 }
