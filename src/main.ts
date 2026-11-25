@@ -177,6 +177,7 @@ import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, t
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
 import { sanitizeRoadShape } from './modules/roadSanitize'
 import { camLookAt, worldToMap } from './modules/wbCamera'
+import { buildingsFor } from './data/buildings'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
 // the side panel is a guided path: one step per tab, in the order a map is built
@@ -696,6 +697,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label class="check devonly"><input id="setV2" type="checkbox" checked> ${t('lbl.setV2')} ${info('info.setV2')}</label>
         <div class="form" id="setV2Box">
           <label>${t('lbl.setVariant')} ${info('info.setVariant')} <select id="setVariant"><option value="auto">${t('opt.var.auto')}</option><option value="village">${t('opt.var.village')}</option><option value="town">${t('opt.var.town')}</option></select></label>
+          <label>${t('lbl.setHouseStyle')} ${info('info.setHouseStyle')} <select id="setHouseStyle"><option value="vanilla">${t('opt.house.vanilla')}</option><option value="soviet">${t('opt.house.soviet')}</option></select></label>
           <label>${t('lbl.setMaxStreets')} ${info('info.setMaxStreets')} <input id="setMaxStreets" type="number" min="0" max="10" step="1" value="" placeholder="${t('opt.var.auto')}"></label>
           <label class="check"><input id="setStreets" type="checkbox" checked> ${t('lbl.setStreets')} ${info('info.setStreets')}</label>
           <label class="check"><input id="setFarms" type="checkbox" checked> ${t('lbl.setFarms')} ${info('info.setFarms')}</label>
@@ -1390,6 +1392,8 @@ function zoneTown(zone: number[], n: number) {
   settled = offBridges(res.placed)
   setLanes = [...setLanes, ...res.lanes]
   setSquares = [...setSquares, ...res.squares]
+  // P3 #13: the street-front parcels of the blocks (drawn as gardens, worn ground under them)
+  setGardens = [...setGardens, ...res.parcels.map((p) => ({ site: sid, corners: p.corners }))]
   // the town's parking and church blocks are dressed by the site generators (sitezones.ts): parking bays, and the
   // cemetery round the church (graves skip the church footprint: `ok` excludes the settled buildings)
   for (const bl of res.blocks) {
@@ -4063,6 +4067,8 @@ $<HTMLButtonElement>('setGen').addEventListener('click', () => void track((async
   if (chk('setParcels')) {
     try { pool = parcelPool(await loadParcels()) } catch (e) { logEl.textContent = t('err.parcels') + (e as Error).message; return }
   }
+  // soviet house style (Kolguyev): every house and farmhouse from the vanilla USSR set (buildings.ts)
+  if (!pool && $<HTMLSelectElement>('setHouseStyle').value === 'soviet') pool = buildingsFor('soviet')
   const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
   const allRoads = [...roads, ...existingRoads(), ...zones.flatMap((z) => z.roads)]
   const maxStreets = $<HTMLInputElement>('setMaxStreets').value.trim()

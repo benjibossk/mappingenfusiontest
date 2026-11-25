@@ -152,3 +152,29 @@ export const INDUSTRIAL: IndustrialBuilding[] = IND_ROWS.map(([prefab, role, tag
 export const industrialFor = (t: IndustrialTag, r: IndustrialRole) => INDUSTRIAL.filter((b) => b.role === r && b.tags.includes(t))
 //! chain-link fence (wall generator, GUID verified in resourceDatabase.rdb)
 export const FENCE_NET = '{78A5D964C7732D51}Prefabs/WEGenerators/Walls/Net/WG_NetFence_01.et'
+
+// ---------------------------------------------------------------------------------------------
+// Soviet house style (Kolguyev look), village option "Style des maisons". Only vanilla prefabs whose GUID is
+// referenced in this repo: the USSR rows above (Workbench bounds) and, from library/prefabs-catalogue.json
+// (`g` harvested from references, `d` = .xob bbox [w, dz, h, cx, cz]), the prefabricated houses and the
+// Guba villa (its GUID from library/parcels-vanilla.json). Pubs, churches, annexes and sheds stay shared.
+const box = (w: number, dz: number, cx: number, cz: number): [number, number, number, number] => [Math.round((cx - w / 2) * 10) / 10, Math.round((cz - dz / 2) * 10) / 10, Math.round((cx + w / 2) * 10) / 10, Math.round((cz + dz / 2) * 10) / 10]
+const SOVIET_ROWS: [string, BuildingCat, number, number, number, number][] = [
+  ['{2F45D2DF11711C88}Prefabs/Structures/Houses/Wooden/House_Wooden_E_1I01/House_Wooden_USSR_1I01.et', 'houseS', -5.9, -3.6, 7.6, 3.5],
+  ['{9C58369955EB0778}Prefabs/Structures/Houses/Wooden/House_Wooden_E_1I01/House_Wooden_USSR_1I01_panels.et', 'houseS', -5.9, -3.6, 7.6, 3.5],
+  ['{ACCE1E281C0C1DAB}Prefabs/Structures/Houses/Prefabricated/House_Prefab_2I02/House_Prefab_2I02t.et', 'houseM', ...box(9.95, 15.08, -0.33, 0.93)],
+  ['{A43A9D7D878F6EC0}Prefabs/Structures/Houses/Prefabricated/House_Prefab_2I01/House_Prefab_2I01_v1.et', 'houseM', ...box(16.65, 13.43, 2.25, -0.1)],
+  ['{34D88C9132A17F8F}Prefabs/Structures/Houses/Prefabricated/House_Prefab_2I01/House_Prefab_2I01_v2.et', 'houseL', ...box(16.65, 13.43, 2.25, -0.1)],
+  ['{99D12A69907148F8}Prefabs/Structures/Houses/Villa/Villa_2I04/Villa_USSR_2I04_Guba.et', 'houseL', ...box(17.13, 14.08, 0.22, 0.85)],
+  ['{6D9DDD1D4910AC4F}Prefabs/Structures/Houses/Farm/FarmHouse_E_1L01/FarmHouse_USSR_1L01_Wood.et', 'farm', -10.3, -9.5, 5.9, 11.7],
+  ['{BC5385FAFA0D7754}Prefabs/Structures/Houses/Farm/FarmHouse_E_1L01/FarmHouse_USSR_1L01.et', 'farm', -10.3, -9.5, 5.9, 11.7],
+  ['{D3CFBCBBAD783F7D}Prefabs/Structures/Houses/Farm/FarmHouse_E_1L01/FarmHouse_USSR_1L01_Green.et', 'farm', -10.3, -9.5, 5.9, 11.7],
+]
+export type HouseStyle = 'vanilla' | 'soviet'
+export const SOVIET_HOUSES: Building[] = SOVIET_ROWS.map(([prefab, cat, minX, minZ, maxX, maxZ]) => ({ prefab, cat, minX, minZ, maxX, maxZ }))
+const HOUSE_CATS: BuildingCat[] = ['houseS', 'houseM', 'houseL', 'farm']
+/** building list for a house style: the soviet one swaps every house and farmhouse, keeps the rest */
+export function buildingsFor(style: HouseStyle): Building[] {
+  if (style !== 'soviet') return BUILDINGS
+  return [...BUILDINGS.filter((b) => !HOUSE_CATS.includes(b.cat)), ...SOVIET_HOUSES]
+}

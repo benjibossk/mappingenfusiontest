@@ -34,13 +34,13 @@ Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
 | 8 | Bosquets et arbres isolés dans les champs, chemins de terre entre parcelles | ✅ (curseur « Arbres dans les champs ») |
 | 9 | Lit des rivières, protection rivières/lacs sous l'aplanissement, remblai sous routes | ✅ |
 | 10 | Masques de sol par rampes/cloches + TPI/courbure | ✅ |
-| 11 | Bruit pour variantes de sol, peinture par priorité | 🟡 variantes d'herbe ; priorité de peinture à faire |
+| 11 | Bruit pour variantes de sol, peinture par priorité | ✅ variantes d'herbe + priorité de peinture des masques (`paintPriority.ts` : la surface prioritaire gagne, variantes par bruit) |
 | 12 | Choix de l'essence pour la zone Forêt de l'outil Zone | ✅ Auto / Mixte / Conifères / Feuillus, générateurs du biome |
 
 ## Priorité 3 — villes et routes
 | # | Tâche | État |
 |---|---|---|
-| 13 | Ville 100-300 habitants (îlots, bouclage des rues, L-system contraint) | 🟡 grille de rues avec boucles (zone Habitation) ; vraie ville à îlots à faire |
+| 13 | Ville 100-300 habitants (îlots, bouclage des rues, L-system contraint) | ✅ grille de rues avec boucles (zone Habitation) ; ville à îlots `town.ts` : rues bouclées, îlots typés, parcelles sur rue (une par maison, `TownResult.parcels`), maisons face à la rue |
 | 14 | Port / côte, ferme en U, murs et clôtures de village | 🟡 murets, clôtures et ferme en U livrés (sites FARM_* : parcelles larges 26-46 x 46-52 m, ferme au fond + 2 ailes grange/hangar autour de la cour, option `farmyards` de village.ts) ; port à faire |
 | 15 | Giratoires, croisements dénivelés, ponts sur arcs courts | ✅ giratoires + passage supérieur autoroute + ponts courts sur les petits ruisseaux (culverts.ts : tablier vanilla le plus court selon la largeur, BridgeConcrete_E_01_small pour pistes, ConcreteBridge_01 Narrow/Wide sinon ; pas de prefab de buse en vanilla), dessinés en ocre sur la carte 2D |
 | 16 | Largeur de route depuis OSM, exclure ponts/tunnels | 🟡 largeurs vanilla par classe ; tags OSM lanes/surface à faire |
@@ -59,8 +59,8 @@ Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
 - ✅ Import .osm / .geojson local, schéma tag → couche configurable.
 - ✅ Pipeline rejouable, relief en un clic.
 - 🟡 Packs de compositions Workshop : registres de prefabs de 4 mods ; ARMA EXPANDED, iRON79, FF-Extra, MMHs à évaluer.
-- ⬜ Variantes de maisons soviétiques (Kolguyev).
-- ⬜ Électricité : fermes très à l'écart des routes (dernière portée à travers champs, branchements parfois > 600 m le long de la route).
+- ✅ Variantes de maisons soviétiques (Kolguyev) : option « Style des maisons » (`buildingsFor('soviet')`, prefabs USSR vanilla vérifiés).
+- ✅ Électricité : fermes très à l'écart des routes (antenne MT à travers champs + transformateur sur poteau, `FARM_SPUR_MAX` 2,5 km ; branchement le long de la route plafonné à `FARM_ALONG_MAX` 600 m).
 
 ## Volontairement non repris
 - Écriture directe des `.ttile` (giorbev) : on passe par le Workbench.
