@@ -36,6 +36,7 @@ Every station sits on a flattened pad (rectangle + 6 m, 12 m blend) in the heigh
    - its own MV->LV transformer sits at its edge, facing the feeder, and becomes a node in turn;
    - every MV line therefore ends at a station;
    - villages come first; a hamlet gets its own kiosk only if no transformer lies within `lvMax`.
+4b. **Isolated farms.** One LV drop from the nearest LV pole (along the road for at most `FARM_ALONG_MAX` = 600 m, then the last spans straight across the fields), or a pole transformer on the nearest MV pole. A farm out of reach of both (far from every road) gets an MV spur straight across the fields (`FARM_SPUR_MAX` = 2.5 km) to a pole transformer 35 m from its yard, then one short LV span.
 5. **LV.** Up to two runs per village from its transformer to far road points inside the village, offset 8 m onto the verge. Hamlets are fed from the nearest transformer within `lvMax`.
 6. **Routing.** Each line is routed with A* over the height grid (power.ts). Slope over the limit, water and village centres (0.5 R, except for LV) are forbidden. Road corridors are cheaper for MV and LV. The route is then straightened by line of sight (EHV/HV spans up to 5 km). One cost field is shared per level.
 

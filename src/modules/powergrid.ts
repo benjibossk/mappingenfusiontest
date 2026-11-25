@@ -97,6 +97,10 @@ export interface GridOptions {
 export type PowerDistrib = 'auto' | 'overhead' | 'underground'
 /** longest LV drop to a farm before an MV spur + pole transformer is preferred (POWERGRID_LOGIC.md) */
 const FARM_LV = 300
+/** longest LV run allowed along a road to reach a farm (m); past it the drop leaves the road and crosses the fields */
+export const FARM_ALONG_MAX = 600
+/** a remote farm out of LV reach takes an MV spur across the fields from an MV pole up to this far (m) */
+export const FARM_SPUR_MAX = 2500
 /** LV star (POWERGRID_LOGIC §4): feeder radius cap and village radius per extra feeder */
 const LV_STAR_R = 450, LV_STAR_STEP = 60
 export const GRID_DEFAULTS: GridOptions = { style: 'eden', ehv: 'auto', hv: true, mv: true, lv: true, mvMax: 4000, lvMax: 900, farmMax: 600, plants: 'auto', distrib: 'auto', ugMin: 25 }
@@ -119,7 +123,7 @@ export interface GridInput {
 /** where a settlement's supply ends: its transformer at the entrance (or the entrance pole of a hamlet);
  *  `ug` = beyond it the distribution is underground (nothing placed) */
 export interface Entrance { site: string; x: number; z: number; ug: boolean }
-export interface GridPlan { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[]; entrances: Entrance[]; /** farm id -> how it is fed */ farms?: Record<string, 'lv' | 'pole-trafo'> }
+export interface GridPlan { lines: GridLine[]; stations: Station[]; access: number[][]; failed: number; unfed: string[]; entrances: Entrance[]; /** farm id -> how it is fed */ farms?: Record<string, 'lv' | 'pole-trafo' | 'mv-spur'> }
 
 function hAt(h: ArrayLike<number>, g: Grid, x: number, z: number) {
   const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step)))
@@ -571,7 +575,7 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
   }
   // 4. isolated farms: one short straight LV drop from the nearest LV pole; failing that a pole-mounted
   //    transformer (TransformerSubstation_01) beside the nearest MV pole, and the drop from it
-  const farms: Record<string, 'lv' | 'pole-trafo'> = {}
+  const farms: Record<string, 'lv' | 'pole-trafo' | 'mv-spur'> = {}
   if (opt.lv) {
     const sp = POWER_STYLE[style].lv.spacing
     const dry = (x0: number, z0: number, x1: number, z1: number) => {
@@ -609,13 +613,42 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
           src = { x: tx, z: tz, d: Math.hypot(rx - tx, rz - tz) }; how = 'pole-trafo'; from = st.id
         }
       }
+      // remote farm (far from roads and from any LV pole): an MV spur straight across the fields from the nearest MV
+      // pole to a pole transformer at the yard, then one short LV span (vanilla farms off the road network)
+      if (!(src.d <= opt.farmMax) && opt.mv) {
+        const m = nearestPole('mv', s.x, s.z)
+        if (m.d <= FARM_SPUR_MAX) {
+          const a = Math.atan2(m.x - s.x, m.z - s.z), ex = s.x + Math.sin(a) * 35, ez = s.z + Math.cos(a) * 35
+          const msp = POWER_STYLE[style].mv.spacing
+          const straight = dry(m.x, m.z, ex, ez)
+          const rt = straight ? null : routePowerLine(h, g, m.x, m.z, ex, ez, { kind: 'mv', spacing: msp, cost: cost('mv'), isWater: input.isWater })
+          const mpath = straight ? [m.x, m.z, ex, ez] : rt ? rt.path : null
+          // the spur hangs on a station-to-station MV line: it starts from that line's station (MV always ends at stations)
+          const mvHost = (x: number, z: number) => { for (const l of lines) if (l.kind === 'mv') for (let i = 0; i + 1 < l.poles.length; i += 2) if (l.poles[i] === x && l.poles[i + 1] === z) return l.from; return undefined }
+          if (mpath) {
+            const mp = fixPoles(ob, placePoles(mpath, msp))
+            let ml = 0
+            for (let i = 0; i + 3 < mp.length; i += 2) ml += Math.hypot(mp[i + 2] - mp[i], mp[i + 3] - mp[i + 1])
+            const dims = STATION_PREFABS.eden.mvlv
+            const st: Station = { id: `PSTA_POLE_${++nid}`, kind: 'mvlv', site: s.id, x: ex, z: ez, yaw: a + Math.PI, w: dims.w, d: dims.d, h: dims.h, y: hAt(h, g, ex, ez), prefab: dims.prefab }
+            stations.push(st)
+            lines.push({ kind: 'mv', spacing: msp, path: mp, poles: mp, length: ml, style, id: `POWER_MV_${++lid}`, from: mvHost(m.x, m.z) ?? st.id, to: st.id })
+            const yx = s.x + Math.sin(a) * 12, yz = s.z + Math.cos(a) * 12
+            lines.push({ kind: 'lv', spacing: sp, path: [ex, ez, yx, yz], poles: [ex, ez, yx, yz], length: 23, style, id: `POWER_LV_${++lid}`, from: st.id, to: s.id })
+            entrances.push({ site: s.id, x: yx, z: yz, ug: false })
+            farms[s.id] = 'mv-spur'
+            continue
+          }
+        }
+      }
       if (!(src.d <= opt.farmMax)) { unfed.push(s.id); continue }
       // along the road when one links both ends within 1.6x the straight distance, else straight across
       const alongFrom = (sx: number, sz: number, d: number) => {
         const a = d < sp * 0.5 ? null : followRoads(ob, sx, sz, rx, rz, sp, true)
         let al = 0
         if (a) for (let i = 0; i + 3 < a.length; i += 2) al += Math.hypot(a[i + 2] - a[i], a[i + 3] - a[i + 1])
-        return a && al <= Math.max(d * 2.2, opt.farmMax * 1.5) ? a : null
+        // never more than FARM_ALONG_MAX along the road: past it the last span crosses the fields
+        return a && al <= Math.min(FARM_ALONG_MAX, Math.max(d * 2.2, opt.farmMax * 1.5)) ? a : null
       }
       // a pole transformer drop leaves the MV line straight to the farm: along the road it would double the MV corridor
       let along = how === 'pole-trafo' ? null : alongFrom(src.x, src.z, src.d)

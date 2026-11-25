@@ -91,3 +91,20 @@ test('grid: power plants are the sources, transmission is a meshed loop', () => 
   assert.ok(trans.length >= nodes, `meshed: ${trans.length} links for ${nodes} nodes`)
   assert.ok(plan.lines.some((l) => l.kind === 'ehv'), 'plants linked by EHV')
 })
+
+test('grid: a farm far from every road gets an MV spur across the fields, no long road run', () => {
+  const { input, sites } = world(10000)
+  // farm 1.2 km off the ring road, in the open between V1 and T1
+  const v1 = sites.find((s) => s.id === 'V1')!
+  const farm: GridSite = { id: 'FARM_99', x: v1.x - 900, z: v1.z - 700, kind: 'hamlet', r: 30, farm: true }
+  const plan = planGrid({ ...input, sites: [...input.sites, farm] }, { style: 'eden', mvMax: 6000 })
+  assert.equal(plan.farms?.FARM_99, 'mv-spur', 'farm fed by an MV spur')
+  const ids = new Set(plan.stations.map((s) => s.id))
+  for (const l of plan.lines.filter((q) => q.kind === 'mv')) assert.ok(ids.has(l.from) && ids.has(l.to), l.id + ' MV ends at stations')
+  const drop = plan.lines.find((l) => l.kind === 'lv' && l.to === 'FARM_99')!
+  assert.ok(drop, 'LV drop to the farm')
+  const end = drop.poles.slice(-2)
+  assert.ok(Math.hypot(end[0] - farm.x, end[1] - farm.z) < 60, 'drop ends at the yard')
+  // no farm drop runs more than ~600 m (FARM_ALONG_MAX) plus the last spans
+  for (const l of plan.lines.filter((q) => q.kind === 'lv' && q.to.startsWith('FARM_'))) assert.ok(l.length < 1300, l.id + ' ' + Math.round(l.length))
+})
