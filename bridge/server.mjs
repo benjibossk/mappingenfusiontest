@@ -17,7 +17,7 @@
 //                   also writes satellite.png next to them (Manage -> Satellite Map -> Import, sRGB).
 //                   Optional roads: [{points, half, edge, core, side?}] painted at pixel precision.
 //
-// Workbench side: NET API enabled in Options (port 5775), Mapgenerator addon loaded.
+// Workbench side: NET API enabled, Mapgenerator addon loaded, port 5775 by default; set MAPGEN_WB_PORT when this Workbench runs on its own port (scripts/wb-ui/wb-launch.ps1).
 // No dependencies: node bridge/server.mjs
 
 import { missingBaseEntities } from "./world-setup.mjs";

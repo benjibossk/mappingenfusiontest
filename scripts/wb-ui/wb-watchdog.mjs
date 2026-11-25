@@ -54,7 +54,7 @@ function netapi(apiFunc, params = {}, timeoutMs = 8000) {
       const off = 4 + n, pl = off < b.length ? b.toString('utf-8', off + 4, off + 4 + b.readInt32LE(off)) : '{}'
       try { resolve(JSON.parse(pl || '{}')) } catch { resolve({ raw: pl }) }
     })
-    s.connect(Number(process.env.WB_PORT ?? 5775), '127.0.0.1', () => s.end(req))
+    s.connect(Number(process.env.MAPGEN_WB_PORT ?? process.env.WB_PORT ?? 5775), '127.0.0.1', () => s.end(req))
   })
 }
 
@@ -100,7 +100,8 @@ async function recover(d) {
   }
   if (!workbenches().some((w) => w.mapgen)) {
     log('relaunching the Mapgenerator Workbench')
-    spawn(WB_EXE, ['-gproj', GPROJ, '-wbModule', 'WorldEditor'], { cwd: GAME_DIR, detached: true, stdio: 'ignore' }).unref()
+    // own NET API port (5777): wb-launch.ps1 writes it to the registry, starts, then restores the default
+    spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(HERE, 'wb-launch.ps1'), '-Gproj', GPROJ, '-Port', String(process.env.MAPGEN_WB_PORT ?? process.env.WB_PORT ?? 5775)], { detached: true, stdio: 'ignore' }).unref()
   }
   const ok = await openWorld()
   silent = 0
