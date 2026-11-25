@@ -7,6 +7,7 @@ import { makeAirfield } from '../src/modules/zones'
 import { airFootprint, airfieldConflicts, clearAirfield, detour, inFoot, snapAirfield, splitAtBox, type ClearWorld } from '../src/modules/airClear'
 import { applyFlatten, type Box } from '../src/modules/gen-common'
 import { flattenAirfield, generateAirfield } from '../src/modules/airfield'
+import { roadHalf } from '../src/modules/roads'
 
 const PAD = -1 // a cut line may end ON the border (the fence): only what goes past it counts
 const crosses = (pts: number[], b: Box) => splitAtBox(pts, { ...b, hw: b.hw + PAD, hd: b.hd + PAD }).some((r) => r.inside)
@@ -82,6 +83,16 @@ test('random world seed 3: a large military airfield clicked at the centre clear
   const rep = clearAirfield(L, zn)
   assertClear(L, zn.id, b, zn.embank)
   assert.ok(rep.accessRoad || L.roads.some((r) => { for (let i = 0; i + 1 < r.pts.length; i += 2) if (Math.hypot(r.pts[i] - zn.access![0], r.pts[i + 1] - zn.access![1]) < 40) return true; return false }), 'a road reaches the gate')
+  // nothing stands on the access road laid over the world (seed 3 live: TREE_FIELD_2 on AIR_1_ACCESS)
+  const acc = L.roads.find((r) => r.id === 'AIR_9_ACCESS')
+  if (acc) for (const z of L.zones!) for (const e of z.entities) {
+    let d = Infinity
+    for (let i = 0; i + 3 < acc.pts.length; i += 2) {
+      const ax = acc.pts[i], az = acc.pts[i + 1], dx = acc.pts[i + 2] - ax, dz = acc.pts[i + 3] - az, t = Math.max(0, Math.min(1, ((e.x - ax) * dx + (e.z - az) * dz) / (dx * dx + dz * dz || 1)))
+      d = Math.min(d, Math.hypot(ax + dx * t - e.x, az + dz * t - e.z))
+    }
+    assert.ok(d >= roadHalf(acc), `${e.id} on the access road (${d.toFixed(1)} m)`)
+  }
   // idempotent: a second pass finds nothing more
   const again = clearAirfield(L, zn)
   assert.equal(again.houses + again.roadsCut + again.roadsRerouted + again.forests + again.fields, 0, JSON.stringify(again))

@@ -10,7 +10,7 @@ import * as turf from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { boxCorners, fwd, right, type Box } from './gen-common'
 import { POWER_DEFAULTS, placePoles, type PowerLine } from './power'
-import type { Road, RoadType } from './roads'
+import { roadHalf, type Road, type RoadType } from './roads'
 import type { Site } from './network'
 import { SITE_RADIUS } from './network'
 import type { Placed, Square } from './settlements'
@@ -432,8 +432,17 @@ export function clearAirfield(w: ClearWorld, zn: ZoneItem & { site?: Box }, o: {
         // start just outside the gate, away from the footprint
         const [u, v] = local(b, gx, gz), out = Math.abs(u) / b.hw > Math.abs(v) / b.hd ? world(b, Math.sign(u) * (b.hw + 25), v) : world(b, u, Math.sign(v) * (b.hd + 25))
         const pts = [gx, gz, ...pathAround(b, out[0], out[1], best.x, best.z, 30)]
-        w.roads.push({ id: `${zn.id}_ACCESS`, type: o.accessType ?? 'asphaltNarrow', pts: pts.map((q) => Math.round(q * 100) / 100), auto: true })
+        const acc: Road = { id: `${zn.id}_ACCESS`, type: o.accessType ?? 'asphaltNarrow', pts: pts.map((q) => Math.round(q * 100) / 100), auto: true }
+        w.roads.push(acc)
         rep.accessRoad = true
+        // the access is laid last, over what the world already holds: scattered field trees, groves, props on its
+        // carriageway go (seed 3 + large airfield: TREE_FIELD_2 on AIR_1_ACCESS, 'on-road' audit)
+        const lim = roadHalf(acc) + 0.5
+        if (w.zones) for (const z of w.zones) if (z.id !== zn.id) {
+          const keep = z.entities.filter((e) => lineDist(acc.pts, e.x, e.z) >= lim)
+          if (keep.length !== z.entities.length) { z.entities = keep; rep.zones++ }
+        }
+        if (w.settled) replace(w.settled, w.settled.filter((q) => lineDist(acc.pts, q.x, q.z) >= lim))
       }
     }
     // supply: a distribution line from the nearest pole outside to the gate
@@ -488,4 +497,15 @@ export function snapAirfield(x: number, z: number, ok: (x: number, z: number) =>
     }
   }
   return null
+}
+
+/** distance from (x, z) to a polyline */
+function lineDist(pts: readonly number[], x: number, z: number): number {
+  let best = Infinity
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const ax = pts[i], az = pts[i + 1], dx = pts[i + 2] - ax, dz = pts[i + 3] - az, L = dx * dx + dz * dz || 1
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L))
+    best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z))
+  }
+  return best
 }

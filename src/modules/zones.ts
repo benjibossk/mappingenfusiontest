@@ -77,7 +77,19 @@ export function makeMilitary(heights: number[], g: Grid, o: { id: string; kind: 
       fit: o.kind === 'checkpoint' ? undefined : (t) => t.radius <= maxR && t.objects.filter((ob) => !MIL_NAVAL_RX.test(ob.p)).length >= minN && t.slope <= 0.1,
       // coastal bases (Arland 1117/3367) carry their own quay: inland its pier blocks, davits and ladders stand dry (seed 21 live, port-dry)
       skip: MIL_NAVAL_RX })
-    if (v) return { ...v, kind: 'military', sub: o.kind, yaw: o.yaw }
+    if (v) {
+      // the network keeps out of a disc of 0.8 x the zone's half diagonal, stopping 2 cells short of the gate: with the
+      // gate on the template radius that disc vanished and the link road crossed the base (seed 3, MIL_1 outpost: 12 pallets
+      // / coils on ROAD_ASPHALTE_ETROITE_1). The access is moved past that disc, a dirt stub joins it to the gate
+      const d = zoneDisc(v), keep = d.r * 0.8, gx = v.access![0], gz = v.access![1], ga = Math.hypot(gx - d.x, gz - d.z)
+      if (ga - 2 * g.step <= keep) {
+        const ux = (gx - d.x) / (ga || 1), uz = (gz - d.z) / (ga || 1), D = keep + 2 * g.step + 1
+        const ax = d.x + ux * D, az = d.z + uz * D
+        v.access = [ax, az]
+        v.roads.push({ id: `${o.id}_GATE`, type: 'dirt', pts: [gx, gz, (gx + ax) / 2, (gz + az) / 2, ax, az] })
+      }
+      return { ...v, kind: 'military', sub: o.kind, yaw: o.yaw }
+    }
   }
   const m = generateMilitary({ kind: o.kind, x: o.x, z: o.z, yaw: o.yaw, seed: o.seed })
   m.flatten = flattenFor(m, heights, g)

@@ -671,7 +671,20 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
           if (!tpl || !fit) continue
           sx = fit.x; sz = fit.z; syaw = fit.yaw; fit0 = fit
         }
-        const zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x: sx, z: sz, yaw: syaw, seed: ss('settlements', 'vanilla-' + type, k), template: tpl })
+        let zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x: sx, z: sz, yaw: syaw, seed: ss('settlements', 'vanilla-' + type, k), template: tpl })
+        if (zn && type !== 'port') {
+          // the template's front (kerbs, pumps) may reach past the setback: seed 3, the Eden gas station's kerbs 13 m
+          // ahead of its pivot stood on the road axis (13 'on-road' findings). Pushed back so its front clears the edge
+          // by 0.5 m, then dropped if any piece still lies on a road (bend, other road)
+          const f = siteFront(zn.entities, sx, sz, -nx, -nz)
+          if (f > setback - 0.5) {
+            const back = f - setback + 0.5
+            sx += nx * back; sz += nz * back
+            if (!free(sx, sz, r0, 'vanilla:' + type, gap)) continue
+            zn = makeVanillaSite(cur.heights, g, { id: `VAN_${type.toUpperCase()}_${k + 1}`, type, x: sx, z: sz, yaw: syaw, seed: ss('settlements', 'vanilla-' + type, k), template: tpl })
+          }
+          if (zn && entitiesOnRoads(zn.entities, [...roads.map((r) => ({ pts: r.pts, half: roadHalf(r) })), ...zones.flatMap((q) => q.roads.map((r) => ({ pts: r.pts, half: roadHalf(r) })))])) continue
+        }
         if (!zn || (type !== 'port' && zoneWet(zn))) continue
         if (type === 'port') { // the vanilla harbour itself, every object at its height; terrain sculpted from its samples
           const hb = buildHarbour({ id: zn.id, tier: tier0, x: sx, z: sz, yaw: syaw, compo: compo!, roads: allRoadLines(), avoid: zones.map(zoneDisc) })
@@ -1175,4 +1188,23 @@ function lineDist(p: number[], x: number, z: number): number {
 function withLamps<T extends { consumers: { siteId: string; transformer: string | null }[] }>(t: T, lamps: StreetLamp[]): T {
   const by = new Map(lampConsumers(lamps).map((c) => [c.siteId, c.lamps.map((id) => 'STREETLIGHTS_' + id)]))
   return { ...t, consumers: t.consumers.map((c) => (by.has(c.siteId) ? { ...c, lamps: by.get(c.siteId)! } : c)) }
+}
+
+/** how far the pieces of a stamped site reach ahead of (x, z) along the unit direction (fx, fz), m */
+export function siteFront(es: readonly { x: number; z: number }[], x: number, z: number, fx: number, fz: number): number {
+  let f = -Infinity
+  for (const e of es) f = Math.max(f, (e.x - x) * fx + (e.z - z) * fz)
+  return f
+}
+
+/** true when a piece stands within half + margin of a road centre line */
+export function entitiesOnRoads(es: readonly { x: number; z: number }[], roads: readonly { pts: readonly number[]; half: number }[], margin = 0.3): boolean {
+  for (const r of roads) for (let i = 0; i + 3 < r.pts.length; i += 2) {
+    const ax = r.pts[i], az = r.pts[i + 1], dx = r.pts[i + 2] - ax, dz = r.pts[i + 3] - az, L = dx * dx + dz * dz || 1, lim = r.half + margin
+    for (const e of es) {
+      const t = Math.max(0, Math.min(1, ((e.x - ax) * dx + (e.z - az) * dz) / L))
+      if (Math.hypot(ax + dx * t - e.x, az + dz * t - e.z) < lim) return true
+    }
+  }
+  return false
 }

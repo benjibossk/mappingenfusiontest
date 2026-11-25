@@ -224,8 +224,9 @@ function inOriented(b, x, z) {
   return [a, -a].some((r) => { const u = dx * Math.cos(r) - dz * Math.sin(r), v = dx * Math.sin(r) + dz * Math.cos(r); return Math.abs(u) < w - 0.3 && Math.abs(v) < d - 0.3; });
 }
 const poles = [
-  // vanilla compositions (ids *_parcel_*: RP sites, yards) carry their own lamps against their own buildings
-  ...sent.filter((e) => /Pole|PowerLine|Pylon|Lamp|StreetLight/i.test(e.prefab) && !/_parcel_/.test(e.id)).map((e) => ({ id: e.id, x: e.x, z: e.z })),
+  // vanilla compositions (ids *_parcel_*: RP sites, yards; VAN_*: stamped vanilla sites, the gas station canopy poles on
+  // its own FuelStation platform, 7th send) carry their own lamps / poles against their own buildings
+  ...sent.filter((e) => /Pole|PowerLine|Pylon|Lamp|StreetLight/i.test(e.prefab) && !/_parcel_|^VAN_/.test(e.id)).map((e) => ({ id: e.id, x: e.x, z: e.z })),
   // power-line vertices only: WEGenerators/Walls/Pole/WG_PoleFence_* are fences, not poles (24 false hits, 4th send)
   ...shapes.filter((s) => /PowerLine|Pole/i.test(s.generator ?? "") && !/\/Walls\//i.test(s.generator ?? "")).flatMap((s) => pts(s).map(([x, z], i) => ({ id: `${s.id}#${i}`, x, z }))),
 ];
