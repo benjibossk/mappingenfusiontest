@@ -66,3 +66,25 @@ test('town: a through-road becomes a main street (graph on it, houses face it, n
   assert.ok(fronting.length >= 8, `houses along the road ${fronting.length}`)
   for (const b of r.placed) for (let i = 0; i < 8; i += 2) assert.ok(lineDist(roads[0].pts, b.corners[i], b.corners[i + 1]) > 5, 'house on the road')
 })
+
+test('town: blocks subdivided into street-front parcels, one per house, house inside facing the street', () => {
+  const r = generateTown(zone, roads, [pond], flat, grid, { seed: 3, prefix: 'T1' })
+  assert.ok(r.parcels.length >= 30, `parcels ${r.parcels.length}`)
+  const byId = new Map(r.placed.map((b) => [b.id, b]))
+  const ids = new Set<string>()
+  for (const p of r.parcels) {
+    assert.ok(!ids.has(p.building), 'one parcel per building'); ids.add(p.building)
+    const b = byId.get(p.building)!
+    assert.ok(b, 'parcel of a placed building')
+    assert.equal(p.corners.length, 8)
+    assert.ok(inside(p.corners, b.x, b.z), p.id + ' house outside its parcel')
+    assert.ok(p.block >= -1 && p.block < r.blocks.length)
+    // the house stands at the front edge (corners 0-1 = street side): its nearest corner within the setback
+    let near = Infinity
+    for (let i = 0; i < 8; i += 2) near = Math.min(near, lineDist(p.corners.slice(0, 4), b.corners[i], b.corners[i + 1]))
+    assert.ok(near < 9, p.id + ' house not on the street front ' + near.toFixed(1))
+  }
+  // deterministic
+  const r2 = generateTown(zone, roads, [pond], flat, grid, { seed: 3, prefix: 'T1' })
+  assert.deepEqual(r2.parcels, r.parcels)
+})
