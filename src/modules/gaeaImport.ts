@@ -3,6 +3,7 @@
 // greyscale PNG masks (Gaea Flow / Wear / Deposits outputs, or a mask named after a surface).
 // Images are north-up (row 0 = north); the terrain grid is row 0 = south (island.ts), so rows are flipped.
 import { readPng16 } from './dem'
+import { paintByPriority } from './paintPriority'
 import { limitPerBlock, type Grid, type SurfaceGrid } from './island'
 import type { ReliefMasks } from './gaeaRelief'
 
@@ -105,21 +106,12 @@ export function reliefMasks(n: number, got: Partial<ReliefMasks>): ReliefMasks {
   return { flow: got.flow ?? z(), wear: got.wear ?? z(), deposits: got.deposits ?? z() }
 }
 
-/** paint imported surface masks over computed surfaces: the mask takes its weight, the others share the rest */
+/** paint imported surface masks over computed surfaces: the mask takes its weight, the others share the rest;
+ *  where two masks overlap the higher surface priority wins (SURFACE_PRIORITY) */
 export function applySurfaceMasks(surfaces: SurfaceGrid[], masks: SurfaceMask[], colour?: (name: string) => void): SurfaceGrid[] {
   if (!masks.length || !surfaces.length) return surfaces
-  const n = surfaces[0].weights.length
-  for (const m of masks) {
-    if (m.weights.length !== n) continue
-    let s = surfaces.find((x) => x.name === m.name)
-    if (!s) { const { weights: _w, name: _n, ...grid } = surfaces[0]; s = { ...grid, name: m.name, weights: new Array(n).fill(0) }; surfaces.push(s); colour?.(m.name) }
-    for (let i = 0; i < n; i++) {
-      const w = m.weights[i]
-      if (w <= 0) continue
-      for (const o of surfaces) if (o !== s) o.weights[i] *= 1 - w
-      s.weights[i] = s.weights[i] * (1 - w) + w
-    }
-  }
+  // P2 #11: overlapping masks are resolved by surface priority (paintPriority.ts), not by file order
+  paintByPriority(surfaces, masks, colour)
   limitPerBlock(surfaces)
   return surfaces
 }
