@@ -5,6 +5,7 @@
 // -> industrial zones (they hook onto the main roads, so after the network) -> villages v2 -> power
 // lines -> forests -> surfaces. The result is loaded into the normal steps (main.ts) to be tweaked.
 
+import { buildingsFor, type HouseStyle } from '../data/buildings'
 import { gridTopology, type PowerTopology } from './powergrid'
 import { dedupeRing } from './forestEdge'
 import { Sculpt } from './sculpt'
@@ -86,6 +87,8 @@ export interface WorldParams {
   rpPlaces?: boolean
   /** villages stamp a real Bohemia house row along their main road first (village.ts template mode, default off) */
   villageTemplates?: boolean
+  /** house style of villages and towns ('soviet' = Kolguyev look, vanilla USSR houses) */
+  houseStyle?: HouseStyle
   power: boolean
   forests: number
   /** gameplay cover rules (gameplayCover.ts): village belts, wooded strips, copses on exposed ground; default on */
@@ -125,7 +128,7 @@ export interface WorldResult {
   sites: Site[]
   roads: Road[]
   zones: ZoneItem[]
-  settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[]; tried?: number; housed?: number; parcels?: VillageParcel[]; fences?: VillageParcel[] }
+  settlement: { placed: Placed[]; lanes: Road[]; paths: Road[]; squares: Square[]; tried?: number; housed?: number; parcels?: VillageParcel[]; fences?: VillageParcel[]; /** town block parcels (town.ts), drawn as gardens */ gardens?: { site: string; corners: number[]; building?: string }[] }
   power: (PowerLine & { id: string })[]
   /** transformer stations / plants and their access tracks (powergrid.ts), with p.power */
   powerStations?: Station[]
@@ -727,9 +730,10 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       for (const s of ks.splice(0)) {
         const ring: number[] = []
         for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; ring.push(s.x + Math.cos(a) * 300, s.z + Math.sin(a) * 300) }
-        const tr = generateTown(ring, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'town-' + s.id), density: WORLD.villages.town.density, blocked: zoneBlocked(zones), prefix: s.id }, settlement.placed)
+        const tr = generateTown(ring, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'town-' + s.id), density: WORLD.villages.town.density, blocked: zoneBlocked(zones), prefix: s.id, style: p.houseStyle }, settlement.placed)
         if (tr.placed.length - settlement.placed.length < 30) { left.push(s); continue }
         settlement.placed = tr.placed
+        if (tr.parcels.length) (settlement.gardens ??= []).push(...tr.parcels.map((q) => ({ site: s.id, corners: q.corners, building: q.building })))
         // a road crossing the town square: the square becomes a real roundabout (one round ring, roads and lanes clipped)
         for (const sq of tr.squares) {
           const rb = squareRoundabout(roads, tr.lanes, sq.x, sq.z, sq.r + 4, `RB_${s.id}`)
@@ -757,7 +761,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     }
     if (!ks.length) continue
     const V = WORLD.villages[kind]
-    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density * settlementDensityMul(p.biome), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm', parcels: p.villageTemplates, parcelShare: parcelShareOf(p.biome), farmyards: kind === 'farm' }, settlement.placed)
+    const vr = settleVillages(ks, allRoads, waters, cur.heights, g, { seed: ss('settlements', 'villages-' + kind), density: V.density * settlementDensityMul(p.biome), maxStreets: V.maxStreets, dropScale: WORLD.villages.dropScale, variant: 'auto', blocked: zoneBlocked(zones), biome: p.biome, template: p.villageTemplates && kind !== 'farm', parcels: p.villageTemplates, parcelShare: parcelShareOf(p.biome), farmyards: kind === 'farm', ...(p.houseStyle === 'soviet' ? { pool: buildingsFor('soviet') } : {}) }, settlement.placed)
     settlement.placed = vr.placed
     settlement.tried = (settlement.tried ?? 0) + (vr.tried ?? 0); settlement.housed = (settlement.housed ?? 0) + (vr.housed ?? 0)
     settlement.lanes.push(...vr.lanes); settlement.paths.push(...vr.paths); settlement.squares.push(...vr.squares)

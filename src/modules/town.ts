@@ -14,7 +14,7 @@ import { centreLine, roadHalf } from './roads'
 import type { Water } from './water'
 import { WATER_TYPES } from './water'
 import type { Building, BuildingCat } from '../data/buildings'
-import { BUILDINGS, FRONT_YAW, INDUSTRIAL } from '../data/buildings'
+import { buildingsFor, FRONT_YAW, INDUSTRIAL, type HouseStyle } from '../data/buildings'
 import { boxed, footprint, hash, inside, lineDist, minSegments, overlap, rng, sampler, samples, type Line, type Placed, type PlacedRole, type Square } from './settlements'
 import { nearestOn } from './villageStreets'
 import { ROAD_SEED_OFF, roadEdge, roadSeeds, snapToRoads } from './townRoads'
@@ -28,6 +28,8 @@ export interface TownOptions {
   maxSlope?: number // building ground slope (default 0.2)
   blocked?: number[][] // [x0, z0, x1, z1] boxes to avoid
   prefix?: string // site id (default "T")
+  /** house style: 'soviet' = Kolguyev look (buildings.ts buildingsFor) */
+  style?: HouseStyle
   maxBuildings?: number // default 160 (Everon's town disc: 169 buildings, sheds included)
 }
 export interface TownParcel { id: string; building: string; block: number; /** street edge of the parcel [x0, z0, x1, z1] */ front: number[]; /** convex ring, flat X/Z */ corners: number[] }
@@ -402,6 +404,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     placed.push({ id: `SET_${pre}_B${newCount() + 1}`, site: pre, prefab: b.prefab, tpl: b.tpl, cat, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw: Math.round(((yaw % 360) + 360) % 360), corners, role })
     return true
   }
+  const BUILDINGS = buildingsFor(o.style ?? 'vanilla')
   const pool = (cats: BuildingCat[]) => BUILDINGS.filter((b) => cats.includes(b.cat) && !CHURCH_RE.test(b.prefab))
   const POOL: Partial<Record<TownBlockType, Building[]>> = {
     centre: pool(['houseL', 'houseM']), residential: pool(['houseM', 'houseS', 'houseM', 'houseL']), farm: pool(['farm']),

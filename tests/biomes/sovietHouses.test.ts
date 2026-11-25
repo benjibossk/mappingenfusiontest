@@ -28,3 +28,14 @@ test('soviet style village: every house and farmhouse from the soviet set', () =
   assert.ok(houses.length >= 5, 'houses ' + houses.length)
   for (const h of houses) assert.ok(sov.has(h.prefab), 'not soviet ' + h.prefab)
 })
+
+test('soviet style town: houses from the soviet set', async () => {
+  const { generateTown } = await import('../../src/modules/town.ts')
+  const zone = [0, 0, 600, 0, 600, 560, 0, 560]
+  const grid = { minX: -200, minZ: -200, step: 8, cols: 151, rows: 151 }
+  const r = generateTown(zone, [{ id: 'R1', type: 'asphalt', pts: [-150, 250, 800, 260] }], [], new Array(151 * 151).fill(20), grid, { seed: 3, prefix: 'T1', style: 'soviet' })
+  const sov = new Set(SOVIET_HOUSES.map((b) => b.prefab))
+  const houses = r.placed.filter((p) => p.role === 'house' && p.cat !== 'civic')
+  assert.ok(houses.length >= 20, 'houses ' + houses.length)
+  for (const h of houses) assert.ok(sov.has(h.prefab), 'not soviet ' + h.prefab)
+})

@@ -13,6 +13,7 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - Ground: paint priority for overlapping surface masks (concrete > dirt > rock > fields > forest floor > grass), so the result no longer depends on the mask order; bare ground split into two dirt tones by low-frequency noise (`src/modules/paintPriority.ts`).
 - Power: remote farms far from every road and LV pole get an MV spur straight across the fields to a pole transformer at the yard; a farm drop never runs more than 600 m along a road.
 - Town (Zone tool): each block is subdivided into street-front parcels, one per house, from the street edge to the middle of the block; drawn as gardens with worn ground.
+- Random world: town block parcels drawn as gardens; "House style" option (Soviet) also for the random world and the Town zone tool.
 - Villages: "House style" option, Soviet (Kolguyev look) with the vanilla USSR wooden, prefabricated and farm houses and the Guba villa (only GUIDs referenced in the repo).
 
 ## [0.9.0] - 2026-11-25
