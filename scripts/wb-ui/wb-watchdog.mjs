@@ -83,7 +83,7 @@ async function openWorld() {
     const st = await netapi('MG_Status').catch(() => null)
     if (st) {
       if (st.world === 'open') return true
-      await netapi('EMCP_WB_Resources', { action: 'open', path: WORLD }, 60000).catch((e) => log(`open world: ${e.message}`))
+      await netapi('EMCP_WB_EditorControl', { action: 'openResource', path: WORLD }, 60000).catch((e) => log(`open world: ${e.message}`))
     }
     await wait(5000)
   }
