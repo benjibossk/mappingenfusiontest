@@ -890,6 +890,9 @@ export const EMBANK_YAW: Record<keyof typeof EMBANK, number> = { straight: 0, wa
 
 //! pieces on the outside of every bend (where a real river erodes), plus short random runs on the
 //! straights; each run starts and ends with a `turnin` piece
+/** minimum bank rise (m) over 12 m for an eroded embankment piece */
+export const EMBANK_RISE = 1.2
+
 export function riverBanks(waters: Water[], before: ArrayLike<number>, grid: Grid): ProjectEntity[] {
   const at = sampler(before, grid)
   const out: ProjectEntity[] = []
@@ -949,6 +952,9 @@ export function riverBanks(waters: Water[], before: ArrayLike<number>, grid: Gri
       const x = line[i * 2] + nx * o, z = line[i * 2 + 1] + nz * o
       if (at(x, z) < 0.5) continue // not in the sea
       if (lakes.some((l) => inRing(l.pts, x, z))) continue // nor in a lake (a river swelling)
+      // an eroded face needs a bank to cut into: on a flat bank (picture valleys at 0-1.5 m) the piece stood as a
+      // round bump on the grass (picture 119 round 11, 81 pieces sent). Ground rising EMBANK_RISE m within 12 m
+      if (at(x + nx * 12, z + nz * 12) - Math.min(at(x, z), at(line[i * 2], line[i * 2 + 1])) < EMBANK_RISE) continue
       const end = side[i - 1] !== s || side[i + 1] !== s
       const kind: keyof typeof EMBANK = end ? 'turnin' : bend[i] ? 'wave' : 'straight'
       // eroded face (-Z of the model) towards the water
@@ -1291,4 +1297,21 @@ export function riverCorridor(g: Grid, waters: Water[], reach = 12) {
     return d[r * g.cols + q] <= m + g.step * 0.71
   }
   return { dist: d, near }
+}
+
+//! per grid vertex: 1 under a river (its shown width) or a river swelling lake. That water has banks, not a coast
+//! (computeSurfaces: no beach / shingle band from it)
+export function inlandWaterMask(g: Grid, waters: Water[]): Uint8Array {
+  const m = new Uint8Array(g.cols * g.rows)
+  const rc = riverCorridor(g, waters, 0)
+  for (let i = 0; i < m.length; i++) if (rc.dist[i] <= 0) m[i] = 1
+  for (const w of waters) {
+    if (!w.onRiver || w.pts.length < 6) continue
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i < w.pts.length; i += 2) { x0 = Math.min(x0, w.pts[i]); x1 = Math.max(x1, w.pts[i]); z0 = Math.min(z0, w.pts[i + 1]); z1 = Math.max(z1, w.pts[i + 1]) }
+    for (let r = Math.max(0, Math.floor((z0 - g.minZ) / g.step)); r <= Math.min(g.rows - 1, Math.ceil((z1 - g.minZ) / g.step)); r++)
+      for (let c = Math.max(0, Math.floor((x0 - g.minX) / g.step)); c <= Math.min(g.cols - 1, Math.ceil((x1 - g.minX) / g.step)); c++)
+        if (inPolygon(w.pts, g.minX + c * g.step, g.minZ + r * g.step)) m[r * g.cols + c] = 1
+  }
+  return m
 }

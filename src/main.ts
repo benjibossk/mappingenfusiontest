@@ -25,7 +25,7 @@ import { FOREST_AVOID, GENERATORS, forestAvoidMissing, withAvoid, type Project, 
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
-import { WATER_TYPES, riverWetHalf, PICTURE_RIVER_DEPTH, PICTURE_SWELL_LAKE_DEPTH, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
+import { WATER_TYPES, riverWetHalf, PICTURE_RIVER_DEPTH, PICTURE_SWELL_LAKE_DEPTH, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, inlandWaterMask, type Water, type WaterType } from './modules/water'
 import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw, auditWorld } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
@@ -1775,7 +1775,7 @@ function recompose(final: boolean) {
   // lanes are not carved: last, their ground is graded (pads.ts gradeLanes) over pads, berms and runoff beds
   gradeLanes(island.heights, g, setLanes.map((l) => l.pts), pads, beds?.weight)
   if (final) {
-    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, [...areas.filter((a) => a.kind !== 'forest'), ...sentForests(areas.filter((a) => a.kind === 'forest'))], landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks)
+    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, [...areas.filter((a) => a.kind !== 'forest'), ...sentForests(areas.filter((a) => a.kind === 'forest'))], landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks, inlandWaterMask(g, waters))
     island.colours = { ...SURFACE_COLOURS, ...island.colours }
     if (island.surfaceMasks?.length) applySurfaceMasks(island.surfaces, island.surfaceMasks, (name) => { island!.colours[name] ??= [128, 120, 110] })
     const bad = overfullBlocks(island.surfaces)

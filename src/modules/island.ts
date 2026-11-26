@@ -221,7 +221,7 @@ export function openWaterDistance(heights: ArrayLike<number>, cols: number, rows
 }
 
 //! `settle` (settlementMask): no bare Rock_01 in and around the villages; that ground goes to a grass / dirt blend.
-export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array, settle?: Float32Array, masks?: ReliefMasks): SurfaceGrid[] {
+export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array, settle?: Float32Array, masks?: ReliefMasks, inland?: Uint8Array): SurfaceGrid[] {
   const { cols, rows, step } = grid
   const names = Object.keys(COLOURS).concat(cover ? Object.keys(COVER) : [])
   const weights: Record<string, number[]> = Object.fromEntries(names.map((k) => [k, []]))
@@ -239,12 +239,17 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   // coastal grass made a light band along the whole edge (picture 120 east edge, round 9). A real sea reaching the
   // edge still has its shore further in
   const edgeN = Math.ceil(0.07 * Math.max(1, cols - 1))
-  const hd = heights.map((h, i) => { const c = i % cols, r = (i - c) / cols; return h < -0.5 && Math.min(c, r, cols - 1 - c, rows - 1 - r) < edgeN ? 1 : h })
+  // `inland` water (rivers, river swelling lakes) has no coast: picture 119 round 11, its 100-200 m wide river and
+  // lake counted as open water and painted their low banks as a 30-60 m beach (BeachGrass 56-67 %, Pebbles_02 7-24 %
+  // of the bank 0-30 m), brown in game. Arland: grass to the edge, a narrow pebble line
+  const inl = inland && inland.length === heights.length ? inland : undefined
+  const hd = heights.map((h, i) => { const c = i % cols, r = (i - c) / cols; return (h < -0.5 && Math.min(c, r, cols - 1 - c, rows - 1 - r) < edgeN) || inl?.[i] ? 1 : h })
+  const toInland = inl ? waterDistance(Array.from(inl, (v) => (v ? -1 : 1)), cols, rows, step, 0) : undefined
   const toWater = waterDistance(hd, cols, rows, step, -0.5)
   // pebbles / sand / beach grass only on open water (sea, wide lakes): river and pond banks of a map from a picture
   // (all at the sea level) were a pink-grey shingle band (Pebbles_02 ~10 % of the land on picture 120); Arland's
   // inland banks are grass. Open = water more than OPEN_WATER_M from the land, its own bank measured back from there.
-  const toOpen = openWaterDistance(heights, cols, rows, step, -0.5) // (beach: open-ness needs the whole sea; the ramp is cut by fakeCoast)
+  const toOpen = openWaterDistance(inl ? heights.map((h, i) => (inl[i] ? 1 : h)) : heights, cols, rows, step, -0.5) // (beach: open-ness needs the whole sea; the ramp is cut by fakeCoast)
   const at = (c: number, r: number) => heights[Math.min(Math.max(r, 0), rows - 1) * cols + Math.min(Math.max(c, 0), cols - 1)]
   const covered0 = (i: number, h: number) => !!(cover && cover[i] && h > 1)
   const coverShare = (c: number, r: number) => {
@@ -296,6 +301,7 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const lowShore = h > 0 ? (1 - band(h, 9, 11)) * nearBank : 0
     const pebbles = take(0.25 * lowShore * (0.6 + 0.8 * variants((c * step) / 40, (r * step) / 40)))
     const sand = take(0.12 * lowShore)
+    const pebbleLine = toInland && h > -0.5 ? take(0.5 * (1 - band(toInland[i], 2, 6))) : 0
     const coastal = take((1 - band(h, 9, 12)) * nearCoast)
     // [M] MountainGrass 15 % at 200-300 m, ~42 % above 300 m on Everon (top ~370 m): relative 0.55 / 0.8 of the range
     const high = 0.15 * band(h, maxHeight * 0.5, maxHeight * 0.6) + 0.27 * band(h, maxHeight * 0.75, maxHeight * 0.85)
@@ -314,7 +320,7 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const rest = Math.max(free, 0)
     weights.SeaBed_01.push(deep)
     weights.Pebbles_01.push(bed)
-    weights.Pebbles_02.push(shore + pebbles)
+    weights.Pebbles_02.push(shore + pebbles + pebbleLine)
     weights.Dirt_02.push(bare + villageDirt) // sandy look
     weights.BeachGrass_01.push(beach + sand)
     weights.Grass_03_coastal.push(coastal)

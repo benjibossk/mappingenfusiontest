@@ -71,3 +71,15 @@ test('computeSurfaces: no beach / coastal grass band on the map-edge ramp, a gen
   assert.ok(coast(ramp) < 1, `ramp coast weight ${coast(ramp)}`)
   assert.ok(coast(shore, 40) > 20, `real shore coast weight ${coast(shore, 40)}`)
 })
+
+test('computeSurfaces: inland water (wide picture river) gets grass banks with a narrow pebble line, no beach', () => {
+  const cols = 101, rows = 101, step = 4
+  const heights: number[] = [], inland = new Uint8Array(cols * rows)
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { const wet = Math.abs(c - 50) <= 15; heights.push(wet ? -2.5 : 0.8); if (wet) inland[r * cols + c] = 1 }
+  const w = (s: ReturnType<typeof computeSurfaces>, name: string, c: number) => { const g = s.find((q) => q.name === name); return g ? g.weights[50 * cols + c] : 0 }
+  const before = computeSurfaces({ minX: 0, minZ: 0, step, cols, rows }, heights, 40)
+  const after = computeSurfaces({ minX: 0, minZ: 0, step, cols, rows }, heights, 40, undefined, undefined, undefined, undefined, inland)
+  assert.ok(w(before, 'BeachGrass_01', 70) > 0.3, 'a 120 m wide river counted as open water: beach 20 m off')
+  assert.ok(w(after, 'BeachGrass_01', 70) < 0.01 && w(after, 'Pebbles_02', 70) < 0.01)
+  assert.ok(w(after, 'Pebbles_02', 66) > 0.2, `pebble line at the edge ${w(after, 'Pebbles_02', 66)}`)
+})
