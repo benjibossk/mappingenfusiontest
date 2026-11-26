@@ -21,3 +21,15 @@ test('a lake swelling a river is traced as a lake beside the river; a plain rive
   assert.ok(lakes[0].onRiver)
   assert.ok(sw.some((x) => x.kind === 'river'))
 })
+
+test('a river swelling lake takes the river level, not the lowest ground of its shore', async () => {
+  const { carveWater } = await import('../src/modules/water')
+  const g = { minX: 0, minZ: 0, step: 4, cols: 200, rows: 200 }
+  const hs = Array.from({ length: 200 * 200 }, (_, k) => 6 - Math.floor(k / 200) * 0.005) // slopes down along z
+  const river = { id: 'R', type: 'river' as const, pts: [400, 0, 400, 400, 400, 796], width: 40, depth: 2.5, carve: false, wetEdge: true }
+  const lake = { id: 'L', type: 'lake' as const, pts: [360, 300, 440, 300, 470, 400, 440, 500, 360, 500, 330, 400], width: 0, depth: 2, onRiver: true }
+  carveWater(hs, g, [river, lake])
+  assert.ok(lake.level !== undefined)
+  // the river level at the lake (z 300..500): the ground there minus about RIVER_BANK, never far under it
+  assert.ok(lake.level! > 3 && lake.level! < 6, String(lake.level))
+})

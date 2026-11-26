@@ -28,3 +28,14 @@ test('joinTributaries: a river starting inside another goes on to its centre and
   assert.equal(trib.lift![trib.lift!.length - 1], 2.5)
   assert.equal(main.points.length, 6)
 })
+
+// picture 119 round 10: the arm climbed 0.3 m 15 m from the junction, still inside the 124 m main ribbon: its
+// water over the main water, a straight-edged dark zone
+test('joinTributaries: the arm stays at the main level across the main ribbon', () => {
+  const ground = () => 0
+  const main: ProjectShape = { id: 'M', kind: 'spline', closed: false, points: [0, 0, 100, 0, 200, 0], paramKeys: ['Width'], paramValues: ['124'], lift: [0.5, 0.5, 0.5] }
+  const trib: ProjectShape = { id: 'T', kind: 'spline', closed: false, points: [100, 0, 100, 15, 100, 40, 100, 100, 100, 200], paramKeys: ['Width'], paramValues: ['124'], lift: [0.5, 0.8, 0.7, 2, 3] }
+  joinTributaries([main, trib], ground)
+  assert.deepEqual(trib.lift!.slice(0, 3), [0.5, 0.5, 0.5])
+  assert.ok(trib.lift![3] > 0.5 && trib.lift![3] < 2)
+})

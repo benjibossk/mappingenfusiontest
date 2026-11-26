@@ -31,6 +31,7 @@ export interface Water {
   wetEdge?: boolean // river: ground under the water up to the traced edge (map from a picture), banks start outside
   level?: number // lake: fixed water level (dam reservoir, dam.ts); absent = from the shore
   widths?: number[] // river: traced width (m) at each control point (map from a picture); roads cut over the widest
+  onRiver?: boolean // lake: a swelling of a picture river, its level set to the river's (carveWater)
 }
 
 //! River course the generator can mesh: sharp vertices dropped, corners rounded (Chaikin), so that
@@ -222,6 +223,24 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
   const shaped = new Float32Array(heights.length)
   const shapedScore = new Float32Array(heights.length).fill(Infinity)
   const levels: WaterLevels = { level: new Float32Array(heights.length).fill(NaN), wet: new Uint8Array(heights.length) }
+
+  // a lake swelling a river lies at the river's level (median river level along its shore): from its own
+  // shore it sat 0.4 m under the river water, the ribbon edge showing over it (picture 119)
+  const profiles = waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).map((w) => riverProfile(w, at))
+  for (const w of waters) {
+    if (!w.onRiver || w.level !== undefined || !profiles.length) continue
+    const ls: number[] = []
+    for (let i = 0; i + 1 < w.pts.length; i += 2) {
+      let bd = Infinity, bl = NaN
+      for (const p of profiles) for (let j = 0; j < p.line.length; j += 2) {
+        const d = (p.line[j] - w.pts[i]) ** 2 + (p.line[j + 1] - w.pts[i + 1]) ** 2
+        if (d < bd) { bd = d; bl = p.level[j / 2] }
+      }
+      if (Number.isFinite(bl)) ls.push(bl)
+    }
+    ls.sort((a, b) => a - b)
+    if (ls.length) w.level = Math.round(ls[ls.length >> 1] * 100) / 100
+  }
 
   for (const w of waters) {
     if (w.pts.length < 4) continue
@@ -438,7 +457,7 @@ export function joinTributaries(shapes: ProjectShape[], ground: (x: number, z: n
       }
       if (!main) continue
       const mx = main.points[mi * 2], mz = main.points[mi * 2 + 1]
-      const Lj = main.lift![mi] + ground(mx, mz)
+      const Lj = main.lift![mi] + ground(mx, mz), mainHalf = Number(main.paramValues![0]) / 2
       // on to the main centre line, unless already about there
       if (md > 3) {
         if (atStart) { s.points.unshift(r2(mx), r2(mz)); s.lift!.unshift(0) } else { s.points.push(r2(mx), r2(mz)); s.lift!.push(0) }
@@ -449,7 +468,9 @@ export function joinTributaries(shapes: ProjectShape[], ground: (x: number, z: n
         const i = atStart ? k : N - 1 - k
         if (k > 0) { const j = atStart ? i - 1 : i + 1; d += Math.hypot(s.points[i * 2] - s.points[j * 2], s.points[i * 2 + 1] - s.points[j * 2 + 1]) }
         const g = ground(s.points[i * 2], s.points[i * 2 + 1])
-        const cur = s.lift![i] + g, want = Lj + JOIN_SLOPE * d
+        // flat at the main level across the main ribbon: climbing there put the arm's water 0.3 m over the main
+        // water inside it, its end cap a straight-edged dark zone (picture 119 round 10 confluence)
+        const cur = s.lift![i] + g, want = Lj + JOIN_SLOPE * Math.max(0, d - mainHalf)
         if (k > 0 && want >= cur) break
         s.lift![i] = r2(Math.max(0.1, Math.min(cur, want) - g))
         if (k === 0) s.lift![i] = r2(Math.max(0, Lj - g))
