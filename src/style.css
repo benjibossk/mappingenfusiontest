@@ -489,6 +489,8 @@ button.icon { width: 32px; height: 32px; padding: 0; }
 .swatches li { display: grid; grid-template-columns: 22px 44px 1fr; align-items: center; gap: 6px; }
 .swatches .swatch { width: 20px; height: 20px; margin: 0; border: 1px solid var(--line-2); }
 .swatches select { min-width: 0; }
+.img-pal li { grid-template-columns: 22px 44px 1fr 64px; }
+.img-pal .img-h { width: 64px; min-width: 0; }
 
 /* real-place dialog title (MILSPEC) */
 .pc-head b { font-family: var(--f-head); letter-spacing: .06em; text-transform: uppercase; color: var(--tx-1); font-weight: 500; }

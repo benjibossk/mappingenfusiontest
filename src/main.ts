@@ -152,6 +152,7 @@ import { suggestAirfield, parseAirfieldSub, generateAirfield, flattenAirfield, a
 import { airFootprint, airfieldConflicts, airfieldCost, clearAirfield, inFoot, snapAirfield, type ClearReport, type ClearWorld } from './modules/airClear'
 import { heightAt as gridHeight } from './modules/gen-common'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
+import { IMG_ROLES, guessRoles as guessImgRoles, roadClass, squareHeights, type ClusterRole, type ImageMapResult, type ImgRole } from './modules/imageMap'
 import { withSlopeTilt } from './modules/slopeAlign'
 import { LAYERS as GEN_LAYERS, withWbLayers, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
 import { applyPads, gradeLanes, layPads } from './modules/pads'
@@ -505,6 +506,21 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
         <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
         <button id="tGaea" type="button" class="secondary" title="${t('hint.tGaea')}">${t('btn.tGaea')}</button>
+        <button id="tImg" type="button" class="secondary" title="${t('img.tip')}">${t('img.btn')}</button>
+      </div>
+      <div id="imgBox" hidden>
+        <p class="hint">${t('img.help')}</p>
+        <div class="form">
+        <label class="wide">${t('img.file')} <input id="imgFile" type="file" accept="image/png,image/jpeg,image/webp,image/*"></label>
+        <label>${t('img.size')} <input id="imgSize" type="number" value="3" min="0.2" max="20" step="0.1"></label>
+        <label>${t('img.k')} <input id="imgK" type="number" value="12" min="3" max="16" step="1"></label>
+        <button id="imgAnalyse" type="button" class="secondary">${t('img.analyse')}</button>
+        </div>
+        <ul id="imgPal" class="swatches img-pal"></ul>
+        <div class="form">
+        <button id="imgGo" type="button">${t('img.go')}</button>
+        <span id="imgMsg" class="hint"></span>
+        </div>
       </div>
       <div id="gaeaBox" hidden>
         <p class="hint">${t('gaea.help')}</p>
@@ -2538,6 +2554,105 @@ function useWorld(w: WorldExport) {
   view.x = minX + (cols * step) / 2
   view.z = minZ + (rows * step) / 2
   view.mpp = (cols * step) / map.width
+}
+// --- map from an image (imageMap.ts): colours -> roles -> relief, water, roads, forests, buildings ---
+let imgSrc: { img: HTMLImageElement; file: File; rgba: { width: number; height: number; data: Uint8ClampedArray } } | null = null
+let imgQ: Quantised | null = null
+let imgRoles: ClusterRole[] = []
+$<HTMLButtonElement>('tImg').addEventListener('click', () => { const b = $<HTMLDivElement>('imgBox'); b.hidden = !b.hidden })
+$<HTMLInputElement>('imgFile').addEventListener('change', () => {
+  const f = $<HTMLInputElement>('imgFile').files?.[0]
+  imgQ = null; imgRoles = []; imgSrc = null
+  $('imgPal').textContent = ''
+  if (!f) return
+  const img = new Image()
+  img.onload = () => {
+    // working copy at most 1024 px on the long side (thin lines stay readable, the analysis stays fast)
+    const k = Math.min(1, 1024 / Math.max(img.width, img.height))
+    const cv = document.createElement('canvas')
+    cv.width = Math.max(1, Math.round(img.width * k)); cv.height = Math.max(1, Math.round(img.height * k))
+    const c2 = cv.getContext('2d')!
+    c2.drawImage(img, 0, 0, cv.width, cv.height)
+    const d = c2.getImageData(0, 0, cv.width, cv.height)
+    imgSrc = { img, file: f, rgba: { width: d.width, height: d.height, data: d.data } }
+    $<HTMLButtonElement>('imgAnalyse').click()
+  }
+  img.onerror = () => { $('imgMsg').textContent = t('err.traceImg', { name: f.name }) }
+  img.src = URL.createObjectURL(f)
+})
+function renderImgPalette() {
+  const ul = $('imgPal')
+  ul.textContent = ''
+  if (!imgQ) return
+  imgQ.palette.forEach(([r, g, b], i) => {
+    const li = el('li')
+    const sw = el('i', 'swatch')
+    sw.style.background = `rgb(${r},${g},${b})`
+    const pct = el('span', 'hint', `${(imgQ!.share[i] * 100).toFixed(1)} %`)
+    const sel = el('select')
+    sel.setAttribute('aria-label', t('img.pal', { n: i + 1 }))
+    for (const k of IMG_ROLES) { const o = el('option', '', t(('img.role.' + k) as Key)); o.value = k; sel.append(o) }
+    sel.value = imgRoles[i].role
+    const hgt = el('input') as HTMLInputElement
+    hgt.type = 'number'; hgt.step = '5'; hgt.className = 'img-h'
+    hgt.title = hgt.ariaLabel = t('img.h')
+    hgt.value = String(imgRoles[i].height ?? 25)
+    hgt.hidden = imgRoles[i].role !== 'band'
+    sel.addEventListener('change', () => { imgRoles[i] = { role: sel.value as ImgRole, ...(sel.value === 'band' ? { height: Number(hgt.value) || 25 } : {}) }; hgt.hidden = sel.value !== 'band' })
+    hgt.addEventListener('change', () => { if (imgRoles[i].role === 'band') imgRoles[i].height = Number(hgt.value) || 0 })
+    li.append(sw, pct, sel, hgt)
+    ul.append(li)
+  })
+}
+$<HTMLButtonElement>('imgAnalyse').addEventListener('click', () => {
+  if (!imgSrc) { $('imgMsg').textContent = t('img.noFile'); return }
+  const t0 = performance.now(), src = imgSrc
+  void track(runGen<Quantised>('imgCluster', [src.rgba, Math.max(3, Math.min(16, num('imgK') || 12))]).promise.then((q) => {
+    if (imgSrc !== src) return
+    imgQ = q
+    imgRoles = guessImgRoles(q)
+    renderImgPalette()
+    $('imgMsg').textContent = t('img.analysed', { n: q.palette.length, w: q.width, h: q.height, ms: Math.round(performance.now() - t0) })
+  }, (e) => { busyFailed = true; $('imgMsg').textContent = (e as Error).message }))
+})
+$<HTMLButtonElement>('imgGo').addEventListener('click', () => {
+  if (!imgSrc) { $('imgMsg').textContent = t('img.noFile'); return }
+  if (!imgQ) { $('imgMsg').textContent = t('img.noPal'); return }
+  if (!imgRoles.some((r) => r.role === 'land' || r.role === 'water' || r.role === 'band')) { $('imgMsg').textContent = t('img.noLand'); return }
+  const src = imgSrc, size = Math.max(200, (num('imgSize') || 3) * 1000)
+  void track(runGen<ImageMapResult>('imageMap', [imgQ, imgRoles, { size }]).promise.then((r) => {
+    if (imgSrc === src) applyImageMap(r, src.img, src.file)
+  }, (e) => { busyFailed = true; $('imgMsg').textContent = (e as Error).message }))
+})
+function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
+  const S = Math.round(Math.max(r.sizeX, r.sizeZ))
+  const hm = squareHeights(r.heights)
+  let lo = Infinity, hi = -Infinity
+  for (const v of hm.data) { if (v < lo) lo = v; if (v > hi) hi = v }
+  const w = heightsFromImage(hm, { size: S, minHeight: 0, maxHeight: 0 })
+  $<HTMLInputElement>('tSize').value = String(S)
+  useWorld(w)
+  imported = null // a new relief, not the world open in the Workbench
+  island!.masks = undefined
+  island!.surfaceMasks = undefined
+  // roads: vanilla class from the drawn thickness, relative to the typical road of the picture
+  const ws = r.roads.filter((x) => x.kind === 'road').map((x) => x.width).sort((a, b) => a - b)
+  const median = ws.length ? ws[ws.length >> 1] : 1
+  for (const x of r.roads) { const type = roadClass(x.width, median, x.kind); roads.push({ id: nextRoadId(type), type, pts: x.pts }) }
+  for (const x of r.waters) {
+    if (x.kind === 'river') waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, depth: 1.5, carve: false })
+    else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: 2, level: 0 })
+  }
+  r.areas.forEach((a, k) => areas.push({ id: `${a.kind === 'forest' ? 'FOREST' : 'FIELD'}_IMG_${k + 1}`, kind: a.kind, ...(a.kind === 'forest' ? { leaf: 'mixed' as const } : {}), pts: a.pts, holes: a.holes }))
+  settled = r.buildings.map((b, i) => ({ id: `IMG_BLD_${i + 1}`, site: 'IMG', prefab: b.prefab, cat: b.cat, x: b.x, z: b.z, yaw: b.yaw, corners: b.corners, role: 'house' as const }))
+  $<HTMLInputElement>('tMax').value = String(Math.max(1, Math.ceil(hi)))
+  $<HTMLInputElement>('tSeaLevel').value = '0'
+  // the picture stays under the map as a tracing image (square pictures only: the tracing fills the terrain)
+  if (Math.abs(img.width - img.height) <= 2) { traceImg = img; void saveTrace(file) }
+  setInfo(); powerInfo(); waterInfo(); roadInfo()
+  recompose(true)
+  draw()
+  $('imgMsg').textContent = logEl.textContent = t('img.ok', { roads: r.roads.length, waters: r.waters.length, bld: r.buildings.length, areas: r.areas.length, lo: Math.round(lo), hi: Math.round(hi) })
 }
 // --- relief made in Gaea (or any terrain tool): heightmap + optional masks; roads, villages... are generated on it ---
 $<HTMLButtonElement>('tGaea').addEventListener('click', () => { const b = $<HTMLDivElement>('gaeaBox'); b.hidden = !b.hidden })
