@@ -132,6 +132,7 @@ import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/netw
 import { validate, type Issue } from './modules/validate'
 import { applyFixes, bridgeChecks, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
+import { clipForestsToWater } from './modules/forestWater'
 import { worldToIsland } from './modules/importWorld'
 import { applySurfaceMasks, heightsFromImage, maskKind, maskOnGrid, readHeightFile, readPngImage, reliefMasks, type SurfaceMask } from './modules/gaeaImport'
 import type { ReliefMasks } from './modules/gaeaRelief'
@@ -4529,7 +4530,9 @@ function forestAreaTest(): (x: number, z: number) => boolean {
     return ins
   })
 }
-function forestShapesOut(f: MapArea[]): ProjectShape[] {
+function forestShapesOut(all: MapArea[]): ProjectShape[] {
+  // no tree in a river bed nor a lake: forests cut by the water corridor (width / 2 + 4 m), holes split away
+  const f = clipForestsToWater(all, waters.map((w) => ({ pts: w.pts, width: w.width, closed: WATER_TYPES[w.type].closed })), { margin: 4 })
   if (!$<HTMLInputElement>('forestEdge').checked) return f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
   return forestEdgeShapes(forestEdges(f.map((a) => ({ id: a.id, pts: a.pts, leaf: a.leaf, generator: forestGenOf(a), noEdge: a.stage === 'juvenile' || a.stage === 'clearcut' }))))
 }
