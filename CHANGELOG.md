@@ -8,18 +8,16 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
-<<<<<<< HEAD
 ### Added
 
 - **Map from an image** (Terrain > Image): any map picture (topographic, relief bands, countryside plan) is split into colours; give each colour a role (land, water, height band, forest, field, field edge, building, road, path / rail, ignore) and the tool builds the relief, roads, rivers (centre line + width profile, even for wide rivers) or lakes, buildings, smoothed forests, fields closed by their edges and hedges. Dotted rail lines never become buildings.
-=======
+
 ## [0.10.1] - 2026-11-26
 
 ### Fixed
 - Atelier: an existing terrain is found even when its tile files use another letter case or prefix than the `.terr` (e.g. `ZBK_terrain.terr`), and a world is linked to a terrain named after it.
 - Ground strips on tile borders: the mask import now regenerates the normal map by default; it warns when it is skipped.
 - Workbench save is pinned to the Mapgenerator NET API port and no longer reaches another project's Workbench.
->>>>>>> main
 
 ## [0.10.0] - 2026-11-26
 
