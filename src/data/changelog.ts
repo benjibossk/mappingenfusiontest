@@ -7,6 +7,14 @@ export interface ChangelogEntry { version: string; date: string; items: Changelo
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.10.1',
+    date: '2026-11-26',
+    items: [
+      { en: "Atelier recognises existing terrains whatever their file name case", fr: "L'Atelier reconnaît les terrains existants quelle que soit la casse des fichiers" },
+      { en: "No more ground strips on tile borders after a mask import", fr: "Plus de traits au sol sur les bords de tuiles après l'import des masques" },
+    ],
+  },
+  {
     version: '0.10.0',
     date: '2026-11-26',
     items: [

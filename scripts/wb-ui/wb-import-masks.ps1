@@ -17,13 +17,16 @@ param(
   [switch]$NoSave,
   [switch]$NoTerrainFix, # kept for old command lines: the border fix is now opt-in (-TerrainFix)
   [switch]$TerrainFix,
-  [switch]$NoNormalMap,
+  [switch]$NoNormalMap, # AVOID: without it the heights sent by the bridge keep stale normals on every 256 m tile border
+                        # (straight light/dark 2 m strips at x/z = k*256, seen 2026-11-26; 'Fix block borders' does not remove them)
   [int]$QuietSec = 120,
   [int]$QuietMaxSec = 900,
   [int]$SaveDelaySec = 180,
   [switch]$Probe
 )
 $ErrorActionPreference = 'Stop'
+# the save below goes through wb-save.mjs: aim it at the Mapgenerator Workbench port (5777), never the 5775 default of other projects
+if (-not $env:MAPGEN_WB_PORT) { $env:MAPGEN_WB_PORT = '5777' }
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $A = [System.Windows.Automation.AutomationElement]
 $P = [System.Windows.Automation.PropertyCondition]
@@ -167,14 +170,18 @@ if ($fixButtons.Count -and -not $script:importFailed) {
     # Only when it was launched: with -NoNormalMap nothing prints it (the old 6 min wait then skipped the save).
     if (-not $NoNormalMap) {
       $logDir = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-      $clog = Join-Path $logDir.FullName 'console.log'; $done = $false
+      $clog = Join-Path $logDir.FullName 'console.log'; $done = $false; $quiet = 0
       for ($i = 0; $i -lt 180 -and -not $done; $i++) {
         Start-Sleep -Seconds 2
         $tail = Get-Content $clog -Tail 400 -ErrorAction SilentlyContinue
         if ($tail -match 'Reimporting Done') { $done = $true }
+        # 2026-11-26: the generation ran (and removed the tile-border strips) without printing 'Reimporting Done':
+        # also accept 30 s without any progress dialog on screen as the end of the generation
+        if ($i -ge 15 -and -not @(Dialogs | Where-Object { $_.Current.ClassName -match 'Progress' }).Count) { $quiet++ } else { $quiet = 0 }
+        if ($quiet -ge 15) { $done = $true }
       }
       if ($done) { 'terrain fix: generation finished'; Start-Sleep -Seconds 5 } else { 'terrain fix: generation not confirmed after 6 min, save skipped'; $NoSave = $true }
-    } else { 'terrain fix: normal map not generated (-NoNormalMap), no Reimporting Done to wait for' }
+    } else { 'terrain fix: normal map not generated (-NoNormalMap): expect straight strips on the 256 m tile borders until Manage > Generate normal/vegetation map is run' }
   } else { 'terrain fix: Manage tab not found, skipped' }
 }
 if (-not $NoSave) {
