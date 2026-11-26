@@ -849,12 +849,32 @@ export const EMBANK_YAW: Record<keyof typeof EMBANK, number> = { straight: 0, wa
 export function riverBanks(waters: Water[], before: ArrayLike<number>, grid: Grid): ProjectEntity[] {
   const at = sampler(before, grid)
   const out: ProjectEntity[] = []
+  const lakes = waters.filter((w) => WATER_TYPES[w.type].closed && w.pts.length >= 6)
+  const inRing = (p: number[], x: number, z: number) => {
+    let ins = false
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2)
+      if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
+    return ins
+  }
   for (const w of waters) {
     if (WATER_TYPES[w.type].closed || w.pts.length < 4) continue
     const line = centreLine(downhillCourse(w, at), EMBANK_LEN)
     const n = line.length / 2
     if (n < 4) continue
     const off = w.width / 2 // pivot = eroded face, on the edge of the channel
+    // a picture river: its local traced width (the median put pieces 20-30 m out on the dry bank where the river
+    // is narrower, round bumps on picture 119, and in the water where wider)
+    const localW = w.widths && w.widths.length === w.pts.length / 2 ? w.widths : undefined
+    const offAt = (x: number, z: number) => {
+      if (!localW) return off
+      let bd = Infinity, bw = w.width
+      for (let j = 0; j + 3 < w.pts.length; j += 2) {
+        const px = w.pts[j], pz = w.pts[j + 1], qx = w.pts[j + 2] - px, qz = w.pts[j + 3] - pz, Q = qx * qx + qz * qz || 1
+        const u = Math.min(1, Math.max(0, ((x - px) * qx + (z - pz) * qz) / Q)), dd = Math.hypot(x - px - qx * u, z - pz - qz * u)
+        if (dd < bd) { bd = dd; bw = localW[j / 2] + (localW[j / 2 + 1] - localW[j / 2]) * u }
+      }
+      return bw / 2
+    }
     const dir = (i: number) => {
       const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1)
       const tx = line[b * 2] - line[a * 2], tz = line[b * 2 + 1] - line[a * 2 + 1], L = Math.hypot(tx, tz) || 1
@@ -881,8 +901,10 @@ export function riverBanks(waters: Water[], before: ArrayLike<number>, grid: Gri
       if (!s) continue
       const [tx, tz] = dir(i)
       const nx = -tz * s, nz = tx * s // towards the bank
-      const x = line[i * 2] + nx * off, z = line[i * 2 + 1] + nz * off
+      const o = offAt(line[i * 2], line[i * 2 + 1])
+      const x = line[i * 2] + nx * o, z = line[i * 2 + 1] + nz * o
       if (at(x, z) < 0.5) continue // not in the sea
+      if (lakes.some((l) => inRing(l.pts, x, z))) continue // nor in a lake (a river swelling)
       const end = side[i - 1] !== s || side[i + 1] !== s
       const kind: keyof typeof EMBANK = end ? 'turnin' : bend[i] ? 'wave' : 'straight'
       // eroded face (-Z of the model) towards the water
