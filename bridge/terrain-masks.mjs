@@ -148,7 +148,12 @@ export function writeSatellite(outFile, side, terrainSize, surfaces, colours, ba
 //! manquant_* layers (no such surface); the prefixed copies + 00_LISEZMOI_import.txt go to `<outDir>_ordre_import`.
 export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colours = null, opts = {}) {
   mkdirSync(outDir, { recursive: true });
-  for (const f of readdirSync(outDir)) if (f.toLowerCase().endsWith(".png")) rmSync(join(outDir, f));
+  // surfaces painted by an earlier export (old PNGs + the LAYERS list) and absent now get an all-zero mask:
+  // the importer skips a missing file and KEEPS that layer on the terrain, so the forests of the previous
+  // map stayed and blocks ended with 6 surfaces ("Too many layers", import failed, image map 2026-11-26)
+  const stale = new Set();
+  try { for (const n of JSON.parse(readFileSync(join(outDir, LAYERS), "utf-8"))) if (typeof n === "string") stale.add(n); } catch { /* first export */ }
+  for (const f of readdirSync(outDir)) if (f.toLowerCase().endsWith(".png")) { stale.add(f.slice(0, -4)); rmSync(join(outDir, f)); }
   const { names, bytes } = paintMasks(side, terrainSize, surfaces, roads, colours);
   const fileNames = opts.fileNames ?? {};
   const ordered = Object.keys(fileNames).length > 0 || !!opts.readme;
@@ -161,8 +166,13 @@ export function writeMasks(outDir, side, terrainSize, surfaces, roads = [], colo
     const f = fileNames[name];
     if (ordered && /^[\w+-]+$/.test(f ?? "")) { writeFileSync(join(orderDir, f + ".png"), buf); orderedFiles.push(f); }
   });
+  const cleared = [...stale].filter((n) => /^[\w+-]+$/.test(n) && !n.startsWith("manquant_") && !names.includes(n)).sort();
+  if (cleared.length) { const zero = png(side, () => 0); for (const n of cleared) writeFileSync(join(outDir, n + ".png"), zero); }
+  writeFileSync(join(outDir, LAYERS), JSON.stringify([...new Set([...written, ...cleared])].sort()));
   if (ordered && typeof opts.readme === "string" && opts.readme) { writeFileSync(join(orderDir, README), opts.readme.replace(/\n/g, "\r\n"), "utf-8"); orderedFiles.unshift(README); }
+  if (cleared.length) return ordered ? { dir: outDir, side, written, cleared, orderDir, ordered: orderedFiles.sort() } : { dir: outDir, side, written, cleared };
   return ordered ? { dir: outDir, side, written, orderDir, ordered: orderedFiles.sort() } : { dir: outDir, side, written };
 }
 const ORDER_SUFFIX = "_ordre_import";
 const README = "00_LISEZMOI_import.txt";
+const LAYERS = "mapgen-layers.json";
