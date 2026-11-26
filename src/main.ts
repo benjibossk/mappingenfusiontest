@@ -177,6 +177,7 @@ import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, t
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
 import { sanitizeRoadShape } from './modules/roadSanitize'
 import { camLookAt, worldToMap } from './modules/wbCamera'
+import { buildingsFor } from './data/buildings'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
 // the side panel is a guided path: one step per tab, in the order a map is built
@@ -379,6 +380,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <label class="check"><input id="rwDams" type="checkbox"> ${t('lbl.dams')} ${info('info.dams')}</label>
           <label class="check"><input id="rwVanillaSites" type="checkbox" checked> ${t('lbl.vanillaSites')} ${info('info.vanillaSites')}</label>
           <label class="check"><input id="rwVillageTpl" type="checkbox" checked> ${t('lbl.villageTpl')} ${info('info.villageTpl')}</label>
+          <label>${t('lbl.setHouseStyle')} ${info('info.setHouseStyle')} <select id="rwHouseStyle"><option value="vanilla">${t('opt.house.vanilla')}</option><option value="soviet">${t('opt.house.soviet')}</option></select></label>
           <label class="check"><input id="rwPower" type="checkbox" checked> ${t('wg.power')}</label>
         </div>
         <div class="form"><label>${t('lbl.powDistrib')} ${info('info.powDistrib')} <select id="rwPowDistrib"><option value="auto" selected>${t('opt.powDistAuto')}</option><option value="overhead">${t('opt.powDistOver')}</option><option value="underground">${t('opt.powDistUnder')}</option></select></label></div>
@@ -696,6 +698,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <label class="check devonly"><input id="setV2" type="checkbox" checked> ${t('lbl.setV2')} ${info('info.setV2')}</label>
         <div class="form" id="setV2Box">
           <label>${t('lbl.setVariant')} ${info('info.setVariant')} <select id="setVariant"><option value="auto">${t('opt.var.auto')}</option><option value="village">${t('opt.var.village')}</option><option value="town">${t('opt.var.town')}</option></select></label>
+          <label>${t('lbl.setHouseStyle')} ${info('info.setHouseStyle')} <select id="setHouseStyle"><option value="vanilla">${t('opt.house.vanilla')}</option><option value="soviet">${t('opt.house.soviet')}</option></select></label>
           <label>${t('lbl.setMaxStreets')} ${info('info.setMaxStreets')} <input id="setMaxStreets" type="number" min="0" max="10" step="1" value="" placeholder="${t('opt.var.auto')}"></label>
           <label class="check"><input id="setStreets" type="checkbox" checked> ${t('lbl.setStreets')} ${info('info.setStreets')}</label>
           <label class="check"><input id="setFarms" type="checkbox" checked> ${t('lbl.setFarms')} ${info('info.setFarms')}</label>
@@ -1385,11 +1388,13 @@ function zoneTown(zone: number[], n: number) {
   while (settled.some((b) => b.site === sid)) sid += 'b'
   const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
   const allRoads = [...roads, ...existingRoads(), ...setLanes, ...zones.flatMap((z) => z.roads)]
-  const res = generateTown(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: num('setDensity') || 1, maxSlope: ZONE_MAX_SLOPE.town, blocked, prefix: sid }, settled)
+  const res = generateTown(zone, allRoads, waters, island.heights, island.grid, { seed: num('setSeed') + n, density: num('setDensity') || 1, maxSlope: ZONE_MAX_SLOPE.town, blocked, prefix: sid, style: $<HTMLSelectElement>('setHouseStyle').value === 'soviet' ? 'soviet' : 'vanilla' }, settled)
   const made = res.placed.length - settled.length
   settled = offBridges(res.placed)
   setLanes = [...setLanes, ...res.lanes]
   setSquares = [...setSquares, ...res.squares]
+  // P3 #13: the street-front parcels of the blocks (drawn as gardens, worn ground under them)
+  setGardens = [...setGardens, ...res.parcels.map((p) => ({ site: sid, corners: p.corners }))]
   // the town's parking and church blocks are dressed by the site generators (sitezones.ts): parking bays, and the
   // cemetery round the church (graves skip the church footprint: `ok` excludes the settled buildings)
   for (const bl of res.blocks) {
@@ -4063,6 +4068,8 @@ $<HTMLButtonElement>('setGen').addEventListener('click', () => void track((async
   if (chk('setParcels')) {
     try { pool = parcelPool(await loadParcels()) } catch (e) { logEl.textContent = t('err.parcels') + (e as Error).message; return }
   }
+  // soviet house style (Kolguyev): every house and farmhouse from the vanilla USSR set (buildings.ts)
+  if (!pool && $<HTMLSelectElement>('setHouseStyle').value === 'soviet') pool = buildingsFor('soviet')
   const blocked = [...existing.objects.filter((o) => !/Prefabs\/Terrain\//.test(o.prefab)).map((o) => o.box), ...zoneBlocked(zones)]
   const allRoads = [...roads, ...existingRoads(), ...zones.flatMap((z) => z.roads)]
   const maxStreets = $<HTMLInputElement>('setMaxStreets').value.trim()
@@ -5563,7 +5570,8 @@ function applyWorld(w: WorldResult) {
   areas = w.areas.map((a) => ({ id: a.id, kind: a.kind, leaf: a.leaf, pts: a.pts, ...(a.tall && { tall: a.tall }), ...(a.stage && { stage: a.stage }), ...(a.logs && { logs: a.logs }) }))
   result = w.campaign ?? null
   settled = offBridges(w.settlement.placed); setLanes = w.settlement.lanes; setPaths = w.settlement.paths; setSquares = w.settlement.squares
-  setGardens = []
+  // town block parcels (town.ts) whose house is still there
+  { const ids = new Set(w.settlement.placed.map((q) => q.id)); setGardens = (w.settlement.gardens ?? []).filter((q) => !q.building || ids.has(q.building)).map((q) => ({ site: q.site, corners: q.corners })) }
   setParcels = [...(w.settlement.parcels ?? []), ...(w.settlement.fences ?? [])]
   zones = w.zones
   worldBridges = w.bridges ?? []
@@ -5608,7 +5616,7 @@ async function worldGo(): Promise<Record<string, string> | undefined> {
     seed: Math.floor(Number($<HTMLInputElement>('rwSeed').value)) || 1, size: Number($<HTMLSelectElement>('rwSize').value),
     towns: v('towns'), villages: v('villages'), hamlets: v('hamlets'), industry: v('industry'), military: v('military'), forests: v('forests'), fieldTrees: v('fieldTrees'),
     airfield: $<HTMLInputElement>('rwAir').checked, power: $<HTMLInputElement>('rwPower').checked, biome: currentBiome, motorway: $<HTMLInputElement>('rwMotorway').checked, dams: $<HTMLInputElement>('rwDams').checked,
-    vanillaSites: $<HTMLInputElement>('rwVanillaSites').checked, villageTemplates: $<HTMLInputElement>('rwVillageTpl').checked,
+    vanillaSites: $<HTMLInputElement>('rwVanillaSites').checked, villageTemplates: $<HTMLInputElement>('rwVillageTpl').checked, houseStyle: $<HTMLSelectElement>('rwHouseStyle').value === 'soviet' ? 'soviet' : 'vanilla',
     powerDistrib: $<HTMLSelectElement>('rwPowDistrib').value as PowerDistrib,
     layerSeeds: layerSeedTable(),
     relief: reliefKind(),

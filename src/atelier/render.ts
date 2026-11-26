@@ -5,6 +5,7 @@
 import type { HeightGrid } from './heights.ts'
 import type { LayerObjects } from './formats/layer.ts'
 import { topoSurface, type Topo } from './formats/topo.ts'
+import { FALLBACK_HALF, objectFootprint } from './footprints.ts'
 
 export type MapStyle = 'military' | 'realistic' | 'topo'
 // topographic background (idea of MapGeneratorPro fond_topo.py / hypsometric_colormap.py, MIT (c) Giorbev):
@@ -156,6 +157,11 @@ export function renderMap(ctx: CanvasRenderingContext2D, S: number, inp: RenderI
   if (L.port) for (const p of objects.port) {
     const [x, y] = P(p.x, p.z), s = Math.max(1.5, (p.type === 'bollard' ? 0.8 : 8) / mpp)
     const c = p.type === 'stairs' ? PAL.stairs : p.type === 'breakwater' ? PAL.dike : p.type === 'wooden' ? PAL.wood : p.type === 'retaining' ? PAL.slope : PAL.quay
+    const fp = p.type === 'bollard' ? null : objectFootprint(p, FALLBACK_HALF.port)
+    if (fp?.measured) { // real quay / jetty / breakwater piece outline
+      ctx.beginPath(); for (let i = 0; i < 8; i += 2) { const [px, py] = P(fp.corners[i], fp.corners[i + 1]); (i ? ctx.lineTo : ctx.moveTo).call(ctx, px, py) } ctx.closePath()
+      ctx.fillStyle = css(c); ctx.fill(); ctx.strokeStyle = css(PAL.quayLine); ctx.lineWidth = 0.6; ctx.stroke(); continue
+    }
     ctx.save(); ctx.translate(x, y); ctx.rotate(-p.yaw * Math.PI / 180); ctx.fillStyle = css(c); ctx.fillRect(-s / 2, -s / 4, s, s / 2)
     ctx.strokeStyle = css(PAL.quayLine); ctx.lineWidth = 0.6; ctx.strokeRect(-s / 2, -s / 4, s, s / 2); ctx.restore()
   }
@@ -166,10 +172,15 @@ export function renderMap(ctx: CanvasRenderingContext2D, S: number, inp: RenderI
     else ctx.fillStyle = 'rgb(40,40,40)'
     path(); ctx.fill()
   } else if (L.buildings) for (const b of objects.buildings) {
-    const [x, y] = P(b.x, b.z), s = Math.max(1.5, (b.type === 'house' ? 10 : 18) / mpp)
-    ctx.fillStyle = style === 'military' ? (b.type === 'house' ? 'rgb(40,40,40)' : 'rgb(90,90,90)') : css(b.type === 'house' ? PAL.house : PAL.industrial)
-    if (style === 'realistic') { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(x - s / 2 + s * 0.2, y - s / 2 + s * 0.2, s, s); ctx.fillStyle = css(b.type === 'house' ? PAL.house : PAL.industrial) }
-    ctx.fillRect(x - s / 2, y - s / 2, s, s)
+    // real footprint (prefab dims, footprints.ts), the old square when the prefab is unknown; at least 1.5 px
+    const fp = objectFootprint(b, b.type === 'house' ? FALLBACK_HALF.house : FALLBACK_HALF.industrial).corners
+    const [cx0, cy0] = P(b.x, b.z)
+    const pts = [] as [number, number][]
+    for (let i = 0; i < 8; i += 2) { const [x, y] = P(fp[i], fp[i + 1]); const dx = x - cx0, dy = y - cy0, l = Math.hypot(dx, dy); const m = l > 0 && l < 1.06 ? 1.06 / l : 1; pts.push([cx0 + dx * m, cy0 + dy * m]) }
+    const path = (o = 0) => { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x + o, y + o)); ctx.closePath() }
+    const fill = style === 'military' ? (b.type === 'house' ? 'rgb(40,40,40)' : 'rgb(90,90,90)') : css(b.type === 'house' ? PAL.house : PAL.industrial)
+    if (style === 'realistic') { ctx.fillStyle = 'rgba(0,0,0,.3)'; path(Math.max(0.5, 2 / mpp)); ctx.fill() }
+    ctx.fillStyle = fill; path(); ctx.fill()
   }
   if (L.legend && legend) drawLegend(ctx, S, SH, legend)
 }

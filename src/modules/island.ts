@@ -3,6 +3,7 @@
 import { groundWeights, terrainShape } from './groundMasks'
 import { rockMasks } from './rockMask'
 import { erodeIsland, mountainBase, type ReliefMasks } from './gaeaRelief'
+import { splitVariants } from './paintPriority'
 
 export interface IslandParams {
   size: number // terrain size in metres (X = Z)
@@ -281,6 +282,8 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   }
   for (const k of names) weights[k] = weights[k].map((w) => (w < 1 / 255 ? 0 : w))
   const out = names.map((name) => ({ ...grid, name, weights: weights[name] }))
+  // P2 #11 / MAPS4FS item 10: bare ground broken up into two dirt tones by low-frequency noise
+  if (cover) splitVariants(out, 'Dirt_01', ['Dirt_01', 'Dirt_02'], { seed: 5113, scale: 160 })
   limitPerBlock(out)
   return out
 }

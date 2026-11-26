@@ -48,3 +48,28 @@ export function isStructure(t: OsmTags): boolean {
   const on = (v: string | undefined) => !!v && v !== 'no'
   return on(t.bridge) || on(t.tunnel)
 }
+
+// P2 #16: tunnels are left out of the import (the terrain has no tunnel), bridges are kept and marked
+//! road in a tunnel (any tunnel value but "no"; a building_passage stays a road at ground level)
+export function isTunnel(t: OsmTags): boolean {
+  return !!t.tunnel && t.tunnel !== 'no' && t.tunnel !== 'building_passage'
+}
+//! road on a bridge (bridge=yes / viaduct / ... or man_made=bridge)
+export function isBridge(t: OsmTags): boolean {
+  return (!!t.bridge && t.bridge !== 'no') || t.man_made === 'bridge'
+}
+
+//! vanilla road type from the class default and the `surface` tag: an unpaved secondary is a dirt road,
+//! a cobbled street is cobble, a paved track is a narrow asphalt lane. Unknown surfaces keep the default.
+export function osmRoadType<T extends string>(t: OsmTags, base: T): T | 'dirt' | 'cobble' | 'concrete' | 'asphaltNarrow' | 'trailGravel' {
+  const s = (t.surface ?? '').toLowerCase()
+  if (!s) return base
+  const paved = /^(asphalt|paved|chipseal)$/.test(s)
+  const footpath = /^trail/.test(base)
+  if (/^(sett|cobblestone|unhewn_cobblestone|paving_stones)/.test(s)) return footpath ? base : 'cobble'
+  if (/^concrete/.test(s)) return footpath ? base : 'concrete'
+  if (/^(gravel|fine_gravel|pebblestone)$/.test(s)) return footpath ? 'trailGravel' : 'dirt'
+  if (/^(unpaved|dirt|ground|earth|compacted|mud|sand|grass)$/.test(s)) return footpath ? base : 'dirt'
+  if (paved && base === 'dirt') return 'asphaltNarrow'
+  return base
+}

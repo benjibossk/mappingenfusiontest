@@ -14,7 +14,7 @@ import { centreLine, roadHalf } from './roads'
 import type { Water } from './water'
 import { WATER_TYPES } from './water'
 import type { Building, BuildingCat } from '../data/buildings'
-import { BUILDINGS, FRONT_YAW, INDUSTRIAL } from '../data/buildings'
+import { buildingsFor, FRONT_YAW, INDUSTRIAL, type HouseStyle } from '../data/buildings'
 import { boxed, footprint, hash, inside, lineDist, minSegments, overlap, rng, sampler, samples, type Line, type Placed, type PlacedRole, type Square } from './settlements'
 import { nearestOn } from './villageStreets'
 import { ROAD_SEED_OFF, roadEdge, roadSeeds, snapToRoads } from './townRoads'
@@ -28,8 +28,11 @@ export interface TownOptions {
   maxSlope?: number // building ground slope (default 0.2)
   blocked?: number[][] // [x0, z0, x1, z1] boxes to avoid
   prefix?: string // site id (default "T")
+  /** house style: 'soviet' = Kolguyev look (buildings.ts buildingsFor) */
+  style?: HouseStyle
   maxBuildings?: number // default 160 (Everon's town disc: 169 buildings, sheds included)
 }
+export interface TownParcel { id: string; building: string; block: number; /** street edge of the parcel [x0, z0, x1, z1] */ front: number[]; /** convex ring, flat X/Z */ corners: number[] }
 export interface TownResult {
   placed: Placed[] // keep + the new buildings
   lanes: Road[] // the streets (main + secondary + links to the entry roads)
@@ -37,6 +40,9 @@ export interface TownResult {
   blocks: TownBlock[]
   /** street graph, for checks: vertices (flat X/Z) and edges (vertex index pairs) */
   graph: { v: number[]; e: [number, number][] }
+  /** P3 #13: block subdivision, one parcel per street-front building (convex, never overlapping), `block` =
+   *  index in `blocks` (-1 = along a through-road) */
+  parcels: TownParcel[]
   pop: number // rough population estimate
   warnings: string[]
 }
@@ -65,6 +71,37 @@ function centroid(r: number[]): [number, number] {
   if (Math.abs(a) < 1e-9) { let sx = 0, sz = 0; for (let i = 0; i < r.length; i += 2) { sx += r[i]; sz += r[i + 1] } return [sx / (r.length / 2), sz / (r.length / 2)] }
   return [x / (3 * a), z / (3 * a)]
 }
+const PARCEL_MAX = 60 // m, deepest parcel (a block wider than 120 m keeps a common back in the middle)
+function inPoly(p: number[], x: number, z: number): boolean {
+  let ins = false
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
+  return ins
+}
+/** convex `poly` clipped to the convex `ring` (either orientation) */
+function clipConvex(poly: number[], ring: number[]): number[] {
+  const [mx, mz] = centroid(ring)
+  let q = poly
+  for (let i = 0; i < ring.length && q.length >= 6; i += 2) {
+    const ax = ring[i], az = ring[i + 1], bx = ring[(i + 2) % ring.length], bz = ring[(i + 3) % ring.length]
+    let dx = bz - az, dz = -(bx - ax) // edge normal; keep the centroid side
+    if ((mx - ax) * dx + (mz - az) * dz > 0) { dx = -dx; dz = -dz }
+    q = clipHalf(q, ax, az, dx, dz)
+  }
+  return q
+}
+/** two convex rings overlap by more than `eps` m (separating axis test) */
+export function convexOverlap(a: number[], b: number[], eps = 0.05): boolean {
+  for (const p of [a, b]) for (let i = 0; i < p.length; i += 2) {
+    const ex = p[(i + 2) % p.length] - p[i], ez = p[(i + 3) % p.length] - p[i + 1], l = Math.hypot(ex, ez)
+    if (l < 1e-9) continue
+    const nx = -ez / l, nz = ex / l
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity
+    for (let k = 0; k < a.length; k += 2) { const v = a[k] * nx + a[k + 1] * nz; a0 = Math.min(a0, v); a1 = Math.max(a1, v) }
+    for (let k = 0; k < b.length; k += 2) { const v = b[k] * nx + b[k + 1] * nz; b0 = Math.min(b0, v); b1 = Math.max(b1, v) }
+    if (a1 - b0 <= eps || b1 - a0 <= eps) return false
+  }
+  return true
+}
 /** convex polygon ∩ half-plane {p : (p - m)·d <= 0} */
 function clipHalf(poly: number[], mx: number, mz: number, dx: number, dz: number): number[] {
   const out: number[] = [], n = poly.length / 2
@@ -92,7 +129,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   const cap = Math.round((o.maxBuildings ?? 160) * Math.min(1.5, Math.max(0.3, density)))
   const placed = keep.slice()
   const warnings: string[] = []
-  const res: TownResult = { placed, lanes: [], squares: [], blocks: [], graph: { v: [], e: [] }, pop: 0, warnings }
+  const res: TownResult = { placed, lanes: [], squares: [], blocks: [], graph: { v: [], e: [] }, parcels: [], pop: 0, warnings }
   const rivers = waters.filter((w) => !WATER_TYPES[w.type].closed).map((w) => boxed(w.pts, w.width / 2))
   const lakes = waters.filter((w) => WATER_TYPES[w.type].closed).map((w) => w.pts)
   const wet = (x: number, z: number, m: number) => {
@@ -367,6 +404,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     placed.push({ id: `SET_${pre}_B${newCount() + 1}`, site: pre, prefab: b.prefab, tpl: b.tpl, cat, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw: Math.round(((yaw % 360) + 360) % 360), corners, role })
     return true
   }
+  const BUILDINGS = buildingsFor(o.style ?? 'vanilla')
   const pool = (cats: BuildingCat[]) => BUILDINGS.filter((b) => cats.includes(b.cat) && !CHURCH_RE.test(b.prefab))
   const POOL: Partial<Record<TownBlockType, Building[]>> = {
     centre: pool(['houseL', 'houseM']), residential: pool(['houseM', 'houseS', 'houseM', 'houseL']), farm: pool(['farm']),
@@ -390,12 +428,20 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   // outbuilding behind a house (Bohemia, Everon: 1.6 per house, 76 % behind, median 9 m back, aligned within 5 deg;
   // the vanilla town disc holds 69 sheds / garages for 88 houses)
   const ANNEX = pool(['annex', 'shed']).filter((b) => b.maxX - b.minX < 14 && b.maxZ - b.minZ < 14)
-  const annex = (ox: number, oz: number, depth: number, maxZ: number, yaw: number, nx: number, nz: number, ux: number, uz: number) => {
+  // the annex stays inside its house's parcel (`lot`); a house with no parcel puts it where no parcel lies
+  const annex = (ox: number, oz: number, depth: number, maxZ: number, yaw: number, nx: number, nz: number, ux: number, uz: number, lot: number[] | null) => {
     if (!ANNEX.length) return
     for (let tr = 0; tr < 3; tr++) {
       const a = pick(ANNEX), d = depth - maxZ + 1.5 + rand() * 3 + a.maxZ, lat = (rand() - 0.5) * 8 // origin -> back face, gap, annex half
       const ay = yaw + (rand() < 0.8 ? (rand() - 0.5) * 8 : rand() < 0.5 ? 90 : -90)
-      if (add(a, ox + nx * d + ux * lat, oz + nz * d + uz * lat, ay, 'annex', a.cat)) return
+      if (add(a, ox + nx * d + ux * lat, oz + nz * d + uz * lat, ay, 'annex', a.cat)) {
+        const c = placed[placed.length - 1].corners
+        let ok = true
+        if (lot) { for (let i = 0; i < c.length && ok; i += 2) if (!inPoly(lot, c[i], c[i + 1])) ok = false }
+        else ok = !res.parcels.some((q) => convexOverlap(q.corners, c))
+        if (ok) return
+        placed.pop()
+      }
     }
   }
   const along = (f: number[], set: { back: number; gap: number; skip: number; annex?: number }, choose: () => Building, role: PlacedRole, cat?: BuildingCat, E = 6) => {
@@ -411,11 +457,42 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
       const off = half + set.back + b.maxZ
       const ox = ax + ux * s + nx * off, oz = az + uz * s + nz * off
       if (add(b, ox, oz, yaw, role, cat)) {
+        // the parcel: the frontage the house takes (+ half the gap each side), from the street edge back to the
+        // middle of the block. In a block, the land is shared out by nearest street front (bisector half-planes
+        // between this front and every other one = the medial split, back to back), clipped to the block ring:
+        // parcels of two fronts never overlap, corners included. Along a through-road (no block) the depth shrinks
+        // until it clears every parcel already laid; a house whose parcel cannot be made keeps none.
+        const g2 = Math.min(set.gap, 12) / 2, dMin = set.back + b.maxZ - b.minZ + 2
+        const f0 = Math.max(0, t - g2), f1 = Math.min(L, t + w + g2)
+        const rect = (d: number) => [ax + ux * f0 + nx * half, az + uz * f0 + nz * half, ax + ux * f1 + nx * half, az + uz * f1 + nz * half, ax + ux * f1 + nx * (half + d), az + uz * f1 + nz * (half + d), ax + ux * f0 + nx * (half + d), az + uz * f0 + nz * (half + d)]
+        let poly: number[] | null = null
+        if (parcelBlock >= 0 && parcelRing.length) {
+          let q = rect(PARCEL_MAX)
+          for (const g of parcelFronts) if (g !== f) {
+            // keep d_f(p) <= d_g(p): ((p - a_f)·n_f) - ((p - a_g)·n_g) <= 0, linear in p
+            const dx = nx - g[5], dz = nz - g[6], c = ax * nx + az * nz - (g[0] * g[5] + g[1] * g[6]) // f(p) = p·(n_f - n_g) - c
+            if (Math.hypot(dx, dz) < 1e-6) continue
+            const k2 = c / (dx * dx + dz * dz)
+            q = clipHalf(q, dx * k2, dz * k2, dx, dz)
+            if (q.length < 6) break
+          }
+          q = clipConvex(q, parcelRing)
+          if (q.length >= 6 && inPoly(q, ox, oz) && ringArea(q) > 20) poly = q
+        } else {
+          for (let d = 30; d >= dMin && !poly; d -= 2) {
+            const q = rect(d)
+            let ok = true
+            for (let i = 0; i < 8 && ok; i += 2) if (!inZone(q[i], q[i + 1])) ok = false
+            if (ok && !res.parcels.some((o) => convexOverlap(o.corners, q))) poly = q
+          }
+        }
+        if (poly) res.parcels.push({ id: `${pre}_P${res.parcels.length + 1}`, building: placed[placed.length - 1].id, block: parcelBlock, front: [ax + ux * f0 + nx * half, az + uz * f0 + nz * half, ax + ux * f1 + nx * half, az + uz * f1 + nz * half].map((v) => Math.round(v * 100) / 100), corners: poly.map((v) => Math.round(v * 100) / 100) })
         t += w + set.gap
-        if ((role === 'house' || role === 'farmhouse') && cat !== 'civic' && rand() < (set.annex ?? 0)) annex(ox, oz, b.maxZ - b.minZ, b.maxZ, yaw, nx, nz, ux, uz)
+        if ((role === 'house' || role === 'farmhouse') && cat !== 'civic' && rand() < (set.annex ?? 0)) annex(ox, oz, b.maxZ - b.minZ, b.maxZ, yaw, nx, nz, ux, uz, poly)
       } else t += 3
     }
   }
+  let parcelBlock = -1, parcelRing: number[] = [], parcelFronts: number[][] = []
   const RANK: Record<TownBlockType, number> = { square: 0, church: 1, centre: 2, industry: 3, farm: 4, parking: 5, park: 5, residential: 6 } // residential last: it takes what the cap leaves
   const order = kind.map((_k, i) => i).filter((i) => kind[i] && served(i)).sort((a, b) => RANK[kind[a]!] - RANK[kind[b]!] || dc(a) - dc(b))
   for (const ci of order) {
@@ -428,7 +505,9 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     const inset = []
     for (let i = 0; i < ring.length; i += 2) inset.push(Math.round((mx + (ring[i] - mx) * k) * 100) / 100, Math.round((mz + (ring[i + 1] - mz) * k) * 100) / 100)
     res.blocks.push({ ring: ring.map((v) => Math.round(v * 100) / 100), type, inset })
+    parcelBlock = res.blocks.length - 1
     const fr = fronts(ci)
+    parcelRing = ring; parcelFronts = fr
     if (type === 'square' || type === 'park' || type === 'parking') continue
     if (type === 'church') {
       const churches = BUILDINGS.filter((b) => CHURCH_RE.test(b.prefab))
@@ -448,6 +527,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   // through-roads: the existing roads crossing the town are its main streets in Bohemia's towns (the Voronoi edges
   // only follow them roughly): houses along both sides, in chords of ~ROAD_CHORD m, sparser towards the edge
   // (vanilla Everon town, buildings per ha by 50 m ring: flat to 200 m, then half, then a quarter)
+  parcelBlock = -1; parcelRing = []; parcelFronts = []
   const RES = SET.residential!, rpool = POOL.residential!
   const chords: { f: number[]; r: number }[] = []
   for (const l of roadLines) {
@@ -482,6 +562,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
     for (let k = 0; k + 1 < pr.length && !hit; k += 2) for (const l of splineLines) if (lineDist(l.pts, pr[k], pr[k + 1]) < l.half - 0.3) { hit = true; break }
     if (hit) placed.splice(i, 1)
   }
+  { const ids = new Set(placed.map((q) => q.id)); res.parcels = res.parcels.filter((q) => ids.has(q.building)) }
   const houses = placed.slice(keepN).filter((q) => q.role === 'house' || q.role === 'farmhouse').length
   res.pop = Math.round(houses * 2.5)
   if (newCount() < 40) warnings.push('fewBuildings')

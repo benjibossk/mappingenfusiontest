@@ -4,6 +4,17 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+### Ajouté
+
+- Sol : priorité de peinture des masques qui se chevauchent (béton > terre > roche > champs > sol forestier > herbe), le résultat ne dépend plus de l'ordre des masques ; la terre nue est répartie en deux teintes par un bruit basse fréquence (`src/modules/paintPriority.ts`).
+- Électricité : les fermes loin de toute route et de toute ligne BT reçoivent une antenne MT tout droit à travers champs jusqu'à un transformateur sur poteau dans la cour ; un branchement de ferme ne longe jamais une route sur plus de 600 m.
+- Ville (outil Zone) : chaque îlot est découpé en parcelles sur rue, une par maison, du bord de la rue jusqu'au milieu de l'îlot ; dessinées comme jardins avec sol usé.
+- Atelier : bâtiments et pièces de port dessinés avec leur vraie emprise (dimensions du prefab, orientée) au lieu de carrés fixes ; `footprintClashes` trouve les objets qui se chevauchent sur ces emprises.
+- Ville : les remises et garages derrière une maison restent dans sa parcelle.
+- Import OSM : largeur des routes depuis `width` / `lanes`, type de route selon `surface` (terre, pavés, béton, piste goudronnée), tunnels exclus, ponts marqués.
+- Monde aléatoire : parcelles des îlots de ville dessinées comme jardins ; option « Style des maisons » (soviétique) aussi pour le monde aléatoire et l'outil Zone Ville.
+- Villages : option « Style des maisons », soviétique (style Kolguyev) avec les maisons USSR vanilla en bois, préfabriquées, les fermes et la villa Guba (uniquement des GUID déjà référencés dans le dépôt).
+
 ## [0.9.0] - 2026-11-25
 
 ### Ajouté
