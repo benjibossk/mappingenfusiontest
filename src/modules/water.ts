@@ -950,7 +950,7 @@ const BRIDGE_OVER = 8 // metres of deck buried in each bank
 
 /** [M] steepest deck allowed (rise / run): above it the higher bank sets the deck and the lower end is flagged */
 export const BRIDGE_MAX_PITCH = 0.08
-export interface RiverBridge { id: string; a: [number, number, number]; b: [number, number, number]; slope: number; capped: boolean; deckIds: string[]; half: number }
+export interface RiverBridge { id: string; a: [number, number, number]; b: [number, number, number]; slope: number; /** pitch capped or deck raised over the road bed: the low bank gets a ramp */ capped: boolean; deckIds: string[]; half: number }
 
 //! one bridge per road gap: deck pieces end to end along ONE straight 3D line from the road height on bank A
 //! to the road height on bank B (every piece and pillar on that line, same tilt; capped at BRIDGE_MAX_PITCH).
@@ -974,13 +974,27 @@ export function riverBridges(gaps: { id: string; from: [number, number]; to: [nu
     // sampled 3 m back on the road side of each end: the bed there, not the river bank carved at the gap edge
     const ex = dx / L, ez = dz / L
     let hA = at(g.from[0] - ex * 3, g.from[1] - ez * 3) + 0.05, hB = at(g.to[0] + ex * 3, g.to[1] + ez * 3) + 0.05
-    let slope = (hB - hA) / L, capped = false
+    let capped = false
+    // stepped relief (picture 120): the bank top just past the 3 m sample, where the deck end goes, stood up to
+    // 4.8 m over the deck. The deck end rests on the highest ground it is buried in (the low road gets a ramp)
+    const over = road.dirt ? 2 : BRIDGE_OVER + 6
+    for (let d = 3; d <= over; d += 1) {
+      const a = at(g.from[0] - ex * d, g.from[1] - ez * d) + 0.05, b = at(g.to[0] + ex * d, g.to[1] + ez * d) + 0.05
+      if (a > hA + 0.3) { hA = a; capped = true }
+      if (b > hB + 0.3) { hB = b; capped = true }
+    }
+    let slope = (hB - hA) / L
     if (Math.abs(slope) > BRIDGE_MAX_PITCH) {
       capped = true
       slope = Math.sign(slope) * BRIDGE_MAX_PITCH
       if (hA > hB) hB = hA + slope * L
       else hA = hB - slope * L
     }
+    // ground inside the gap over the deck line (a bank hump the gap takes in, picture 120 decks 1.4-2.1 m under
+    // it): the whole line goes up to clear it by 0.3 m
+    let lift = 0
+    for (let d = 0; d <= L; d += 2) lift = Math.max(lift, at(g.from[0] + ex * d, g.from[1] + ez * d) + 0.3 - (hA + slope * d))
+    if (lift > 0.05) { hA += lift; hB += lift; capped = true }
     const hMid = (hA + hB) / 2
     const cx = (g.from[0] + g.to[0]) / 2, cz = (g.from[1] + g.to[1]) / 2
     const lineY = (s: number) => hMid + slope * s // s: metres from the gap centre towards `to`
@@ -1049,7 +1063,9 @@ export function bridgeRampPatches(plans: RiverBridge[], heights: ArrayLike<numbe
     const dx = p.b[0] - p.a[0], dz = p.b[1] - p.a[1], L = Math.hypot(dx, dz) || 1
     const ex = dx / L, ez = dz / L
     const sA = at(p.a[0] - ex * 3, p.a[1] - ez * 3), sB = at(p.b[0] + ex * 3, p.b[1] + ez * 3)
-    const useA = p.a[2] - 0.05 - sA > p.b[2] - 0.05 - sB
+    const dA = p.a[2] - 0.05 - sA, dB = p.b[2] - 0.05 - sB
+    // the low bank; both when the deck was raised over both road beds
+    for (const useA of dA > dB ? (dB > 0.3 ? [true, false] : [true]) : (dA > 0.3 ? [false, true] : [false])) {
     const [x0, z0, y0] = useA ? p.a : p.b
     const ox = useA ? -ex : ex, oz = useA ? -ez : ez // outwards, along the road away from the river
     const top = y0 - 0.05, w = p.half + 2, R = BRIDGE_RAMP
@@ -1070,6 +1086,7 @@ export function bridgeRampPatches(plans: RiverBridge[], heights: ArrayLike<numbe
       hs.push(Math.round(y * 100) / 100)
     }
     out.push({ minX, minZ, step, cols, rows, heights: hs })
+    }
   }
   return out
 }
