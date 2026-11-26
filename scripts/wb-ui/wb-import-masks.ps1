@@ -10,11 +10,13 @@
 # Before saving this script waits for a quiet console.log (>= -QuietSec, default 120 s, max -QuietMaxSec)
 # AND then a fixed -SaveDelaySec (default 180 s). -NoNormalMap: the normal map is not generated, so its
 # 'Reimporting Done' is not awaited (the quiet console + delay still apply before the save).
+# -TerrainFix: also run Terrain Tool > Manage > 'Fix block borders' (off by default, see below).
 param(
   [string]$Folder = "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\profile\MapGen\masks\MG_Test",
   [int]$TimeoutSec = 300,
   [switch]$NoSave,
-  [switch]$NoTerrainFix,
+  [switch]$NoTerrainFix, # kept for old command lines: the border fix is now opt-in (-TerrainFix)
+  [switch]$TerrainFix,
   [switch]$NoNormalMap,
   [int]$QuietSec = 120,
   [int]$QuietMaxSec = 900,
@@ -144,11 +146,15 @@ function AckDialogs($sec) {
     }
   }
 }
-if (-not $NoTerrainFix -and -not $script:importFailed) {
+# 'Fix block borders' is OPT-IN (-TerrainFix): every save after it crashed the Workbench in
+# nvtt::CubeSurface::toGamma (2026-11-21 x2, 2026-11-26 x2, even 11 min later on a quiet console, the save
+# truncating MG_Test.ent and leaving the MG_* layers unsaved), while the same import without it then saved fine.
+$fixButtons = @(if ($TerrainFix -and -not $NoTerrainFix) { 'Fix block borders' }) + @(if (-not $NoNormalMap) { 'Generate normal/vegetation map...' })
+if ($fixButtons.Count -and -not $script:importFailed) {
   $mt = Find (WE) 'Manage' 'TabItem'
   if ($mt) {
     (Pat $mt ([System.Windows.Automation.SelectionItemPattern])).Select(); Start-Sleep -Milliseconds 700
-    foreach ($bn in @('Fix block borders') + @(if (-not $NoNormalMap) { 'Generate normal/vegetation map...' })) {
+    foreach ($bn in $fixButtons) {
       $b = Find (WE) $bn 'Button'
       if (-not $b) { "terrain fix: '$bn' not found, skipped"; continue }
       $script:before = @(Dialogs | ForEach-Object { $_.Current.NativeWindowHandle })
