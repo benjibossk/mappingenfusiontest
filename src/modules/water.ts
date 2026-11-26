@@ -141,7 +141,7 @@ function riverProfile(w: Water, at: (x: number, z: number) => number) {
   const n = line.length / 2
   const edge = riverWetHalf(w)
   const raw: number[] = []
-  let sea = -1
+  let sea = -1, src = -1
   for (let i = 0; i < n; i++) {
     const x = line[i * 2], z = line[i * 2 + 1]
     const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1)
@@ -149,13 +149,18 @@ function riverProfile(w: Water, at: (x: number, z: number) => number) {
     const L = Math.hypot(tx, tz) || 1
     tx /= L; tz /= L
     const g = at(x, z)
-    if (sea < 0 && g < 0) sea = i
+    // a river drawn from map edge to map edge starts in the sea too (picture 119: both ends under the 120 m
+    // edge sea): the sea is the first wet sample past the dry stretch, not the source itself
+    if (src < 0 && g >= 0) src = i
+    if (src >= 0 && sea < 0 && g < 0) sea = i
     raw.push(Math.min(g, at(x - tz * edge, z + tx * edge), at(x + tz * edge, z - tx * edge)) - RIVER_SURFACE)
   }
+  if (src < 0) src = 0
+  for (let i = 0; i < src; i++) raw[i] = -0.05
   // never rising downstream, but never more than RIVER_MAXCUT under the ground either: past that
   // the water steps up a little rather than sitting at the bottom of a gorge
   const ground = raw.slice()
-  for (let i = 1; i < n; i++) raw[i] = Math.max(Math.min(raw[i], raw[i - 1]), ground[i] - RIVER_MAXCUT)
+  for (let i = src + 1; i < n; i++) raw[i] = Math.max(Math.min(raw[i], raw[i - 1]), ground[i] - RIVER_MAXCUT)
   const R = 6
   const level = raw.map((_, i) => {
     let s = 0, k = 0
@@ -170,7 +175,16 @@ function riverProfile(w: Water, at: (x: number, z: number) => number) {
     }
     for (let i = sea; i < n; i++) level[i] = -0.05
   }
-  return { line, level, sea }
+  if (src > 0) {
+    // source in the sea: the water climbs out of it as gently as a mouth comes down into it
+    let d = 0
+    for (let i = src; i < n && (sea < 0 || i < sea); i++) {
+      if (i > src) d += Math.hypot(line[i * 2] - line[i * 2 - 2], line[i * 2 + 1] - line[i * 2 - 1])
+      level[i] = Math.max(Math.min(level[i], -0.05 + 0.02 * d), Math.min(level[i], ground[i] - RIVER_MAXCUT))
+    }
+    for (let i = 0; i < src; i++) level[i] = -0.05
+  }
+  return { line, level, sea, src }
 }
 
 //! painted under each river: pebbles in the bed, dirt on the wet banks (same format as roadMasks)
@@ -292,23 +306,28 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
       // half width: picture 119, 116 m wide river with 25-55 deg turns every 26 m, only the sea showed
       const pts = easeBends(centreLine(downhillCourse(w, at), spacing), RIVER_BEND_RADIUS * riverSentWidth(w))
       // the water sits on the profile the terrain was shaped to (nearest profile sample)
-      const { line, level, sea: seaAt } = riverProfile(w, at)
+      const { line, level, sea: seaAt, src: srcAt } = riverProfile(w, at)
       const n = pts.length / 2
       const lift: number[] = []
-      let sea = -1
+      let sea = -1, src = -1
       for (let i = 0; i < n; i++) {
         let best = 0, bd = Infinity
         for (let j = 0; j < line.length; j += 2) {
           const d = (line[j] - pts[i * 2]) ** 2 + (line[j + 1] - pts[i * 2 + 1]) ** 2
           if (d < bd) { bd = d; best = j / 2 }
         }
+        if (src < 0 && best >= srcAt) src = i
         if (sea < 0 && seaAt >= 0 && best >= seaAt) sea = i
         lift.push(r2(Math.max(0.1, level[best] - ground(pts[i * 2], pts[i * 2 + 1]))))
       }
-      // a river running on under the sea would show through it: stop one point past the shore
+      // a river running on under the sea would show through it: stop one point past the shore (both ends: a
+      // river from map edge to map edge was cut to its first 2 points, picture 119)
       const keep = sea >= 0 ? Math.min(n, Math.max(sea + 2, 2)) : n
-      pts.length = keep * 2
-      lift.length = keep
+      const from = Math.max(0, Math.min(src - 1, keep - 2))
+      pts.splice(keep * 2)
+      pts.splice(0, from * 2)
+      lift.splice(keep)
+      lift.splice(0, from)
       out.push({ id: w.id, kind: 'spline', closed: false, points: pts.map(r2), generator: wt.generator, paramKeys: ['Width'], paramValues: [String(riverSentWidth(w))], lift })
     } else {
       if (w.pts.length < 6) continue
@@ -330,7 +349,55 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
       out.push({ id: w.id, kind: 'polyline', closed: true, points: pts.map(r2), generator: wt.generator, lift })
     }
   }
+  joinTributaries(out, ground)
   return out
+}
+
+/** water level climb (m/m) from a confluence up a tributary */
+const JOIN_SLOPE = 0.03
+
+//! a river ending inside another one meets it at its level: picture 119, the south arm started on the
+//! confluence 2 m above the main river and its flat end cap showed as a dark rectangle with straight edges.
+//! The end goes on to the main river's centre line (cap under the main water) and its level comes down to
+//! the main level, climbing back at JOIN_SLOPE
+export function joinTributaries(shapes: ProjectShape[], ground: (x: number, z: number) => number) {
+  const rivers = shapes.filter((s) => s.kind === 'spline' && !s.closed && s.lift && s.paramValues?.length)
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  for (const s of rivers) {
+    for (const atStart of [true, false]) {
+      const n = s.points.length / 2
+      if (n < 2) continue
+      const e = atStart ? 0 : n - 1
+      const ex = s.points[e * 2], ez = s.points[e * 2 + 1]
+      let main: ProjectShape | undefined, mi = -1, md = Infinity
+      for (const m of rivers) {
+        if (m === s) continue
+        const half = Number(m.paramValues![0]) / 2
+        for (let i = 0; i < m.points.length / 2; i++) {
+          const d = Math.hypot(m.points[i * 2] - ex, m.points[i * 2 + 1] - ez)
+          if (d < half && d < md) { md = d; mi = i; main = m }
+        }
+      }
+      if (!main) continue
+      const mx = main.points[mi * 2], mz = main.points[mi * 2 + 1]
+      const Lj = main.lift![mi] + ground(mx, mz)
+      // on to the main centre line, unless already about there
+      if (md > 3) {
+        if (atStart) { s.points.unshift(r2(mx), r2(mz)); s.lift!.unshift(0) } else { s.points.push(r2(mx), r2(mz)); s.lift!.push(0) }
+      }
+      const N = s.points.length / 2
+      let d = 0
+      for (let k = 0; k < N; k++) {
+        const i = atStart ? k : N - 1 - k
+        if (k > 0) { const j = atStart ? i - 1 : i + 1; d += Math.hypot(s.points[i * 2] - s.points[j * 2], s.points[i * 2 + 1] - s.points[j * 2 + 1]) }
+        const g = ground(s.points[i * 2], s.points[i * 2 + 1])
+        const cur = s.lift![i] + g, want = Lj + JOIN_SLOPE * d
+        if (k > 0 && want >= cur) break
+        s.lift![i] = r2(Math.max(0.1, Math.min(cur, want) - g))
+        if (k === 0) s.lift![i] = r2(Math.max(0, Lj - g))
+      }
+    }
+  }
 }
 
 export const LAKE_MAX_POINTS = 60
