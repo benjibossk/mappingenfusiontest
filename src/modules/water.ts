@@ -121,6 +121,9 @@ export const PICTURE_RIVER_DEPTH = 2.5
 const RIVER_BANK = 0.5 // bank top above the water
 const RIVER_EDGE = 0.15 // ground under the water at the traced edge
 const RIVER_MAXCUT = 2.5
+const RIVER_DRY = 0.2 // ground outside the traced bed over the water level, metres
+/** length (m) of a river's last stretch held at the sea level before its mouth */
+export const MOUTH_FLAT = (w: { width: number }) => Math.max(40, riverSentWidth(w))
 const sstep = (t: number) => { const u = Math.min(1, Math.max(0, t)); return u * u * (3 - 2 * u) }
 
 //! water level along the river: RIVER_SURFACE under the lowest original ground across the water
@@ -167,11 +170,19 @@ function riverProfile(w: Water, at: (x: number, z: number) => number) {
     for (let j = Math.max(0, i - R); j <= Math.min(n - 1, i + R); j++) { s += raw[j]; k++ }
     return Math.min(s / k, raw[i])
   })
+  // a river surface never under the sea surface: picture 119, the level (lowest ground across the 124 m water, never
+  // rising downstream) fell to -1.6 m along the main river, its banks were shaped at -1.1 m and the sea flooded
+  // 4.5 ha of land outside the traced bed (a dark stepped sheet near the mouth)
+  for (let i = 0; i < n; i++) level[i] = Math.max(level[i], -0.05)
+  // the last stretch before the sea (one sent width: past the last spline point or two) lies AT the sea level:
+  // picture 119, the ramp up from the shore put the river ribbon 0.3-0.5 m over the sea cells it spans near the
+  // mouth (a dark sheet over the sea, a step where both waters meet)
+  const flat = MOUTH_FLAT(w)
   if (sea >= 0) {
     let d = 0
     for (let i = sea; i >= 0; i--) {
       if (i < sea) d += Math.hypot(line[i * 2 + 2] - line[i * 2], line[i * 2 + 3] - line[i * 2 + 1])
-      level[i] = Math.max(Math.min(level[i], -0.05 + 0.02 * d), Math.min(level[i], ground[i] - RIVER_MAXCUT))
+      level[i] = Math.max(Math.min(level[i], -0.05 + 0.02 * Math.max(0, d - flat)), Math.min(level[i], ground[i] - RIVER_MAXCUT))
     }
     for (let i = sea; i < n; i++) level[i] = -0.05
   }
@@ -180,7 +191,7 @@ function riverProfile(w: Water, at: (x: number, z: number) => number) {
     let d = 0
     for (let i = src; i < n && (sea < 0 || i < sea); i++) {
       if (i > src) d += Math.hypot(line[i * 2] - line[i * 2 - 2], line[i * 2 + 1] - line[i * 2 - 1])
-      level[i] = Math.max(Math.min(level[i], -0.05 + 0.02 * d), Math.min(level[i], ground[i] - RIVER_MAXCUT))
+      level[i] = Math.max(Math.min(level[i], -0.05 + 0.02 * Math.max(0, d - flat)), Math.min(level[i], ground[i] - RIVER_MAXCUT))
     }
     for (let i = 0; i < src; i++) level[i] = -0.05
   }
@@ -215,7 +226,8 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
       const { line, level } = riverProfile(w, at)
       const half = Math.max(w.width / 2, step) // the grid cannot hold a narrower channel
       const fall = Math.max(2 * step, w.width)
-      const reach = half + fall
+      const wetHalf = riverWetHalf(w)
+      const reach = Math.max(half + fall, wetHalf + 3 * step)
       const ramp = Math.max(3 * w.width, 2 * step) // the source must not end in a dug pit
       let along = 0
       for (let i = 0; i + 1 < line.length / 2; i++) {
@@ -243,7 +255,12 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
               const t = Math.max(0, (d / half - 0.4) / 0.6)
               // (wetEdge: rivers of a map from a picture; generated rivers keep their bank-top profile, pads rely on it)
               v = w.wetEdge ? wl - depth + (depth - RIVER_EDGE) * sstep(t) : wl - depth + (depth + RIVER_BANK) * sstep(t)
-            } else v = wl + RIVER_BANK + (at(x, z) - wl - RIVER_BANK) * sstep((d - half) / fall)
+            } else {
+              v = wl + RIVER_BANK + (at(x, z) - wl - RIVER_BANK) * sstep((d - half) / fall)
+              // outside the traced bed but under the river ribbon (sent wider than traced, straight between points
+              // ~100 m apart): the ground stays over the water, else low flat land floods (picture 119 mouth)
+              if (d <= wetHalf + 2 * step) v = Math.max(v, Math.max(wl, 0) + RIVER_DRY)
+            }
             if (at(x, z) < 0) v = Math.min(v, at(x, z)) // never build banks up in the sea
             shapedScore[k] = score
             shaped[k] = v
