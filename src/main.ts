@@ -839,12 +839,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
       <label title="${t('lbl.wbBase.tip')}"><input type="checkbox" id="wbBase"> ${t('lbl.wbBase')}</label>
       <label title="${t('lbl.forestLater.tip')}"><input type="checkbox" id="forestLater"> ${t('lbl.forestLater')}</label>
+      <!-- the Workbench check after a send: in sight under the send button (inside the closed pre-send details it
+           looked empty whenever everything was fine, since that box only opens on problems) -->
+      <div id="wbAudit" class="wbaudit" aria-live="polite" hidden></div>
       <details class="adv" id="checkBox"><summary>${t('legend.check')}</summary>
         ${hint('hint.check')}
         <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <p id="checkDensity" class="hint"></p>
-        <div id="wbAudit" class="wbaudit" hidden></div>
         <button id="checkFixAll" type="button" class="secondary" hidden></button>
         <ul id="checkList" class="issues"></ul>
       </details>
@@ -4626,6 +4628,7 @@ async function runAudit(): Promise<void> {
   box.hidden = false; box.textContent = t('audit.running')
   try {
     const r = await auditWorld()
+    r.counts ??= {}
     const bad = Object.entries(r.counts).filter(([, n]) => n > 0)
     box.innerHTML = `<b>${bad.length ? t('audit.bad', { n: bad.reduce((a, [, n]) => a + n, 0) }) : t('audit.ok')}</b><ul class="issues">${Object.entries(r.counts).map(([k, n]) => `<li class="${n ? 'bad' : 'ok'}">${n ? '✖' : '✔'} ${t(('audit.' + k) as Key)} : ${n}${k === 'base' && n ? '<br><small>' + ((r.findings as Record<string, unknown[]>).base ?? []).join(', ') + ' · ' + t('audit.base.fix') + '</small>' : ''}</li>`).join('')}</ul>`
     if (bad.length) ($('checkBox') as HTMLDetailsElement).open = true
