@@ -4,6 +4,13 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+## [0.10.1] - 2026-11-26
+
+### Corrigé
+- Atelier : un terrain existant est reconnu même si ses tuiles n'ont pas la même casse ou le même préfixe que le `.terr` (ex. `ZBK_terrain.terr`), et un monde est relié au terrain qui porte son nom.
+- Traits au sol sur les bords de tuiles : l'import des masques régénère la carte des normales par défaut, avec un avertissement si on la saute.
+- La sauvegarde du Workbench vise le port NET API de Mapgenerator et ne touche plus le Workbench d'un autre projet.
+
 ## [0.10.0] - 2026-11-26
 
 ### Ajouté

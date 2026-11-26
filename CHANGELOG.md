@@ -8,6 +8,13 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-26
+
+### Fixed
+- Atelier: an existing terrain is found even when its tile files use another letter case or prefix than the `.terr` (e.g. `ZBK_terrain.terr`), and a world is linked to a terrain named after it.
+- Ground strips on tile borders: the mask import now regenerates the normal map by default; it warns when it is skipped.
+- Workbench save is pinned to the Mapgenerator NET API port and no longer reaches another project's Workbench.
+
 ## [0.10.0] - 2026-11-26
 
 ### Added
