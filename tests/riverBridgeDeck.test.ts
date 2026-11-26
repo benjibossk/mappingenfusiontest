@@ -28,3 +28,14 @@ test('riverBridges: a plain crossing keeps its deck on the road beds, no ramp', 
   assert.equal(plans[0].capped, false)
   assert.ok(Math.abs(plans[0].a[2] - 1.05) < 0.01)
 })
+
+test('riverBridges: deck trimmed to the gap + a few metres (picture 120: BRIDGE_1 78 m, BRIDGE_2 143 m over bank grass)', () => {
+  const hs = relief(() => 1)
+  const len = (es: { id: string; prefab: string }[]) => es.filter((e) => e.id.includes('_DECK_')).reduce((s, e) => s + (e.prefab.includes('Long') ? 26 : 13), 0)
+  const gG = { ...g, cols: 200, rows: 50 }
+  for (const [L, max] of [[55, 65], [127, 130], [100, 117]]) {
+    const { entities } = riverBridges([{ id: 'R', from: [20, 50], to: [20 + L, 50] }], hs, gG, narrow)
+    const t = len(entities)
+    assert.ok(t >= L + 2 && t <= max, `gap ${L}: deck ${t}`)
+  }
+})

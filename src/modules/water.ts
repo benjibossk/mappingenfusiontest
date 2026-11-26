@@ -970,6 +970,8 @@ const BRIDGE = {
 const PILLAR_DROP = 835
 const WOOD_LEN = 50.3 // PierWooden_02_bridge length (Z -25..25.3)
 const BRIDGE_OVER = 8 // metres of deck buried in each bank
+const BRIDGE_MIN_REST = 1 // deck past each end of the gap at the least (the gap already has 4 m of bank a side), metres
+const BRIDGE_DECK_REST = 5 // deck past each end of the gap aimed at, metres (8 laid decks on the bank grass, picture 120)
 
 /** [M] steepest deck allowed (rise / run): above it the higher bank sets the deck and the lower end is flagged */
 export const BRIDGE_MAX_PITCH = 0.08
@@ -1043,15 +1045,20 @@ export function riverBridges(gaps: { id: string; from: [number, number]; to: [nu
     // The yaw sent is whole degrees: lay the pieces along that rounded direction, else they drift sideways
     const yaw = Math.round((Math.atan2(-dz, dx) * 180) / Math.PI)
     const ux = Math.cos((yaw * Math.PI) / 180), uz = -Math.sin((yaw * Math.PI) / 180)
-    const need = L + 2 * BRIDGE_OVER // the ends go into the banks
+    const need = L + 2 * BRIDGE_DECK_REST // the ends go onto the banks
+    // pieces: the length nearest `need`, never under the gap + BRIDGE_MIN_REST a side. Always rounding up (to 26 m)
+    // laid up to 25 m more deck on the bank grass (picture 120: BRIDGE_1 78 m, BRIDGE_2 143 m over flat banks)
+    const fit = (unit: number) => {
+      const lo = Math.floor(need / unit)
+      return lo * unit >= L + 2 * BRIDGE_MIN_REST && lo > 0 ? lo : Math.ceil(need / unit)
+    }
     let pieces: { prefab: string; len: number }[]
     if (h <= 2.4 && need <= 13) pieces = [{ prefab: BRIDGE.small, len: 13 }]
-    else if (h > 4.5) pieces = Array.from({ length: Math.ceil(need / 26) }, () => ({ prefab: BRIDGE.wide, len: 26 }))
+    else if (h > 4.5) pieces = Array.from({ length: fit(26) }, () => ({ prefab: BRIDGE.wide, len: 26 }))
     else {
-      pieces = Array.from({ length: Math.floor(need / 26) }, () => ({ prefab: BRIDGE.narrowLong, len: 26 }))
-      const rest = need - pieces.length * 26
-      if (rest > 13) pieces.push({ prefab: BRIDGE.narrowLong, len: 26 })
-      else if (rest > 0) pieces.push({ prefab: BRIDGE.narrow, len: 13 })
+      const u = fit(13)
+      pieces = Array.from({ length: u >> 1 }, () => ({ prefab: BRIDGE.narrowLong, len: 26 }))
+      if (u % 2) pieces.push({ prefab: BRIDGE.narrow, len: 13 })
     }
     const total = pieces.reduce((s, p) => s + p.len, 0)
     // pivots are measured along the horizontal; along the tilted deck a piece covers len*cos: shrink the
