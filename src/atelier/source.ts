@@ -78,6 +78,33 @@ export async function bridgeRestore(stamp: string, file: string, force = false) 
   return json(await fetch(`${BRIDGE_URL}/atelier/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stamp, file, force }) }))
 }
 
+// Tile files are <prefix>N.ttile in .Data. The prefix is usually "<terr name>_" but the case can differ
+// (ZBK_terrain.terr with zbk_terrain_0.ttile) or the terrain may have been renamed after the tiles were
+// written: take the real prefix from the files, case-insensitive, else the most common one.
+export function tilePrefixOf(names: string[], terrName: string): { prefix: string; tiles: number } {
+  const count = new Map<string, { prefix: string; n: number }>()
+  for (const f of names) {
+    const m = /^(.*?)(\d+)\.ttile$/i.exec(f); if (!m) continue
+    const k = m[1].toLowerCase(), c = count.get(k); if (c) c.n++; else count.set(k, { prefix: m[1], n: 1 })
+  }
+  const want = count.get((terrName + '_').toLowerCase())
+  if (want) return { prefix: want.prefix, tiles: want.n }
+  let best: { prefix: string; n: number } | null = null
+  for (const c of count.values()) if (!best || c.n > best.n) best = c
+  return best ? { prefix: best.prefix, tiles: best.n } : { prefix: terrName + '_', tiles: 0 }
+}
+// World -> terrain: same name, then a terrain named after the world (ZBK -> ZBK_terrain), then one in the
+// world's folder or its sub-folders, then the only terrain of the project.
+export function terrainFor<T extends { name: string; dir: string }>(terrains: T[], ent: string): T | undefined {
+  const base = ent.slice(0, -4), name = (base.split('/').pop() ?? '').toLowerCase()
+  const wdir = ent.includes('/') ? ent.slice(0, ent.lastIndexOf('/')) : ''
+  const low = (s: string) => s.toLowerCase()
+  return terrains.find((t) => low(t.name) === name)
+    ?? terrains.find((t) => low(t.name).startsWith(name) || name.startsWith(low(t.name)))
+    ?? terrains.find((t) => t.dir === wdir || t.dir.startsWith(base))
+    ?? (terrains.length === 1 ? terrains[0] : undefined)
+}
+
 // --- File System Access API (read-only) ---
 type DirHandle = FileSystemDirectoryHandle & { entries(): AsyncIterable<[string, FileSystemHandle]> }
 export const fsaSupported = () => typeof (window as unknown as { showDirectoryPicker?: unknown }).showDirectoryPicker === 'function'
@@ -99,15 +126,15 @@ export async function openFsa(): Promise<Source> {
   const terrains: TerrainRef[] = []
   for (const terr of by('.terr')) {
     const dir = terr.includes('/') ? terr.slice(0, terr.lastIndexOf('/')) : '', name = terr.split('/').pop()!.replace(/\.terr$/i, '')
-    let tiles = 0
-    const data = dirs.get(dir ? dir + '/.Data' : '.Data')
-    if (data) for await (const [n] of data.entries()) if (n.startsWith(name + '_') && n.endsWith('.ttile')) tiles++
-    terrains.push({ terr, dir, name, dataDir: dir ? dir + '/.Data' : '.Data', tilePrefix: name + '_', tiles })
+    const data = dirs.get(dir ? dir + '/.Data' : '.Data'), names: string[] = []
+    if (data) for await (const [n] of data.entries()) names.push(n)
+    const { prefix, tiles } = tilePrefixOf(names, name)
+    terrains.push({ terr, dir, name, dataDir: dir ? dir + '/.Data' : '.Data', tilePrefix: prefix, tiles })
   }
   const worlds: WorldRef[] = by('.ent').map((ent) => {
     const base = ent.slice(0, -4), name = base.split('/').pop()!, layersDir = dirs.has(base + '_Layers') ? base + '_Layers' : null
     const layers = layersDir ? paths.filter((p) => p.startsWith(layersDir + '/') && p.endsWith('.layer')) : []
-    return { ent, name, layersDir, layers: layers.length, layersSize: 0, terrain: (terrains.find((t) => t.name === name) ?? terrains.find((t) => t.dir.startsWith(base)))?.terr ?? null }
+    return { ent, name, layersDir, layers: layers.length, layersSize: 0, terrain: terrainFor(terrains, ent)?.terr ?? null }
   })
   const info: ProjectInfo = { root: root.name, title: root.name, gproj: by('.gproj')[0] ?? null, worlds, terrains, topo: by('.topo'), emat: by('.emat').length, mapConfigs: by('.conf').filter((p) => /map/i.test(p)), hasBackups: false }
   const readHandle = async (h: FileSystemFileHandle) => new Uint8Array(await (await h.getFile()).arrayBuffer())
@@ -118,7 +145,7 @@ export async function openFsa(): Promise<Source> {
     async pack(dir, ext, prefix, onProgress) {
       const d = dirs.get(dir); if (!d) return []
       const hs: [string, FileSystemFileHandle][] = []
-      for await (const [n, h] of d.entries()) if (h.kind === 'file' && n.toLowerCase().endsWith(ext) && n.startsWith(prefix)) hs.push([n, h as FileSystemFileHandle])
+      for await (const [n, h] of d.entries()) if (h.kind === 'file' && n.toLowerCase().endsWith(ext) && n.toLowerCase().startsWith(prefix.toLowerCase())) hs.push([n, h as FileSystemFileHandle])
       const out = []
       for (let i = 0; i < hs.length; i++) { out.push({ name: hs[i][0], bytes: await readHandle(hs[i][1]) }); onProgress?.(i, hs.length) }
       return out

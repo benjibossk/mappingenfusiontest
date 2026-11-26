@@ -32,21 +32,45 @@ function walk(dir, ext, max = 20000, depth = 8, out = []) {
   return out;
 }
 
+// same rules as src/atelier/source.ts tilePrefixOf / terrainFor (kept in sync, tested there)
+function tilePrefixOf(names, terrName) {
+  const count = new Map();
+  for (const f of names) {
+    const m = /^(.*?)(\d+)\.ttile$/i.exec(f); if (!m) continue;
+    const k = m[1].toLowerCase(), c = count.get(k); if (c) c.n++; else count.set(k, { prefix: m[1], n: 1 });
+  }
+  const want = count.get((terrName + "_").toLowerCase());
+  if (want) return { prefix: want.prefix, tiles: want.n };
+  let best = null;
+  for (const c of count.values()) if (!best || c.n > best.n) best = c;
+  return best ? { prefix: best.prefix, tiles: best.n } : { prefix: terrName + "_", tiles: 0 };
+}
+function terrainFor(terrains, ent) {
+  const base = ent.slice(0, -4), name = (base.split("/").pop() ?? "").toLowerCase();
+  const wdir = ent.includes("/") ? ent.slice(0, ent.lastIndexOf("/")) : "";
+  const low = (s) => s.toLowerCase();
+  return terrains.find((t) => low(t.name) === name)
+    ?? terrains.find((t) => low(t.name).startsWith(name) || name.startsWith(low(t.name)))
+    ?? terrains.find((t) => t.dir === wdir || t.dir.startsWith(base))
+    ?? (terrains.length === 1 ? terrains[0] : undefined);
+}
+
 function describe() {
   const files = walk(root, [".ent", ".layer", ".terr", ".topo", ".emat", ".conf", ".gproj", ".et"], 60000);
   const by = (e) => files.filter((f) => f.path.toLowerCase().endsWith(e));
   const terrains = by(".terr").map((f) => {
     const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
     const name = basename(f.path, ".terr"), data = join(root, dir, ".Data");
-    let tiles = 0;
-    try { tiles = readdirSync(data).filter((n) => n.startsWith(name + "_") && n.endsWith(".ttile")).length; } catch { /* none */ }
-    return { terr: f.path, dir, name, dataDir: posix(join(dir, ".Data")), tilePrefix: name + "_", tiles };
+    let names = [];
+    try { names = readdirSync(data); } catch { /* none */ }
+    const { prefix, tiles } = tilePrefixOf(names, name);
+    return { terr: f.path, dir, name, dataDir: posix(join(dir, ".Data")), tilePrefix: prefix, tiles };
   });
   const worlds = by(".ent").map((f) => {
     const base = f.path.slice(0, -4), name = basename(base);
     const layersDir = existsSync(join(root, base + "_Layers")) ? base + "_Layers" : null;
     const layers = layersDir ? files.filter((g) => g.path.startsWith(layersDir + "/") && g.path.endsWith(".layer")) : [];
-    const terrain = terrains.find((t) => t.name === name) ?? terrains.find((t) => t.dir.startsWith(base)) ?? null;
+    const terrain = terrainFor(terrains, f.path) ?? null;
     return { ent: f.path, name, layersDir, layers: layers.length, layersSize: layers.reduce((s, l) => s + l.size, 0), terrain: terrain?.terr ?? null };
   });
   const gproj = by(".gproj")[0]?.path ?? null;
@@ -95,7 +119,7 @@ export async function handleAtelier(req, res, send, readBody) {
       const r = need(), dir = inside(r, q("dir")), ext = q("ext").toLowerCase(), prefix = q("prefix");
       const parts = [];
       for (const n of readdirSync(dir)) {
-        if ((ext && !n.toLowerCase().endsWith(ext)) || (prefix && !n.startsWith(prefix))) continue;
+        if ((ext && !n.toLowerCase().endsWith(ext)) || (prefix && !n.toLowerCase().startsWith(prefix.toLowerCase()))) continue;
         const b = readFileSync(join(dir, n)), nm = Buffer.from(n, "utf-8"), h = Buffer.alloc(4), s = Buffer.alloc(4);
         h.writeUInt32LE(nm.length); s.writeUInt32LE(b.length);
         parts.push(h, nm, s, b);

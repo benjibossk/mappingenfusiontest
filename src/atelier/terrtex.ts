@@ -11,7 +11,7 @@ import { blockCoverage, decodeColor, decodeLayer } from './formats/edds.ts'
 export interface SatImage { W: number; H: number; data: Uint8ClampedArray } // row 0 = north
 
 const tileId = (name: string, prefix: string, suffix: string) => {
-  if (!name.startsWith(prefix) || !name.endsWith(suffix)) return -1
+  if (!name.toLowerCase().startsWith(prefix.toLowerCase()) || !name.toLowerCase().endsWith(suffix)) return -1
   const s = name.slice(prefix.length, name.length - suffix.length)
   return /^\d+$/.test(s) ? Number(s) : -1
 }
