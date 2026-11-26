@@ -286,7 +286,10 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
     const wt = WATER_TYPES[w.type]
     const r2 = (v: number) => Math.round(v * 100) / 100
     if (!wt.closed) {
-      const pts = centreLine(downhillCourse(w, at), Math.min(LAKE_MAX_SPACING, Math.max(10, w.width * 0.8)))
+      const spacing = Math.min(LAKE_MAX_SPACING, Math.max(10, w.width * 0.8))
+      // the ribbon folds over itself (and the game builds only a stub of it) where the line bends tighter than its
+      // half width: picture 119, 116 m wide river with 25-55 deg turns every 26 m, only the sea showed
+      const pts = easeBends(centreLine(downhillCourse(w, at), spacing), RIVER_BEND_RADIUS * riverSentWidth(w))
       // the water sits on the profile the terrain was shaped to (nearest profile sample)
       const { line, level, sea: seaAt } = riverProfile(w, at)
       const n = pts.length / 2
@@ -422,6 +425,45 @@ export function simplifyLake(pts: number[], maxPts = LAKE_MAX_POINTS, minSpacing
 
 /** vanilla lake / river bank point spacing is 6.5-26 m (VANILLA_PLACEMENT_OPTIM.md §4) */
 export const LAKE_MAX_SPACING = 26
+
+/** smallest bend radius of a sent river line, in sent widths (ribbon inner edge stays clear of folding) */
+export const RIVER_BEND_RADIUS = 0.75
+
+/** turn (rad) at each inner point of a polyline */
+export function turns(p: number[]): number[] {
+  const out: number[] = []
+  for (let i = 1; i + 1 < p.length / 2; i++) {
+    const a = Math.atan2(p[i * 2 + 1] - p[i * 2 - 1], p[i * 2] - p[i * 2 - 2]), b = Math.atan2(p[i * 2 + 3] - p[i * 2 + 1], p[i * 2 + 2] - p[i * 2])
+    let d = Math.abs(b - a)
+    if (d > Math.PI) d = 2 * Math.PI - d
+    out.push(d)
+  }
+  return out
+}
+
+/** smooth the tight bends of an open line (ends kept) until each turn fits a circle of radius >= minR
+ *  (turn <= segment / minR), or the passes run out; points stay evenly spaced enough for the generator */
+export function easeBends(pts: number[], minR: number, passes = 60): number[] {
+  const p = pts.slice(), n = p.length / 2
+  if (n < 3 || minR <= 0) return p
+  for (let k = 0; k < passes; k++) {
+    let bad = false
+    const t = turns(p)
+    const q = p.slice()
+    for (let i = 1; i < n - 1; i++) {
+      const L = (Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]) + Math.hypot(p[i * 2] - p[i * 2 - 2], p[i * 2 + 1] - p[i * 2 - 1])) / 2
+      // smooth around a tight point (its neighbours too, so the bend spreads rather than kinks next door)
+      const tight = (j: number) => j >= 1 && j < n - 1 && t[j - 1] > L / minR
+      if (!(tight(i) || tight(i - 1) || tight(i + 1))) continue
+      bad = true
+      q[i * 2] = (p[i * 2 - 2] + 2 * p[i * 2] + p[i * 2 + 2]) / 4
+      q[i * 2 + 1] = (p[i * 2 - 1] + 2 * p[i * 2 + 1] + p[i * 2 + 3]) / 4
+    }
+    if (!bad) break
+    for (let i = 0; i < p.length; i++) p[i] = q[i]
+  }
+  return p
+}
 
 //! splits the longest edges (> maxSpacing) of a closed ring at their Catmull-Rom midpoint (a smoothed bank
 //! instead of a straight chord), longest first, while the ring has room (<= maxPts) and stays simple
