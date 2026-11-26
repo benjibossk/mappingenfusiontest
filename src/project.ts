@@ -94,6 +94,9 @@ export interface Project {
   entities?: ProjectEntity[]
   remove?: number[] // X/Z origins of objects already in the world to delete (taken over or removed in the map)
   ffBiome?: number // Freedom Fighters JWK_EWorldBiome flag set on JWK_WorldEntity.m_iBiome (src/ffbiome.ts)
+  /** after the Apply, the bridge calls MG_SetupWorld (MG_SetupWorldApi.c): base world managers (CameraManager,
+   *  Lighting, FogHaze, EnvProbe...) created only when absent; bounds rocks / save off unless set */
+  setupWorld?: { managers?: boolean; bounds?: boolean; save?: boolean }
 }
 
 export const GENERATORS = {

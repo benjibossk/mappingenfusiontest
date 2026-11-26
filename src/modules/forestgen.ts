@@ -7,7 +7,10 @@ import type { Grid } from './island'
 import { SITE_RADIUS, type Site } from './network'
 
 export interface GenForest { leaf: 'broad' | 'needle' | 'mixed'; pts: number[] }
-export interface ForestOptions { seed: number; cover: number /* 0..1, share of the suitable land */ ; sites: Site[]; biome?: string /* BiomeId, default Everon = unchanged */ }
+export interface ForestOptions { seed: number; cover: number /* 0..1, share of the suitable land */ ; sites: Site[]; biome?: string /* BiomeId, default Everon = unchanged */
+  /** cap on the forest area, share of the map (Arland massifs: 11.5 %); the Workbench ForestGenerator puts ~300
+   *  trees/ha in a core, so 45 % of a 2.5 km map = ~72 000 trees (Workbench out of memory). Default: no cap */
+  maxShare?: number }
 
 function hash(x: number, y: number, s: number) {
   let n = (x * 374761393 + y * 668265263 + s * 2147483647) | 0
@@ -108,5 +111,19 @@ export function generateForests(h: ArrayLike<number>, g: Grid, o: ForestOptions)
     }
     out.push({ leaf: b0, pts: hull(pts).flat() })
   }
-  return out
+  return o.maxShare === undefined ? out : capForests(out, o.maxShare * nc * nr * C * C, o.seed)
+}
+
+export const ringArea = (p: number[]): number => {
+  let a = 0
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) a += (p[j] - p[i]) * (p[j + 1] + p[i + 1])
+  return Math.abs(a) / 2
+}
+/** keep forests (seeded order, scattered over the map) while their total area stays under maxArea m2 */
+export function capForests(fs: GenForest[], maxArea: number, seed: number): GenForest[] {
+  const order = fs.map((f, i) => ({ f, i, k: hash(i, 17, seed), a: ringArea(f.pts) })).sort((a, b) => a.k - b.k)
+  const keep = new Set<number>()
+  let sum = 0
+  for (const x of order) if (sum + x.a <= maxArea) { keep.add(x.i); sum += x.a }
+  return fs.filter((_, i) => keep.has(i))
 }

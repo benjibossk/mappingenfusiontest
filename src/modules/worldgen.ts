@@ -13,7 +13,7 @@ import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
 import { DENSITY, scaledCount, worldCounts } from '../data/densities'
 import { featheredBelt, scatterLayers } from './vegLayers'
-import { buryRocks, cliffRocks, rockProfile, paintRockSurfaces, rockStamps } from './cliffRocks'
+import { buryRocks, cliffRocks, rocksClearOfHouses, rockProfile, paintRockSurfaces, rockStamps } from './cliffRocks'
 import { VEG } from '../data/biomes'
 import { fr } from '../i18n'
 import { computeSurfaces, settlementMask, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
@@ -1020,13 +1020,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const forestR = rasterCover(g, areas.filter((a) => a.kind === 'forest'))
     const inWood = (x: number, z: number) => { if (!forestR) return false; const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step); const v = forestR[r * g.cols + c]; return v >= 1 && v <= 3 }
     { const keep = scat.filter((e) => !(/Prefabs\/Rocks\//i.test(e.prefab) && rc.near(e.x, e.z, 10))); scat.splice(0, scat.length, ...keep) } // scatter rocks: 10 m off the water
+    { const keep = rocksClearOfHouses(scat, settlement.placed); scat.splice(0, scat.length, ...keep) } // >= 25 m off the houses, small pieces only near them
     buryRocks(scat, gAt)
     // site / industry / military footprints only: the map-wide scatter layers (VEG_SCATTER, field trees...) are a
     // zone too and their disc covers the whole island (that is why this placed 0 rocks before)
     const discs = zones.map(zoneDisc).filter((d) => d.r < 600)
-    const cliffs = cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, groundAt: gAt, forest: inWood, seed: ss('forests', 'cliffs'), spacing: rockProfile(p.biome).spacing, density: rockProfile(p.biome).density, rockQ: rockProfile(p.biome).rockQ, max: Math.round(rockProfile(p.biome).perKm2 * landKm2),
+    const cliffs = rocksClearOfHouses(cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, groundAt: gAt, forest: inWood, seed: ss('forests', 'cliffs'), spacing: rockProfile(p.biome).spacing, density: rockProfile(p.biome).density, rockQ: rockProfile(p.biome).rockQ, max: Math.round(rockProfile(p.biome).perKm2 * landKm2),
       ok: (x, z) => !isLakeOrSea(x, z) && !rc.near(x, z, 10) && !nearRoad(x, z) && !houseNear(x, z) && !discs.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 8) })
-      .filter((e) => !onRoad(e.x, e.z) && !ring(e.x, e.z, 6) && !rc.near(e.x, e.z, 10)) // each piece of an outcrop, not only its centre
+      .filter((e) => !onRoad(e.x, e.z) && !ring(e.x, e.z, 6) && !rc.near(e.x, e.z, 10)), settlement.placed) // each piece of an outcrop, not only its centre; 25 m off the houses, small pieces near them
     if (cliffs.length) zones.push({ id: 'CLIFF_ROCKS', kind: 'site', sub: 'cliffs', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'cliffs'), shapes: [], entities: cliffs, flat: [], plat: [], roads: [], warnings: [],
       boxes: cliffs.map((t) => ({ corners: [t.x - 3, t.z - 3, t.x + 3, t.z - 3, t.x + 3, t.z + 3, t.x - 3, t.z + 3], role: 'rock', h: 2 })) })
   }

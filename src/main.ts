@@ -152,7 +152,7 @@ import { suggestAirfield, parseAirfieldSub, generateAirfield, flattenAirfield, a
 import { airFootprint, airfieldConflicts, airfieldCost, clearAirfield, inFoot, snapAirfield, type ClearReport, type ClearWorld } from './modules/airClear'
 import { heightAt as gridHeight } from './modules/gen-common'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
-import { IMG_ROLES, guessRoles as guessImgRoles, inImageWater, roadClass, squareHeights, type ClusterRole, type ImageMapResult, type ImgRole } from './modules/imageMap'
+import { IMAGE_FOREST_SHARE, IMG_ROLES, guessRoles as guessImgRoles, inImageWater, roadClass, squareHeights, type ClusterRole, type ImageMapResult, type ImgRole } from './modules/imageMap'
 import { withSlopeTilt } from './modules/slopeAlign'
 import { LAYERS as GEN_LAYERS, withWbLayers, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
 import { applyPads, gradeLanes, layPads } from './modules/pads'
@@ -830,6 +830,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
       <div id="exportLayers" class="exportlayers" aria-live="polite"></div>
       <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
+      <label title="${t('lbl.wbBase.tip')}"><input type="checkbox" id="wbBase"> ${t('lbl.wbBase')}</label>
       <details class="adv" id="checkBox"><summary>${t('legend.check')}</summary>
         ${hint('hint.check')}
         <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
@@ -2674,7 +2675,7 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   // generated on the relief, kept away from the drawn buildings
   if (!r.areas.some((a) => a.kind === 'forest') && island) {
     const isl = island, near: Site[] = settled.map((b, i) => ({ id: `IMG_S_${i}`, x: b.x, z: b.z, kind: 'hamlet' as const }))
-    void track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites: near, biome: currentBiome }]).promise.then((made) => {
+    void track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites: near, biome: currentBiome, maxShare: IMAGE_FOREST_SHARE }]).promise.then((made) => {
       if (island !== isl) return
       made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
       recompose(true); draw(); autosave()
@@ -4556,7 +4557,9 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     depsEl.textContent = deps; depsEl.hidden = !deps
     // relief first: objects are dropped on the ground that is there when they are created
     const relief = island ? (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message + '\n' : ''
-    const msg = relief + await toWb({ version: 0, shapes, entities }) + (deps ? '\n' + deps : '')
+    // opt-in: the bridge then adds the base world entities the world lacks (MG_SetupWorld, only when absent)
+    const base = $<HTMLInputElement>('wbBase').checked ? { setupWorld: { managers: true, bounds: false, save: false } } : {}
+    const msg = relief + await toWb({ version: 0, shapes, entities, ...base }) + (deps ? '\n' + deps : '')
     sentSigs = stepSigs().slice(0, 6); sentSig = sentSigs.join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()

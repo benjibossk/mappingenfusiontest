@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   annotationAndShore, inImageWater, nearWater, clusterImage, closeMask, edt, extractBuildings, guessRoles, hatchZone, imageToMap, joinGaps, nearestBuilding,
   reliefFromLevels, roadClass, simplify, splitDark, thin, traceSkeleton, type ClusterRole,
-  extractWater, fieldEdges, regularRow, smoothRing, type ImgRoad,
+  extractWater, fieldEdges, regularRow, smoothRing, riverAsLand, type ImgRoad,
 } from '../src/modules/imageMap.ts'
 
 const mask = (w: number, h: number, on: (x: number, y: number) => boolean) => {
@@ -148,7 +148,7 @@ test('imageToMap: synthetic tactical map -> river, relief, road, building; overl
   assert.equal(r.sizeX, 640)
   const H = (x: number, y: number) => r.heights.data[y * w + x]
   assert.ok(H(115, 45) > 15, 'hill top')
-  assert.ok(H(38, 80) < 0, 'river bed')
+  assert.ok(H(38, 80) >= 0.3, 'a traced river is land in the picture relief: carveWater alone digs its bed (traced width)')
   assert.ok(H(67, 40) > H(52, 40) - 0.5 && H(67, 40) < H(82, 40) + 0.5, 'arrow erased: the slope goes on under it')
   assert.ok(r.waters.length >= 1)
   const road = r.roads.find((x) => x.kind === 'road')
@@ -230,4 +230,15 @@ test('inImageWater: buildings in a river or a lake (or on its bank) are dropped'
   assert.equal(inImageWater([lake], 250, 50), true)
   assert.equal(inImageWater([lake], 250, 104), true)
   assert.equal(inImageWater([lake], 250, 120), false)
+})
+
+test('riverAsLand: the water body of a traced river becomes land for the relief, a lake stays water', () => {
+  const w = 100, h = 100, lvl = new Int16Array(w * h), wm = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) for (let x = 45; x < 55; x++) { lvl[y * w + x] = -1; wm[y * w + x] = 1 } // river, north-south
+  for (let y = 10; y < 20; y++) for (let x = 5; x < 15; x++) { lvl[y * w + x] = -1; wm[y * w + x] = 1 } // pond
+  const waters = extractWater(wm, w, h, 4)
+  assert.ok(waters.some((x) => x.kind === 'river'))
+  const out = riverAsLand(lvl, wm, w, h, waters, 4)
+  assert.equal(out[50 * w + 50], 0, 'river pixel -> land')
+  assert.equal(out[15 * w + 10], -1, 'pond stays water')
 })

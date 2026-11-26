@@ -324,6 +324,10 @@ export function fillHoles(mask: Uint8Array, w: number, h: number): Uint8Array {
 // ---------------------------------------------------------------------------------------------
 // the conversion
 
+/** woods generated on a relief-only picture: at most this share of the map (Arland massifs 11.5 %, median 2.7 ha);
+ *  keeps a 2.5 km map near 20 000 ForestGenerator trees instead of ~72 000 (13-14 GB Workbench, crash) */
+export const IMAGE_FOREST_SHARE = 0.12
+
 export interface ImageMapOptions {
   /** real side of the picture, metres (the longer side) */
   size: number
@@ -385,8 +389,14 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
   const roleMap = new Uint8Array(N)
   for (let i = 0; i < N; i++) roleMap[i] = roleFilled[i]
 
-  // 3. heights
-  const heights = reliefFromLevels(lvl, w, h, levels, { shore, depth, mpp, smooth: o.smooth ?? 12 })
+  // 3. water bodies, then heights. A river is NOT dug from its picture pixels: the picture body, blurred, sat under
+  // the sea level (0 m) over a band wider than the traced width, and carveWater then sloped the banks further down
+  // into it: the game sea flooded the banks (houses / trees in water) and the 2D showed two rivers. Its pixels are
+  // land for the relief; carveWater alone digs the bed, exactly the traced width, its surface above the sea.
+  const wm = new Uint8Array(N)
+  for (let i = 0; i < N; i++) if (lvl[i] < 0) wm[i] = 1
+  const waters = extractWater(wm, w, h, mpp)
+  const heights = reliefFromLevels(riverAsLand(lvl, wm, w, h, waters, mpp), w, h, levels, { shore, depth, mpp, smooth: o.smooth ?? 12 })
 
   // 4. dark marks: solid blobs = buildings, thin dark lines = road casings, aligned dashes = paths / rails
   const dark = new Uint8Array(N)
@@ -443,15 +453,26 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
     const solid = openMask(closeMask(m, w, h, Math.max(2, Math.round(6 / mpp))), w, h, Math.max(1, Math.round(4 / mpp)))
     for (const a of outlines(solid, w, h, mpp, 2500)) areas.push({ kind, ...a })
   }
-  const wm = new Uint8Array(N)
-  for (let i = 0; i < N; i++) if (lvl[i] < 0) wm[i] = 1
-  const waters = extractWater(wm, w, h, mpp)
   if (rural) {
     const drawn = new Uint8Array(N)
     for (let i = 0; i < N; i++) if (split.lines[i] || split.dashes[i] || (roleOf[i] === R('hedge') && !zone[i])) drawn[i] = 1
     areas.push(...fieldCells([...roads.map((r) => r.pts), ...hedges], lvl, roleFilled, w, h, mpp, drawn))
   }
   return { sizeX: w * mpp, sizeZ: h * mpp, heights: { w, h, data: heights, normalized: false }, roads, waters, buildings, areas, hedges, roleMap }
+}
+
+/** level map with the water bodies traced as rivers turned to land (level 0): lakes stay water */
+export function riverAsLand(lvl: Int16Array, wm: Uint8Array, w: number, h: number, waters: ImgWater[], mpp: number): Int16Array {
+  const rivers = waters.filter((x) => x.kind === 'river')
+  if (!rivers.length) return lvl
+  const out = lvl.slice()
+  const pix = (x: number, z: number) => Math.min(h - 1, Math.max(0, Math.round(h - z / mpp))) * w + Math.min(w - 1, Math.max(0, Math.round(x / mpp)))
+  for (const c of components(wm, w, h)) {
+    const set = new Set(c)
+    if (!rivers.some((r) => { for (let i = 0; i + 1 < r.pts.length; i += 2) if (set.has(pix(r.pts[i], r.pts[i + 1]))) return true; return false })) continue
+    for (const i of c) out[i] = 0
+  }
+  return out
 }
 
 /** opening (erode then dilate by r) */
