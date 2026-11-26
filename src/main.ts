@@ -47,7 +47,7 @@ import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fil
 import { cutAtRoads } from './modules/roadGaps'
 import { dropCoveredPosts, extraGuardrails } from './modules/guardrails'
 import { noiseBerms } from './modules/noiseBerms'
-import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
+import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, signsClearOf, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
 const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp', 'desire', 'lights'] as const
@@ -3858,7 +3858,7 @@ $<HTMLButtonElement>('roadClear').addEventListener('click', () => { roads = []; 
 $<HTMLButtonElement>('roadSend').addEventListener('click', () =>
   run(t('run.l.routes'), async () => {
     if (!roads.length) throw new Error(t('err.noRoad'))
-    return toWb({ version: 0, shapes: [...allRoadShapes(), ...powerShapes()], entities: [...($<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []), ...stationEntities(powerStations)] })
+    return toWb({ version: 0, shapes: [...allRoadShapes(), ...powerShapes()], entities: [...($<HTMLInputElement>('roadFurn').checked ? mySigns() : []), ...stationEntities(powerStations)] })
   }),
 )
 roadInfo()
@@ -3921,7 +3921,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     logEl.textContent = t('test.p1')
     out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message }))
     logEl.textContent = t('test.p2')
-    out.push(t('test.routes', { msg: await toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }) }))
+    out.push(t('test.routes', { msg: await toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? mySigns() : [] }) }))
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), ...maskBody(island.surfaces),
@@ -3937,7 +3937,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
 function refreshFurniture() {
   if (!roads.length || !island) { furn = null; $<HTMLSpanElement>('furnInfo').textContent = ''; return }
   const shapes = allRoadShapes().filter((s) => s.kind === 'polyline')
-  const signs = roadSigns(roads, $<HTMLInputElement>('roadLeft').checked)
+  const signs = mySigns()
   furn = { shapes, signs }
   const len = (tag: string) => shapes.filter((s) => s.id.includes(tag)).reduce((a, s) => {
     for (let i = 2; i + 1 < s.points.length; i += 2) a += Math.hypot(s.points[i] - s.points[i - 2], s.points[i + 1] - s.points[i - 1])
@@ -4574,7 +4574,7 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
 $<HTMLDivElement>('modsBox').append(modsChecklist())
 $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   run(t('run.l.all'), async () => {
-    const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
+    const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? mySigns() : [] }
     // forests apart (button "Send forests", in batches): the objects go first, the forests later
     const forests = $<HTMLInputElement>('forestLater').checked ? [] : forestShapesOut(areas.filter((a) => a.kind === 'forest'))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
@@ -4877,6 +4877,8 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
 // water changes where the roads are cut (bridge gaps): the roads always go with it
 // roads that get a wooden bridge instead of a concrete one
 const DIRT_ROADS = new Set<RoadType>(['dirt', 'dirt2', 'forest', 'trailDirt', 'trailGravel', 'trailForest'])
+/** road signs out of the placed buildings (an image map keeps its drawn houses where they are) */
+function mySigns() { return signsClearOf(roadSigns(roads, $<HTMLInputElement>('roadLeft').checked), settled.map((b) => b.corners ?? [])) }
 function waterAndRoads(): Project {
   const furn = $<HTMLInputElement>('roadFurn').checked
   const split = splitAtWater(roadShapesWithFurniture(), waters)
@@ -4885,7 +4887,7 @@ function waterAndRoads(): Project {
     version: 0,
     shapes: [...allWaterShapes(), ...split.shapes, ...($<HTMLInputElement>('wRipa').checked ? riparianShapes(riparian, { autumn: isAutumnBiome(biome(currentBiome)) }) : [])],
     entities: [
-      ...(furn ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []),
+      ...(furn ? mySigns() : []),
       ...(island && preWater ? riverBanks(waters, preWater, island.grid) : []),
       ...(island ? bridges(split.gaps.filter((g) => !noBridge.has(gapKey(g))), island.heights, island.grid, half) : []), // final relief: the abutments meet the road beds
     ],

@@ -698,3 +698,17 @@ export function roadSigns(roads: Road[], driveLeft = false): ProjectEntity[] {
   })
   return out
 }
+
+/** road signs that are not inside a building footprint (corners: 4 points x,z of an oriented box), `margin` metres
+ *  around it: the image import keeps the drawn houses where they are, so a BEND / GIVEWAY sign could stand in one
+ *  (7th live round, 120: 2 "poles in a building" = 2 signs, no power pole) */
+export function signsClearOf(signs: ProjectEntity[], buildings: number[][], margin = 1): ProjectEntity[] {
+  const inside = (c: number[], x: number, z: number) => {
+    const ux = c[2] - c[0], uz = c[3] - c[1], vx = c[6] - c[0], vz = c[7] - c[1]
+    const lu = Math.hypot(ux, uz), lv = Math.hypot(vx, vz)
+    if (!lu || !lv) return false
+    const pu = ((x - c[0]) * ux + (z - c[1]) * uz) / lu, pv = ((x - c[0]) * vx + (z - c[1]) * vz) / lv
+    return pu > -margin && pu < lu + margin && pv > -margin && pv < lv + margin
+  }
+  return signs.filter((s) => !buildings.some((c) => c.length >= 8 && inside(c, s.x, s.z)))
+}
