@@ -19,7 +19,7 @@ import { fr } from '../i18n'
 import { computeSurfaces, settlementMask, generateIsland, limitPerBlock, overfullBlocks, type Grid, type IslandParams, type SurfaceGrid } from './island'
 import { addRoundabouts, dropOrphanRings, overlapJunctions, squareRoundabout } from './roundabouts'
 import { computeRivers } from './hydro'
-import { carveWater, placeLakes, riverCourse, traceRivers, WATER_TYPES, type Water } from './water'
+import { carveWater, placeLakes, riverCorridor, riverCourse, traceRivers, WATER_TYPES, type Water } from './water'
 import { damFootprint, damZone, placeDams, snapRoadsToCrest } from './dam'
 import { carveRoads, centreLine, isPaved, layBeds, roadHalf, roadProfile, type Road, type RoadType } from './roads'
 import { clipLine, Corridors, ringOnRoad } from './roadClip'
@@ -605,6 +605,8 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
     return c < 0 || r < 0 || c >= g.cols || r >= g.rows || lakes0[r * g.cols + c] === 1 || cur.heights[r * g.cols + c] <= 0.5
   }
+  // every river corridor, carve:false ones included (no wet cell for them): rocks / scatter trees stay out
+  const rc = riverCorridor(g, waters)
   const hAt = (x: number, z: number) => {
     const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
     return cur.heights[r * g.cols + c]
@@ -938,7 +940,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const gc = gameplayCover({ heights: cur.heights, grid: g, forests: areas.filter((a) => a.kind === 'forest').map((a) => a.pts), houses: settlement.placed,
       sites: sites.map((s) => ({ x: s.x, z: s.z, kind: s.kind, r: SITE_RADIUS[s.kind] })),
       roads: [...allRoads, ...settlement.lanes].filter((rd) => rd.pts.length >= 4).map((rd) => ({ pts: centreLine(rd.pts, 4), half: roadHalf(rd) })),
-      blocked: (x, z) => isLakeOrSea(x, z) || discs.some((d) => Math.hypot(x - d.x, z - d.z) < d.r + 10) || sites.some((s) => Math.hypot(x - s.x, z - s.z) < SITE_RADIUS[s.kind])
+      blocked: (x, z) => isLakeOrSea(x, z) || rc.near(x, z, 3) || discs.some((d) => Math.hypot(x - d.x, z - d.z) < d.r + 10) || sites.some((s) => Math.hypot(x - s.x, z - s.z) < SITE_RADIUS[s.kind])
         || settlement.placed.some((b) => Math.abs(b.x - x) < 18 && Math.abs(b.z - z) < 18) || other.some((q) => pointInPoly(q, x, z))
         || (pw?.stations ?? []).some((st) => Math.hypot(st.x - x, st.z - z) < 30),
       avoid: camp.fields.map((f) => ({ x: f.reduce((a, q) => a + q[0], 0) / f.length, z: f.reduce((a, q) => a + q[1], 0) / f.length })),
@@ -961,7 +963,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       if (Math.hypot(x - ax - dx * t, z - az - dz * t) < rd.half) return true
     } return false })
     const ents = fieldTrees({ fields: camp.fields, hedges: camp.hedges, seed: ss('forests', 'fieldtrees'), density: ftd, biome: p.biome, prefix: 'TREE_FIELD_',
-      ok: (x, z) => !isLakeOrSea(x, z) && !settlement.placed.some((b) => Math.abs(b.x - x) < 12 && Math.abs(b.z - z) < 12) && !areas.some((a) => a.kind === 'forest' && pointInPoly(a.pts, x, z)) && !nearRoad(x, z) && !vegRoads.hit(x, z, 3) })
+      ok: (x, z) => !isLakeOrSea(x, z) && !rc.near(x, z, 3) && !settlement.placed.some((b) => Math.abs(b.x - x) < 12 && Math.abs(b.z - z) < 12) && !areas.some((a) => a.kind === 'forest' && pointInPoly(a.pts, x, z)) && !nearRoad(x, z) && !vegRoads.hit(x, z, 3) })
     if (ents.length) {
       let cx = 0, cz = 0
       for (const t of ents) { cx += t.x / ents.length; cz += t.z / ents.length }
@@ -991,7 +993,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       }
     }
     const onRoad = (x: number, z: number) => onRoadCells.has(Math.floor(x / 2) * 100003 + Math.floor(z / 2))
-    const okOpen = (x: number, z: number) => !isLakeOrSea(x, z) && !onRoad(x, z) && !houseNear(x, z) && !inForest(x, z) && !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r })
+    const okOpen = (x: number, z: number) => !isLakeOrSea(x, z) && !rc.near(x, z, 3) && !onRoad(x, z) && !houseNear(x, z) && !inForest(x, z) && !zones.some((zn) => { const d = zoneDisc(zn); return Math.hypot(d.x - x, d.z - z) < d.r })
     const span = (g.cols - 1) * g.step
     const scat = scatterLayers({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, slopeAt: sl, maxHeight: isl.maxHeight,
       ok: okOpen, seed: ss('forests', 'scatter'), density: Math.min(1.5, p.forests), prefix: 'SCAT_', max: Math.round(250 * landKm2) })
@@ -1000,7 +1002,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
       b = Math.min(b, Math.hypot(x - ax - dx * t, z - az - dz * t)) } return b }
     areas.filter((a) => a.kind === 'forest' && polyAreaM2(a.pts) < 6000).slice(0, 400).forEach((a, k) => {
       scat.push(...featheredBelt({ pts: a.pts, seed: ss('forests', 'belt', k), prefix: `BELT_${k + 1}_`, max: 300,
-        ok: (x, z) => !isLakeOrSea(x, z) && !onRoad(x, z) && !houseNear(x, z), inside: (x, z) => pointInPoly(a.pts, x, z), distToOutline: (x, z) => segDist(a.pts, x, z),
+        ok: (x, z) => !isLakeOrSea(x, z) && !rc.near(x, z, 3) && !onRoad(x, z) && !houseNear(x, z), inside: (x, z) => pointInPoly(a.pts, x, z), distToOutline: (x, z) => segDist(a.pts, x, z),
         trees: a.leaf === 'needle' ? [VEG.spruce, VEG.pine] : [VEG.hornbeam, VEG.birch], bushes: [VEG.hazel, VEG.hazel2] }))
     })
     if (scat.length) zones.push({ id: 'VEG_SCATTER', kind: 'site', sub: 'scatter', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'scatter'), shapes: [], entities: scat, flat: [], plat: [], roads: [], warnings: [],
@@ -1017,13 +1019,14 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     }
     const forestR = rasterCover(g, areas.filter((a) => a.kind === 'forest'))
     const inWood = (x: number, z: number) => { if (!forestR) return false; const c = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step); const v = forestR[r * g.cols + c]; return v >= 1 && v <= 3 }
+    { const keep = scat.filter((e) => !(/Prefabs\/Rocks\//i.test(e.prefab) && rc.near(e.x, e.z, 10))); scat.splice(0, scat.length, ...keep) } // scatter rocks: 10 m off the water
     buryRocks(scat, gAt)
     // site / industry / military footprints only: the map-wide scatter layers (VEG_SCATTER, field trees...) are a
     // zone too and their disc covers the whole island (that is why this placed 0 rocks before)
     const discs = zones.map(zoneDisc).filter((d) => d.r < 600)
     const cliffs = cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, groundAt: gAt, forest: inWood, seed: ss('forests', 'cliffs'), spacing: rockProfile(p.biome).spacing, density: rockProfile(p.biome).density, rockQ: rockProfile(p.biome).rockQ, max: Math.round(rockProfile(p.biome).perKm2 * landKm2),
-      ok: (x, z) => !isLakeOrSea(x, z) && !nearRoad(x, z) && !houseNear(x, z) && !discs.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 8) })
-      .filter((e) => !onRoad(e.x, e.z) && !ring(e.x, e.z, 6)) // each piece of an outcrop, not only its centre
+      ok: (x, z) => !isLakeOrSea(x, z) && !rc.near(x, z, 10) && !nearRoad(x, z) && !houseNear(x, z) && !discs.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 8) })
+      .filter((e) => !onRoad(e.x, e.z) && !ring(e.x, e.z, 6) && !rc.near(e.x, e.z, 10)) // each piece of an outcrop, not only its centre
     if (cliffs.length) zones.push({ id: 'CLIFF_ROCKS', kind: 'site', sub: 'cliffs', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'cliffs'), shapes: [], entities: cliffs, flat: [], plat: [], roads: [], warnings: [],
       boxes: cliffs.map((t) => ({ corners: [t.x - 3, t.z - 3, t.x + 3, t.z - 3, t.x + 3, t.z + 3, t.x - 3, t.z + 3], role: 'rock', h: 2 })) })
   }
@@ -1039,7 +1042,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const inWood = (x: number, z: number) => areas.some((a) => a.kind === 'forest' && pointInPoly(a.pts, x, z))
     const lines = [...allRoads, ...settlement.lanes].filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) }))
     const pf = pastureFences({ seed: ss('settlements', 'pastures'), roads: allRoads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) })), buildings: settlement.placed, density: pastureDensity(p.biome), styles: pastureStyles(p.biome),
-      ok: (x, z) => !isLakeOrSea(x, z) && gentle(x, z) && !sites.some((s) => Math.hypot(x - s.x, z - s.z) < (DISC[s.kind] ?? 40) * 0.6) && !siteZones.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 10) && !inWood(x, z) && !nearTree(x, z),
+      ok: (x, z) => !isLakeOrSea(x, z) && !rc.near(x, z, 3) && gentle(x, z) && !sites.some((s) => Math.hypot(x - s.x, z - s.z) < (DISC[s.kind] ?? 40) * 0.6) && !siteZones.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 10) && !inWood(x, z) && !nearTree(x, z),
       blocked: makeBlocker(settlement.placed.map((q) => q.corners), lines) })
     if (pf.length) settlement.fences = [...(settlement.fences ?? []), ...pf]
   }

@@ -940,3 +940,30 @@ export function nearBridge(p: RiverBridge | { a: number[]; b: number[] }, b: { x
   for (let k = 0; k + 1 < b.corners.length; k += 2) if (near(b.corners[k], b.corners[k + 1])) return true
   return false
 }
+
+//! River corridor raster: per grid vertex, distance (m) from the river edge (centre-line distance minus half
+//! width; < 0 inside the water) for every open water, carved or not (carve:false rivers leave no wet cell, so
+//! the wet mask alone never kept rocks / trees out of them). Rasterised once up to `reach` m from the banks;
+//! farther cells stay Infinity. `near(x, z, m)` = within m metres of the water (nearest vertex + half a cell).
+export function riverCorridor(g: Grid, waters: Water[], reach = 12) {
+  const d = new Float32Array(g.cols * g.rows).fill(Infinity)
+  for (const w of waters) {
+    if (WATER_TYPES[w.type].closed || w.pts.length < 4) continue
+    const c = riverCourse(w.pts, w.width), half = w.width / 2, R = half + reach + g.step
+    for (let i = 0; i + 3 < c.length; i += 2) {
+      const ax = c[i], az = c[i + 1], bx = c[i + 2], bz = c[i + 3]
+      const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - R - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((Math.max(ax, bx) + R - g.minX) / g.step))
+      const r0 = Math.max(0, Math.floor((Math.min(az, bz) - R - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((Math.max(az, bz) + R - g.minZ) / g.step))
+      for (let r = r0; r <= r1; r++) for (let q = c0; q <= c1; q++) {
+        const v = segDist(g.minX + q * g.step, g.minZ + r * g.step, ax, az, bx, bz) - half, k = r * g.cols + q
+        if (v < d[k]) d[k] = v
+      }
+    }
+  }
+  const near = (x: number, z: number, m: number) => {
+    const q = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
+    if (q < 0 || r < 0 || q >= g.cols || r >= g.rows) return false
+    return d[r * g.cols + q] <= m + g.step * 0.71
+  }
+  return { dist: d, near }
+}

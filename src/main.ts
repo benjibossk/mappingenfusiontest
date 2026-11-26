@@ -2548,6 +2548,13 @@ function useWorld(w: WorldExport) {
   existing = { objects: [], shapes: [] }
   removed = []
   areas = []
+  // the zones (cliff rocks, scatter / field trees, sites) carry absolute heights of the previous relief: kept,
+  // they floated over / sank into the new one (map from an image: rocks in the rivers)
+  zones = []
+  worldBridges = []
+  riparian = []; ripaSig = ''
+  countryside = []
+  powerLines = []; powerStations = []; powerAccess = []
   landCover = null
   credits = []
   waterInfo()
