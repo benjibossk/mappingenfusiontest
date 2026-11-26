@@ -244,6 +244,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/audit") {
       const out = join(tmpdir(), `mg-audit-${process.pid}.json`);
       rmSync(out, { force: true });
+      const auditStart = Date.now() - 2000;
       const script = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "mg-audit.mjs");
       await new Promise((ok) => execFile(process.execPath, [script, "--live", "--json", out], { timeout: 180000 }, () => ok()));
       if (!existsSync(out)) return send(res, 500, { status: "error", message: "audit failed (Workbench closed?)" });
@@ -254,7 +255,10 @@ const server = createServer(async (req, res) => {
       try {
         const wb = await callWorkbench("MG_ListMaterials", {}, 5_000);
         const f = worldFile(wb?.world);
-        if (f) base = missingBaseEntities(f);
+        // the live world too (entities.txt, just rewritten by mg-audit --live): the send's setup is not saved yet
+        const ents = join(PROFILE_DIR, "MapGen", "entities.txt");
+        const live = existsSync(ents) && statSync(ents).mtimeMs >= auditStart ? readFileSync(ents, "latin1") : "";
+        if (f) base = missingBaseEntities(f, live);
       } catch { /* Workbench busy: skip this check */ }
       if (base) { counts.base = base.length; r.findings.base = base; }
       return send(res, 200, { status: "ok", counts, terrain: r.terrain, findings: Object.fromEntries(Object.entries(r.findings).map(([k, l]) => [k, l.slice(0, 20)])) });

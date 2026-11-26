@@ -31,10 +31,12 @@ export function missingInText(text) {
     && !(BASE_CLASSES[name] ?? []).some((c) => new RegExp(`^[ \\t]*${c}([ \\t{]|$)`, "m").test(text))).map(([, n]) => n);
 }
 
-export function missingBaseEntities(worldEnt) {
+/** `live`: entity list of the open world (MG_ExportEntities, entities.txt). A send's setup adds the managers in
+ *  the editor and the audit runs before any save: the files alone gave a false "3 missing" */
+export function missingBaseEntities(worldEnt, live = "") {
   const files = [worldEnt];
   const layers = worldEnt.replace(/\.ent$/i, "_Layers");
   if (existsSync(layers)) for (const f of readdirSync(layers)) if (f.endsWith(".layer")) files.push(join(layers, f));
   const text = files.filter(existsSync).map((f) => readFileSync(f, "latin1")).join("\n");
-  return missingInText(text);
+  return missingInText(text + "\n" + live);
 }
