@@ -448,6 +448,9 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
     for (let i = 0; i < N; i++) if (roleOf[i] === R('hedge') && !zone[i]) hm[i] = 1
     if (hm.some((v) => v)) hedges.push(...extractLines(hm, w, h, mpp, 'path').map((r) => r.pts))
   }
+  // no hedge in the water: field edges traced along a lake shore stood in it (round 11, picture 119: 13 hedges,
+  // 33 of their points inside the river swelling lake, bushes in the water)
+  hedges.splice(0, hedges.length, ...clipLinesToWater(hedges, wm, w, h, mpp, 6))
 
   // 6. areas: forest / field (dot patterns closed into solid patches), water bodies
   const areas: ImgArea[] = []
@@ -605,6 +608,38 @@ function blur(src: Float32Array, w: number, h: number, r: number): Float32Array 
       if (y - r - 1 >= 0 && y - r - 1 < h) { s -= tmp[(y - r - 1) * w + x]; n-- }
       if (y >= 0 && y < h) out[y * w + x] = s / n
     }
+  }
+  return out
+}
+
+/** world polylines minus the water mask (+ margin m): split where they cross it, pieces under 20 m dropped */
+export function clipLinesToWater(lines: number[][], wm: Uint8Array, w: number, h: number, mpp: number, margin: number): number[][] {
+  const d = edt(wm, w, h)
+  const wet = (x: number, z: number) => {
+    const px = Math.round(x / mpp), py = Math.round(h - z / mpp)
+    return px >= 0 && py >= 0 && px < w && py < h && d[py * w + px] * mpp <= margin
+  }
+  const out: number[][] = []
+  for (const l of lines) {
+    let cur: number[] = []
+    const flush = () => {
+      let len = 0
+      for (let i = 2; i < cur.length; i += 2) len += Math.hypot(cur[i] - cur[i - 2], cur[i + 1] - cur[i - 1])
+      if (cur.length >= 4 && len >= 20) out.push(cur)
+      cur = []
+    }
+    for (let i = 0; i < l.length; i += 2) {
+      // every 4 m along the segment from the previous vertex; only the cut points and the vertices are kept
+      const ax = i ? l[i - 2] : l[i], az = i ? l[i - 1] : l[i + 1], bx = l[i], bz = l[i + 1]
+      const n = i ? Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 4)) : 1
+      for (let k = 1; k <= n; k++) {
+        const x = ax + ((bx - ax) * k) / n, z = az + ((bz - az) * k) / n
+        if (wet(x, z)) { flush(); continue }
+        if (k === n || !cur.length) cur.push(Math.round(x * 10) / 10, Math.round(z * 10) / 10)
+        else if (wet(ax + ((bx - ax) * (k + 1)) / n, az + ((bz - az) * (k + 1)) / n)) cur.push(Math.round(x * 10) / 10, Math.round(z * 10) / 10)
+      }
+    }
+    flush()
   }
   return out
 }
