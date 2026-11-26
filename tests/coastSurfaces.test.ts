@@ -41,3 +41,15 @@ test('openWaterDistance: a river is not open water, the sea is', () => {
   assert.ok(d[15 * cols + 12] > 60, `next to the river ${d[15 * cols + 12]}`)
   assert.ok(d[15 * cols + 38] <= 8, `next to the sea ${d[15 * cols + 38]}`)
 })
+
+test('computeSurfaces: no Rock_01 band on the map-edge sea ramp (picture 120, grey band along the east edge)', () => {
+  const cols = 101, rows = 101, step = 8
+  const heights: number[] = []
+  // plateau at 30 m falling into the sea over the last 6 % of the map (Sculpt.compose edge ramp), 45 deg
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) heights.push(c < 94 ? 30 : 30 - (c - 93) * 9)
+  const s = computeSurfaces({ minX: 0, minZ: 0, step, cols, rows }, heights, 40)
+  const rock = s.find((q) => q.name === 'Rock_01')!.weights
+  let edge = 0
+  for (let r = 20; r < 80; r++) for (let c = 93; c < cols; c++) edge += rock[r * cols + c]
+  assert.equal(edge, 0)
+})

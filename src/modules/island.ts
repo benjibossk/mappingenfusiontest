@@ -268,7 +268,10 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const bare = deepAll * 0.75 * band(patches((c * step) / 45, (r * step) / 45), 0.52, 0.75)
     const deep = deepAll - bare
     const bed = river ? Math.min(river[i], 1 - deepAll) : 0
-    const cliff = Math.min(1, rm.rock[i] + rm.scree[i]) * (h > -2 ? 1 : 0) * (1 - bed)
+    // the map-edge sea ramp (Sculpt.compose: the last 6 % of the map forced down to the sea floor) is no cliff: a
+    // straight grey Rock_01 band ran along the whole edge slope (picture 120, x 2350-2400). Coastal grass there
+    const edgeRamp = band(Math.min(c, r, cols - 1 - c, rows - 1 - r) / Math.max(1, cols - 1), 0.07, 0.1)
+    const cliff = Math.min(1, rm.rock[i] + rm.scree[i]) * (h > -2 ? 1 : 0) * (1 - bed) * edgeRamp
     let scree = Math.min(cliff, rm.scree[i] * (1 - bed))
     let rock = cliff - scree
     // village banks: the rock weight becomes 75 % grass (free ground) + 25 % dirt
