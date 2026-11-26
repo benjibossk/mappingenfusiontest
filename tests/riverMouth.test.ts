@@ -32,3 +32,16 @@ test('river near the sea: surface never under the sea, land outside the bed stay
   const n = s.points.length / 2
   assert.ok(Math.abs(s.lift![n - 1] + at(s.points[n * 2 - 2], s.points[n * 2 - 1])) < 0.2)
 })
+
+test('river cut into a hill: the valley side stays under ~35 deg (picture 120: 51 deg, 5 m per 4 m cell)', () => {
+  const h: number[] = []
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) h.push(5 + Math.min(30, Math.max(0, (c * step - 300) * 1.5)))
+  const rv: Water = { id: 'V', type: 'river', pts: [290, 590, 290, 80], width: 16, depth: 2.5, carve: false, wetEdge: true }
+  carveWater(h, g, [rv])
+  let max = 0
+  for (let r = 30; r < 140; r++) for (let c = 0; c + 1 < cols; c++) {
+    if (Math.abs(c * step - 290) <= rv.width / 2 + step) continue
+    max = Math.max(max, Math.abs(h[r * cols + c + 1] - h[r * cols + c]) / step)
+  }
+  assert.ok(max <= 0.7, `steepest ${max.toFixed(2)}`)
+})

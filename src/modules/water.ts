@@ -121,7 +121,8 @@ export const PICTURE_RIVER_DEPTH = 2.5
 const RIVER_BANK = 0.5 // bank top above the water
 const RIVER_EDGE = 0.15 // ground under the water at the traced edge
 const RIVER_MAXCUT = 2.5
-const RIVER_DRY = 0.2 // ground outside the traced bed over the water level, metres
+const RIVER_DRY = 0.2
+const BANK_MAX_SLOPE = 0.6 // valley side of a river, m/m (~31 deg) // ground outside the traced bed over the water level, metres
 /** length (m) of a river's last stretch held at the sea level before its mouth */
 export const MOUTH_FLAT = (w: { width: number }) => Math.max(40, riverSentWidth(w))
 const sstep = (t: number) => { const u = Math.min(1, Math.max(0, t)); return u * u * (3 - 2 * u) }
@@ -227,7 +228,9 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
       const half = Math.max(w.width / 2, step) // the grid cannot hold a narrower channel
       const fall = Math.max(2 * step, w.width)
       const wetHalf = riverWetHalf(w)
-      const reach = Math.max(half + fall, wetHalf + 3 * step)
+      // a river cut deep into a hill (picture 120: water 8 m, hilltop 35 m, 30 m away) rose over `fall` at up to 60 deg:
+      // the blend widens with the drop (up to 5x) so the valley side stays under ~BANK_MAX_SLOPE
+      const reach = Math.max(half + 5 * fall, wetHalf + 3 * step)
       const ramp = Math.max(3 * w.width, 2 * step) // the source must not end in a dug pit
       let along = 0
       for (let i = 0; i + 1 < line.length / 2; i++) {
@@ -256,7 +259,10 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
               // (wetEdge: rivers of a map from a picture; generated rivers keep their bank-top profile, pads rely on it)
               v = w.wetEdge ? wl - depth + (depth - RIVER_EDGE) * sstep(t) : wl - depth + (depth + RIVER_BANK) * sstep(t)
             } else {
-              v = wl + RIVER_BANK + (at(x, z) - wl - RIVER_BANK) * sstep((d - half) / fall)
+              const drop = at(x, z) - wl - RIVER_BANK
+              const fallK = Math.min(5 * fall, Math.max(fall, (1.5 * Math.abs(drop)) / BANK_MAX_SLOPE))
+              if (d >= half + fallK) continue // past this river's blend: the original ground
+              v = wl + RIVER_BANK + drop * sstep((d - half) / fallK)
               // outside the traced bed but under the river ribbon (sent wider than traced, straight between points
               // ~100 m apart): the ground stays over the water, else low flat land floods (picture 119 mouth)
               if (d <= wetHalf + 2 * step) v = Math.max(v, Math.max(wl, 0) + RIVER_DRY)
