@@ -2788,7 +2788,7 @@ function satSourceBody(): Record<string, unknown> {
 }
 /** the mask body of every export (and of the preview's final masks, preview/finalMasks.ts) */
 function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
-  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
+  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled, 1, 'Grass_01', 'Dirt_01', roadClear()), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
 }
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
 const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => {
@@ -5162,6 +5162,19 @@ function existingRoads(): Road[] {
 /** fence and wall pieces (generator 'Fence', reference maps): drawn above the forest and the buildings */
 /** desire paths (desirePaths.ts): worn-ground mask bands from the doors to the nearest road, memoised per world */
 let desireMemo: { key: string; bands: MaskBand[] } | null = null
+/** (x, z, r) => a disc of radius r touches a road (its painted band: half + shoulder) */
+function roadClear(): (x: number, z: number, r: number) => boolean {
+  const segs: number[][] = []
+  for (const q of [...roads, ...setLanes, ...setPaths]) {
+    const T = ROAD_TYPES[q.type], h = roadHalf(q) + (T?.shoulder ?? T?.edge ?? 0)
+    for (let i = 0; i + 3 < q.pts.length; i += 2) segs.push([q.pts[i], q.pts[i + 1], q.pts[i + 2], q.pts[i + 3], h])
+  }
+  return (x, z, r) => segs.some(([ax, az, bx, bz, h]) => {
+    if (x < Math.min(ax, bx) - h - r || x > Math.max(ax, bx) + h + r || z < Math.min(az, bz) - h - r || z > Math.max(az, bz) + h + r) return false
+    const qx = bx - ax, qz = bz - az, Q = qx * qx + qz * qz || 1, u = Math.min(1, Math.max(0, ((x - ax) * qx + (z - az) * qz) / Q))
+    return Math.hypot(x - ax - qx * u, z - az - qz * u) < h + r
+  })
+}
 function desireMasks(): MaskBand[] {
   const rs = [...roads, ...existingRoads(), ...setLanes, ...setPaths].filter((r) => r.pts.length >= 4)
   const key = `${settled.length}|${settled[0]?.id}|${settled[settled.length - 1]?.x}|${rs.length}|${setParcels.length}`
