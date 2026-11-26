@@ -33,3 +33,15 @@ test('a river swelling lake takes the river level, not the lowest ground of its 
   // the river level at the lake (z 300..500): the ground there minus about RIVER_BANK, never far under it
   assert.ok(lake.level! > 3 && lake.level! < 6, String(lake.level))
 })
+
+test('a river swelling lake is dug as deep as the wide river middle (picture 120: bed showing at 2 m)', async () => {
+  const { carveWater, PICTURE_SWELL_LAKE_DEPTH } = await import('../src/modules/water')
+  const g = { minX: 0, minZ: 0, step: 4, cols: 200, rows: 200 }
+  const hs = Array.from({ length: 200 * 200 }, () => 6)
+  const river = { id: 'R', type: 'river' as const, pts: [400, 0, 400, 400, 400, 796], width: 40, depth: 2.5, carve: false, wetEdge: true }
+  const lake = { id: 'L', type: 'lake' as const, pts: [300, 300, 500, 300, 540, 400, 500, 500, 300, 500, 260, 400], width: 0, depth: PICTURE_SWELL_LAKE_DEPTH, onRiver: true }
+  carveWater(hs, g, [river, lake])
+  // a cell inside the lake, 40 m from the river centre, 60 m from the shore
+  const h = hs[(400 / 4) * 200 + 340 / 4]
+  assert.ok(h <= lake.level! - 3.5, `${h} vs level ${lake.level}`)
+})

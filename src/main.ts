@@ -25,7 +25,7 @@ import { FOREST_AVOID, GENERATORS, forestAvoidMissing, withAvoid, type Project, 
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
-import { WATER_TYPES, riverWetHalf, PICTURE_RIVER_DEPTH, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
+import { WATER_TYPES, riverWetHalf, PICTURE_RIVER_DEPTH, PICTURE_SWELL_LAKE_DEPTH, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
 import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw, auditWorld } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
@@ -2668,7 +2668,7 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   for (const x of r.roads) { const type = roadClass(x.width, median, x.kind); roads.push({ id: nextRoadId(type), type, pts: x.pts }) }
   for (const x of r.waters) {
     if (x.kind === 'river') waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, ...(x.widths ? { widths: x.widths } : {}), depth: PICTURE_RIVER_DEPTH, carve: false, wetEdge: true })
-    else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: 2, ...(x.onRiver ? { onRiver: true } : { level: 0 }) }) // a river swelling: level from its banks
+    else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: x.onRiver ? PICTURE_SWELL_LAKE_DEPTH : 2, ...(x.onRiver ? { onRiver: true } : { level: 0 }) }) // a river swelling: level from its banks
   }
   r.areas.forEach((a, k) => areas.push({ id: `${a.kind === 'forest' ? 'FOREST' : 'FIELD'}_IMG_${k + 1}`, kind: a.kind, ...(a.kind === 'forest' ? { leaf: 'mixed' as const } : {}), pts: a.pts, holes: a.holes }))
   // field edges of the picture: hedges, as the Fields zone tool lays them

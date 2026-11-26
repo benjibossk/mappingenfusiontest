@@ -119,6 +119,9 @@ export const riverWetHalf = (w: { width: number }) => Math.max(w.width / 2, rive
 /** bed depth (m, under the water level) of the rivers of a map from a picture: 1.5 m read shallow and light in game
  *  (picture 120, the bed texture showing through); 2.5 m darkens the water like Arland's rivers */
 export const PICTURE_RIVER_DEPTH = 2.5
+/** centre depth of a lake swelling a picture river: as deep as the wide river middle (pictureRiverDepth max). At 2 m the
+ * bed of picture 120's lakes showed through in turquoise / grass patches (round 11) */
+export const PICTURE_SWELL_LAKE_DEPTH = 4
 const RIVER_BANK = 0.5 // bank top above the water
 const RIVER_MAXCUT = 2.5
 const RIVER_DRY = 0.4 // ground outside the traced bed but under the river ribbon, over the water (0.2 read as speckled grass islands in shallow water, picture 119 round 9)
