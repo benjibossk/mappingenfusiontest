@@ -16,3 +16,26 @@ export function forestBatches<S extends { id: string }>(shapes: S[], perBatch: n
   }
   return out
 }
+
+/** the whole "Envoyer les forêts" run: every batch (or one send), then the forest ground masks rewritten from the
+ *  same final forest set (picture 119 round 9: batches sent, masks on disk still the previous forests). A mask
+ *  failure is reported, never undoes the forests sent. */
+export async function sendForests<S extends { id: string }>(shapes: S[], perBatch: number, io: {
+  send: (shapes: S[], k: number, n: number, locked: string[] | undefined) => Promise<string>
+  masks?: () => Promise<string>
+  pause?: () => Promise<void>
+}): Promise<string> {
+  const out: string[] = []
+  if (!perBatch || shapes.length <= perBatch) out.push(await io.send(shapes, 0, 1, undefined))
+  else {
+    const b = forestBatches(shapes, perBatch)
+    for (let k = 0; k < b.length; k++) {
+      out.push(await io.send(b[k].shapes, k, b.length, b[k].locked))
+      if (k + 1 < b.length && io.pause) await io.pause()
+    }
+  }
+  if (io.masks) {
+    try { out.push(await io.masks()) } catch (err) { out.push('masks: ' + (err as Error).message) }
+  }
+  return out.join('\n')
+}

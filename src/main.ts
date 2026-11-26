@@ -137,7 +137,7 @@ import { validate, type Issue } from './modules/validate'
 import { applyFixes, bridgeChecks, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
 import { clipForestsToWater } from './modules/forestWater'
-import { forestBatches } from './modules/forestBatches'
+import { sendForests } from './modules/forestBatches'
 import { worldToIsland } from './modules/importWorld'
 import { applySurfaceMasks, heightsFromImage, maskKind, maskOnGrid, readHeightFile, readPngImage, reliefMasks, type SurfaceMask } from './modules/gaeaImport'
 import type { ReliefMasks } from './modules/gaeaRelief'
@@ -4573,16 +4573,17 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
     const shapes = forestShapesOut(f), per = Math.max(0, Math.floor(num('forestBatch') || 0))
-    if (!per || shapes.length <= per) return toWb({ version: 0, shapes, entities: prodLogEntities() })
-    // in batches: one Apply + save per batch, a pause in between (the Workbench reached 12.7 GB with all at once)
-    const batches = forestBatches(shapes, per), out: string[] = []
-    for (let k = 0; k < batches.length; k++) {
-      logEl.textContent = t('log.forestBatch', { k: k + 1, n: batches.length, shapes: batches[k].shapes.length })
-      const msg = await toWb({ version: 0, shapes: batches[k].shapes, entities: k === 0 ? prodLogEntities() : [], locked: batches[k].locked, setupWorld: { managers: false, bounds: false, save: true } })
-      out.push(t('log.forestBatch', { k: k + 1, n: batches.length, shapes: batches[k].shapes.length }) + '\n' + msg)
-      if (k + 1 < batches.length) await new Promise((r) => setTimeout(r, 4000))
-    }
-    return out.join('\n')
+    // in batches: one Apply + save per batch, a pause in between (the Workbench reached 12.7 GB with all at once);
+    // the forest ground masks are rewritten at the end from the same forests (sentForests, picture 119 round 9)
+    return sendForests(shapes, per, {
+      send: async (sh, k, n, locked) => {
+        if (n === 1) return toWb({ version: 0, shapes: sh, entities: prodLogEntities() })
+        logEl.textContent = t('log.forestBatch', { k: k + 1, n, shapes: sh.length })
+        return t('log.forestBatch', { k: k + 1, n, shapes: sh.length }) + '\n' + await toWb({ version: 0, shapes: sh, entities: k === 0 ? prodLogEntities() : [], locked, setupWorld: { managers: false, bounds: false, save: true } })
+      },
+      masks: island ? () => masksNow() : undefined,
+      pause: () => new Promise((r) => setTimeout(r, 4000)),
+    })
   }),
 )
 // everything at once (roads + water, forests, buildings): one project, the log says what went

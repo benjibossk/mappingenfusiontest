@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { forestBatches } from '../src/modules/forestBatches.ts'
+import { forestBatches, sendForests } from '../src/modules/forestBatches.ts'
 
 test('forestBatches: batches of N, FOREST_ family kept, earlier batches locked', () => {
   const shapes = Array.from({ length: 95 }, (_, i) => ({ id: i % 2 ? `FOREST_IMG_${i}` : `FOREST_GEN_${i}_E1_1`, points: [i] }))
@@ -17,4 +17,17 @@ test('forestBatches: batches of N, FOREST_ family kept, earlier batches locked',
   }
   assert.equal(new Set(b.flatMap((x) => x.shapes.map((s) => s.id))).size, 95)
   assert.equal(forestBatches(shapes, 0).length, 1)
+})
+
+test('sendForests: the forest ground masks are rewritten after the last batch (and after a single send)', async () => {
+  const shapes = Array.from({ length: 95 }, (_, i) => ({ id: `FOREST_GEN_${i}` }))
+  const log: string[] = []
+  const io = { send: async (s: { id: string }[], k: number) => { log.push(`b${k}:${s.length}`); return 'ok' }, masks: async () => { log.push('masks'); return 'm' } }
+  await sendForests(shapes, 40, io)
+  assert.deepEqual(log, ['b0:40', 'b1:40', 'b2:15', 'masks'])
+  log.length = 0
+  await sendForests(shapes.slice(0, 10), 40, io)
+  assert.deepEqual(log, ['b0:10', 'masks'])
+  const r = await sendForests(shapes, 40, { send: io.send, masks: async () => { throw new Error('down') } })
+  assert.match(r, /masks: down/)
 })
