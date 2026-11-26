@@ -69,6 +69,7 @@ class MG_Project : JsonApiStruct
 	ref array<ref MG_ProjectEntity> entities = {};
 	ref array<float> remove = {};	//!< X/Z pairs: origins of objects already in the world to delete (taken over or removed in the web map)
 	ref array<string> locked = {};	//!< names never removed; an entry ending with * is a name prefix (bridge: profile/MapGen/locked.json)
+	ref array<string> clearFamilies = {};	//!< more families to replace although nothing of them is sent (what a previous send made: bridge families.json)
 	int ffBiome;	//!< Freedom Fighters JWK_EWorldBiome flag (1 woodland, 2 winter, 4 desert, 8 jungle), 0 = leave as is
 
 	void MG_Project()
@@ -78,6 +79,7 @@ class MG_Project : JsonApiStruct
 		RegV("entities");
 		RegV("remove");
 		RegV("locked");
+		RegV("clearFamilies");
 		RegV("ffBiome");
 	}
 }
@@ -248,6 +250,11 @@ class MG_ProjectApplier
 			AddFamily(families, fs.id);
 		foreach (MG_ProjectEntity fe : project.entities)
 			AddFamily(families, fe.id);
+		foreach (string cf : project.clearFamilies)
+		{
+			if (cf.Length() > 1 && cf.EndsWith("_") && !families.Contains(cf))
+				families.Insert(cf);
+		}
 		array<IEntitySource> old = {};
 		for (int i = api.GetEditorEntityCount() - 1; i >= 0; i--)
 		{

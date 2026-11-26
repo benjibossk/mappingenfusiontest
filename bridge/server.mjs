@@ -21,6 +21,7 @@
 // No dependencies: node bridge/server.mjs
 
 import { missingBaseEntities } from "./world-setup.mjs";
+import { familiesPlan } from "./families.mjs";
 import { createServer } from "node:http";
 import { execFile, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -311,9 +312,15 @@ const server = createServer(async (req, res) => {
       // + the names the project itself keeps (forests sent in batches: the batches already sent)
       if (Array.isArray(project.locked)) for (const x of project.locked) if (typeof x === "string" && x && !locked.includes(x)) locked.push(x);
       if (locked.length) console.log(`[apply] ${locked.length} locked name(s)/prefix(es) passed to the Workbench`);
+      // families of earlier sends that this full send no longer has: cleared too (floating rocks of an older map)
+      const famFile = join(PROFILE_DIR, "MapGen", "families.json");
+      let famStored = null;
+      try { const l = JSON.parse(readFileSync(famFile, "utf-8")); if (Array.isArray(l)) famStored = l; } catch {}
+      const fam = familiesPlan(famStored, project);
+      if (fam.clear.length) console.log(`[apply] families of earlier sends cleared: ${fam.clear.join(" ")}`);
       for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (/^mapgen\.\d+\.json$/.test(f)) rmSync(join(PROFILE_DIR, "MapGen", f));
       parts.forEach((p, k) => {
-        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0, ...(locked.length ? { locked } : {}) } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
+        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0, ...(locked.length ? { locked } : {}), ...(fam.clear.length ? { clearFamilies: fam.clear } : {}) } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
         writeFileSync(k === 0 ? PROJECT_FILE : join(PROFILE_DIR, "MapGen", `mapgen.${k}.json`), JSON.stringify(body), "utf-8");
       });
       console.log(`[apply] ${project.shapes.length} shapes, ${(project.entities ?? []).length} objects in ${parts.length} file(s)`);
@@ -322,6 +329,7 @@ const server = createServer(async (req, res) => {
       writeFileSync(join(PROFILE_DIR, "MapGen", "sent.txt"), sent.lines.join("\n"), "utf-8");
       rmSync(join(PROFILE_DIR, "MapGen", "built.txt"), { force: true });
       const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" }, 600_000); // big worlds take minutes
+      if (result.status !== "error") { try { writeFileSync(famFile, JSON.stringify(fam.after), "utf-8"); } catch {} }
       if (Array.isArray(project.comments)) await pushComments(project.comments).catch((e) => console.log("[apply] comments: " + e.message));
       // opt-in post-Apply world setup (MG_SetupWorldApi.c): managers, world-bounds rocks, save
       if (project.setupWorld && result.status !== "error") {

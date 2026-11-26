@@ -108,11 +108,15 @@ function splitLongLegs(pts: number[], max: number, closed: boolean): number[] {
   }
   return out
 }
+const insideTerrain = <E extends { x: number; z: number }>(es: E[], g: { minX: number; minZ: number; step: number; cols: number; rows: number }) =>
+  es.filter((e) => e.x >= g.minX && e.z >= g.minZ && e.x <= g.minX + (g.cols - 1) * g.step && e.z <= g.minZ + (g.rows - 1) * g.step)
 const toWb = async (p: Project) => {
   const before = p.shapes.reduce((n, sh) => n + sh.points.length, 0), count = p.shapes.length
   p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).map((sh) => (sh.kind === 'polyline' && sh.closed && !sh.lift?.length ? { ...sh, points: splitLongLegs(sh.points, 200, true) } : sh)).filter((sh) => sh.points.length >= 4) }
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   // Workbench layer per type and 2 km square, small props / fences tilted on the slope (VANILLA_PLACEMENT_OPTIM.md)
+  // nothing outside the terrain: an object past the edge stands in the void at its own height
+  if (p.entities?.length && island) p = { ...p, entities: insideTerrain(p.entities, island.grid) }
   if (p.entities?.length) { const ents = withWbLayers(p.entities); p = { ...p, entities: island ? withSlopeTilt(ents, islandHeightAt) : ents } }
   // every forest generator must avoid objects / roads / power lines (withAvoid forces it): 0 expected
   const noAvoid = forestAvoidMissing(p.shapes)
@@ -4576,7 +4580,7 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const relief = island ? (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message + '\n' : ''
     // opt-in: the bridge then adds the base world entities the world lacks (MG_SetupWorld, only when absent)
     const base = $<HTMLInputElement>('wbBase').checked ? { setupWorld: { managers: true, bounds: false, save: false } } : {}
-    const msg = relief + await toWb({ version: 0, shapes, entities, ...base }) + (deps ? '\n' + deps : '')
+    const msg = relief + await toWb({ version: 0, shapes, entities, ...base, replaceAll: true, keep: $<HTMLInputElement>('forestLater').checked ? ['FOREST_'] : [] }) + (deps ? '\n' + deps : '')
     sentSigs = stepSigs().slice(0, 6); sentSig = sentSigs.join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()
