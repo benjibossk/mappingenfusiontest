@@ -2761,14 +2761,19 @@ $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
   run(t('run.l.masks'), async () => {
     if (imgForestGen) await imgForestGen
     if (!island) throw new Error(t('err.genFirst'))
-    const r = await writeMasks({
-      addon: txt('tAddon'),
-      world: txt('tWorld'),
-      ...maskBody(island.surfaces),
-    })
-    return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '') + (r.satNote ? '\n' + t('hint.satNoVanilla') : '')
+    return masksNow()
   }),
 )
+/** writes the ground masks of the current map (masks button and "Tout envoyer": pictures 119 / 120, the mask files
+ *  on disk were still the previous map's when only "Tout envoyer" was used) */
+async function masksNow(): Promise<string> {
+  const r = await writeMasks({
+    addon: txt('tAddon'),
+    world: txt('tWorld'),
+    ...maskBody(island!.surfaces),
+  })
+  return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '') + (r.satNote ? '\n' + t('hint.satNoVanilla') : '')
+}
 
 // satmap texture source (licensing doubt on the BI middle textures): vanilla (default) or clean (no BI pixel)
 const satSourceSel = $<HTMLSelectElement>('satSource')
@@ -4598,9 +4603,15 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     depsEl.textContent = deps; depsEl.hidden = !deps
     // relief first: objects are dropped on the ground that is there when they are created
     const relief = island ? (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message + '\n' : ''
+    // the mask files follow the map sent (their import stays a separate step, wb-import-masks): a failure is
+    // reported, never blocks the send, and says the files on disk may be the previous map's
+    let masks = ''
+    if (island) {
+      try { masks = (await masksNow()) + '\n' } catch (err) { masks = t('log.masksStale', { msg: (err as Error).message }) + '\n' }
+    }
     // opt-in: the bridge then adds the base world entities the world lacks (MG_SetupWorld, only when absent)
     const base = $<HTMLInputElement>('wbBase').checked ? { setupWorld: { managers: true, bounds: false, save: false } } : {}
-    const msg = relief + await toWb({ version: 0, shapes, entities, ...base, replaceAll: true, keep: $<HTMLInputElement>('forestLater').checked ? ['FOREST_'] : [] }) + (deps ? '\n' + deps : '')
+    const msg = relief + masks + await toWb({ version: 0, shapes, entities, ...base, replaceAll: true, keep: $<HTMLInputElement>('forestLater').checked ? ['FOREST_'] : [] }) + (deps ? '\n' + deps : '')
     sentSigs = stepSigs().slice(0, 6); sentSig = sentSigs.join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()
