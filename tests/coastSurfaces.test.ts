@@ -83,3 +83,13 @@ test('computeSurfaces: inland water (wide picture river) gets grass banks with a
   assert.ok(w(after, 'BeachGrass_01', 70) < 0.01 && w(after, 'Pebbles_02', 70) < 0.01)
   assert.ok(w(after, 'Pebbles_02', 66) > 0.2, `pebble line at the edge ${w(after, 'Pebbles_02', 66)}`)
 })
+
+test('computeSurfaces: the shallow sea shelf off a gentle coast is mostly sand, not a shingle (dark rock) line', () => {
+  const cols = 101, rows = 101, step = 4
+  const heights: number[] = []
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) heights.push(r < 30 ? -30 : r < 40 ? -1.5 : 1) // sea, 40 m shelf, plain
+  const s = computeSurfaces({ minX: 0, minZ: 0, step, cols, rows }, heights, 40)
+  const w = (name: string) => { const g = s.find((q) => q.name === name)!; let t = 0; for (let r = 31; r < 39; r++) for (let c = 20; c < 80; c++) t += g.weights[r * cols + c]; return t / (8 * 60) }
+  assert.ok(w('Pebbles_02') < 0.45, `pebbles ${w('Pebbles_02')}`)
+  assert.ok(w('Dirt_02') > 0.4, `sand ${w('Dirt_02')}`)
+})

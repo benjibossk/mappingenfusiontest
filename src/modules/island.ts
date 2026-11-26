@@ -294,7 +294,13 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     // the map-edge ramp above the sea is no coast either: beach / coastal grass made a light band along the whole
     // edge slope (picture 120, x 2350-2400, round 9). A real shore there is gentle; the ramp is steep: plain grass
     const fakeCoast = h > 0 ? (1 - edgeRamp) * band(slope, 0.08, 0.15) : 0
-    const shore = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)) * (h > -0.5 ? 1 - band(toWater[i], 4, 10) : 1) * (1 - fakeCoast))
+    const shore0 = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)) * (h > -0.5 ? 1 - band(toWater[i], 4, 10) : 1) * (1 - fakeCoast))
+    // that strip is mostly sand, a few pebbles (beach sand above the water, sandy bed under it): all shingle, the
+    // shallow shelf (-2.5..-0.5 m, 90-100 % Pebbles_02) showed as a line of dark rocks along the whole gentle south
+    // coast of picture 120 (round 11)
+    const sandShare = 1 - 0.3 * (0.6 + 0.8 * variants((c * step) / 40, (r * step) / 40))
+    const dryShore = h > -0.5 ? shore0 * sandShare : 0, wetSand = h > -0.5 ? 0 : shore0 * sandShare
+    const shore = shore0 - dryShore - wetSand
     const nearBank = (1 - band(toOpen[i], COAST_BEACH_M, COAST_BEACH_M * 2.5)) * (1 - fakeCoast), nearCoast = (1 - band(toWater[i], COAST_GRASS_M, COAST_GRASS_M * 2.5)) * (1 - fakeCoast)
     const beach = take((1 - band(h, 3.5, 5)) * nearBank)
     // [M] shore band 0-10 m above the sea: Pebbles_02 20-30 % + BeachGrass 10-14 % (FIELDS_SURFACES_VANILLA §3)
@@ -321,8 +327,8 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     weights.SeaBed_01.push(deep)
     weights.Pebbles_01.push(bed)
     weights.Pebbles_02.push(shore + pebbles + pebbleLine)
-    weights.Dirt_02.push(bare + villageDirt) // sandy look
-    weights.BeachGrass_01.push(beach + sand)
+    weights.Dirt_02.push(bare + villageDirt + wetSand) // sandy look
+    weights.BeachGrass_01.push(beach + sand + dryShore)
     weights.Grass_03_coastal.push(coastal)
     weights.Rock_01.push(rock)
     weights.Debris_Rock_01.push(scree)
