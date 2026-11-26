@@ -207,6 +207,13 @@ try {
   const src = readFileSync(new URL("../src/data/buildings.ts", import.meta.url), "utf-8");
   for (const m of src.matchAll(/\['(\{[0-9A-F]{16}\}[^']+\.et)',[^\]]*?(-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\]/g))
     FOOT.set(m[1].split("/").pop(), [m[2], m[3], m[4], m[5]].map(Number));
+  // rows written as ...box(w, dz, cx, cz) (Soviet houses): same rounding as buildings.ts box(); without them a
+  // 46°-yawed House_Prefab_2I01 fell back to its AABB (seed 11 Soviet send: 3 false poles "inside" it)
+  const r10 = (v) => Math.round(v * 10) / 10;
+  for (const m of src.matchAll(/\['(\{[0-9A-F]{16}\}[^']+\.et)',[^\]]*?\.\.\.box\((-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\)\]/g)) {
+    const [w, d, cx, cz] = [m[2], m[3], m[4], m[5]].map(Number);
+    FOOT.set(m[1].split("/").pop(), [r10(cx - w / 2), r10(cz - d / 2), r10(cx + w / 2), r10(cz + d / 2)]);
+  }
 } catch {}
 function inOriented(b, x, z) {
   const f = FOOT.get(b.prefab.split("/").pop());
