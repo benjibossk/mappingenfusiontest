@@ -344,7 +344,7 @@ export interface ImageMapOptions {
 }
 
 export interface ImgRoad { pts: number[]; width: number; kind: 'road' | 'path' }
-export interface ImgWater { kind: 'river' | 'lake'; pts: number[]; width: number; /** river: width (m) at each point */ widths?: number[] }
+export interface ImgWater { kind: 'river' | 'lake'; pts: number[]; width: number; /** river: width (m) at each point */ widths?: number[]; /** lake: a swelling of a river (its level follows the banks, not 0) */ onRiver?: boolean }
 export interface ImgBuilding { x: number; z: number; yaw: number; prefab: string; cat: BuildingCat; corners: number[]; len: number; wid: number }
 export interface ImgArea { kind: 'forest' | 'field'; pts: number[]; holes: number[][] }
 export interface ImageMapResult {
@@ -961,6 +961,18 @@ export function extractWater(m: Uint8Array, w: number, h: number, mpp: number): 
         for (let i = 0; i < sp.length; i += 2) widths.push(Math.round(Math.max(4, 2 * localHalf(half, w, h, sp[i], sp[i + 1]) * mpp)))
         const sorted = [...widths].sort((a, b) => a - b)
         out.push({ kind: 'river', pts: toWorld(sp, mpp, h), width: sorted[sorted.length >> 1], widths })
+      }
+      // a lake swelling along the river (picture 119 east of the town, ~200 m across a 100 m river): the ribbon
+      // only covers the river width, the swelling (parts wider than 1.8 x the median width, 4 ha+) becomes a lake
+      const r = Math.max(2, 1.8 * (hw.length ? hw[hw.length >> 1] : 1))
+      const core = new Uint8Array(w * h)
+      let nCore = 0
+      for (const i of comp) if (half[i] > r) { core[i] = 1; nCore++ }
+      if (nCore) {
+        const dc = edt(core, w, h), bulge = new Uint8Array(w * h)
+        let n = 0
+        for (const i of comp) if (dc[i] <= r) { bulge[i] = 1; n++ }
+        if (n * mpp * mpp >= 40000) for (const o of outlines(bulge, w, h, mpp, 40000)) out.push({ kind: 'lake', pts: o.pts, width: 0, onRiver: true })
       }
     } else for (const o of outlines(cm, w, h, mpp, 400)) out.push({ kind: 'lake', pts: o.pts, width: 0 })
   }

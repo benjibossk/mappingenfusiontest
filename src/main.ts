@@ -2666,7 +2666,7 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   for (const x of r.roads) { const type = roadClass(x.width, median, x.kind); roads.push({ id: nextRoadId(type), type, pts: x.pts }) }
   for (const x of r.waters) {
     if (x.kind === 'river') waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, ...(x.widths ? { widths: x.widths } : {}), depth: PICTURE_RIVER_DEPTH, carve: false, wetEdge: true })
-    else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: 2, level: 0 })
+    else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: 2, ...(x.onRiver ? {} : { level: 0 }) }) // a river swelling: level from its banks
   }
   r.areas.forEach((a, k) => areas.push({ id: `${a.kind === 'forest' ? 'FOREST' : 'FIELD'}_IMG_${k + 1}`, kind: a.kind, ...(a.kind === 'forest' ? { leaf: 'mixed' as const } : {}), pts: a.pts, holes: a.holes }))
   // field edges of the picture: hedges, as the Fields zone tool lays them
