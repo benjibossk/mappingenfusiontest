@@ -38,3 +38,7 @@ test('familiesPlan: a family missing from the record (delete failed before) is s
   assert.ok(p.clear.includes('PARCEL_'))
   assert.ok(!p.clear.includes('ROAD_') && !p.clear.includes('IMG_'))
 })
+
+test('APP_FAMILIES: settlements and dams are cleared by a full send', () => {
+  for (const f of ['TOWN_', 'VILLAGE_', 'HAMLET_', 'DAM_', 'AIR_', 'LAMP_']) assert.ok(APP_FAMILIES.includes(f), f)
+})

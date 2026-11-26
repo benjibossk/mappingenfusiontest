@@ -22,6 +22,7 @@ export const BASE_CLASSES = {
   FogHaze: ["GenericWorldFogEntity"], GenericWorldPP: ["GenericWorldPPEffect"], TimeAndWeatherManager: ["TimeAndWeatherManagerEntity"],
   EnvProbe: ["EnvironmentProbeEntity", "GameEnvironmentProbeEntity"], DestructionManager: ["SCR_DestructionManager"],
   MPDestructionManager: ["SCR_MPDestructionManager"], PreloadManager: ["BasePreloadManager", "SCR_PreloadManager"], SoundWorld: ["SoundWorld"],
+  MapEntity: ["SCR_MapEntity"],
 };
 
 /** names of the base entities missing from a world text (.ent + layers) */

@@ -5,7 +5,10 @@
 
 /** what the app has ever named its objects with: assumed present when families.json is missing (older sends) */
 export const APP_FAMILIES = ["ROAD_", "WATER_", "FOREST_", "FIELD_", "SET_", "CLIFF_", "SCAT_", "TREE_", "POWER_", "PSTA_", "MW_", "IMG_", "VAN_", "PARCEL_",
-  "ACCESS_", "SITE_", "RP_", "RIPA_", "REF_", "RB_", "PLANT_", "OSM_", "MIL_", "JCT_", "IND_", "FEEDER_", "FARM_"];
+  "ACCESS_", "SITE_", "RP_", "RIPA_", "REF_", "RB_", "PLANT_", "OSM_", "MIL_", "JCT_", "IND_", "FEEDER_", "FARM_",
+  // settlements (worldgen TOWN_/VILLAGE_/HAMLET_ sites), dams, airfields, street lamps, field trees, scatter, kept roads:
+  // missing here, TOWN_ and DAM_ were never cleared and piled up under the same names (650 duplicates, 2026-11-26)
+  "TOWN_", "VILLAGE_", "HAMLET_", "DAM_", "AIR_", "LAMP_", "STREETLIGHTS_", "TREES_", "VEG_", "EXIST_"];
 
 export function familyOf(id) {
   const u = String(id ?? "").indexOf("_");
