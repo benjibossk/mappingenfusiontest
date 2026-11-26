@@ -28,6 +28,7 @@ export interface Water {
   depth: number // depth below the water level, metres
   auto?: boolean // traced from the simulated rivers (replaced on regeneration)
   carve?: boolean // river: dig a bed; otherwise the water just lies on the ground (banks may cover it)
+  wetEdge?: boolean // river: ground under the water up to the traced edge (map from a picture), banks start outside
   level?: number // lake: fixed water level (dam reservoir, dam.ts); absent = from the shore
 }
 
@@ -106,6 +107,7 @@ const inside = (pts: number[], x: number, z: number) => {
 const RIVER_SURFACE = 0.5
 const RIVER_OVERWIDTH = 1.3
 const RIVER_BANK = 0.5 // bank top above the water
+const RIVER_EDGE = 0.15 // ground under the water at the traced edge
 const RIVER_MAXCUT = 2.5
 const sstep = (t: number) => { const u = Math.min(1, Math.max(0, t)); return u * u * (3 - 2 * u) }
 
@@ -209,8 +211,12 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
             const depth = w.depth * Math.min(1, (along + tt * segLen) / ramp)
             let v: number
             if (d <= half) {
-              const t = Math.max(0, (d / half - 0.4) / 0.6) // flat bed to 40 %, then up to the bank top
-              v = wl - depth + (depth + RIVER_BANK) * sstep(t)
+              // flat bed to 40 %, then up to just under the water at the traced edge: the whole river surface
+              // (the Workbench river is drawn at the traced width) covers water. Rising to the bank top inside
+              // it left the outer ~20 % above the surface, ground lumps on the water along the banks (picture 120)
+              const t = Math.max(0, (d / half - 0.4) / 0.6)
+              // (wetEdge: rivers of a map from a picture; generated rivers keep their bank-top profile, pads rely on it)
+              v = w.wetEdge ? wl - depth + (depth - RIVER_EDGE) * sstep(t) : wl - depth + (depth + RIVER_BANK) * sstep(t)
             } else v = wl + RIVER_BANK + (at(x, z) - wl - RIVER_BANK) * sstep((d - half) / fall)
             if (at(x, z) < 0) v = Math.min(v, at(x, z)) // never build banks up in the sea
             shapedScore[k] = score

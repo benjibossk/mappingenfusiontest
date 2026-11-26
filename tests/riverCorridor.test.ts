@@ -7,7 +7,7 @@ import { cliffRocks } from '../src/modules/cliffRocks.ts'
 // a carve:false water whose banks are steps too (the steepest ranks of the map: what attracts cliff rocks)
 const step = 4, cols = 201, rows = 201
 const g = { minX: 0, minZ: 0, step, cols, rows }
-const river: Water = { id: 'R1', type: 'river', pts: [0, 400, 200, 410, 400, 395, 600, 405, 800, 400], width: 14, depth: 1.5, carve: false }
+const river: Water = { id: 'R1', type: 'river', pts: [0, 400, 200, 410, 400, 395, 600, 405, 800, 400], width: 14, depth: 1.5, carve: false, wetEdge: true }
 const course = riverCourse(river.pts, river.width)
 const edgeDist = (x: number, z: number) => {
   let b = Infinity
@@ -47,4 +47,16 @@ test('cliff rocks on a stepped image relief: attracted by the river banks, kept 
   const kept = cliffRocks({ ...base, ok: (x, z) => !rc.near(x, z, 10) }).filter((e) => !rc.near(e.x, e.z, 10))
   assert.ok(kept.length > 0)
   for (const e of kept) assert.ok(edgeDist(e.x, e.z) >= 10, `${e.prefab} at ${edgeDist(e.x, e.z).toFixed(1)} m from the water`)
+})
+
+test('carveWater: the whole traced river width is under the water (no bank lumps on the river surface)', async () => {
+  const { carveWater } = await import('../src/modules/water.ts')
+  const n = 101, st = 4, hs: number[] = []
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) hs.push(1 + 0.02 * c) // gentle slope, picture-map ground at ~1 m
+  const w: Water = { id: 'R', type: 'river', pts: [40, 200, 360, 200], width: 40, depth: 1.5, carve: false, wetEdge: true }
+  const lv = carveWater(hs, { minX: 0, minZ: 0, step: st, cols: n, rows: n }, [w])
+  let wet = 0, dry = 0
+  for (let k = 0; k < hs.length; k++) if (lv.wet[k]) { wet++; if (hs[k] > lv.level[k]) dry++ }
+  assert.ok(wet > 300, `wet ${wet}`)
+  assert.equal(dry, 0, `${dry} of ${wet} river cells above the water`)
 })
