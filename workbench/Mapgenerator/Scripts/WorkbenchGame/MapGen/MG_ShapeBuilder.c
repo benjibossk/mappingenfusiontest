@@ -7,7 +7,7 @@ class MG_ShapeBuilder
 	//! points: world X/Z pairs, the first one is the shape origin.
 	//! generator: resource name "{GUID}path" or a bare path (resolved here). Empty = no generator.
 	//! spline: SplineShapeEntity (road generators refuse polylines), else PolylineShapeEntity.
-	static IEntitySource Create(WorldEditorAPI api, string name, array<float> pointsXZ, bool closed, string generator, bool spline = false, array<string> paramKeys = null, array<string> paramValues = null, int layer = -1, array<float> lift = null, bool powerSource = false)
+	static IEntitySource Create(WorldEditorAPI api, string name, array<float> pointsXZ, bool closed, string generator, bool spline = false, array<string> paramKeys = null, array<string> paramValues = null, int layer = -1, array<float> lift = null, bool powerSource = false, array<int> junctions = null, bool perPoint = false)
 	{
 		// drop points closer than 0.5 m to the previous kept one (and a closing point on top of the first):
 		// zero-length segments make ForestGeneratorEntity divide by zero (BadFloat assertion, 1.9)
@@ -91,6 +91,44 @@ class MG_ShapeBuilder
 			ok = ok && api.SetVariableValue(shapeSrc, j0, "m_bPowerSource", "1");
 			if (!ok)
 				Print("[MapGen] " + name + ": cannot mark point 0 as power source", LogLevel.WARNING);
+		}
+
+		// branch points: same Data / m_JunctionData, left at its defaults (the generator puts its junction pole there)
+		if (junctions)
+		{
+			int npts = pointsXZ.Count() / 2;
+			foreach (int ji : junctions)
+			{
+				if (ji < 0 || ji >= npts || (ji == 0 && powerSource))
+					continue;
+				array<ref ContainerIdPathEntry> pj = { new ContainerIdPathEntry("Points", ji) };
+				bool jok = api.CreateObjectArrayVariableMember(shapeSrc, pj, "Data", "SCR_PowerlineGeneratorPointData", 0);
+				array<ref ContainerIdPathEntry> dj = { new ContainerIdPathEntry("Points", ji), new ContainerIdPathEntry("Data", 0) };
+				jok = jok && api.CreateObjectVariableMember(shapeSrc, dj, "m_JunctionData", "SCR_PowerlineGeneratorJunctionData");
+				if (!jok)
+					Print("[MapGen] " + name + ": cannot mark point " + ji + " as junction", LogLevel.WARNING);
+			}
+		}
+
+		// one pole per point (m_bGeneratePerPoint on every point, SCR_PowerlineGeneratorEntity skips its own
+		// m_fDistance walk between two per-point anchors): the web tool knows every pole foot and keeps it off the roads
+		if (perPoint)
+		{
+			int npp = pointsXZ.Count() / 2;
+			for (int pp; pp < npp; pp++)
+			{
+				bool hasData = (pp == 0 && powerSource);
+				if (junctions && junctions.Contains(pp))
+					hasData = true;
+				array<ref ContainerIdPathEntry> ppath = { new ContainerIdPathEntry("Points", pp) };
+				bool pok = true;
+				if (!hasData)
+					pok = api.CreateObjectArrayVariableMember(shapeSrc, ppath, "Data", "SCR_PowerlineGeneratorPointData", 0);
+				array<ref ContainerIdPathEntry> pdata = { new ContainerIdPathEntry("Points", pp), new ContainerIdPathEntry("Data", 0) };
+				pok = pok && api.SetVariableValue(shapeSrc, pdata, "m_bGeneratePerPoint", "1");
+				if (!pok)
+					Print("[MapGen] " + name + ": cannot set point " + pp + " per point", LogLevel.WARNING);
+			}
 		}
 
 		if (generator.IsEmpty())
