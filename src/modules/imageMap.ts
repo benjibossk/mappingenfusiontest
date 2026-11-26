@@ -1070,3 +1070,50 @@ export function inImageWater(waters: ImgWater[], x: number, z: number, margin = 
   }
   return false
 }
+
+/** drawn buildings off the roads as sent (vanilla carriageway half widths, roads after the water split have the
+ *  same lines): a footprint reaching into a carriageway (+ `clear` m) is pushed out across the road by up to
+ *  `maxShift` m, else left out. Picture 120: a shed 1.3 m and a house 2 m from a road centre line */
+export function clearOfRoads<B extends { x: number; z: number; corners: number[] }>(list: B[], roads: { pts: number[]; half: number }[], clear = 1, maxShift = 8): B[] {
+  const segs: { ax: number; az: number; bx: number; bz: number; half: number }[] = []
+  for (const r of roads) for (let i = 0; i + 3 < r.pts.length; i += 2) segs.push({ ax: r.pts[i], az: r.pts[i + 1], bx: r.pts[i + 2], bz: r.pts[i + 3], half: r.half })
+  const near = (x: number, z: number) => {
+    // deepest reach into a carriageway at (x, z): depth and the way out (unit vector from the road)
+    let depth = 0, nx = 0, nz = 0
+    for (const s of segs) {
+      const dx = s.bx - s.ax, dz = s.bz - s.az, L2 = dx * dx + dz * dz || 1
+      const t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / L2))
+      const px = s.ax + dx * t, pz = s.az + dz * t, d = Math.hypot(x - px, z - pz)
+      const p = s.half + clear - d
+      if (p > depth) {
+        depth = p
+        if (d > 0.01) { nx = (x - px) / d; nz = (z - pz) / d } else { const L = Math.sqrt(L2); nx = -dz / L; nz = dx / L }
+      }
+    }
+    return { depth, nx, nz }
+  }
+  const out: B[] = []
+  for (const b of list) {
+    let ox = 0, oz = 0, ok = false
+    for (let it = 0; it < 6; it++) {
+      const c = b.corners, pts: number[] = [b.x + ox, b.z + oz]
+      for (let i = 0; i + 1 < c.length; i += 2) {
+        const j = (i + 2) % c.length
+        pts.push(c[i] + ox, c[i + 1] + oz, (c[i] + c[j]) / 2 + ox, (c[i + 1] + c[j + 1]) / 2 + oz)
+      }
+      // the centre's way out wins (a road through the house: the house goes to the side it mostly stands on)
+      let worst = { depth: 0, nx: 0, nz: 0 }
+      for (let i = 0; i < pts.length; i += 2) { const q = near(pts[i], pts[i + 1]); if (q.depth > worst.depth) worst = q }
+      if (worst.depth <= 0.01) { ok = true; break }
+      const ctr = near(b.x + ox, b.z + oz)
+      const nx = ctr.depth > 0 ? ctr.nx : worst.nx, nz = ctr.depth > 0 ? ctr.nz : worst.nz
+      ox += nx * (worst.depth + 0.05); oz += nz * (worst.depth + 0.05)
+      if (Math.hypot(ox, oz) > maxShift) break
+    }
+    if (!ok) continue
+    if (!ox && !oz) { out.push(b); continue }
+    const r2 = (v: number) => Math.round(v * 100) / 100
+    out.push({ ...b, x: r2(b.x + ox), z: r2(b.z + oz), corners: b.corners.map((v, i) => r2(v + (i % 2 ? oz : ox))) })
+  }
+  return out
+}

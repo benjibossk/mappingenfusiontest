@@ -158,7 +158,7 @@ import { suggestAirfield, parseAirfieldSub, generateAirfield, flattenAirfield, a
 import { airFootprint, airfieldConflicts, airfieldCost, clearAirfield, inFoot, snapAirfield, type ClearReport, type ClearWorld } from './modules/airClear'
 import { heightAt as gridHeight } from './modules/gen-common'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
-import { IMAGE_FOREST_SHARE, IMG_ROLES, guessRoles as guessImgRoles, inImageWater, roadClass, squareHeights, type ClusterRole, type ImageMapResult, type ImgRole } from './modules/imageMap'
+import { IMAGE_FOREST_SHARE, IMG_ROLES, clearOfRoads, guessRoles as guessImgRoles, inImageWater, roadClass, squareHeights, type ClusterRole, type ImageMapResult, type ImgRole } from './modules/imageMap'
 import { withSlopeTilt } from './modules/slopeAlign'
 import { LAYERS as GEN_LAYERS, withWbLayers, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
 import { applyPads, gradeLanes, layPads } from './modules/pads'
@@ -2680,7 +2680,7 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
     }
   }
   // no house in the water: off the traced river / lakes and off ground carved under the water level
-  settled = r.buildings.filter((b) => !inImageWater(r.waters, b.x, b.z, 6) && !(terrain && heightAt(terrain, b.x, b.z) < 1)).map((b, i) => ({ id: `IMG_BLD_${i + 1}`, site: 'IMG', prefab: b.prefab, cat: b.cat, x: b.x, z: b.z, yaw: b.yaw, corners: b.corners, role: 'house' as const }))
+  settled = clearOfRoads(r.buildings, roads.map((q) => ({ pts: q.pts, half: roadHalf(q) }))).filter((b) => !inImageWater(r.waters, b.x, b.z, 6) && !(terrain && heightAt(terrain, b.x, b.z) < 1)).map((b, i) => ({ id: `IMG_BLD_${i + 1}`, site: 'IMG', prefab: b.prefab, cat: b.cat, x: b.x, z: b.z, yaw: b.yaw, corners: b.corners, role: 'house' as const }))
   $<HTMLInputElement>('tMax').value = String(Math.max(1, Math.ceil(hi)))
   $<HTMLInputElement>('tSeaLevel').value = '0'
   // the picture stays under the map as a tracing image (square pictures only: the tracing fills the terrain)
