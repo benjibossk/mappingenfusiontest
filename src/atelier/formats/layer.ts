@@ -153,7 +153,7 @@ export function wallType(prefab: string): WallKind | null {
 
 export interface LayerObjects {
   roads: { type: RoadSurface; pts: [number, number][] }[]
-  buildings: { x: number; z: number; type: BuildingKind }[]
+  buildings: { x: number; z: number; type: BuildingKind; yaw?: number; prefab?: string }[]
   trees: { x: number; z: number; type: TreeKind }[]
   port: { x: number; z: number; yaw: number; type: PortKind; prefab: string }[]
   walls: { x: number; z: number; yaw: number; type: WallKind; prefab: string }[]
@@ -187,7 +187,7 @@ export function layerObjects(lines: string[]): LayerObjects {
   const placed = (f: Frame, i: number) => {
     const p = f.prefab!
     const [x, z] = toWorld(i, f.local![0], f.local![1]), yaw = world(i)[2] + f.yaw
-    const b = buildingType(p); if (b) { out.buildings.push({ x, z, type: b }); return }
+    const b = buildingType(p); if (b) { out.buildings.push({ x, z, type: b, yaw, prefab: p }); return }
     const tr = treeType(p); if (tr) { out.trees.push({ x, z, type: tr }); return }
     const pk = portType(p); if (pk) { out.port.push({ x, z, yaw, type: pk, prefab: p }); return }
     const w = wallType(p); if (w) out.walls.push({ x, z, yaw, type: w, prefab: p })

@@ -56,7 +56,7 @@ Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
 | # | Tâche | État |
 |---|---|---|
 | 18 | Sélecteur de qualité + compteur arbres / FPS | ✅ compteur arbres affichés + objets + FPS dans la vue 3D |
-| 19 | Vraies emprises des prefabs (bbox des .xob) | 🟡 dimensions réelles sites / militaire / ponts / mods ; reste l'Atelier |
+| 19 | Vraies emprises des prefabs (bbox des .xob) | ✅ dimensions réelles sites / militaire / ponts / mods ; Atelier : emprises réelles orientées des bâtiments et du port (`src/atelier/footprints.ts`), détection des chevauchements (pas encore affichée dans l'interface) |
 | 20 | Forêts visibles en mode Carte quand les arbres sont masqués | ✅ (teinte + contour sur le drapé, commit 0731d34) |
 | 21 | Case « compositions réelles » (jardins Casseburne) dans l'app | ✅ déjà là : case « Vraies compositions de jardins » (étape Villages) |
 
