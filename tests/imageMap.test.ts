@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  annotationAndShore, nearWater, clusterImage, closeMask, edt, extractBuildings, guessRoles, hatchZone, imageToMap, joinGaps, nearestBuilding,
+  annotationAndShore, inImageWater, nearWater, clusterImage, closeMask, edt, extractBuildings, guessRoles, hatchZone, imageToMap, joinGaps, nearestBuilding,
   reliefFromLevels, roadClass, simplify, splitDark, thin, traceSkeleton, type ClusterRole,
   extractWater, fieldEdges, regularRow, smoothRing, type ImgRoad,
 } from '../src/modules/imageMap.ts'
@@ -220,4 +220,14 @@ test('roads: red annotations and river banks never hold a road line', () => {
 test('guessRoles: dark olive road casing is a road, a red frame is ignored', () => {
   const r = guessRoles({ lab: [[74, -3, 8], [44, -3, 14], [36, 20, 26], [55, 10, 15]], share: [0.5, 0.05, 0.02, 0.01] })
   assert.deepEqual(r.map((x) => x.role), ['land', 'road', 'ignore', 'ignore'])
+})
+
+test('inImageWater: buildings in a river or a lake (or on its bank) are dropped', () => {
+  const river = { kind: 'river' as const, pts: [0, 0, 100, 0], width: 20 }
+  const lake = { kind: 'lake' as const, pts: [200, 0, 300, 0, 300, 100, 200, 100], width: 0 }
+  assert.equal(inImageWater([river], 50, 12, 6), true) // bank, 2 m from the water
+  assert.equal(inImageWater([river], 50, 30, 6), false)
+  assert.equal(inImageWater([lake], 250, 50), true)
+  assert.equal(inImageWater([lake], 250, 104), true)
+  assert.equal(inImageWater([lake], 250, 120), false)
 })

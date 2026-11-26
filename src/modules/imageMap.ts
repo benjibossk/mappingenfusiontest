@@ -988,3 +988,26 @@ export function squareHeights(hm: { w: number; h: number; data: Float32Array }):
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) out[y * n + x] = hm.data[Math.max(0, y - top) * hm.w + Math.min(hm.w - 1, x)]
   return { w: n, h: n, data: out, normalized: false }
 }
+
+/** true when (x, z) is in a water body of the picture or closer than `margin` m to its bank
+ *  (river: half its local width; lake: inside the ring or near its edge) */
+export function inImageWater(waters: ImgWater[], x: number, z: number, margin = 6): boolean {
+  for (const w of waters) {
+    const p = w.pts, n = p.length / 2
+    if (w.kind === 'lake') {
+      let ins = false
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = p[i * 2], zi = p[i * 2 + 1], xj = p[j * 2], zj = p[j * 2 + 1]
+        if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) ins = !ins
+      }
+      if (ins) return true
+    }
+    for (let i = 0; i + 1 < n; i++) {
+      const ax = p[i * 2], az = p[i * 2 + 1], dx = p[i * 2 + 2] - ax, dz = p[i * 2 + 3] - az, L2 = dx * dx + dz * dz || 1
+      const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
+      const half = w.kind === 'river' ? Math.max(w.widths?.[i] ?? w.width, w.widths?.[i + 1] ?? w.width) / 2 : 0
+      if (Math.hypot(x - ax - dx * t, z - az - dz * t) < half + margin) return true
+    }
+  }
+  return false
+}
