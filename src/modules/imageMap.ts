@@ -963,7 +963,7 @@ export function extractWater(m: Uint8Array, w: number, h: number, mpp: number): 
         out.push({ kind: 'river', pts: toWorld(sp, mpp, h), width: sorted[sorted.length >> 1], widths })
       }
       // a lake swelling along the river (picture 119 east of the town, ~200 m across a 100 m river): the ribbon
-      // only covers the river width, the swelling (parts wider than 1.8 x the median width, 4 ha+) becomes a lake
+      // only covers the river width, the swelling (parts wider than 1.8 x the median width, 2.5 ha+; picture 120 south tail was a flat plain 0.3-0.8 m over the sea, dark in game) becomes a lake
       const r = Math.max(2, 1.8 * (hw.length ? hw[hw.length >> 1] : 1))
       const core = new Uint8Array(w * h)
       let nCore = 0
@@ -972,7 +972,7 @@ export function extractWater(m: Uint8Array, w: number, h: number, mpp: number): 
         const dc = edt(core, w, h), bulge = new Uint8Array(w * h)
         let n = 0
         for (const i of comp) if (dc[i] <= r) { bulge[i] = 1; n++ }
-        if (n * mpp * mpp >= 40000) for (const o of outlines(bulge, w, h, mpp, 40000)) out.push({ kind: 'lake', pts: o.pts, width: 0, onRiver: true })
+        if (n * mpp * mpp >= 25000) for (const o of outlines(bulge, w, h, mpp, 25000)) out.push({ kind: 'lake', pts: o.pts, width: 0, onRiver: true })
       }
     } else for (const o of outlines(cm, w, h, mpp, 400)) out.push({ kind: 'lake', pts: o.pts, width: 0 })
   }
