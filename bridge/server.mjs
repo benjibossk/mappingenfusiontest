@@ -89,7 +89,20 @@ function setupWorldParams(o, size) {
     normalMenu: String(b.normalMenu ?? ""), bordersMenu: String(b.bordersMenu ?? "") };
 }
 
-function callWorkbench(apiFunc, params = {}, timeoutMs = 120_000) {
+// The NET API listener refuses connections for a while after a long call (heightmap / setup world):
+// a refused connection is retried for up to 90 s instead of failing the whole send (picture 120, round 9: MG_ApplyProject ECONNREFUSED).
+async function callWorkbench(apiFunc, params = {}, timeoutMs = 120_000) {
+  const until = Date.now() + (timeoutMs >= 60_000 ? 90_000 : 0);
+  for (;;) {
+    try { return await callWorkbenchOnce(apiFunc, params, timeoutMs); }
+    catch (e) {
+      if (!/ECONNREFUSED/.test(e.message) || Date.now() > until) throw e;
+      await new Promise((ok) => setTimeout(ok, 3000));
+    }
+  }
+}
+
+function callWorkbenchOnce(apiFunc, params = {}, timeoutMs = 120_000) {
   const version = Buffer.alloc(4);
   version.writeInt32LE(1);
   const request = Buffer.concat([
@@ -506,6 +519,7 @@ const server = createServer(async (req, res) => {
 
     send(res, 404, { error: "unknown route" });
   } catch (e) {
+    console.error(`[bridge] ${req.method} ${req.url} failed: ${e.message}`);
     send(res, 502, { error: e.message });
   }
 });
