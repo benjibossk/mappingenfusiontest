@@ -1,0 +1,159 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import {
+  clusterImage, closeMask, edt, extractBuildings, guessRoles, hatchZone, imageToMap, joinGaps, nearestBuilding,
+  reliefFromLevels, roadClass, simplify, splitDark, thin, traceSkeleton, type ClusterRole,
+} from '../src/modules/imageMap.ts'
+
+const mask = (w: number, h: number, on: (x: number, y: number) => boolean) => {
+  const m = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (on(x, y)) m[y * w + x] = 1
+  return m
+}
+
+test('edt: exact distances to the nearest set pixel', () => {
+  const m = mask(9, 9, (x, y) => x === 4 && y === 4)
+  const d = edt(m, 9, 9)
+  assert.equal(d[4 * 9 + 4], 0)
+  assert.equal(d[4 * 9 + 7], 3)
+  assert.ok(Math.abs(d[0] - Math.hypot(4, 4)) < 1e-6)
+  assert.equal(edt(new Uint8Array(4), 2, 2)[0], Infinity)
+})
+
+test('thin + traceSkeleton: a thick bar becomes one centre line', () => {
+  const w = 60, h = 20
+  const sk = thin(mask(w, h, (x, y) => x >= 5 && x < 55 && y >= 8 && y <= 12), w, h)
+  const lines = traceSkeleton(sk, w, h).filter((l) => l.length >= 10)
+  assert.equal(lines.length, 1)
+  const l = lines[0]
+  for (let i = 1; i < l.length; i += 2) assert.ok(Math.abs(l[i] - 10) <= 1)
+  assert.ok(Math.abs(l[0] - l[l.length - 2]) > 40)
+})
+
+test('traceSkeleton: a cross gives 4 branches meeting at the junction', () => {
+  const w = 41, h = 41
+  const sk = thin(mask(w, h, (x, y) => (Math.abs(y - 20) <= 1 && x > 2 && x < 38) || (Math.abs(x - 20) <= 1 && y > 2 && y < 38)), w, h)
+  const long = traceSkeleton(sk, w, h).filter((l) => l.length / 2 >= 8)
+  assert.equal(long.length, 4)
+})
+
+test('simplify keeps the corners of a polyline', () => {
+  const p = [0, 0, 1, 0.1, 2, 0, 3, 0.1, 4, 0, 4, 1, 4, 2, 4, 3]
+  assert.deepEqual(simplify(p, 0.5), [0, 0, 4, 0, 4, 3])
+})
+
+test('joinGaps: collinear dashes join, a perpendicular stub does not', () => {
+  const a = [0, 0, 10, 0], b = [14, 0, 24, 0], c = [12, 3, 12, 13]
+  const out = joinGaps([a, b, c], 6)
+  assert.equal(out.length, 2)
+  const long = out.find((l) => l.length === 8)!
+  assert.deepEqual([long[0], long[long.length - 2]].sort((x, y) => x - y), [0, 24])
+  assert.equal(joinGaps([a, [30, 0, 40, 0]], 6).length, 2) // gap too wide
+})
+
+test('guessRoles: tactical map palette (land, water, bands, roads, overlays)', () => {
+  const lab: [number, number, number][] = [[74, -3, 8], [62, -13, -4], [71, 5, 11], [68, 11, 16], [63, 25, 25], [57, -1, 8], [9, 2, 9], [44, -4, 14], [36, 34, 28], [99, 0, 1], [65, -9, 9]]
+  const share = [0.4, 0.06, 0.2, 0.1, 0.02, 0.02, 0.005, 0.05, 0.006, 0.006, 0.05]
+  const r = guessRoles({ lab, share })
+  assert.deepEqual(r.map((x) => x.role), ['land', 'water', 'band', 'band', 'band', 'road', 'building', 'ignore', 'ignore', 'ignore', 'forest'])
+  // redder bands are higher
+  assert.ok(r[2].height! < r[3].height! && r[3].height! < r[4].height!)
+})
+
+test('reliefFromLevels: bands rise, water is carved, smooth across band edges', () => {
+  const w = 80, h = 20
+  // water | land | band 1 | band 2, columns of 20 px
+  const lvl = new Int16Array(w * h)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) lvl[y * w + x] = x < 20 ? -1 : x < 40 ? 0 : x < 60 ? 1 : 2
+  const H = reliefFromLevels(lvl, w, h, [20, 40], { shore: 1, depth: 4, mpp: 4, smooth: 4 })
+  const at = (x: number) => H[10 * w + x]
+  assert.ok(at(5) < 0, 'water below the surface')
+  assert.ok(at(25) > 0 && at(25) < at(50) && at(50) < at(75), 'rising')
+  // no cliff at the band edge: neighbours differ by a few metres only
+  for (let x = 21; x < w; x++) assert.ok(Math.abs(at(x) - at(x - 1)) < 4, `step at ${x}`)
+})
+
+test('extractBuildings: a rotated dark rectangle -> one house of that footprint and orientation', () => {
+  const w = 60, h = 60, mpp = 1
+  // 16 x 8 m rectangle, long axis along world +X (image x)
+  const m = mask(w, h, (x, y) => x >= 22 && x < 38 && y >= 26 && y < 34)
+  const b = extractBuildings(m, w, h, mpp)
+  assert.equal(b.length, 1)
+  const c = b[0]
+  assert.ok(Math.abs(c.len - 16) < 1.5 && Math.abs(c.wid - 8) < 1.5)
+  // footprint centre at the blob centre (world z = h - y)
+  const cx = (c.corners[0] + c.corners[2] + c.corners[4] + c.corners[6]) / 4, cz = (c.corners[1] + c.corners[3] + c.corners[5] + c.corners[7]) / 4
+  assert.ok(Math.abs(cx - 30) < 1 && Math.abs(cz - 30) < 1)
+  // long side of the footprint along X
+  const e1 = Math.hypot(c.corners[2] - c.corners[0], c.corners[3] - c.corners[1]), e2 = Math.hypot(c.corners[4] - c.corners[2], c.corners[5] - c.corners[3])
+  const longEdge = e1 >= e2 ? [c.corners[2] - c.corners[0], c.corners[3] - c.corners[1]] : [c.corners[4] - c.corners[2], c.corners[5] - c.corners[3]]
+  assert.ok(Math.abs(longEdge[1]) < 0.2 * Math.abs(longEdge[0]))
+  assert.ok(nearestBuilding(16, 8))
+})
+
+test('splitDark: outlined house -> blob, long line -> line, row of dashes -> dashes', () => {
+  const w = 120, h = 60
+  const ring = (x: number, y: number) => x >= 10 && x < 18 && y >= 10 && y < 16 && !(x > 10 && x < 17 && y > 10 && y < 15)
+  const line = (x: number, y: number) => y === 40 && x >= 5 && x < 115
+  const dash = (x: number, y: number) => y >= 52 && y < 55 && x >= 30 && x < 110 && (x % 10) < 5
+  const s = splitDark(mask(w, h, (x, y) => ring(x, y) || line(x, y) || dash(x, y)), w, h, 1)
+  assert.equal(s.blobs[12 * w + 13], 1, 'ring filled into a building')
+  assert.equal(s.lines[40 * w + 60], 1)
+  assert.equal(s.dashes[53 * w + 61], 1)
+  assert.equal(s.blobs[53 * w + 61], 0)
+})
+
+test('hatchZone: wide hatching is out of bounds, a few roads are not', () => {
+  const w = 200, h = 200
+  const m = mask(w, h, (x, y) => (x < 90 && (x + y) % 8 === 0) || (x > 120 && (y === 50 || y === 150 || x === 160)))
+  const z = hatchZone(m, w, h)
+  assert.equal(z[100 * w + 40], 1)
+  assert.equal(z[50 * w + 170], 0)
+  assert.equal(z[100 * w + 160], 0)
+})
+
+test('closeMask bridges a 2 px gap', () => {
+  const w = 30, h = 9
+  const c = closeMask(mask(w, h, (x, y) => y === 4 && x > 2 && x < 27 && x !== 14 && x !== 15), w, h, 2.5)
+  assert.equal(c[4 * w + 14], 1)
+})
+
+test('roadClass by relative thickness', () => {
+  assert.equal(roadClass(12, 8, 'road'), 'asphalt')
+  assert.equal(roadClass(8, 8, 'road'), 'asphaltNarrow')
+  assert.equal(roadClass(4, 8, 'road'), 'dirt')
+  assert.equal(roadClass(12, 8, 'path'), 'trailDirt')
+})
+
+test('imageToMap: synthetic tactical map -> river, relief, road, building; overlay erased', () => {
+  const w = 160, h = 160, data = new Uint8Array(w * h * 4)
+  const put = (x: number, y: number, c: number[]) => data.set([...c, 255], (y * w + x) * 4)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let c = [184, 184, 168] // land
+    if ((x - 115) ** 2 + (y - 45) ** 2 < 28 ** 2) c = [203, 148, 124] // hill (band)
+    if (Math.abs(x - 30 - y * 0.1) < 6) c = [121, 158, 158] // river, north-south
+    if (Math.abs(y - 120) <= 1 && x > 45) c = [139, 136, 122] // road, west-east
+    if (x >= 80 && x < 86 && y >= 100 && y < 108) c = [30, 25, 15] // house
+    if (x >= 60 && x < 75 && y >= 20 && y < 60) c = [108, 106, 81] // olive arrow overlay
+    put(x, y, c)
+  }
+  const q = clusterImage({ width: w, height: h, data }, 6)
+  const roles = guessRoles(q)
+  const want = (rgb: number[]) => roles[q.palette.findIndex((p) => Math.abs(p[0] - rgb[0]) + Math.abs(p[1] - rgb[1]) + Math.abs(p[2] - rgb[2]) < 20)]?.role
+  assert.equal(want([121, 158, 158]), 'water')
+  assert.equal(want([203, 148, 124]), 'band')
+  assert.equal(want([108, 106, 81]), 'ignore')
+  const r = imageToMap(q, roles as ClusterRole[], { size: 640 }) // 4 m per pixel
+  assert.equal(r.sizeX, 640)
+  const H = (x: number, y: number) => r.heights.data[y * w + x]
+  assert.ok(H(115, 45) > 15, 'hill top')
+  assert.ok(H(38, 80) < 0, 'river bed')
+  assert.ok(H(67, 40) > H(52, 40) - 0.5 && H(67, 40) < H(82, 40) + 0.5, 'arrow erased: the slope goes on under it')
+  assert.ok(r.waters.length >= 1)
+  const road = r.roads.find((x) => x.kind === 'road')
+  assert.ok(road, 'road found')
+  // the road runs west-east at z = (160 - 120) * 4 = 160 m
+  for (let i = 1; i < road!.pts.length; i += 2) assert.ok(Math.abs(road!.pts[i] - 160) < 10)
+  assert.equal(r.buildings.length, 1)
+  assert.ok(Math.abs(r.buildings[0].corners[0] - 332) < 30)
+})

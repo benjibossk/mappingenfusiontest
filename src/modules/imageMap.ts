@@ -1,0 +1,814 @@
+//! Map from an image: a 2D map picture (tactical map, sketch, old game map screenshot) -> a project.
+//! Colours are clustered (Lab k-means, satmask.ts quantise), each cluster gets a role (land, water,
+//! altitude band, forest, building, road, path, field, ignore), then:
+//!  - ignored clusters (arrows, letters, red lines, contour lines) are inpainted from the neighbouring areas
+//!  - altitude bands -> smooth heights (distance interpolation between band edges), water carved
+//!  - road lines -> skeleton -> polylines (simplified, gaps joined), class by line thickness
+//!  - dark blobs -> buildings (centre, orientation, size -> nearest vanilla footprint)
+//!  - forest / field / water masks -> outlines; long water bodies -> rivers
+//! Pure functions on pixel grids; pixel (px, py) -> world (px * m, (H - py) * m), north up.
+import { quantise, rgbToLab, type Quantised, type Rgba } from './satmask'
+import { maskOutlines } from './refMap'
+import { BUILDINGS, type Building, type BuildingCat } from '../data/buildings'
+
+export type ImgRole = 'land' | 'water' | 'band' | 'forest' | 'field' | 'building' | 'road' | 'path' | 'ignore'
+export const IMG_ROLES: ImgRole[] = ['land', 'water', 'band', 'forest', 'field', 'building', 'road', 'path', 'ignore']
+/** role of one colour cluster; band: height (m) of its lower edge (the contour line around it) */
+export interface ClusterRole { role: ImgRole; height?: number }
+
+/** colour clusters of the picture (Lab k-means, no blur: thin lines keep their own cluster) */
+export function clusterImage(img: Rgba, k = 12): Quantised {
+  return quantise(img, { k, maxSamples: 60000, iterations: 25 })
+}
+
+/** default role of each cluster from its colour, tuned on tinted tactical maps */
+export function guessRoles(q: Pick<Quantised, 'lab' | 'share'>): ClusterRole[] {
+  const out: ClusterRole[] = q.lab.map(([L, a, b], i) => {
+    const ch = Math.hypot(a, b), share = q.share[i]
+    if (L > 90 && ch < 8) return { role: 'ignore' } // white letters / labels
+    if (L < 33) return a < -8 ? { role: 'ignore' } : { role: 'building' } // dark green = arrow fill; near black = buildings
+    if (b < -1 && a < -3 && L > 40) return { role: 'water' }
+    if (a > 28) return { role: 'ignore' } // saturated red lines (front line, circle)
+    if (L < 50 && (b > 11 || a > 8)) return { role: 'ignore' } // olive / brown overlay arrows
+    if (a > 4 && L >= 60 && share > 0.004) return { role: 'band', height: 0 }
+    if (a > 4) return { role: 'ignore' } // contour lines over the bands
+    if (a < -5 && L >= 50 && L < 72) return { role: 'forest' }
+    if (ch < 11 && L >= 38 && L < 62) return { role: 'road' }
+    return { role: 'land' }
+  })
+  // bands: redder = higher; 25 m per level by default
+  const bands = out.map((r, i) => [r, q.lab[i][1]] as const).filter(([r]) => r.role === 'band').sort((x, y) => x[1] - y[1])
+  bands.forEach(([r], j) => { r.height = 25 * (j + 1) })
+  // the most common light cluster is the land
+  if (!out.some((r) => r.role === 'land')) {
+    let best = -1
+    q.share.forEach((s, i) => { if (out[i].role !== 'water' && out[i].role !== 'band' && (best < 0 || s > q.share[best])) best = i })
+    if (best >= 0) out[best] = { role: 'land' }
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------------------------
+// grid helpers
+
+/** exact Euclidean distance (pixels) from every pixel to the nearest pixel where mask = 1 (Felzenszwalb) */
+export function edt(mask: Uint8Array, w: number, h: number): Float32Array {
+  const INF = 1e20, f = new Float64Array(Math.max(w, h)), d = new Float64Array(Math.max(w, h))
+  const v = new Int32Array(Math.max(w, h)), z = new Float64Array(Math.max(w, h) + 1)
+  const g = new Float64Array(w * h)
+  for (let i = 0; i < w * h; i++) g[i] = mask[i] ? 0 : INF
+  const pass = (n: number) => {
+    let k = 0
+    v[0] = 0; z[0] = -INF; z[1] = INF
+    for (let q = 1; q < n; q++) {
+      let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k])
+      while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]) }
+      k++; v[k] = q; z[k] = s; z[k + 1] = INF
+    }
+    k = 0
+    for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]] }
+  }
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) f[y] = g[y * w + x]
+    pass(h)
+    for (let y = 0; y < h; y++) g[y * w + x] = d[y]
+  }
+  const out = new Float32Array(w * h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) f[x] = g[y * w + x]
+    pass(w)
+    for (let x = 0; x < w; x++) out[y * w + x] = d[x] >= INF / 2 ? Infinity : Math.sqrt(d[x])
+  }
+  return out
+}
+
+/** every pixel where `fill` is true takes the label of the nearest pixel where it is false (BFS, 8-neighbour) */
+export function fillFrom(labels: Int16Array, w: number, h: number, fill: (l: number) => boolean): Int16Array {
+  const out = Int16Array.from(labels), queue = new Int32Array(w * h), done = new Uint8Array(w * h)
+  let head = 0, tail = 0
+  for (let i = 0; i < w * h; i++) if (!fill(labels[i])) { done[i] = 1; queue[tail++] = i }
+  if (!tail) return out
+  while (head < tail) {
+    const i = queue[head++], x = i % w, y = (i - x) / w
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+      const j = ny * w + nx
+      if (done[j]) continue
+      done[j] = 1; out[j] = out[i]; queue[tail++] = j
+    }
+  }
+  return out
+}
+
+/** box sum of a 0/1 mask over a (2r+1)^2 window, as a share 0..1 */
+export function density(mask: Uint8Array, w: number, h: number, r: number): Float32Array {
+  const I = new Float64Array((w + 1) * (h + 1))
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += mask[y * w + x]; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + row } }
+  const out = new Float32Array(w * h)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r), x1 = Math.min(w, x + r + 1), y1 = Math.min(h, y + r + 1)
+    const s = I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0]
+    out[y * w + x] = s / ((x1 - x0) * (y1 - y0))
+  }
+  return out
+}
+
+/** morphological closing (dilate then erode by r pixels), exact disc via distance transforms */
+export function closeMask(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const d1 = edt(mask, w, h), dil = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) dil[i] = d1[i] <= r ? 1 : 0
+  const inv = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) inv[i] = dil[i] ? 0 : 1
+  const d2 = edt(inv, w, h), out = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) out[i] = d2[i] > r ? 1 : 0
+  return out
+}
+
+/** Zhang-Suen thinning: one-pixel wide 8-connected skeleton of a 0/1 mask */
+export function thin(mask: Uint8Array, w: number, h: number): Uint8Array {
+  const m = Uint8Array.from(mask)
+  for (let x = 0; x < w; x++) { m[x] = 0; m[(h - 1) * w + x] = 0 }
+  for (let y = 0; y < h; y++) { m[y * w] = 0; m[y * w + w - 1] = 0 }
+  const del: number[] = []
+  for (let changed = true, guard = 0; changed && guard < 200; guard++) {
+    changed = false
+    for (let step = 0; step < 2; step++) {
+      del.length = 0
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x
+        if (!m[i]) continue
+        const p2 = m[i - w], p3 = m[i - w + 1], p4 = m[i + 1], p5 = m[i + w + 1], p6 = m[i + w], p7 = m[i + w - 1], p8 = m[i - 1], p9 = m[i - w - 1]
+        const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9
+        if (B < 2 || B > 6) continue
+        const A = (+(!p2 && p3)) + (+(!p3 && p4)) + (+(!p4 && p5)) + (+(!p5 && p6)) + (+(!p6 && p7)) + (+(!p7 && p8)) + (+(!p8 && p9)) + (+(!p9 && p2))
+        if (A !== 1) continue
+        if (step === 0 ? (p2 && p4 && p6) || (p4 && p6 && p8) : (p2 && p4 && p8) || (p2 && p6 && p8)) continue
+        del.push(i)
+      }
+      if (del.length) changed = true
+      for (const i of del) m[i] = 0
+    }
+  }
+  return m
+}
+
+/** skeleton -> pixel polylines [x0, y0, x1, y1...] between end points / junctions (and closed loops) */
+export function traceSkeleton(sk: Uint8Array, w: number, h: number): number[][] {
+  const at = (x: number, y: number) => (x >= 0 && y >= 0 && x < w && y < h ? sk[y * w + x] : 0)
+  const RING = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]
+  // branches = 0 -> 1 transitions around the 8-ring (staircase pixels of a line count as 2, not 3)
+  const branches = (i: number) => {
+    const x = i % w, y = (i - x) / w
+    let n = 0
+    for (let k = 0; k < 8; k++) if (!at(x + RING[k][0], y + RING[k][1]) && at(x + RING[(k + 1) % 8][0], y + RING[(k + 1) % 8][1])) n++
+    return n
+  }
+  const nb = (i: number) => {
+    const x = i % w, y = (i - x) / w, r: number[] = []
+    for (const [dx, dy] of RING) if (at(x + dx, y + dy)) r.push((y + dy) * w + x + dx)
+    // 4-neighbours first
+    return r.sort((a, b) => +(Math.abs(a - i) !== 1 && Math.abs(a - i) !== w) - +(Math.abs(b - i) !== 1 && Math.abs(b - i) !== w))
+  }
+  const isNode = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) if (sk[i] && branches(i) !== 2) isNode[i] = 1
+  const seen = new Uint8Array(w * h), nodeEdge = new Set<number>()
+  const lines: number[][] = []
+  const walk = (start: number, first: number) => {
+    const path = [start, first]
+    if (isNode[first]) {
+      const k = Math.min(start, first) * w * h + Math.max(start, first)
+      if (nodeEdge.has(k)) return
+      nodeEdge.add(k)
+    } else {
+      seen[first] = 1
+      let prev = start, cur = first
+      for (;;) {
+        const n = nb(cur).filter((j) => j !== prev && (isNode[j] ? !(j === start && path.length <= 3) : !seen[j]))
+        if (!n.length) break
+        const j = n.find((v) => isNode[v]) ?? n[0]
+        path.push(j)
+        if (isNode[j]) break
+        seen[j] = 1; prev = cur; cur = j
+      }
+    }
+    lines.push(path.flatMap((i) => [i % w, Math.floor(i / w)]))
+  }
+  for (let i = 0; i < w * h; i++) if (isNode[i]) for (const j of nb(i)) if (isNode[j] || !seen[j]) walk(i, j)
+  for (let i = 0; i < w * h; i++) if (sk[i] && !isNode[i] && !seen[i]) { seen[i] = 1; const n = nb(i); if (n.length) { walk(i, n[0]); const l = lines[lines.length - 1]; l.push(l[0], l[1]) } } // loops
+  return lines
+}
+
+/** Ramer-Douglas-Peucker on a flat [x, y...] polyline */
+export function simplify(p: number[], eps: number): number[] {
+  const n = p.length / 2
+  if (n <= 2) return p.slice()
+  const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1
+  const st: [number, number][] = [[0, n - 1]]
+  while (st.length) {
+    const [a, b] = st.pop()!
+    const ax = p[a * 2], ay = p[a * 2 + 1], bx = p[b * 2], by = p[b * 2 + 1], L = Math.hypot(bx - ax, by - ay)
+    let md = -1, mi = -1
+    for (let i = a + 1; i < b; i++) {
+      const d = L < 1e-9 ? Math.hypot(p[i * 2] - ax, p[i * 2 + 1] - ay) : Math.abs((bx - ax) * (ay - p[i * 2 + 1]) - (ax - p[i * 2]) * (by - ay)) / L
+      if (d > md) { md = d; mi = i }
+    }
+    if (md > eps) { keep[mi] = 1; st.push([a, mi], [mi, b]) }
+  }
+  const out: number[] = []
+  for (let i = 0; i < n; i++) if (keep[i]) out.push(p[i * 2], p[i * 2 + 1])
+  return out
+}
+
+const plen = (p: number[]) => { let s = 0; for (let i = 2; i < p.length; i += 2) s += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]); return s }
+
+/** joins polylines whose free ends face each other across a gap shorter than `gap` (dashes, overlays, crossings) */
+export function joinGaps(lines: number[][], gap: number, maxTurnDeg = 50): number[][] {
+  const cos = Math.cos((maxTurnDeg * Math.PI) / 180)
+  // end e of line l: point + outward direction
+  const ends = lines.flatMap((l, li) => ([0, 1] as const).map((e) => {
+    const n = l.length / 2, i = e ? n - 1 : 0, j = e ? Math.max(0, n - 4) : Math.min(n - 1, 3)
+    const x = l[i * 2], y = l[i * 2 + 1], dx = x - l[j * 2], dy = y - l[j * 2 + 1], d = Math.hypot(dx, dy) || 1
+    return { li, e, x, y, dx: dx / d, dy: dy / d }
+  }))
+  // candidate pairs through a grid of `gap` cells
+  const cell = new Map<string, number[]>()
+  ends.forEach((p, k) => { const key = `${Math.floor(p.x / gap)},${Math.floor(p.y / gap)}`; const l = cell.get(key); if (l) l.push(k); else cell.set(key, [k]) })
+  const pairs: [number, number, number][] = []
+  ends.forEach((A, a) => {
+    const cx = Math.floor(A.x / gap), cy = Math.floor(A.y / gap)
+    for (let gy = cy - 1; gy <= cy + 1; gy++) for (let gx = cx - 1; gx <= cx + 1; gx++) for (const b of cell.get(`${gx},${gy}`) ?? []) {
+      if (b <= a || ends[b].li === A.li) continue
+      const B = ends[b], vx = B.x - A.x, vy = B.y - A.y, d = Math.hypot(vx, vy)
+      if (d > gap) continue
+      if (d > 1.5) { if ((A.dx * vx + A.dy * vy) / d < cos || -(B.dx * vx + B.dy * vy) / d < cos) continue }
+      else if (-(A.dx * B.dx + A.dy * B.dy) < cos) continue
+      pairs.push([d, a, b])
+    }
+  })
+  pairs.sort((p, q) => p[0] - q[0])
+  // greedy links between free ends of different chains (union-find on lines)
+  const link = new Int32Array(ends.length).fill(-1), root = lines.map((_, i) => i)
+  const find = (i: number): number => (root[i] === i ? i : (root[i] = find(root[i])))
+  for (const [, a, b] of pairs) {
+    if (link[a] >= 0 || link[b] >= 0) continue
+    const ra = find(ends[a].li), rb = find(ends[b].li)
+    if (ra === rb) continue
+    link[a] = b; link[b] = a; root[ra] = rb
+  }
+  // walk the chains from an unlinked end
+  const done = new Uint8Array(lines.length), out: number[][] = []
+  const walkFrom = (li: number, e: 0 | 1) => {
+    const acc: number[] = []
+    let cur = li, entry = e
+    for (;;) {
+      done[cur] = 1
+      acc.push(...(entry === 0 ? lines[cur] : rev(lines[cur])))
+      const exit = (cur * 2 + (1 - entry)), to = link[exit]
+      if (to < 0 || done[ends[to].li]) break
+      cur = ends[to].li; entry = ends[to].e
+    }
+    out.push(acc)
+  }
+  for (let li = 0; li < lines.length; li++) if (!done[li]) for (const e of [0, 1] as const) if (!done[li] && link[li * 2 + e] < 0) walkFrom(li, e)
+  for (let li = 0; li < lines.length; li++) if (!done[li]) walkFrom(li, 0) // closed chains
+  return out
+}
+const rev = (p: number[]) => { const o: number[] = []; for (let i = p.length - 2; i >= 0; i -= 2) o.push(p[i], p[i + 1]); return o }
+
+/** connected components of a mask (8-neighbour): pixel index lists */
+export function components(mask: Uint8Array, w: number, h: number): number[][] {
+  const seen = new Uint8Array(w * h), out: number[][] = []
+  for (let s = 0; s < w * h; s++) {
+    if (!mask[s] || seen[s]) continue
+    const comp = [s]; seen[s] = 1
+    for (let k = 0; k < comp.length; k++) {
+      const i = comp[k], x = i % w, y = (i - x) / w
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+        const j = ny * w + nx
+        if (mask[j] && !seen[j]) { seen[j] = 1; comp.push(j) }
+      }
+    }
+    out.push(comp)
+  }
+  return out
+}
+
+/** holes of a mask (background not reachable from the border, 4-neighbour) filled */
+export function fillHoles(mask: Uint8Array, w: number, h: number): Uint8Array {
+  const out = Uint8Array.from(mask), seen = new Uint8Array(w * h), q: number[] = []
+  const push = (i: number) => { if (!mask[i] && !seen[i]) { seen[i] = 1; q.push(i) } }
+  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x) }
+  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1) }
+  for (let k = 0; k < q.length; k++) {
+    const i = q[k], x = i % w, y = (i - x) / w
+    if (x > 0) push(i - 1)
+    if (x < w - 1) push(i + 1)
+    if (y > 0) push(i - w)
+    if (y < h - 1) push(i + w)
+  }
+  for (let i = 0; i < w * h; i++) if (!mask[i] && !seen[i]) out[i] = 1
+  return out
+}
+
+// ---------------------------------------------------------------------------------------------
+// the conversion
+
+export interface ImageMapOptions {
+  /** real side of the picture, metres (the longer side) */
+  size: number
+  /** height of the shore line (edge of the land around water), metres */
+  shore?: number
+  /** water depth at the middle of wide water, metres */
+  depth?: number
+  /** height smoothing radius, metres */
+  smooth?: number
+}
+
+export interface ImgRoad { pts: number[]; width: number; kind: 'road' | 'path' }
+export interface ImgWater { kind: 'river' | 'lake'; pts: number[]; width: number }
+export interface ImgBuilding { x: number; z: number; yaw: number; prefab: string; cat: BuildingCat; corners: number[]; len: number; wid: number }
+export interface ImgArea { kind: 'forest' | 'field'; pts: number[]; holes: number[][] }
+export interface ImageMapResult {
+  /** world side, metres (x: 0..sizeX, z: 0..sizeZ) */
+  sizeX: number
+  sizeZ: number
+  /** heights on the picture pixels (row 0 = top = north), metres; HeightImage-like for heightsFromImage */
+  heights: { w: number; h: number; data: Float32Array; normalized: false }
+  roads: ImgRoad[]
+  waters: ImgWater[]
+  buildings: ImgBuilding[]
+  areas: ImgArea[]
+  /** per pixel role after inpainting (index in IMG_ROLES), for previews */
+  roleMap: Uint8Array
+}
+
+const R = (r: ImgRole) => IMG_ROLES.indexOf(r)
+
+/** the whole conversion: picture clusters + their roles -> heights, roads, waters, buildings, areas */
+export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOptions): ImageMapResult {
+  const { width: w, height: h } = q, N = w * h
+  const mpp = o.size / Math.max(w, h), shore = o.shore ?? 1, depth = o.depth ?? 4
+  // band levels: distinct heights, low to high
+  const levels = [...new Set(roles.filter((r) => r.role === 'band').map((r) => r.height ?? 0))].sort((a, b) => a - b)
+  const roleOf = new Int16Array(N), levelOf = new Int16Array(N)
+  for (let i = 0; i < N; i++) {
+    const r = roles[q.index[i]] ?? { role: 'land' }
+    roleOf[i] = R(r.role)
+    levelOf[i] = r.role === 'band' ? levels.indexOf(r.height ?? 0) + 1 : r.role === 'water' ? -1 : r.role === 'land' || r.role === 'forest' || r.role === 'field' ? 0 : -9
+  }
+  // 1. thin slivers of an area colour (anti-aliased edges of lines, red circles...) are not areas
+  for (const k of new Set(levelOf)) {
+    if (k === -9) continue
+    const m = new Uint8Array(N)
+    for (let i = 0; i < N; i++) if (levelOf[i] === k) m[i] = 1
+    const kept = openMask(m, w, h, k < 0 ? 1 : 2)
+    for (let i = 0; i < N; i++) if (m[i] && !kept[i]) levelOf[i] = -9
+  }
+  // 2. overlays: ignored pixels become the nearest real thing; ground under every line / building / overlay: the nearest area
+  const roleFilled = fillFrom(roleOf, w, h, (l) => l === R('ignore'))
+  const lvl = fillFrom(levelOf, w, h, (l) => l === -9)
+  const roleMap = new Uint8Array(N)
+  for (let i = 0; i < N; i++) roleMap[i] = roleFilled[i]
+
+  // 3. heights
+  const heights = reliefFromLevels(lvl, w, h, levels, { shore, depth, mpp, smooth: o.smooth ?? 12 })
+
+  // 4. dark marks: solid blobs = buildings, thin dark lines = road casings, aligned dashes = paths / rails
+  const dark = new Uint8Array(N)
+  for (let i = 0; i < N; i++) if (roleOf[i] === R('building') || roleOf[i] === R('road')) dark[i] = 1
+  const split = splitDark(dark, w, h, mpp)
+  // hatched out-of-bounds borders: no road nor building is read there
+  const zone = hatchZone(split.lines, w, h)
+  for (let i = 0; i < N; i++) if (zone[i]) { split.lines[i] = 0; split.blobs[i] = 0; split.dashes[i] = 0 }
+  const buildings = extractBuildings(split.blobs, w, h, mpp)
+
+  // 5. roads and paths
+  const roads: ImgRoad[] = []
+  for (const kind of ['road', 'path'] as const) {
+    const m = new Uint8Array(N)
+    for (let i = 0; i < N; i++) if (kind === 'road' ? split.lines[i] : roleOf[i] === R('path') || split.dashes[i]) m[i] = 1
+    roads.push(...extractLines(m, w, h, mpp, kind, (i) => onContour(lvl, w, h, i, 3)))
+  }
+
+  // 6. areas: forest / field (dot patterns closed into solid patches), water bodies
+  const areas: ImgArea[] = []
+  for (const kind of ['forest', 'field'] as const) {
+    const m = new Uint8Array(N)
+    for (let i = 0; i < N; i++) if (roleFilled[i] === R(kind) && lvl[i] >= 0) m[i] = 1
+    if (!m.some((v) => v)) continue
+    const solid = openMask(closeMask(m, w, h, Math.max(2, Math.round(6 / mpp))), w, h, Math.max(1, Math.round(4 / mpp)))
+    for (const a of outlines(solid, w, h, mpp, 2500)) areas.push({ kind, ...a })
+  }
+  const wm = new Uint8Array(N)
+  for (let i = 0; i < N; i++) if (lvl[i] < 0) wm[i] = 1
+  const waters = extractWater(wm, w, h, mpp)
+  return { sizeX: w * mpp, sizeZ: h * mpp, heights: { w, h, data: heights, normalized: false }, roads, waters, buildings, areas, roleMap }
+}
+
+/** opening (erode then dilate by r) */
+function openMask(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const inv = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) inv[i] = mask[i] ? 0 : 1
+  const d1 = edt(inv, w, h), er = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) er[i] = d1[i] > r ? 1 : 0
+  const d2 = edt(er, w, h), out = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) out[i] = d2[i] <= r ? 1 : 0
+  return out
+}
+
+/** level map (-1 water, 0 land, 1..N bands) -> heights: each pixel interpolated between the contour below and the one above */
+export function reliefFromLevels(lvl: Int16Array, w: number, h: number, levels: number[], o: { shore: number; depth: number; mpp: number; smooth: number }): Float32Array {
+  const N = w * h, out = new Float32Array(N)
+  const top = levels.length
+  // contour heights: C[0] = shore, C[k] = band k lower edge
+  const C = [o.shore, ...levels]
+  const stepAbove = top ? (top > 1 ? levels[top - 1] - levels[top - 2] : levels[0] - o.shore) : 10
+  const below: (Float32Array | null)[] = [], above: (Float32Array | null)[] = []
+  for (let k = 0; k <= top; k++) {
+    const lo = new Uint8Array(N), hi = new Uint8Array(N)
+    let anyLo = false, anyHi = false
+    for (let i = 0; i < N; i++) { if (lvl[i] < k) { lo[i] = 1; anyLo = true } if (lvl[i] > k) { hi[i] = 1; anyHi = true } }
+    below.push(anyLo ? edt(lo, w, h) : null)
+    above.push(anyHi ? edt(hi, w, h) : null)
+  }
+  const capPx = Math.max(4, 150 / o.mpp) // a summit rises over ~150 m from its last contour
+  for (let i = 0; i < N; i++) {
+    const k = lvl[i]
+    if (k < 0) continue
+    const dLo = below[k]?.[i] ?? Infinity, dHi = above[k]?.[i] ?? Infinity
+    const c0 = C[k], c1 = k < top ? C[k + 1] : c0 + stepAbove * 0.8
+    let t: number
+    if (Number.isFinite(dHi) && Number.isFinite(dLo)) t = dLo / (dLo + dHi)
+    else if (Number.isFinite(dLo)) t = Math.min(1, dLo / capPx) * (k < top ? 0.5 : 1)
+    else if (Number.isFinite(dHi)) t = Math.max(0, 1 - dHi / capPx)
+    else t = 0
+    out[i] = c0 + (c1 - c0) * t
+  }
+  // water: below the surface, deeper away from the shore
+  const land = new Uint8Array(N)
+  for (let i = 0; i < N; i++) land[i] = lvl[i] >= 0 ? 1 : 0
+  const dShore = edt(land, w, h), wide = Math.max(2, 30 / o.mpp)
+  for (let i = 0; i < N; i++) if (lvl[i] < 0) out[i] = -0.6 - o.depth * Math.min(1, dShore[i] / wide)
+  // smooth (box blur twice), then keep water under and land over the surface
+  const r = Math.max(1, Math.round(o.smooth / o.mpp))
+  let s = blur(out, w, h, r)
+  s = blur(s, w, h, r)
+  for (let i = 0; i < N; i++) s[i] = lvl[i] < 0 ? Math.min(s[i], -0.6) : Math.max(s[i], 0.3)
+  return s
+}
+
+function blur(src: Float32Array, w: number, h: number, r: number): Float32Array {
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h)
+  for (let y = 0; y < h; y++) {
+    let s = 0, n = 0
+    for (let x = -r; x < w + r; x++) {
+      if (x + r < w && x + r >= 0) { s += src[y * w + x + r]; n++ }
+      if (x - r - 1 >= 0 && x - r - 1 < w) { s -= src[y * w + x - r - 1]; n-- }
+      if (x >= 0 && x < w) tmp[y * w + x] = s / n
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let s = 0, n = 0
+    for (let y = -r; y < h + r; y++) {
+      if (y + r < h && y + r >= 0) { s += tmp[(y + r) * w + x]; n++ }
+      if (y - r - 1 >= 0 && y - r - 1 < h) { s -= tmp[(y - r - 1) * w + x]; n-- }
+      if (y >= 0 && y < h) out[y * w + x] = s / n
+    }
+  }
+  return out
+}
+
+const toWorld = (p: number[], mpp: number, h: number) => p.map((v, i) => (i % 2 ? (h - v) * mpp : v * mpp))
+
+/** thin line mask -> world polylines with a width (metres) */
+export function extractLines(m: Uint8Array, w: number, h: number, mpp: number, kind: 'road' | 'path', contour?: (i: number) => boolean): ImgRoad[] {
+  // hatched borders / dense line patterns are not roads: a road covers a small share of its neighbourhood
+  const dens = density(m, w, h, 12)
+  for (let i = 0; i < w * h; i++) if (dens[i] > 0.22) m[i] = 0
+  // lines thicker than a road (blobs) are dropped too
+  const inv = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) inv[i] = m[i] ? 0 : 1
+  const half = edt(inv, w, h)
+  // bridge 1 px gaps before thinning
+  const c = closeMask(m, w, h, 2.5)
+  const sk = thin(c, w, h)
+  let lines = traceSkeleton(sk, w, h).map((l) => ({ l, len: plen(l) }))
+  // spurs: short lines hanging off a junction
+  lines = lines.filter((x) => x.len >= 4)
+  // contour lines between two relief bands follow the band edge all along: a road only crosses it
+  if (contour) lines = lines.filter((x) => { let on = 0; for (let i = 0; i < x.l.length; i += 2) if (contour(x.l[i + 1] * w + x.l[i])) on++; return on < 0.6 * (x.l.length / 2) })
+  const gap = Math.max(6, Math.round(25 / mpp))
+  const joined = (joinGaps(lines.map((x) => simplify(x.l, 0.8)), gap))
+  const out: ImgRoad[] = []
+  for (const l of joined) {
+    const len = plen(l)
+    if (len * mpp < 40) continue
+    // width: median of 2 * distance to the background along the line
+    const ws: number[] = []
+    for (let i = 0; i < l.length; i += 2) { const v = half[Math.round(l[i + 1]) * w + Math.round(l[i])]; if (Number.isFinite(v) && v > 0) ws.push(v) }
+    ws.sort((a, b) => a - b)
+    const wpx = ws.length ? 2 * ws[ws.length >> 1] : 1
+    if (wpx * mpp > 40) continue
+    out.push({ pts: toWorld(simplify(l, 2), mpp, h), width: Math.round(wpx * mpp * 10) / 10, kind })
+  }
+  return out
+}
+
+/** background pockets smaller than maxPx enclosed by the mask, filled (outlined buildings become solid) */
+export function fillSmallHoles(mask: Uint8Array, w: number, h: number, maxPx: number): Uint8Array {
+  const out = Uint8Array.from(mask), inv = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) inv[i] = mask[i] ? 0 : 1
+  for (const c of components4(inv, w, h)) {
+    if (c.length > maxPx) continue
+    if (c.some((i) => { const x = i % w, y = (i - x) / w; return x === 0 || y === 0 || x === w - 1 || y === h - 1 })) continue
+    for (const i of c) out[i] = 1
+  }
+  return out
+}
+function components4(mask: Uint8Array, w: number, h: number): number[][] {
+  const seen = new Uint8Array(w * h), out: number[][] = []
+  for (let s = 0; s < w * h; s++) {
+    if (!mask[s] || seen[s]) continue
+    const comp = [s]; seen[s] = 1
+    for (let k = 0; k < comp.length; k++) {
+      const i = comp[k], x = i % w
+      for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < w * h && mask[j] && !seen[j]) { seen[j] = 1; comp.push(j) }
+    }
+    out.push(comp)
+  }
+  return out
+}
+
+interface Blob { px: number[]; cx: number; cy: number; ax: number; ay: number; len: number; wid: number }
+/** centre, main axis (unit, pixels) and length / width (pixels) of a pixel set, from its second moments */
+export function blobShape(px: number[], w: number): Blob {
+  let sx = 0, sy = 0
+  for (const i of px) { sx += i % w; sy += Math.floor(i / w) }
+  const cx = sx / px.length, cy = sy / px.length
+  let xx = 0, yy = 0, xy = 0
+  for (const i of px) { const dx = (i % w) - cx, dy = Math.floor(i / w) - cy; xx += dx * dx; yy += dy * dy; xy += dx * dy }
+  xx /= px.length; yy /= px.length; xy /= px.length
+  const tr = xx + yy, det = xx * yy - xy * xy, disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det))
+  const l1 = tr / 2 + disc, l2 = Math.max(0, tr / 2 - disc), ang = 0.5 * Math.atan2(2 * xy, xx - yy)
+  return { px, cx, cy, ax: Math.cos(ang), ay: Math.sin(ang), len: Math.sqrt(12 * l1 + 1), wid: Math.sqrt(12 * l2 + 1) }
+}
+
+/** dark marks -> solid blobs (buildings), thin lines (road casings), dashes in a row (dotted paths / rails) */
+export function splitDark(dark: Uint8Array, w: number, h: number, mpp: number): { blobs: Uint8Array; lines: Uint8Array; dashes: Uint8Array } {
+  const N = w * h
+  const filled = fillSmallHoles(dark, w, h, Math.max(4, Math.round(400 / (mpp * mpp))))
+  const blobs = openMask(filled, w, h, 1.5)
+  const lines = new Uint8Array(N), dashes = new Uint8Array(N)
+  for (let i = 0; i < N; i++) if (dark[i] && !blobs[i]) lines[i] = 1
+  const all = components(blobs, w, h).map((c) => blobShape(c, w))
+  // long thin blobs (filled road casings, bridges): lines
+  for (const b of all) if (b.len / b.wid > 3.5 || b.px.length * mpp * mpp > 3000) for (const i of b.px) { blobs[i] = 0; lines[i] = 1 }
+  const bs = all.filter((b) => b.len / b.wid <= 3.5 && b.len * mpp < 40)
+  // grid of centres
+  const cell = 24, grid = new Map<number, number[]>()
+  const gk = (x: number, y: number) => Math.floor(y / cell) * 100000 + Math.floor(x / cell)
+  bs.forEach((b, k) => { const key = gk(b.cx, b.cy); const l = grid.get(key); if (l) l.push(k); else grid.set(key, [k]) })
+  // neighbours of similar size close along the row: a dotted line is a chain of look-alike dashes
+  const near: number[][] = bs.map((b, k) => {
+    const out: number[] = []
+    for (let gy = -1; gy <= 1; gy++) for (let gx = -1; gx <= 1; gx++) for (const j of grid.get(gk(b.cx + gx * cell, b.cy + gy * cell)) ?? []) {
+      if (j === k) continue
+      const o = bs[j], d = Math.hypot(o.cx - b.cx, o.cy - b.cy), ratio = b.px.length / o.px.length
+      if (d >= 1 && d <= 2.6 * Math.max(b.len, o.len) && ratio < 1.7 && ratio > 1 / 1.7) out.push(j)
+    }
+    return out
+  })
+  const inRow = (k: number) => {
+    const n = near[k]
+    if (n.length === 1) return true
+    if (n.length !== 2) return false
+    const b = bs[k], p = bs[n[0]], q = bs[n[1]]
+    const ux = p.cx - b.cx, uy = p.cy - b.cy, vx = q.cx - b.cx, vy = q.cy - b.cy
+    return (ux * vx + uy * vy) / (Math.hypot(ux, uy) * Math.hypot(vx, vy)) < -0.75
+  }
+  const cand = bs.map((_, k) => inRow(k)), seen = new Uint8Array(bs.length)
+  for (let s = 0; s < bs.length; s++) {
+    if (!cand[s] || seen[s]) continue
+    const chain = [s]; seen[s] = 1
+    for (let c = 0; c < chain.length; c++) for (const j of near[chain[c]]) if (cand[j] && !seen[j]) { seen[j] = 1; chain.push(j) }
+    if (chain.length >= 5) for (const k of chain) for (const i of bs[k].px) { blobs[i] = 0; dashes[i] = 1 }
+  }
+  return { blobs, lines, dashes }
+}
+
+/** a line pixel lying on the edge between two land levels: a contour line, not a road */
+function onContour(lvl: Int16Array, w: number, h: number, i: number, r = 2): boolean {
+  const x = i % w, y = (i - x) / w
+  let lo = 1e9, hi = -1e9
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    const nx = x + dx, ny = y + dy
+    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+    const v = lvl[ny * w + nx]
+    if (v < 0) continue
+    if (v < lo) lo = v
+    if (v > hi) hi = v
+  }
+  return hi > lo
+}
+
+/** hatching (out-of-bounds borders): straight strokes with parallel strokes beside them; flags per line */
+export function hatchStrokes(lines: number[][], near = 40, minParallel = 2): boolean[] {
+  const info = lines.map((l) => {
+    const n = l.length / 2, dx = l[(n - 1) * 2] - l[0], dy = l[(n - 1) * 2 + 1] - l[1], d = Math.hypot(dx, dy)
+    return { mx: (l[0] + l[(n - 1) * 2]) / 2, my: (l[1] + l[(n - 1) * 2 + 1]) / 2, ux: dx / (d || 1), uy: dy / (d || 1), straight: d > 5 && d / plen(l) > 0.93 }
+  })
+  const cell = near, grid = new Map<number, number[]>()
+  const gk = (x: number, y: number) => Math.floor(y / cell) * 100000 + Math.floor(x / cell)
+  info.forEach((a, k) => { if (!a.straight) return; const key = gk(a.mx, a.my); const l = grid.get(key); if (l) l.push(k); else grid.set(key, [k]) })
+  return info.map((a, k) => {
+    if (!a.straight) return false
+    let par = 0
+    for (let gy = -1; gy <= 1; gy++) for (let gx = -1; gx <= 1; gx++) for (const j of grid.get(gk(a.mx + gx * cell, a.my + gy * cell)) ?? []) {
+      if (j === k) continue
+      const b = info[j], vx = b.mx - a.mx, vy = b.my - a.my
+      if (Math.hypot(vx, vy) > near || Math.abs(a.ux * b.ux + a.uy * b.uy) < 0.96) continue
+      if (Math.abs(vx * a.uy - vy * a.ux) > 2.5) par++
+    }
+    return par >= minParallel
+  })
+}
+
+/** out-of-bounds zone: where thin lines cover a large share of the ground (hatching), as 0/1 per pixel */
+export function hatchZone(m: Uint8Array, w: number, h: number, r = 18, share = 0.06): Uint8Array {
+  // skeleton density: a thick mark (bridge, church) counts like one line
+  const d = density(thin(m, w, h), w, h, r), dense = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) dense[i] = d[i] > share ? 1 : 0
+  // wide patches only (a village or a crossing is small), grown a little to cover the patch edge
+  const core = openMask(dense, w, h, r * 1.2)
+  for (const c of components(core, w, h)) if (c.length < 0.02 * w * h) for (const i of c) core[i] = 0
+  const e = edt(core, w, h), zone = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) zone[i] = e[i] <= r ? 1 : 0
+  return zone
+}
+
+/** dark blobs -> buildings: centre, main axis, length / width, nearest vanilla footprint */
+export function extractBuildings(m: Uint8Array, w: number, h: number, mpp: number, catalogue: Building[] = HOUSES): ImgBuilding[] {
+  const filled = fillHoles(m, w, h)
+  const out: ImgBuilding[] = []
+  for (const comp of components(filled, w, h)) {
+    const area = comp.length * mpp * mpp
+    if (area < 10 || area > 3000 || comp.length < 3) continue
+    let sx = 0, sy = 0
+    for (const i of comp) { sx += i % w; sy += Math.floor(i / w) }
+    const cx = sx / comp.length, cy = sy / comp.length
+    let xx = 0, yy = 0, xy = 0
+    for (const i of comp) { const dx = (i % w) - cx, dy = Math.floor(i / w) - cy; xx += dx * dx; yy += dy * dy; xy += dx * dy }
+    xx /= comp.length; yy /= comp.length; xy /= comp.length
+    const tr = xx + yy, det = xx * yy - xy * xy, disc = Math.sqrt(Math.max(0, tr * tr / 4 - det))
+    const l1 = tr / 2 + disc, l2 = Math.max(0, tr / 2 - disc)
+    const len = Math.sqrt(12 * l1 + 1) * mpp, wid = Math.sqrt(12 * l2 + 1) * mpp
+    if (len / wid > 5) continue // dashes, bridges, line pieces
+    // main axis in pixels -> world (y down -> z up)
+    const ang = 0.5 * Math.atan2(2 * xy, xx - yy), ax = Math.cos(ang), az = -Math.sin(ang)
+    const b = nearestBuilding(len, wid, catalogue)
+    if (!b) continue
+    const bx = b.maxX - b.minX, bz = b.maxZ - b.minZ
+    let yaw = bz >= bx ? Math.atan2(ax, az) : Math.atan2(-az, ax)
+    yaw = Math.round((((yaw * 180) / Math.PI) % 360 + 360) % 360)
+    const a = (yaw * Math.PI) / 180, s = Math.sin(a), c = Math.cos(a)
+    const lx = (b.minX + b.maxX) / 2, lz = (b.minZ + b.maxZ) / 2
+    const wx = cx * mpp, wz = (h - cy) * mpp
+    const x = wx - (lx * c + lz * s), z = wz - (-lx * s + lz * c)
+    const corners: number[] = []
+    for (const [px, pz] of [[b.minX, b.minZ], [b.maxX, b.minZ], [b.maxX, b.maxZ], [b.minX, b.maxZ]]) corners.push(x + px * c + pz * s, z - px * s + pz * c)
+    out.push({ x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, yaw, prefab: b.prefab, cat: b.cat, corners, len, wid })
+  }
+  return out
+}
+const HOUSES = BUILDINGS.filter((b) => b.cat === 'houseS' || b.cat === 'houseM' || b.cat === 'houseL' || b.cat === 'farm' || b.cat === 'shed' || b.cat === 'civic')
+/** catalogue building whose footprint (long side, short side) is closest to len x wid metres */
+export function nearestBuilding(len: number, wid: number, catalogue: Building[] = HOUSES): Building | null {
+  let best: Building | null = null, bd = Infinity
+  for (const b of catalogue) {
+    const a = b.maxX - b.minX, c = b.maxZ - b.minZ, L = Math.max(a, c), W = Math.min(a, c)
+    const d = Math.abs(Math.log(L / len)) + Math.abs(Math.log(W / wid))
+    if (d < bd) { bd = d; best = b }
+  }
+  return best
+}
+
+/** mask -> world outlines (cells of ~4 px), simplified */
+function outlines(m: Uint8Array, w: number, h: number, mpp: number, minArea: number): { pts: number[]; holes: number[][] }[] {
+  const cell = Math.max(1, Math.round(Math.max(w, h) / 250))
+  const cols = Math.ceil(w / cell), rows = Math.ceil(h / cell), g = new Uint8Array(cols * rows)
+  // cell grid row 0 = bottom (south)
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    let on = 0, n = 0
+    for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) {
+      const px = c * cell + x, py = h - 1 - (r * cell + y)
+      if (px >= w || py < 0) continue
+      n++; on += m[py * w + px]
+    }
+    g[r * cols + c] = n && on * 2 >= n ? 1 : 0
+  }
+  const cm = cell * mpp
+  return maskOutlines(g, cols, rows, cm, 0, 0, minArea).map((o) => ({ pts: closedSimplify(o.pts, cm * 0.8), holes: o.holes.map((p) => closedSimplify(p, cm * 0.8)).filter((p) => p.length >= 6) })).filter((o) => o.pts.length >= 6)
+}
+const closedSimplify = (p: number[], eps: number) => { const s = simplify([...p, p[0], p[1]], eps); return s.slice(0, -2) }
+
+/** water mask -> rivers (long, narrow bodies: centre line + width) and lakes (outlines) */
+export function extractWater(m: Uint8Array, w: number, h: number, mpp: number): ImgWater[] {
+  const out: ImgWater[] = []
+  const inv = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) inv[i] = m[i] ? 0 : 1
+  const half = edt(inv, w, h)
+  for (const comp of components(m, w, h)) {
+    if (comp.length * mpp * mpp < 400) continue
+    const cm = new Uint8Array(w * h)
+    for (const i of comp) cm[i] = 1
+    // centre line: skeleton of the smoothed body, longest path first
+    const sk = thin(closeMask(cm, w, h, 2), w, h)
+    const paths = longestPaths(sk, w, h, half)
+    let hw: number[] = []
+    for (const p of paths) for (let i = 0; i < p.length; i += 2) hw.push(half[p[i + 1] * w + p[i]])
+    hw = hw.filter(Number.isFinite).sort((a, b) => a - b)
+    const widthM = (hw.length ? 2 * hw[hw.length >> 1] : 2) * mpp
+    const main = paths[0], mainLen = main ? plen(main) * mpp : 0
+    if (main && mainLen > 4 * widthM && widthM <= 70) {
+      for (const p of paths) {
+        if (plen(p) * mpp < Math.max(60, 2 * widthM)) continue
+        out.push({ kind: 'river', pts: toWorld(simplify(p, 1.5), mpp, h), width: Math.round(Math.max(4, widthM)), })
+      }
+    } else for (const o of outlines(cm, w, h, mpp, 400)) out.push({ kind: 'lake', pts: o.pts, width: 0 })
+  }
+  return out
+}
+
+/** skeleton -> its long branches: longest path, then the longest branches off it (pixel polylines) */
+function longestPaths(sk: Uint8Array, w: number, h: number, half: Float32Array): number[][] {
+  const pix: number[] = []
+  for (let i = 0; i < w * h; i++) if (sk[i]) pix.push(i)
+  if (!pix.length) return []
+  const nb = (i: number) => {
+    const x = i % w, y = (i - x) / w, r: number[] = []
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue
+      const nx = x + dx, ny = y + dy
+      if (nx >= 0 && ny >= 0 && nx < w && ny < h && sk[ny * w + nx]) r.push(ny * w + nx)
+    }
+    return r
+  }
+  const taken = new Uint8Array(w * h)
+  const bfs = (starts: number[]) => {
+    const dist = new Map<number, number>(), prev = new Map<number, number>()
+    const q = [...starts]
+    starts.forEach((s) => dist.set(s, 0))
+    for (let k = 0; k < q.length; k++) {
+      const i = q[k]
+      for (const j of nb(i)) if (!dist.has(j) && !taken[j]) { dist.set(j, dist.get(i)! + 1); prev.set(j, i); q.push(j) }
+    }
+    let far = starts[0], fd = 0
+    for (const [i, d] of dist) if (d > fd) { fd = d; far = i }
+    return { far, fd, prev }
+  }
+  const path = (from: number, prev: Map<number, number>) => { const p: number[] = []; for (let v: number | undefined = from; v !== undefined; v = prev.get(v)) p.push(v % w, Math.floor(v / w)); return p }
+  const out: number[][] = []
+  const a = bfs([pix[0]]).far, b = bfs([a])
+  const main = path(b.far, b.prev)
+  out.push(main)
+  for (let i = 0; i < main.length; i += 2) taken[main[i + 1] * w + main[i]] = 1
+  // branches: grow from the taken path, keep the long ones
+  for (let k = 0; k < 4; k++) {
+    const starts: number[] = []
+    for (let i = 0; i < w * h; i++) if (taken[i]) for (const j of nb(i)) if (!taken[j]) starts.push(j)
+    if (!starts.length) break
+    const r = bfs(starts)
+    const p = path(r.far, r.prev)
+    const minLen = 6 * (half[r.far] || 2)
+    if (p.length / 2 < minLen) break
+    out.push(p)
+    for (let i = 0; i < p.length; i += 2) taken[p[i + 1] * w + p[i]] = 1
+  }
+  return out
+}
+
+/** vanilla road class from the drawn line thickness, relative to the map's typical road */
+export function roadClass(width: number, median: number, kind: 'road' | 'path'): 'asphalt' | 'asphaltNarrow' | 'dirt' | 'trailDirt' {
+  if (kind === 'path') return 'trailDirt'
+  if (width >= median * 1.35) return 'asphalt'
+  if (width >= median * 0.75) return 'asphaltNarrow'
+  return 'dirt'
+}
+
+/** small preview: every pixel painted with its role colour */
+export const ROLE_COLOURS: Record<ImgRole, [number, number, number]> = {
+  land: [196, 200, 170], water: [70, 130, 200], band: [200, 140, 110], forest: [60, 120, 60], field: [210, 190, 110],
+  building: [30, 30, 30], road: [120, 120, 120], path: [150, 110, 70], ignore: [255, 0, 255],
+}
+export { rgbToLab }
+
+/** heights of a non-square picture padded into a square (edge rows / columns repeated at the top and the right),
+ *  so the picture keeps its world position: x = px * m, z = (h - py) * m */
+export function squareHeights(hm: { w: number; h: number; data: Float32Array }): { w: number; h: number; data: Float32Array; normalized: false } {
+  const n = Math.max(hm.w, hm.h), out = new Float32Array(n * n), top = n - hm.h
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) out[y * n + x] = hm.data[Math.max(0, y - top) * hm.w + Math.min(hm.w - 1, x)]
+  return { w: n, h: n, data: out, normalized: false }
+}
