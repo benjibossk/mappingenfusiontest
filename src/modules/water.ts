@@ -30,6 +30,7 @@ export interface Water {
   carve?: boolean // river: dig a bed; otherwise the water just lies on the ground (banks may cover it)
   wetEdge?: boolean // river: ground under the water up to the traced edge (map from a picture), banks start outside
   level?: number // lake: fixed water level (dam reservoir, dam.ts); absent = from the shore
+  widths?: number[] // river: traced width (m) at each control point (map from a picture); roads cut over the widest
 }
 
 //! River course the generator can mesh: sharp vertices dropped, corners rounded (Chaikin), so that
@@ -581,7 +582,11 @@ export function traceRivers(heights: ArrayLike<number>, grid: Grid, flow: Float3
 //! river (half width + margin) or inside a lake is removed, leaving a gap for a bridge. Pieces are named
 //! <id>_A, <id>_B... The gaps are returned (bridge ends) for the future bridge generator.
 export function splitAtWater(shapes: ProjectShape[], waters: Water[], margin = 4) {
-  const courses = waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).map((w) => ({ c: riverCourse(w.pts, w.width), half: w.width / 2 + margin }))
+  // a river traced from a picture keeps its local widths (its bed is carved to them): test on its own points
+  const courses = waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).map((w) => {
+    const local = w.widths && w.widths.length === w.pts.length / 2
+    return { c: local ? w.pts : riverCourse(w.pts, w.width), half: (i: number) => (local ? Math.max(w.widths![i / 2], w.widths![i / 2 + 1], w.width) : w.width) / 2 + margin }
+  })
   const lakes = waters.filter((w) => WATER_TYPES[w.type].closed && w.pts.length >= 6)
   const wet = (x: number, z: number) => {
     for (const l of lakes) if (inside(l.pts, x, z)) return true
@@ -589,9 +594,19 @@ export function splitAtWater(shapes: ProjectShape[], waters: Water[], margin = 4
       for (let i = 0; i + 3 < c.length; i += 2) {
         const ax = c[i], az = c[i + 1], dx = c[i + 2] - ax, dz = c[i + 3] - az, L2 = dx * dx + dz * dz || 1
         const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
-        if (Math.hypot(x - ax - dx * t, z - az - dz * t) < half) return true
+        if (Math.hypot(x - ax - dx * t, z - az - dz * t) < half(i)) return true
       }
     return false
+  }
+  // long road legs (picture roads: one vertex every 50-100 m) can hop over a river with both ends dry:
+  // test (and cut) on legs of 8 m at most, only for roads that touch the water somewhere
+  const dense = (p: number[]) => {
+    const o: number[] = [p[0], p[1]]
+    for (let i = 2; i < p.length; i += 2) {
+      const L = Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]), k = Math.ceil(L / 8)
+      for (let j = 1; j <= k; j++) o.push(p[i - 2] + ((p[i] - p[i - 2]) * j) / k, p[i - 1] + ((p[i + 1] - p[i - 1]) * j) / k)
+    }
+    return o
   }
   // last dry point between a dry point a and a wet point b (bisection)
   const edge = (ax: number, az: number, bx: number, bz: number): [number, number] => {
@@ -608,9 +623,24 @@ export function splitAtWater(shapes: ProjectShape[], waters: Water[], margin = 4
   if (!courses.length && !lakes.length) return { shapes, gaps }
   for (const s of shapes) {
     if (!s.id.startsWith('ROAD_') || s.closed) { out.push(s); continue }
-    const p = s.points, n = p.length / 2
-    const isWet = Array.from({ length: n }, (_, i) => wet(p[i * 2], p[i * 2 + 1]))
-    if (!isWet.some(Boolean)) { out.push(s); continue }
+    const d = dense(s.points)
+    const dWet = Array.from({ length: d.length / 2 }, (_, i) => wet(d[i * 2], d[i * 2 + 1]))
+    if (!dWet.some(Boolean)) { out.push(s); continue }
+    // dry legs keep their own vertices (dense points only where a leg touches the water)
+    const p: number[] = [], isWet: boolean[] = []
+    {
+      const o = s.points
+      p.push(o[0], o[1]); isWet.push(wet(o[0], o[1]))
+      let k = 1
+      for (let i = 2; i < o.length; i += 2) {
+        const L = Math.hypot(o[i] - o[i - 2], o[i + 1] - o[i - 1]), m = Math.ceil(L / 8)
+        let any = false
+        for (let j = 0; j < m; j++) if (dWet[k + j]) any = true
+        for (let j = 0; j < m; j++) if (any || j === m - 1) { p.push(d[(k + j) * 2], d[(k + j) * 2 + 1]); isWet.push(dWet[k + j]) }
+        k += m
+      }
+    }
+    const n = p.length / 2
     const runs: number[][] = []
     let cur: number[] = []
     let gapStart: [number, number] | null = null

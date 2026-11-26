@@ -2662,7 +2662,7 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   const median = ws.length ? ws[ws.length >> 1] : 1
   for (const x of r.roads) { const type = roadClass(x.width, median, x.kind); roads.push({ id: nextRoadId(type), type, pts: x.pts }) }
   for (const x of r.waters) {
-    if (x.kind === 'river') waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, depth: PICTURE_RIVER_DEPTH, carve: false, wetEdge: true })
+    if (x.kind === 'river') waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, ...(x.widths ? { widths: x.widths } : {}), depth: PICTURE_RIVER_DEPTH, carve: false, wetEdge: true })
     else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: 2, level: 0 })
   }
   r.areas.forEach((a, k) => areas.push({ id: `${a.kind === 'forest' ? 'FOREST' : 'FIELD'}_IMG_${k + 1}`, kind: a.kind, ...(a.kind === 'forest' ? { leaf: 'mixed' as const } : {}), pts: a.pts, holes: a.holes }))
