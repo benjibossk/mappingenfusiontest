@@ -10,7 +10,7 @@ import * as turf from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { boxCorners, fwd, right, type Box } from './gen-common'
 import { POWER_DEFAULTS, placePoles, type PowerLine } from './power'
-import { roadHalf, type Road, type RoadType } from './roads'
+import { centreLine, roadHalf, type Road, type RoadType } from './roads'
 import type { Site } from './network'
 import { SITE_RADIUS } from './network'
 import type { Placed, Square } from './settlements'
@@ -280,12 +280,14 @@ function clipLine(pts: number[], b: Box, reroute: boolean, off: number, minLen =
 /** removes / adapts everything of `w` inside the airfield footprint. Mutates `w` in place. */
 /** drops the other zones' entities and the settled buildings standing on road `r` (half width + 0.5 m) */
 function clearAlong(w: ClearWorld, self: string, r: Road, rep: ClearReport) {
-  const lim = roadHalf(r) + 0.5
+  // against the SMOOTHED line the road generator lays (centreLine): a detour has long straight runs between
+  // its corners and the spline bows off them by metres (BELT_2_B75 4.6 m off the raw detour, 0.2 m off the spline)
+  const line = centreLine(r.pts, 4), lim = roadHalf(r) + 0.5
   if (w.zones) for (const z of w.zones) if (z.id !== self) {
-    const keep = z.entities.filter((e) => lineDist(r.pts, e.x, e.z) >= lim)
+    const keep = z.entities.filter((e) => lineDist(line, e.x, e.z) >= lim && lineDist(r.pts, e.x, e.z) >= lim)
     if (keep.length !== z.entities.length) { z.entities = keep; rep.zones++ }
   }
-  if (w.settled) replace(w.settled, w.settled.filter((q) => lineDist(r.pts, q.x, q.z) >= lim))
+  if (w.settled) replace(w.settled, w.settled.filter((q) => lineDist(line, q.x, q.z) >= lim && lineDist(r.pts, q.x, q.z) >= lim))
 }
 
 export function clearAirfield(w: ClearWorld, zn: ZoneItem & { site?: Box }, o: { accessType?: RoadType } = {}): ClearReport {

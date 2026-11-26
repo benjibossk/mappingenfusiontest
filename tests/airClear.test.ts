@@ -7,7 +7,7 @@ import { makeAirfield } from '../src/modules/zones'
 import { airFootprint, airfieldConflicts, clearAirfield, detour, inFoot, snapAirfield, splitAtBox, type ClearWorld } from '../src/modules/airClear'
 import { applyFlatten, type Box } from '../src/modules/gen-common'
 import { flattenAirfield, generateAirfield } from '../src/modules/airfield'
-import { roadHalf } from '../src/modules/roads'
+import { centreLine, roadHalf } from '../src/modules/roads'
 
 const PAD = -1 // a cut line may end ON the border (the fence): only what goes past it counts
 const crosses = (pts: number[], b: Box) => splitAtBox(pts, { ...b, hw: b.hw + PAD, hd: b.hd + PAD }).some((r) => r.inside)
@@ -138,7 +138,12 @@ test('clearAirfield: nothing of another zone stays on a through road rerouted ro
   let k = 0
   for (let i = 0; i + 1 < r.pts.length; i += 2) if (Math.abs(r.pts[i]) < 200 && Math.abs(r.pts[i + 1]) > 300) { k = i; break }
   assert.ok(k > 0, 'the road goes round the box')
-  const w = world([{ id: 'BELT_2_B38', prefab: 'hazel.et', x: r.pts[k] + 0.5, z: r.pts[k + 1], yaw: 0 }, { id: 'FAR', prefab: 'hazel.et', x: 0, z: 900, yaw: 0 }])
+  // + one on the laid spline where it bows furthest off the raw detour (BELT_2_B75: 4.6 m off the raw line, 0.2 m off the spline)
+  const seg = (q: number[], x: number, z: number) => { let m = Infinity; for (let i = 0; i + 3 < q.length; i += 2) { const ax = q[i], az = q[i + 1], dx = q[i + 2] - ax, dz = q[i + 3] - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1))); m = Math.min(m, Math.hypot(ax + dx * t - x, az + dz * t - z)) } return m }
+  const cl = centreLine(r.pts, 4)
+  let bow = 0
+  for (let i = 0; i + 1 < cl.length; i += 2) if (seg(r.pts, cl[i], cl[i + 1]) > seg(r.pts, cl[bow], cl[bow + 1])) bow = i
+  const w = world([{ id: 'BELT_2_B38', prefab: 'hazel.et', x: r.pts[k] + 0.5, z: r.pts[k + 1], yaw: 0 }, { id: 'BELT_2_B75', prefab: 'hazel.et', x: cl[bow], z: cl[bow + 1], yaw: 0 }, { id: 'FAR', prefab: 'hazel.et', x: 0, z: 900, yaw: 0 }])
   clearAirfield(w, air)
   assert.deepEqual(w.zones![0].entities.map((e) => e.id), ['FAR'])
 })
