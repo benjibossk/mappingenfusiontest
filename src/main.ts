@@ -133,6 +133,7 @@ import { validate, type Issue } from './modules/validate'
 import { applyFixes, bridgeChecks, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
 import { clipForestsToWater } from './modules/forestWater'
+import { forestBatches } from './modules/forestBatches'
 import { worldToIsland } from './modules/importWorld'
 import { applySurfaceMasks, heightsFromImage, maskKind, maskOnGrid, readHeightFile, readPngImage, reliefMasks, type SurfaceMask } from './modules/gaeaImport'
 import type { ReliefMasks } from './modules/gaeaRelief'
@@ -805,6 +806,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="row">
         <button id="forestGen" type="button" class="secondary">${t('btn.forestGen')}</button>
         <button id="forestSend" type="button" class="secondary">${t('btn.forestSend')}</button>
+        <label title="${t('tip.forestBatch')}">${t('lbl.forestBatch')} <input id="forestBatch" type="number" min="0" step="10" value="40" style="width:5em"></label>
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
       <details class="adv" id="satBox"><summary>${t('legend.sat')} ${info('info.sat')}</summary>
@@ -832,6 +834,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div id="exportLayers" class="exportlayers" aria-live="polite"></div>
       <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
       <label title="${t('lbl.wbBase.tip')}"><input type="checkbox" id="wbBase"> ${t('lbl.wbBase')}</label>
+      <label title="${t('lbl.forestLater.tip')}"><input type="checkbox" id="forestLater"> ${t('lbl.forestLater')}</label>
       <details class="adv" id="checkBox"><summary>${t('legend.check')}</summary>
         ${hint('hint.check')}
         <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
@@ -4541,7 +4544,17 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   run(t('run.l.forests'), async () => {
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
-    return toWb({ version: 0, shapes: forestShapesOut(f), entities: prodLogEntities() })
+    const shapes = forestShapesOut(f), per = Math.max(0, Math.floor(num('forestBatch') || 0))
+    if (!per || shapes.length <= per) return toWb({ version: 0, shapes, entities: prodLogEntities() })
+    // in batches: one Apply + save per batch, a pause in between (the Workbench reached 12.7 GB with all at once)
+    const batches = forestBatches(shapes, per), out: string[] = []
+    for (let k = 0; k < batches.length; k++) {
+      logEl.textContent = t('log.forestBatch', { k: k + 1, n: batches.length, shapes: batches[k].shapes.length })
+      const msg = await toWb({ version: 0, shapes: batches[k].shapes, entities: k === 0 ? prodLogEntities() : [], locked: batches[k].locked, setupWorld: { managers: false, bounds: false, save: true } })
+      out.push(t('log.forestBatch', { k: k + 1, n: batches.length, shapes: batches[k].shapes.length }) + '\n' + msg)
+      if (k + 1 < batches.length) await new Promise((r) => setTimeout(r, 4000))
+    }
+    return out.join('\n')
   }),
 )
 // everything at once (roads + water, forests, buildings): one project, the log says what went
@@ -4549,7 +4562,8 @@ $<HTMLDivElement>('modsBox').append(modsChecklist())
 $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   run(t('run.l.all'), async () => {
     const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
-    const forests = forestShapesOut(areas.filter((a) => a.kind === 'forest'))
+    // forests apart (button "Send forests", in batches): the objects go first, the forests later
+    const forests = $<HTMLInputElement>('forestLater').checked ? [] : forestShapesOut(areas.filter((a) => a.kind === 'forest'))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
     const shapes = [...wr.shapes, ...(result?.shapes ?? []), ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]

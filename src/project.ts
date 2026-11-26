@@ -97,6 +97,8 @@ export interface Project {
   /** after the Apply, the bridge calls MG_SetupWorld (MG_SetupWorldApi.c): base world managers (CameraManager,
    *  Lighting, FogHaze, EnvProbe...) created only when absent; bounds rocks / save off unless set */
   setupWorld?: { managers?: boolean; bounds?: boolean; save?: boolean }
+  /** names (or "PREFIX*") the Apply must not remove although their family is sent (forests sent in batches) */
+  locked?: string[]
 }
 
 export const GENERATORS = {

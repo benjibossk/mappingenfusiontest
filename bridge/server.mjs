@@ -304,10 +304,12 @@ const server = createServer(async (req, res) => {
         add("entities", o);
       }
       parts.push(cur);
-      // hand-made work to keep: profile/MapGen/locked.json = ["NAME", "PREFIX*", ...]. Honoured only once
-      // MG_ApplyProjectPlugin.c reads the "locked" field (TODO addon side); unknown JSON fields are ignored until then.
+      // hand-made work to keep: profile/MapGen/locked.json = ["NAME", "PREFIX*", ...], read by
+      // MG_ApplyProjectPlugin.c (IsLocked): those root entities are never removed by the family replace.
       let locked = [];
       try { const l = JSON.parse(readFileSync(join(PROFILE_DIR, "MapGen", "locked.json"), "utf-8")); if (Array.isArray(l)) locked = l.filter((x) => typeof x === "string" && x); } catch {}
+      // + the names the project itself keeps (forests sent in batches: the batches already sent)
+      if (Array.isArray(project.locked)) for (const x of project.locked) if (typeof x === "string" && x && !locked.includes(x)) locked.push(x);
       if (locked.length) console.log(`[apply] ${locked.length} locked name(s)/prefix(es) passed to the Workbench`);
       for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (/^mapgen\.\d+\.json$/.test(f)) rmSync(join(PROFILE_DIR, "MapGen", f));
       parts.forEach((p, k) => {
