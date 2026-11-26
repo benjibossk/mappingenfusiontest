@@ -149,7 +149,7 @@ function downhillCourse(w: Water, at: (x: number, z: number) => number) {
   return r
 }
 
-function riverProfile(w: Water, at: (x: number, z: number) => number) {
+function riverProfile(w: Water, at: (x: number, z: number) => number, lakes: Water[] = []) {
   const line = centreLine(downhillCourse(w, at), 4)
   const n = line.length / 2
   const edge = riverWetHalf(w)
@@ -205,7 +205,44 @@ function riverProfile(w: Water, at: (x: number, z: number) => number) {
     }
     for (let i = 0; i < src; i++) level[i] = -0.05
   }
+  pinToLakes(line, level, lakes)
   return { line, level, sea, src }
+}
+
+function inPolygon(p: number[], x: number, z: number) {
+  let c = false
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c
+  }
+  return c
+}
+
+function nearPolygon(p: number[], x: number, z: number, tol: number) {
+  if (inPolygon(p, x, z)) return true
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    const px = p[j], pz = p[j + 1], qx = p[i] - px, qz = p[i + 1] - pz, Q = qx * qx + qz * qz || 1
+    const u = Math.min(1, Math.max(0, ((x - px) * qx + (z - pz) * qz) / Q))
+    if (Math.hypot(x - px - qx * u, z - pz - qz * u) < tol) return true
+  }
+  return false
+}
+
+//! a river ribbon entering / leaving a swelling lake lies exactly at the lake level inside it, never under it upstream
+//! nor over it downstream (round 11: the ribbon ends a few dm off the lake surface showed as mottled patches)
+export function pinToLakes(line: number[], level: number[], lakes: Water[]) {
+  for (const L of lakes) {
+    if (!L.onRiver || L.level === undefined || L.pts.length < 6) continue
+    let a = -1, b = -1
+    // inside, or on the shore (the profile line may stop a few metres short of the ribbon end it was cut to)
+    const near = (x: number, z: number) => nearPolygon(L.pts, x, z, 12)
+    for (let i = 0; i < level.length; i++) if (near(line[i * 2], line[i * 2 + 1])) { if (a < 0) a = i; b = i }
+    if (a < 0) continue
+    for (let i = 0; i < level.length; i++) {
+      if (i < a) level[i] = Math.max(level[i], L.level)
+      else if (i > b) level[i] = Math.min(level[i], L.level)
+      else level[i] = L.level
+    }
+  }
 }
 
 //! painted under each river: pebbles in the bed, dirt on the wet banks (same format as roadMasks)
@@ -251,7 +288,7 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
       // the terrain is shaped to the river, not the other way round: a smooth water profile that
       // never rises downstream, a bed under it, banks just above it, then a blend back to the
       // original ground over `fall` metres (the ground is lowered OR raised there)
-      const { line, level } = riverProfile(w, at)
+      const { line, level } = riverProfile(w, at, waters)
       const half0 = Math.max(w.width / 2, step) // the grid cannot hold a narrower channel
       const wetHalf0 = riverWetHalf(w)
       // a river traced from a picture is carved to its local traced width (the bridges' gaps use it too), never
@@ -386,7 +423,7 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
       // half width: picture 119, 116 m wide river with 25-55 deg turns every 26 m, only the sea showed
       const pts = easeBends(centreLine(downhillCourse(w, at), spacing), RIVER_BEND_RADIUS * riverSentWidth(w))
       // the water sits on the profile the terrain was shaped to (nearest profile sample)
-      const { line, level, sea: seaAt, src: srcAt } = riverProfile(w, at)
+      const { line, level, sea: seaAt, src: srcAt } = riverProfile(w, at, waters)
       const n = pts.length / 2
       const lift: number[] = []
       let sea = -1, src = -1
@@ -429,7 +466,10 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
       out.push({ id: w.id, kind: 'polyline', closed: true, points: pts.map(r2), generator: wt.generator, lift })
     }
   }
-  joinTributaries(out, ground)
+  // two ribbons ending in the same swelling lake meet through it, not as a tributary (round 11, picture 119: the
+  // lower arm's start snapped onto the upper arm 0.7 m under the lake surface)
+  const swells = waters.filter((w) => w.onRiver && w.level !== undefined && w.pts.length >= 6)
+  joinTributaries(out, ground, (x, z) => swells.some((L) => nearPolygon(L.pts, x, z, 12)))
   return out
 }
 
@@ -440,7 +480,7 @@ const JOIN_SLOPE = 0.03
 //! confluence 2 m above the main river and its flat end cap showed as a dark rectangle with straight edges.
 //! The end goes on to the main river's centre line (cap under the main water) and its level comes down to
 //! the main level, climbing back at JOIN_SLOPE
-export function joinTributaries(shapes: ProjectShape[], ground: (x: number, z: number) => number) {
+export function joinTributaries(shapes: ProjectShape[], ground: (x: number, z: number) => number, inLake: (x: number, z: number) => boolean = () => false) {
   const rivers = shapes.filter((s) => s.kind === 'spline' && !s.closed && s.lift && s.paramValues?.length)
   const r2 = (v: number) => Math.round(v * 100) / 100
   for (const s of rivers) {
@@ -449,6 +489,7 @@ export function joinTributaries(shapes: ProjectShape[], ground: (x: number, z: n
       if (n < 2) continue
       const e = atStart ? 0 : n - 1
       const ex = s.points[e * 2], ez = s.points[e * 2 + 1]
+      if (inLake(ex, ez)) continue
       let main: ProjectShape | undefined, mi = -1, md = Infinity
       for (const m of rivers) {
         if (m === s) continue

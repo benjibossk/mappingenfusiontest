@@ -955,25 +955,49 @@ export function extractWater(m: Uint8Array, w: number, h: number, mpp: number): 
     const main = paths[0], mainLen = main ? plen(main) * mpp : 0
     // elongated body (length > 3 x width): river, whatever its width; compact blob: lake
     if (main && mainLen > 3 * widthM) {
-      for (const p of paths) {
-        if (p !== main && plen(p) * mpp < Math.max(60, 2 * widthM)) continue
-        const sp = simplify(p, 1.5), widths: number[] = []
-        for (let i = 0; i < sp.length; i += 2) widths.push(Math.round(Math.max(4, 2 * localHalf(half, w, h, sp[i], sp[i + 1]) * mpp)))
-        const sorted = [...widths].sort((a, b) => a - b)
-        out.push({ kind: 'river', pts: toWorld(sp, mpp, h), width: sorted[sorted.length >> 1], widths })
-      }
       // a lake swelling along the river (picture 119 east of the town, ~200 m across a 100 m river): the ribbon
       // only covers the river width, the swelling (parts wider than 1.8 x the median width, 2.5 ha+; picture 120 south tail was a flat plain 0.3-0.8 m over the sea, dark in game) becomes a lake
       const r = Math.max(2, 1.8 * (hw.length ? hw[hw.length >> 1] : 1))
       const core = new Uint8Array(w * h)
       let nCore = 0
       for (const i of comp) if (half[i] > r) { core[i] = 1; nCore++ }
+      const bulge = new Uint8Array(w * h)
       if (nCore) {
-        const dc = edt(core, w, h), bulge = new Uint8Array(w * h)
-        let n = 0
-        for (const i of comp) if (dc[i] <= r) { bulge[i] = 1; n++ }
-        if (n * mpp * mpp >= 25000) for (const o of outlines(bulge, w, h, mpp, 25000)) out.push({ kind: 'lake', pts: o.pts, width: 0, onRiver: true })
+        const dc = edt(core, w, h), raw = new Uint8Array(w * h)
+        for (const i of comp) if (dc[i] <= r) raw[i] = 1
+        // only the swellings kept as lakes cut the river
+        for (const c of components(raw, w, h)) if (c.length * mpp * mpp >= 25000) for (const i of c) bulge[i] = 1
       }
+      // the lake takes the river channel along the swelling too (the swelling alone left the ribbon running along its
+      // edge, half over the lake), and the ribbon stops a few metres inside it: round 11, the ribbon under the lake
+      // showed as straight dark bands and mottled patches (119, 120)
+      if (bulge.some((v) => v)) {
+        const toLake = edt(bulge, w, h), D = 2.2 * (hw.length ? hw[hw.length >> 1] : 1) + 1
+        for (const i of comp) if (toLake[i] <= D) bulge[i] = 1
+      }
+      const riverOnly = new Uint8Array(w * h)
+      for (const i of comp) if (!bulge[i]) riverOnly[i] = 1
+      const toRiver = edt(riverOnly, w, h)
+      const ov = Math.max(2, 6 / mpp)
+      for (const p of paths) {
+        if (p !== main && plen(p) * mpp < Math.max(60, 2 * widthM)) continue
+        const runs: number[][] = []
+        let cur: number[] = []
+        for (let i = 0; i < p.length; i += 2) {
+          const k = Math.round(p[i + 1]) * w + Math.round(p[i])
+          if (!bulge[k] || toRiver[k] <= ov) cur.push(p[i], p[i + 1])
+          else { if (cur.length) runs.push(cur); cur = [] }
+        }
+        if (cur.length) runs.push(cur)
+        for (const run of runs) {
+          if (run.length < 4 || plen(run) * mpp < Math.max(20, widthM)) continue
+          const sp = simplify(run, 1.5), widths: number[] = []
+          for (let i = 0; i < sp.length; i += 2) widths.push(Math.round(Math.max(4, 2 * localHalf(half, w, h, sp[i], sp[i + 1]) * mpp)))
+          const sorted = [...widths].sort((a, b) => a - b)
+          out.push({ kind: 'river', pts: toWorld(sp, mpp, h), width: sorted[sorted.length >> 1], widths })
+        }
+      }
+      if (bulge.some((v) => v)) for (const o of outlines(bulge, w, h, mpp, 25000)) out.push({ kind: 'lake', pts: o.pts, width: 0, onRiver: true })
     } else for (const o of outlines(cm, w, h, mpp, 400)) out.push({ kind: 'lake', pts: o.pts, width: 0 })
   }
   return out

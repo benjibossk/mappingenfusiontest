@@ -45,3 +45,22 @@ test('a river swelling lake is dug as deep as the wide river middle (picture 120
   const h = hs[(400 / 4) * 200 + 340 / 4]
   assert.ok(h <= lake.level! - 3.5, `${h} vs level ${lake.level}`)
 })
+
+test('the river ribbon stops just inside a swelling lake instead of running on under it (round 11)', () => {
+  const sw = extractWater(mask(true), 400, 400, 2)
+  const lake = sw.find((x) => x.kind === 'lake')!
+  const rivers = sw.filter((x) => x.kind === 'river')
+  assert.equal(rivers.length, 2)
+  const inP = (p: number[], x: number, z: number) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c; return c }
+  for (const r of rivers) {
+    const inside = r.pts.filter((_, i) => i % 2 === 0).filter((x, k) => inP(lake.pts, x, r.pts[k * 2 + 1])).length
+    assert.ok(inside <= 1, `${inside} river points inside the lake`)
+  }
+})
+
+test('ribbon levels are pinned to the swelling lake level at the lake', async () => {
+  const { pinToLakes } = await import('../src/modules/water')
+  const line = [0, 0, 0, 50, 0, 100, 0, 150, 0, 200], level = [3, 2.5, 2, 1.5, 1]
+  pinToLakes(line, level, [{ id: 'L', type: 'lake', pts: [-50, 80, 50, 80, 50, 120, -50, 120], width: 0, depth: 4, onRiver: true, level: 1.8 }])
+  assert.deepEqual(level, [3, 2.5, 1.8, 1.5, 1])
+})
