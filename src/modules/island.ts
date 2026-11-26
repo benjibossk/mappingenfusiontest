@@ -186,6 +186,26 @@ export function settlementMask(grid: Grid, footprints: number[][], margin = SETT
   return m
 }
 
+/** beach / pebbles fade out from this distance to open water (m, gone at x2.5); coastal grass from COAST_GRASS_M */
+export const COAST_BEACH_M = 25
+export const COAST_GRASS_M = 60
+/** per vertex: distance (m) to the nearest vertex lower than `below` (chamfer 3-4, both passes); Infinity when none */
+export function waterDistance(heights: ArrayLike<number>, cols: number, rows: number, step: number, below: number): Float32Array {
+  const N = cols * rows, d = new Float32Array(N).fill(Infinity), D = step * Math.SQRT2
+  for (let i = 0; i < N; i++) if (heights[i] < below) d[i] = 0
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const i = r * cols + c
+    if (c > 0) d[i] = Math.min(d[i], d[i - 1] + step)
+    if (r > 0) { d[i] = Math.min(d[i], d[i - cols] + step); if (c > 0) d[i] = Math.min(d[i], d[i - cols - 1] + D); if (c + 1 < cols) d[i] = Math.min(d[i], d[i - cols + 1] + D) }
+  }
+  for (let r = rows - 1; r >= 0; r--) for (let c = cols - 1; c >= 0; c--) {
+    const i = r * cols + c
+    if (c + 1 < cols) d[i] = Math.min(d[i], d[i + 1] + step)
+    if (r + 1 < rows) { d[i] = Math.min(d[i], d[i + cols] + step); if (c + 1 < cols) d[i] = Math.min(d[i], d[i + cols + 1] + D); if (c > 0) d[i] = Math.min(d[i], d[i + cols - 1] + D) }
+  }
+  return d
+}
+
 //! `settle` (settlementMask): no bare Rock_01 in and around the villages; that ground goes to a grass / dirt blend.
 export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array, settle?: Float32Array, masks?: ReliefMasks): SurfaceGrid[] {
   const { cols, rows, step } = grid
@@ -198,6 +218,10 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   const variants = noise2(9157, 2)
   // rock from slope AND relief context, capped share; scree at cliff feet only (rockMask.ts)
   const rm = rockMasks(heights, cols, rows, step, maxHeight, shape)
+  // beach / coastal grass only along open water: their height bands (+1..+4 m, < 12 m) alone painted every low
+  // inland plain as a beach (map from a picture: rivers and lakes at the sea level, the whole valley beach-brown).
+  // Arland: a narrow bank strip, grass beyond. Distance to ground under -0.5 m (sea, lakes, river beds).
+  const toWater = waterDistance(heights, cols, rows, step, -0.5)
   const at = (c: number, r: number) => heights[Math.min(Math.max(r, 0), rows - 1) * cols + Math.min(Math.max(c, 0), cols - 1)]
   const covered0 = (i: number, h: number) => !!(cover && cover[i] && h > 1)
   const coverShare = (c: number, r: number) => {
@@ -236,12 +260,13 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     rock -= rock * sv
     const take = (w: number) => { const t = Math.min(free, Math.max(w, 0)); free -= t; return t }
     const shore = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)))
-    const beach = take(1 - band(h, 3.5, 5))
+    const nearBank = 1 - band(toWater[i], COAST_BEACH_M, COAST_BEACH_M * 2.5), nearCoast = 1 - band(toWater[i], COAST_GRASS_M, COAST_GRASS_M * 2.5)
+    const beach = take((1 - band(h, 3.5, 5)) * nearBank)
     // [M] shore band 0-10 m above the sea: Pebbles_02 20-30 % + BeachGrass 10-14 % (FIELDS_SURFACES_VANILLA §3)
-    const lowShore = h > 0 ? 1 - band(h, 9, 11) : 0
+    const lowShore = h > 0 ? (1 - band(h, 9, 11)) * nearBank : 0
     const pebbles = take(0.25 * lowShore * (0.6 + 0.8 * variants((c * step) / 40, (r * step) / 40)))
     const sand = take(0.12 * lowShore)
-    const coastal = take(1 - band(h, 9, 12))
+    const coastal = take((1 - band(h, 9, 12)) * nearCoast)
     // [M] MountainGrass 15 % at 200-300 m, ~42 % above 300 m on Everon (top ~370 m): relative 0.55 / 0.8 of the range
     const high = 0.15 * band(h, maxHeight * 0.5, maxHeight * 0.6) + 0.27 * band(h, maxHeight * 0.75, maxHeight * 0.85)
     const inland = band(h, 10, 16)
