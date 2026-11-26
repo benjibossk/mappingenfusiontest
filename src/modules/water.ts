@@ -119,9 +119,9 @@ export const riverWetHalf = (w: { width: number }) => Math.max(w.width / 2, rive
  *  (picture 120, the bed texture showing through); 2.5 m darkens the water like Arland's rivers */
 export const PICTURE_RIVER_DEPTH = 2.5
 const RIVER_BANK = 0.5 // bank top above the water
-const RIVER_EDGE = 0.15 // ground under the water at the traced edge
 const RIVER_MAXCUT = 2.5
-const RIVER_DRY = 0.2
+const RIVER_DRY = 0.4 // ground outside the traced bed but under the river ribbon, over the water (0.2 read as speckled grass islands in shallow water, picture 119 round 9)
+const RIVER_BED_MIN = 1 // a picture river's bed (wetEdge) stays this far under the water up to its traced edge
 const BANK_MAX_SLOPE = 0.6 // valley side of a river, m/m (~31 deg) // ground outside the traced bed over the water level, metres
 /** length (m) of a river's last stretch held at the sea level before its mouth */
 export const MOUTH_FLAT = (w: { width: number }) => Math.max(40, riverSentWidth(w))
@@ -225,13 +225,38 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
       // never rises downstream, a bed under it, banks just above it, then a blend back to the
       // original ground over `fall` metres (the ground is lowered OR raised there)
       const { line, level } = riverProfile(w, at)
-      const half = Math.max(w.width / 2, step) // the grid cannot hold a narrower channel
+      const half0 = Math.max(w.width / 2, step) // the grid cannot hold a narrower channel
+      const wetHalf0 = riverWetHalf(w)
+      // a river traced from a picture is carved to its local traced width (the bridges' gaps use it too), never
+      // wider than the water ribbon sent: picture 119 near 1062,730, the river traced 90-116 m wide carved at its
+      // 70 m median, the rest under the ribbon at +0.2 m: a shallow sheet with grass islands
+      const localW = w.widths && w.widths.length === w.pts.length / 2 ? w.widths : undefined
+      const halfAt = (x: number, z: number) => {
+        if (!localW) return half0
+        let bd = Infinity, bw = w.width
+        for (let j = 0; j + 3 < w.pts.length; j += 2) {
+          const px = w.pts[j], pz = w.pts[j + 1], qx = w.pts[j + 2] - px, qz = w.pts[j + 3] - pz, Q = qx * qx + qz * qz || 1
+          const u = Math.min(1, Math.max(0, ((x - px) * qx + (z - pz) * qz) / Q)), dd = Math.hypot(x - px - qx * u, z - pz - qz * u)
+          if (dd < bd) { bd = dd; bw = localW[j / 2] + (localW[j / 2 + 1] - localW[j / 2]) * u }
+        }
+        return Math.min(Math.max(bw / 2, step), Math.max(half0, wetHalf0 - step))
+      }
+      const halves: number[] = []
+      for (let i = 0; i < line.length / 2; i++) halves.push(halfAt(line[i * 2], line[i * 2 + 1]))
+      const half = Math.max(...halves)
       const fall = Math.max(2 * step, w.width)
       const wetHalf = riverWetHalf(w)
       // a river cut deep into a hill (picture 120: water 8 m, hilltop 35 m, 30 m away) rose over `fall` at up to 60 deg:
       // the blend widens with the drop (up to 5x) so the valley side stays under ~BANK_MAX_SLOPE
       const reach = Math.max(half + 5 * fall, wetHalf + 3 * step)
       const ramp = Math.max(3 * w.width, 2 * step) // the source must not end in a dug pit
+      // ...unless the source end joins another river (picture 119: the tributary's upstream end, as the terrain runs, is
+      // its confluence with the main river; the 351 m depth ramp from there left a shallow sheet with grass islands)
+      const joined = waters.some((o) => o !== w && !WATER_TYPES[o.type].closed && o.pts.length >= 4 && (() => {
+        const c = riverCourse(o.pts, o.width), R = riverWetHalf(o) + step
+        for (let j = 0; j + 3 < c.length; j += 2) if (segDist(line[0], line[1], c[j], c[j + 1], c[j + 2], c[j + 3]) <= R) return true
+        return false
+      })())
       let along = 0
       for (let i = 0; i + 1 < line.length / 2; i++) {
         const ax = line[i * 2], az = line[i * 2 + 1], bx = line[i * 2 + 2], bz = line[i * 2 + 3]
@@ -249,7 +274,8 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
             const score = d / reach
             if (score >= shapedScore[k]) continue // the nearest river shapes the cell
             const wl = level[i] + (level[i + 1] - level[i]) * tt
-            const depth = w.depth * Math.min(1, (along + tt * segLen) / ramp)
+            const half = halves[i] + (halves[i + 1] - halves[i]) * tt
+            const depth = joined ? w.depth : w.depth * Math.min(1, (along + tt * segLen) / ramp)
             let v: number
             if (d <= half) {
               // flat bed to 40 %, then up to just under the water at the traced edge: the whole river surface
@@ -257,7 +283,10 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
               // it left the outer ~20 % above the surface, ground lumps on the water along the banks (picture 120)
               const t = Math.max(0, (d / half - 0.4) / 0.6)
               // (wetEdge: rivers of a map from a picture; generated rivers keep their bank-top profile, pads rely on it)
-              v = w.wetEdge ? wl - depth + (depth - RIVER_EDGE) * sstep(t) : wl - depth + (depth + RIVER_BANK) * sstep(t)
+              // a picture river (wetEdge) stays RIVER_BED_MIN under the water to its edge (0.15 m there left a
+              // band of ground just under the surface, speckled in game); never deeper than the source ramp allows
+              const edge = Math.min(depth, RIVER_BED_MIN)
+              v = w.wetEdge ? wl - depth + (depth - edge) * sstep(t) : wl - depth + (depth + RIVER_BANK) * sstep(t)
             } else {
               const drop = at(x, z) - wl - RIVER_BANK
               const fallK = Math.min(5 * fall, Math.max(fall, (1.5 * Math.abs(drop)) / BANK_MAX_SLOPE))
