@@ -2644,6 +2644,16 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
     else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: 2, level: 0 })
   }
   r.areas.forEach((a, k) => areas.push({ id: `${a.kind === 'forest' ? 'FOREST' : 'FIELD'}_IMG_${k + 1}`, kind: a.kind, ...(a.kind === 'forest' ? { leaf: 'mixed' as const } : {}), pts: a.pts, holes: a.holes }))
+  // field edges of the picture: hedges, as the Fields zone tool lays them
+  if (r.hedges.length) {
+    result ??= { fields: [], hedges: [], shapes: [] }
+    for (const h of r.hedges) {
+      const pts: [number, number][] = []
+      for (let i = 0; i < h.length; i += 2) pts.push([h[i], h[i + 1]])
+      result.hedges.push(pts)
+      result.shapes.push({ id: `IMG_Hedge_${result.shapes.length}`, kind: 'polyline', closed: false, points: h.map((v) => Math.round(v * 100) / 100), generator: GENERATORS.hedgeCorylus })
+    }
+  }
   settled = r.buildings.map((b, i) => ({ id: `IMG_BLD_${i + 1}`, site: 'IMG', prefab: b.prefab, cat: b.cat, x: b.x, z: b.z, yaw: b.yaw, corners: b.corners, role: 'house' as const }))
   $<HTMLInputElement>('tMax').value = String(Math.max(1, Math.ceil(hi)))
   $<HTMLInputElement>('tSeaLevel').value = '0'
@@ -2652,7 +2662,7 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   setInfo(); powerInfo(); waterInfo(); roadInfo()
   recompose(true)
   draw()
-  $('imgMsg').textContent = logEl.textContent = t('img.ok', { roads: r.roads.length, waters: r.waters.length, bld: r.buildings.length, areas: r.areas.length, lo: Math.round(lo), hi: Math.round(hi) })
+  $('imgMsg').textContent = logEl.textContent = t('img.ok', { roads: r.roads.length, waters: r.waters.length, bld: r.buildings.length, areas: r.areas.length, hedges: r.hedges.length, lo: Math.round(lo), hi: Math.round(hi) })
 }
 // --- relief made in Gaea (or any terrain tool): heightmap + optional masks; roads, villages... are generated on it ---
 $<HTMLButtonElement>('tGaea').addEventListener('click', () => { const b = $<HTMLDivElement>('gaeaBox'); b.hidden = !b.hidden })

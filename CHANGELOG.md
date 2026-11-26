@@ -8,6 +8,10 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+### Added
+
+- **Map from an image** (Terrain > Image): any map picture (topographic, relief bands, countryside plan) is split into colours; give each colour a role (land, water, height band, forest, field, field edge, building, road, path / rail, ignore) and the tool builds the relief, roads, rivers (centre line + width profile, even for wide rivers) or lakes, buildings, smoothed forests, fields closed by their edges and hedges. Dotted rail lines never become buildings.
+
 ## [0.10.0] - 2026-11-26
 
 ### Added

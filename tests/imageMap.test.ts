@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   clusterImage, closeMask, edt, extractBuildings, guessRoles, hatchZone, imageToMap, joinGaps, nearestBuilding,
   reliefFromLevels, roadClass, simplify, splitDark, thin, traceSkeleton, type ClusterRole,
+  extractWater, fieldEdges, regularRow, smoothRing, type ImgRoad,
 } from '../src/modules/imageMap.ts'
 
 const mask = (w: number, h: number, on: (x: number, y: number) => boolean) => {
@@ -156,4 +157,48 @@ test('imageToMap: synthetic tactical map -> river, relief, road, building; overl
   for (let i = 1; i < road!.pts.length; i += 2) assert.ok(Math.abs(road!.pts[i] - 160) < 10)
   assert.equal(r.buildings.length, 1)
   assert.ok(Math.abs(r.buildings[0].corners[0] - 332) < 30)
+})
+
+test('a wide elongated water body is a river with a width profile, a compact one a lake', () => {
+  const w = 300, h = 100, m = new Uint8Array(w * h)
+  for (let y = 30; y < 70; y++) for (let x = 0; x < w; x++) m[y * w + x] = 1 // 40 px = 80 m wide, 600 m long
+  const r = extractWater(m, w, h, 2)
+  assert.ok(r.length >= 1 && r[0].kind === 'river', 'river')
+  assert.ok(r[0].width > 70 && r[0].width < 95, `width ${r[0].width}`)
+  assert.equal(r[0].widths!.length * 2 >= r[0].pts.length / 2, true)
+  const b = new Uint8Array(100 * 100)
+  for (let y = 20; y < 80; y++) for (let x = 20; x < 80; x++) if (Math.hypot(x - 50, y - 50) < 28) b[y * 100 + x] = 1
+  assert.equal(extractWater(b, 100, 100, 2)[0].kind, 'lake')
+})
+
+test('evenly spaced dashes are a dotted row (even three of them), uneven marks are not', () => {
+  const mk = (cx: number, cy: number, n = 6) => ({ cx, cy, px: new Array(n).fill(0) })
+  assert.equal(regularRow([mk(0, 0), mk(10, 0), mk(20, 0)]), true)
+  assert.equal(regularRow([mk(0, 0), mk(10, 0), mk(40, 0)]), false)
+  // rail dashes never come out as buildings
+  const w = 200, h = 40, d = new Uint8Array(w * h)
+  for (let k = 0; k < 4; k++) for (let y = 18; y < 22; y++) for (let x = 20 + k * 14; x < 28 + k * 14; x++) d[y * w + x] = 1
+  const s = splitDark(d, w, h, 2)
+  assert.equal(s.blobs.some((v) => v), false)
+  assert.ok(s.dashes.some((v) => v))
+})
+
+test('thin lines become field edges unless they link two roads', () => {
+  const road = (pts: number[], width: number): ImgRoad => ({ pts, width, kind: 'road' })
+  const lines = [road([0, 0, 1000, 0], 12), road([0, 500, 1000, 500], 12), road([0, 0, 0, 500], 12), road([1000, 0, 1000, 500], 12),
+    road([500, 0, 500, 500], 5), road([200, 100, 400, 300], 5)]
+  const r = fieldEdges(lines, 2)
+  assert.equal(r.edges.length, 1)
+  assert.equal(r.roads.length, 5)
+})
+
+test('smoothRing removes stair steps (no right-angle corner left)', () => {
+  const s = smoothRing([0, 0, 10, 0, 10, 10, 20, 10, 20, 20, 0, 20], 2)
+  assert.equal(s.length, 6 * 2 * 4)
+  for (let i = 0; i < s.length / 2; i++) {
+    const n = s.length / 2, a = (i + n - 1) % n, b = (i + 1) % n
+    const ux = s[a * 2] - s[i * 2], uz = s[a * 2 + 1] - s[i * 2 + 1], vx = s[b * 2] - s[i * 2], vz = s[b * 2 + 1] - s[i * 2 + 1]
+    const cos = (ux * vx + uz * vz) / (Math.hypot(ux, uz) * Math.hypot(vx, vz))
+    assert.ok(cos < -0.3, `corner ${i}`)
+  }
 })

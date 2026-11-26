@@ -11,8 +11,8 @@ import { quantise, rgbToLab, type Quantised, type Rgba } from './satmask'
 import { maskOutlines } from './refMap'
 import { BUILDINGS, type Building, type BuildingCat } from '../data/buildings'
 
-export type ImgRole = 'land' | 'water' | 'band' | 'forest' | 'field' | 'building' | 'road' | 'path' | 'ignore'
-export const IMG_ROLES: ImgRole[] = ['land', 'water', 'band', 'forest', 'field', 'building', 'road', 'path', 'ignore']
+export type ImgRole = 'land' | 'water' | 'band' | 'forest' | 'field' | 'hedge' | 'building' | 'road' | 'path' | 'ignore'
+export const IMG_ROLES: ImgRole[] = ['land', 'water', 'band', 'forest', 'field', 'hedge', 'building', 'road', 'path', 'ignore']
 /** role of one colour cluster; band: height (m) of its lower edge (the contour line around it) */
 export interface ClusterRole { role: ImgRole; height?: number }
 
@@ -45,6 +45,12 @@ export function guessRoles(q: Pick<Quantised, 'lab' | 'share'>): ClusterRole[] {
     q.share.forEach((s, i) => { if (out[i].role !== 'water' && out[i].role !== 'band' && (best < 0 || s > q.share[best])) best = i })
     if (best >= 0) out[best] = { role: 'land' }
   }
+  // countryside maps (forest drawn): a small cluster a shade darker than the land, same tint = field edge lines
+  const land = out.reduce((b, r, i) => (r.role === 'land' && (b < 0 || q.share[i] > q.share[b]) ? i : b), -1)
+  if (land >= 0 && out.some((r) => r.role === 'forest')) q.lab.forEach(([L, a, b], i) => {
+    const [L0, a0, b0] = q.lab[land]
+    if (out[i].role === 'land' && i !== land && q.share[i] < 0.1 && L0 - L >= 4 && L0 - L <= 15 && Math.hypot(a - a0, b - b0) < 5) out[i] = { role: 'hedge' }
+  })
   return out
 }
 
@@ -323,12 +329,14 @@ export interface ImageMapOptions {
   shore?: number
   /** water depth at the middle of wide water, metres */
   depth?: number
+  /** thin lines not linking two roads become field edges; default: when a forest or field colour is set */
+  fieldEdges?: boolean
   /** height smoothing radius, metres */
   smooth?: number
 }
 
 export interface ImgRoad { pts: number[]; width: number; kind: 'road' | 'path' }
-export interface ImgWater { kind: 'river' | 'lake'; pts: number[]; width: number }
+export interface ImgWater { kind: 'river' | 'lake'; pts: number[]; width: number; /** river: width (m) at each point */ widths?: number[] }
 export interface ImgBuilding { x: number; z: number; yaw: number; prefab: string; cat: BuildingCat; corners: number[]; len: number; wid: number }
 export interface ImgArea { kind: 'forest' | 'field'; pts: number[]; holes: number[][] }
 export interface ImageMapResult {
@@ -343,6 +351,8 @@ export interface ImageMapResult {
   areas: ImgArea[]
   /** per pixel role after inpainting (index in IMG_ROLES), for previews */
   roleMap: Uint8Array
+  /** field edges (thin lines between fields), world polylines */
+  hedges: number[][]
 }
 
 const R = (r: ImgRole) => IMG_ROLES.indexOf(r)
@@ -393,6 +403,18 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
     roads.push(...extractLines(m, w, h, mpp, kind, (i) => onContour(lvl, w, h, i, 3)))
   }
 
+  // 5b. thin lines that do not link two roads: field edges (hedges); the cells they close: fields
+  // only on maps that draw the countryside (forest / field colours): on a relief map, thin lines are tracks
+  const rural = o.fieldEdges ?? roles.some((r) => r.role === 'forest' || r.role === 'field')
+  const fe = rural ? fieldEdges(roads, mpp) : { roads: [...roads], edges: [] as number[][] }
+  roads.splice(0, roads.length, ...fe.roads)
+  const hedges = fe.edges
+  {
+    const hm = new Uint8Array(N)
+    for (let i = 0; i < N; i++) if (roleOf[i] === R('hedge') && !zone[i]) hm[i] = 1
+    if (hm.some((v) => v)) hedges.push(...extractLines(hm, w, h, mpp, 'path').map((r) => r.pts))
+  }
+
   // 6. areas: forest / field (dot patterns closed into solid patches), water bodies
   const areas: ImgArea[] = []
   for (const kind of ['forest', 'field'] as const) {
@@ -405,7 +427,12 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
   const wm = new Uint8Array(N)
   for (let i = 0; i < N; i++) if (lvl[i] < 0) wm[i] = 1
   const waters = extractWater(wm, w, h, mpp)
-  return { sizeX: w * mpp, sizeZ: h * mpp, heights: { w, h, data: heights, normalized: false }, roads, waters, buildings, areas, roleMap }
+  if (rural) {
+    const drawn = new Uint8Array(N)
+    for (let i = 0; i < N; i++) if (split.lines[i] || split.dashes[i] || (roleOf[i] === R('hedge') && !zone[i])) drawn[i] = 1
+    areas.push(...fieldCells([...roads.map((r) => r.pts), ...hedges], lvl, roleFilled, w, h, mpp, drawn))
+  }
+  return { sizeX: w * mpp, sizeZ: h * mpp, heights: { w, h, data: heights, normalized: false }, roads, waters, buildings, areas, hedges, roleMap }
 }
 
 /** opening (erode then dilate by r) */
@@ -491,9 +518,10 @@ export function extractLines(m: Uint8Array, w: number, h: number, mpp: number, k
   // lines thicker than a road (blobs) are dropped too
   const inv = new Uint8Array(w * h)
   for (let i = 0; i < w * h; i++) inv[i] = m[i] ? 0 : 1
-  const half = edt(inv, w, h)
-  // bridge 1 px gaps before thinning
+  // bridge 1 px gaps before thinning; the width is read on the closed line (a cased road = its full width)
   const c = closeMask(m, w, h, 2.5)
+  for (let i = 0; i < w * h; i++) inv[i] = c[i] ? 0 : 1
+  const half = edt(inv, w, h)
   const sk = thin(c, w, h)
   let lines = traceSkeleton(sk, w, h).map((l) => ({ l, len: plen(l) }))
   // spurs: short lines hanging off a junction
@@ -560,13 +588,23 @@ export function blobShape(px: number[], w: number): Blob {
 export function splitDark(dark: Uint8Array, w: number, h: number, mpp: number): { blobs: Uint8Array; lines: Uint8Array; dashes: Uint8Array } {
   const N = w * h
   const filled = fillSmallHoles(dark, w, h, Math.max(4, Math.round(400 / (mpp * mpp))))
-  const blobs = openMask(filled, w, h, 1.5)
   const lines = new Uint8Array(N), dashes = new Uint8Array(N)
-  for (let i = 0; i < N; i++) if (dark[i] && !blobs[i]) lines[i] = 1
+  // dotted lines first (rails, paths): their marks never become buildings nor roads
+  const marks = components(filled, w, h).map((c) => blobShape(c, w)).filter((b) => b.px.length >= 2 && b.len * mpp < 40 && b.len / b.wid <= 6)
+  for (const k of dashRows(marks)) for (const i of marks[k].px) { filled[i] = 0; dashes[i] = 1 }
+  const blobs = openMask(filled, w, h, 1.5)
+  for (let i = 0; i < N; i++) if (dark[i] && !blobs[i] && !dashes[i]) lines[i] = 1
   const all = components(blobs, w, h).map((c) => blobShape(c, w))
   // long thin blobs (filled road casings, bridges): lines
   for (const b of all) if (b.len / b.wid > 3.5 || b.px.length * mpp * mpp > 3000) for (const i of b.px) { blobs[i] = 0; lines[i] = 1 }
   const bs = all.filter((b) => b.len / b.wid <= 3.5 && b.len * mpp < 40)
+  for (const k of dashRows(bs)) for (const i of bs[k].px) { blobs[i] = 0; dashes[i] = 1 }
+  return { blobs, lines, dashes }
+}
+
+/** indices of the marks lying in a dotted row (chains of look-alike, aligned, evenly spaced marks) */
+export function dashRows(bs: Blob[]): Set<number> {
+  const hit = new Set<number>()
   // grid of centres
   const cell = 24, grid = new Map<number, number[]>()
   const gk = (x: number, y: number) => Math.floor(y / cell) * 100000 + Math.floor(x / cell)
@@ -581,8 +619,9 @@ export function splitDark(dark: Uint8Array, w: number, h: number, mpp: number): 
     }
     return out
   })
+  // in a row: the two nearest look-alikes lie on opposite sides (a dense row may have more within reach)
   const inRow = (k: number) => {
-    const n = near[k]
+    const b0 = bs[k], n = [...near[k]].sort((p, q) => Math.hypot(bs[p].cx - b0.cx, bs[p].cy - b0.cy) - Math.hypot(bs[q].cx - b0.cx, bs[q].cy - b0.cy)).slice(0, 2)
     if (n.length === 1) return true
     if (n.length !== 2) return false
     const b = bs[k], p = bs[n[0]], q = bs[n[1]]
@@ -594,9 +633,77 @@ export function splitDark(dark: Uint8Array, w: number, h: number, mpp: number): 
     if (!cand[s] || seen[s]) continue
     const chain = [s]; seen[s] = 1
     for (let c = 0; c < chain.length; c++) for (const j of near[chain[c]]) if (cand[j] && !seen[j]) { seen[j] = 1; chain.push(j) }
-    if (chain.length >= 5) for (const k of chain) for (const i of bs[k].px) { blobs[i] = 0; dashes[i] = 1 }
+    if (chain.length >= (chain.length >= 3 && regularRow(chain.map((k) => bs[k])) ? 3 : 5)) for (const k of chain) hit.add(k)
   }
-  return { blobs, lines, dashes }
+  return hit
+}
+
+/** dashes evenly spaced (nearest-neighbour gaps within 30 % of their mean) and of the same size: a drawn dotted line */
+export function regularRow(bs: { cx: number; cy: number; px: number[] }[]): boolean {
+  const gaps = bs.map((b) => Math.min(...bs.filter((o) => o !== b).map((o) => Math.hypot(o.cx - b.cx, o.cy - b.cy))))
+  const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length
+  const sizes = bs.map((b) => b.px.length), sm = sizes.reduce((a, b) => a + b, 0) / sizes.length
+  return gaps.every((g) => Math.abs(g - mean) <= 0.3 * mean) && sizes.every((z) => Math.abs(z - sm) <= 0.4 * sm)
+}
+
+/** thin drawn lines (well under the typical road) are field edges unless both ends meet a real road */
+export function fieldEdges(lines: ImgRoad[], mpp: number): { roads: ImgRoad[]; edges: number[][] } {
+  const ws = lines.filter((r) => r.kind === 'road').map((r) => r.width).sort((a, b) => a - b)
+  if (ws.length < 4) return { roads: lines, edges: [] }
+  // the typical road: upper quartile (field edges may outnumber roads)
+  const ref = ws[Math.floor(ws.length * 0.75)]
+  const thinL = (r: ImgRoad) => r.kind === 'road' && r.width < 0.6 * ref
+  const real = lines.filter((r) => !thinL(r))
+  const reach = Math.max(12, 4 * mpp)
+  const nearRoad = (x: number, z: number) => real.some((r) => distToLine(r.pts, x, z) < reach)
+  const roads: ImgRoad[] = [], edges: number[][] = []
+  for (const r of lines) {
+    if (!thinL(r)) { roads.push(r); continue }
+    const n = r.pts.length
+    if (nearRoad(r.pts[0], r.pts[1]) && nearRoad(r.pts[n - 2], r.pts[n - 1])) roads.push(r)
+    else edges.push(r.pts)
+  }
+  return { roads, edges }
+}
+function distToLine(p: number[], x: number, z: number): number {
+  let m = Infinity
+  for (let i = 2; i < p.length; i += 2) {
+    const ax = p[i - 2], az = p[i - 1], dx = p[i] - ax, dz = p[i + 1] - az, L = dx * dx + dz * dz
+    const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0
+    m = Math.min(m, Math.hypot(ax + t * dx - x, az + t * dz - z))
+  }
+  return m
+}
+
+/** fields: open land cells closed by roads and field edges (0.3 to 40 ha), outlined */
+export function fieldCells(lines: number[][], lvl: Int16Array, role: Int16Array, w: number, h: number, mpp: number, drawn?: Uint8Array): ImgArea[] {
+  if (!lines.length && !drawn) return []
+  // walls: the vector lines, plus the drawn line pixels (they follow faint edges the vectors lost)
+  const wall = drawn ? Uint8Array.from(drawn) : new Uint8Array(w * h)
+  for (const p of lines) for (let i = 2; i < p.length; i += 2) {
+    const ax = p[i - 2] / mpp, ay = h - p[i - 1] / mpp, bx = p[i] / mpp, by = h - p[i + 1] / mpp
+    const n = Math.ceil(Math.hypot(bx - ax, by - ay) * 2) + 1
+    for (let s = 0; s <= n; s++) {
+      const x = Math.round(ax + ((bx - ax) * s) / n), y = Math.round(ay + ((by - ay) * s) / n)
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h) wall[ny * w + nx] = 1 }
+    }
+  }
+  // small gaps between the drawn edges are closed (a field is fenced even if the line stops short)
+  const fence = closeMask(wall, w, h, Math.max(3, Math.round(20 / mpp)))
+  const open = new Uint8Array(w * h), F = IMG_ROLES.indexOf('forest')
+  for (let i = 0; i < w * h; i++) open[i] = !fence[i] && lvl[i] >= 0 && role[i] !== F ? 1 : 0
+  const out: ImgArea[] = []
+  for (const c of components4(open, w, h)) {
+    const ha = (c.length * mpp * mpp) / 1e4
+    if (ha < 0.3 || ha > 40) continue
+    if (c.some((i) => { const x = i % w, y = (i - x) / w; return x === 0 || y === 0 || x === w - 1 || y === h - 1 })) continue
+    // land closed by water (islands, banks) is not a field
+    if (c.some((i) => lvl[i - 1] < 0 || lvl[i + 1] < 0 || lvl[i - w] < 0 || lvl[i + w] < 0)) continue
+    const m = new Uint8Array(w * h)
+    for (const i of c) m[i] = 1
+    for (const a of outlines(m, w, h, mpp, 2000)) out.push({ kind: 'field', ...a })
+  }
+  return out
 }
 
 /** a line pixel lying on the edge between two land levels: a contour line, not a road */
@@ -712,7 +819,20 @@ function outlines(m: Uint8Array, w: number, h: number, mpp: number, minArea: num
   const cm = cell * mpp
   return maskOutlines(g, cols, rows, cm, 0, 0, minArea).map((o) => ({ pts: closedSimplify(o.pts, cm * 0.8), holes: o.holes.map((p) => closedSimplify(p, cm * 0.8)).filter((p) => p.length >= 6) })).filter((o) => o.pts.length >= 6)
 }
-const closedSimplify = (p: number[], eps: number) => { const s = simplify([...p, p[0], p[1]], eps); return s.slice(0, -2) }
+const closedSimplify = (p: number[], eps: number) => { const s = simplify([...p, p[0], p[1]], eps); return smoothRing(s.slice(0, -2), 2) }
+/** closed ring rounded by Chaikin corner cutting (no stair steps left from the pixel grid) */
+export function smoothRing(p: number[], passes: number): number[] {
+  let r = p
+  for (let k = 0; k < passes; k++) {
+    const n = r.length / 2, o: number[] = []
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, ax = r[i * 2], az = r[i * 2 + 1], bx = r[j * 2], bz = r[j * 2 + 1]
+      o.push(0.75 * ax + 0.25 * bx, 0.75 * az + 0.25 * bz, 0.25 * ax + 0.75 * bx, 0.25 * az + 0.75 * bz)
+    }
+    r = o
+  }
+  return r.map((v) => Math.round(v * 10) / 10)
+}
 
 /** water mask -> rivers (long, narrow bodies: centre line + width) and lakes (outlines) */
 export function extractWater(m: Uint8Array, w: number, h: number, mpp: number): ImgWater[] {
@@ -732,14 +852,28 @@ export function extractWater(m: Uint8Array, w: number, h: number, mpp: number): 
     hw = hw.filter(Number.isFinite).sort((a, b) => a - b)
     const widthM = (hw.length ? 2 * hw[hw.length >> 1] : 2) * mpp
     const main = paths[0], mainLen = main ? plen(main) * mpp : 0
-    if (main && mainLen > 4 * widthM && widthM <= 70) {
+    // elongated body (length > 3 x width): river, whatever its width; compact blob: lake
+    if (main && mainLen > 3 * widthM) {
       for (const p of paths) {
-        if (plen(p) * mpp < Math.max(60, 2 * widthM)) continue
-        out.push({ kind: 'river', pts: toWorld(simplify(p, 1.5), mpp, h), width: Math.round(Math.max(4, widthM)), })
+        if (p !== main && plen(p) * mpp < Math.max(60, 2 * widthM)) continue
+        const sp = simplify(p, 1.5), widths: number[] = []
+        for (let i = 0; i < sp.length; i += 2) widths.push(Math.round(Math.max(4, 2 * localHalf(half, w, h, sp[i], sp[i + 1]) * mpp)))
+        const sorted = [...widths].sort((a, b) => a - b)
+        out.push({ kind: 'river', pts: toWorld(sp, mpp, h), width: sorted[sorted.length >> 1], widths })
       }
     } else for (const o of outlines(cm, w, h, mpp, 400)) out.push({ kind: 'lake', pts: o.pts, width: 0 })
   }
   return out
+}
+
+/** half width of water around a centre line pixel: the largest inside distance within 2 px (the skeleton may sit a pixel off) */
+function localHalf(half: Float32Array, w: number, h: number, x: number, y: number): number {
+  let m = 0
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    const nx = Math.round(x) + dx, ny = Math.round(y) + dy
+    if (nx >= 0 && ny >= 0 && nx < w && ny < h && Number.isFinite(half[ny * w + nx])) m = Math.max(m, half[ny * w + nx])
+  }
+  return m || 1
 }
 
 /** skeleton -> its long branches: longest path, then the longest branches off it (pixel polylines) */
@@ -800,7 +934,7 @@ export function roadClass(width: number, median: number, kind: 'road' | 'path'):
 
 /** small preview: every pixel painted with its role colour */
 export const ROLE_COLOURS: Record<ImgRole, [number, number, number]> = {
-  land: [196, 200, 170], water: [70, 130, 200], band: [200, 140, 110], forest: [60, 120, 60], field: [210, 190, 110],
+  land: [196, 200, 170], water: [70, 130, 200], band: [200, 140, 110], forest: [60, 120, 60], field: [210, 190, 110], hedge: [90, 140, 60],
   building: [30, 30, 30], road: [120, 120, 120], path: [150, 110, 70], ignore: [255, 0, 255],
 }
 export { rgbToLab }

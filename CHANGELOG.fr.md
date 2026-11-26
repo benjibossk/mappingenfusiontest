@@ -4,6 +4,10 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+### Ajouté
+
+- **Carte depuis une image** (Terrain > Image) : n’importe quelle image de carte (topographique, bandes de relief, plan de campagne) est découpée en couleurs ; on donne un rôle à chaque couleur (terre, eau, bande d’altitude, forêt, champ, bord de champ, bâtiment, route, chemin / rail, ignorer) et l’outil construit le relief, les routes, les rivières (axe + profil de largeur, même larges) ou lacs, les bâtiments, les forêts lissées, les champs fermés par leurs bords et les haies. Les voies ferrées en pointillés ne deviennent jamais des bâtiments.
+
 ## [0.10.0] - 2026-11-26
 
 ### Ajouté
