@@ -26,6 +26,8 @@ export function familiesPlan(stored, project) {
   const now = projectFamilies(project), was = Array.isArray(stored) ? stored : APP_FAMILIES;
   const keep = new Set((project.keep ?? []).filter((x) => typeof x === "string"));
   if (!project.replaceAll) return { clear: [], after: [...new Set([...was, ...now])] };
-  const clear = was.filter((f) => !now.includes(f) && !keep.has(f));
+  // the record only says what the last send asked for: a family the Workbench failed to delete (PARCEL_ fences
+  // floating at sea, 2026-11-26) dropped out of it and was never cleared again. A full send targets every app family.
+  const clear = [...new Set([...was, ...APP_FAMILIES])].filter((f) => !now.includes(f) && !keep.has(f));
   return { clear, after: [...new Set([...now, ...was.filter((f) => keep.has(f))])] };
 }
