@@ -15,10 +15,25 @@ export const BASE_ENTITIES = [
 
 /** names of the base entities missing from a world (its .ent + every .layer); a variant prefab with the same
  *  name stem (Lighting_Everon for Lighting_Default) counts as present */
+// entity classes that already fill a role without the prefab (hand-placed light, fog, probe, camera...):
+// same list as MG_SetupWorldApi.c MANAGER_CLASSES, so the audit and the setup agree
+export const BASE_CLASSES = {
+  GenericTerrain: ["GenericTerrainEntity"], CameraManager: ["CameraManager", "SCR_CameraManager"], Lighting: ["GenericWorldLightEntity"],
+  FogHaze: ["GenericWorldFogEntity"], GenericWorldPP: ["GenericWorldPPEffect"], TimeAndWeatherManager: ["TimeAndWeatherManagerEntity"],
+  EnvProbe: ["EnvironmentProbeEntity", "GameEnvironmentProbeEntity"], DestructionManager: ["SCR_DestructionManager"],
+  MPDestructionManager: ["SCR_MPDestructionManager"], PreloadManager: ["BasePreloadManager", "SCR_PreloadManager"], SoundWorld: ["SoundWorld"],
+};
+
+/** names of the base entities missing from a world text (.ent + layers) */
+export function missingInText(text) {
+  return BASE_ENTITIES.filter(([guid, name]) => !text.includes(guid) && !new RegExp(`/${name}[_.A-Za-z0-9]*\.et`).test(text)
+    && !(BASE_CLASSES[name] ?? []).some((c) => new RegExp(`^[ \\t]*${c}([ \\t{]|$)`, "m").test(text))).map(([, n]) => n);
+}
+
 export function missingBaseEntities(worldEnt) {
   const files = [worldEnt];
   const layers = worldEnt.replace(/\.ent$/i, "_Layers");
   if (existsSync(layers)) for (const f of readdirSync(layers)) if (f.endsWith(".layer")) files.push(join(layers, f));
   const text = files.filter(existsSync).map((f) => readFileSync(f, "latin1")).join("\n");
-  return BASE_ENTITIES.filter(([guid, name]) => !text.includes(guid) && !new RegExp(`/${name}[_.A-Za-z0-9]*\.et`).test(text)).map(([, n]) => n);
+  return missingInText(text);
 }
