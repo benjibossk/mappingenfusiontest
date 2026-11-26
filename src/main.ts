@@ -2641,6 +2641,12 @@ $<HTMLButtonElement>('imgGo').addEventListener('click', () => {
   }, (e) => { busyFailed = true; $('imgMsg').textContent = (e as Error).message }))
 })
 function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
+  // a picture map aims at the Arland look: on the default biome, paint with Arland's surfaces (Grass_03 main grass
+  // like vanilla Everon / Arland; the Everon set keeps the generators' Grass_01, browner in game); a chosen biome stays
+  if (currentBiome === DEFAULT_BIOME) setBiome('woodland_arland')
+  // the picture gives the water: no runoff simulation left on from an earlier world (it carved dry stream beds,
+  // dark Pebbles bands without any water entity, picture 119)
+  $<HTMLInputElement>('rLive').checked = false
   const S = Math.round(Math.max(r.sizeX, r.sizeZ))
   const hm = squareHeights(r.heights)
   let lo = Infinity, hi = -Infinity
@@ -2656,7 +2662,7 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   const median = ws.length ? ws[ws.length >> 1] : 1
   for (const x of r.roads) { const type = roadClass(x.width, median, x.kind); roads.push({ id: nextRoadId(type), type, pts: x.pts }) }
   for (const x of r.waters) {
-    if (x.kind === 'river') waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, depth: 1.5, carve: false })
+    if (x.kind === 'river') waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, depth: 1.5, carve: false, wetEdge: true })
     else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: 2, level: 0 })
   }
   r.areas.forEach((a, k) => areas.push({ id: `${a.kind === 'forest' ? 'FOREST' : 'FIELD'}_IMG_${k + 1}`, kind: a.kind, ...(a.kind === 'forest' ? { leaf: 'mixed' as const } : {}), pts: a.pts, holes: a.holes }))
@@ -2681,15 +2687,18 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   draw()
   // a relief-only picture (no forest colour): woods like Arland (~11 % massifs + trees outside),
   // generated on the relief, kept away from the drawn buildings
+  const okArgs = { roads: r.roads.length, waters: r.waters.length, bld: r.buildings.length, areas: r.areas.length, hedges: r.hedges.length, lo: Math.round(lo), hi: Math.round(hi) }
   if (!r.areas.some((a) => a.kind === 'forest') && island) {
     const isl = island, near: Site[] = settled.map((b, i) => ({ id: `IMG_S_${i}`, x: b.x, z: b.z, kind: 'hamlet' as const }))
     void track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites: near, biome: currentBiome, maxShare: IMAGE_FOREST_SHARE }]).promise.then((made) => {
       if (island !== isl) return
       made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
+      // the message is written before this async run ends: recount with the generated woods
+      $('imgMsg').textContent = logEl.textContent = t('img.ok', { ...okArgs, areas: r.areas.length + made.length })
       recompose(true); draw(); autosave()
     }, () => {}))
   }
-  $('imgMsg').textContent = logEl.textContent = t('img.ok', { roads: r.roads.length, waters: r.waters.length, bld: r.buildings.length, areas: r.areas.length, hedges: r.hedges.length, lo: Math.round(lo), hi: Math.round(hi) })
+  $('imgMsg').textContent = logEl.textContent = t('img.ok', okArgs)
 }
 // --- relief made in Gaea (or any terrain tool): heightmap + optional masks; roads, villages... are generated on it ---
 $<HTMLButtonElement>('tGaea').addEventListener('click', () => { const b = $<HTMLDivElement>('gaeaBox'); b.hidden = !b.hidden })
