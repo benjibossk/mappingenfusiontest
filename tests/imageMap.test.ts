@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   annotationAndShore, inImageWater, nearWater, clusterImage, closeMask, edt, extractBuildings, guessRoles, hatchZone, imageToMap, joinGaps, nearestBuilding,
   reliefFromLevels, roadClass, simplify, splitDark, thin, traceSkeleton, type ClusterRole,
-  extractWater, fieldEdges, regularRow, smoothRing, riverAsLand, type ImgRoad,
+  extractWater, fieldEdges, regularRow, smoothRing, riverAsLand, rollingRelief, type ImgRoad,
 } from '../src/modules/imageMap.ts'
 
 const mask = (w: number, h: number, on: (x: number, y: number) => boolean) => {
@@ -241,4 +241,24 @@ test('riverAsLand: the water body of a traced river becomes land for the relief,
   const out = riverAsLand(lvl, wm, w, h, waters, 4)
   assert.equal(out[50 * w + 50], 0, 'river pixel -> land')
   assert.equal(out[15 * w + 10], -1, 'pond stays water')
+})
+
+test('rollingRelief: a picture without height colour gets gentle hills, the water stays low', () => {
+  const w = 200, h = 200, mpp = 10
+  const water = mask(w, h, (x) => x >= 95 && x <= 105) // a river down the middle
+  const out = new Float32Array(w * h).fill(1)
+  rollingRelief(out, water, w, h, mpp, 35)
+  let lo = Infinity, hi = -Infinity, nearMax = 0
+  for (let i = 0; i < w * h; i++) {
+    lo = Math.min(lo, out[i]); hi = Math.max(hi, out[i])
+    const x = i % w
+    if (Math.abs(x - 100) <= 10) nearMax = Math.max(nearMax, out[i])
+  }
+  assert.ok(lo >= 1, `min ${lo}`)
+  assert.ok(hi > 12 && hi <= 36, `hills up to ${hi} m`)
+  assert.ok(nearMax < 1.5, `water and banks stay low (${nearMax} m)`)
+  // gentle: slope under ~25 % everywhere
+  let steep = 0
+  for (let y = 0; y < h; y++) for (let x = 1; x < w; x++) steep = Math.max(steep, Math.abs(out[y * w + x] - out[y * w + x - 1]) / mpp)
+  assert.ok(steep < 0.25, `max slope ${steep}`)
 })

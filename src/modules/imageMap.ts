@@ -339,6 +339,8 @@ export interface ImageMapOptions {
   fieldEdges?: boolean
   /** height smoothing radius, metres */
   smooth?: number
+  /** top of the generated hills when the picture has no height colour (band), metres; 0 = flat */
+  hills?: number
 }
 
 export interface ImgRoad { pts: number[]; width: number; kind: 'road' | 'path' }
@@ -397,6 +399,9 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
   for (let i = 0; i < N; i++) if (lvl[i] < 0) wm[i] = 1
   const waters = extractWater(wm, w, h, mpp)
   const heights = reliefFromLevels(riverAsLand(lvl, wm, w, h, waters, mpp), w, h, levels, { shore, depth, mpp, smooth: o.smooth ?? 12 })
+  // a picture without any height colour (no band) gave a dead flat 1 m map: gentle generated hills (Arland-like
+  // rolling ground), flat near the water so rivers / lakes / their banks stay low
+  if (!levels.length) rollingRelief(heights, wm, w, h, mpp, o.hills ?? 35)
 
   // 4. dark marks: solid blobs = buildings, thin dark lines = road casings, aligned dashes = paths / rails
   const dark = new Uint8Array(N)
@@ -459,6 +464,39 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
     areas.push(...fieldCells([...roads.map((r) => r.pts), ...hedges], lvl, roleFilled, w, h, mpp, drawn))
   }
   return { sizeX: w * mpp, sizeZ: h * mpp, heights: { w, h, data: heights, normalized: false }, roads, waters, buildings, areas, hedges, roleMap }
+}
+
+/** adds rolling hills (fractal value noise, ~700 / 280 / 110 m waves) up to `top` metres to a flat relief, faded
+ *  to nothing within ~60 m of the water and fully raised past ~300 m, so the water stays at the bottom */
+export function rollingRelief(out: Float32Array, water: Uint8Array, w: number, h: number, mpp: number, top: number, seed = 7): void {
+  if (top <= 0) return
+  const N = w * h
+  const dry = new Uint8Array(N)
+  let anyWater = false
+  for (let i = 0; i < N; i++) { if (water[i]) anyWater = true; else dry[i] = 1 }
+  const dw = anyWater ? edt(water, w, h) : null
+  const hash = (x: number, y: number, o: number) => {
+    let k = (x * 374761393 + y * 668265263 + (seed + o) * 2246822519) | 0
+    k = Math.imul(k ^ (k >>> 13), 1274126177)
+    return ((k ^ (k >>> 16)) >>> 0) / 4294967296
+  }
+  const noise = (x: number, y: number, o: number) => {
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy)
+    const a = hash(xi, yi, o), b = hash(xi + 1, yi, o), c = hash(xi, yi + 1, o), d = hash(xi + 1, yi + 1, o)
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy
+  }
+  const oct: [number, number][] = [[700, 0.6], [280, 0.28], [110, 0.12]]
+  const near = 60 / mpp, far = 300 / mpp
+  for (let i = 0; i < N; i++) {
+    if (!dry[i]) continue
+    const x = (i % w) * mpp, y = Math.floor(i / w) * mpp
+    let n = 0
+    for (let k = 0; k < oct.length; k++) n += noise(x / oct[k][0], y / oct[k][0], k) * oct[k][1]
+    let f = 1
+    if (dw) { const t = Math.min(1, Math.max(0, (dw[i] - near) / (far - near))); f = t * t * (3 - 2 * t) }
+    out[i] += top * n * f
+  }
 }
 
 /** level map with the water bodies traced as rivers turned to land (level 0): lakes stay water */
