@@ -7,7 +7,7 @@ import * as turf from '@turf/turf'
 import type { Feature, LineString, MultiLineString, MultiPolygon, Polygon } from 'geojson'
 import type { RoadType } from './roads'
 import type { SiteKind } from './network'
-import { isStructure, osmWidth } from './osmWidth'
+import { isBridge, isTunnel, osmRoadType, osmWidth } from './osmWidth'
 
 export const OVERPASS = 'https://overpass-api.de/api/interpreter'
 // public mirrors, tried in turn when one is busy (502 / 504 / 429 / network error)
@@ -28,7 +28,7 @@ export interface OsmOptions {
 }
 
 export interface OsmResult {
-  roads: { type: RoadType; pts: number[]; width?: number; bridge?: boolean }[] // bridge: OSM bridge/tunnel, never flattened
+  roads: { type: RoadType; pts: number[]; width?: number; bridge?: boolean }[] // bridge: OSM bridge, never flattened (tunnels are left out)
   rivers: { pts: number[]; width: number }[]
   lakes: number[][]
   forests: { pts: number[]; leaf: 'broad' | 'needle' | 'mixed'; tall?: 'low' | 'mid' | 'high' }[]
@@ -218,8 +218,9 @@ export function osmToMap(data: unknown, toLocal: (lon: number, lat: number) => P
       return []
     }
     if (t.highway && ROAD[t.highway] && el.geometry) {
+      if (isTunnel(t)) continue // #16: no tunnel in a heightmap terrain
       const w = Math.round(osmWidth(t) * 10) / 10 // width tag, lanes, or class table (ARTE, MIT)
-      group(roadParts, `${ROAD[t.highway]}|${w >= 2 && w < 30 ? w : ''}|${isStructure(t) ? 1 : ''}`, loc(el.geometry))
+      group(roadParts, `${osmRoadType(t, ROAD[t.highway])}|${w >= 2 && w < 30 ? w : ''}|${isBridge(t) ? 1 : ''}`, loc(el.geometry))
     } else if (t.waterway && RIVER_WIDTH[t.waterway] && el.geometry) {
       const w = Number.parseFloat(t.width ?? '')
       group(riverParts, String(w > 1 && w < 200 ? w : RIVER_WIDTH[t.waterway]), loc(el.geometry))

@@ -1,0 +1,9 @@
+{ "elements": [
+  { "type": "way", "id": 1, "tags": { "highway": "secondary", "lanes": "2" }, "geometry": [{ "lat": 0.10, "lon": 0.05 }, { "lat": 0.10, "lon": 0.30 }] },
+  { "type": "way", "id": 2, "tags": { "highway": "secondary", "bridge": "yes", "width": "9" }, "geometry": [{ "lat": 0.20, "lon": 0.05 }, { "lat": 0.20, "lon": 0.30 }] },
+  { "type": "way", "id": 3, "tags": { "highway": "primary", "tunnel": "yes" }, "geometry": [{ "lat": 0.30, "lon": 0.05 }, { "lat": 0.30, "lon": 0.30 }] },
+  { "type": "way", "id": 4, "tags": { "highway": "tertiary", "surface": "gravel" }, "geometry": [{ "lat": 0.40, "lon": 0.05 }, { "lat": 0.40, "lon": 0.30 }] },
+  { "type": "way", "id": 5, "tags": { "highway": "residential", "surface": "sett" }, "geometry": [{ "lat": 0.50, "lon": 0.05 }, { "lat": 0.50, "lon": 0.30 }] },
+  { "type": "way", "id": 6, "tags": { "highway": "track", "surface": "asphalt" }, "geometry": [{ "lat": 0.60, "lon": 0.05 }, { "lat": 0.60, "lon": 0.30 }] },
+  { "type": "way", "id": 7, "tags": { "highway": "service", "tunnel": "building_passage" }, "geometry": [{ "lat": 0.70, "lon": 0.05 }, { "lat": 0.70, "lon": 0.30 }] }
+] }
