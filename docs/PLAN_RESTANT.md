@@ -1,10 +1,16 @@
-# Plan de ce qu'il reste à faire (état au 17/11/2026, v0.6.0, mis à jour en fin de session)
+# Plan de ce qu'il reste à faire (état au 26/11/2026, v0.9.0 + [Unreleased], revu contre le code et le CHANGELOG)
 
 Synthèse des feuilles de route (ROADMAP*, FINDINGS) et des outils étudiés. Les items marqués « à faire » dans
 les anciennes feuilles de route qui sont déjà livrés (lignes électriques, villages, zones industrielles, biomes,
 vue 3D OpsTrack, militaire, aérodrome, outil Zone) ne sont pas repris ici.
 
 Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
+
+## Livré depuis (0.7.0 à 0.9.0, voir CHANGELOG)
+- 0.7.0 : ports réalistes (bassin dragué, quai, digues, pontons, bouées), essence de la forêt de l'outil Zone, ripisylve, lisières dans l'export Workbench, outillage Workbench (import des masques UIA, audit).
+- 0.8.0 : import Gaea, projets multiples, ports vanilla entiers par biome, sites RP, 370 parcelles et 109 fermes vanilla, satmap texturée, fond topographique de l'Atelier.
+- 0.9.0 : aérodromes de tous types (base militaire, aérodrome civil...) intégrés au terrain, port NET API par projet.
+- [Unreleased] : priorité de peinture des masques, antenne MT des fermes isolées, parcelles des îlots de ville, style de maisons soviétique, tags OSM des routes.
 
 ## Livré pendant la session du 16-17/11/2026
 - Électricité : planificateur hiérarchique (centrales, boucle THT/HT, départs MT, BT, postes vanilla), lignes le
@@ -23,7 +29,7 @@ Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
 | 1 | Validation avant envoi (pentes, chevauchements, budget par bloc, objets hors carte) | ✅ panneau « Vérification avant envoi » (étape 7) : + bâtiments qui se chevauchent, objets sur la chaussée, objets de zone hors carte (logique de scripts/mg-audit.mjs, `src/validate/preSend.ts`), clic = zoom, boutons Retirer / Décaler et « Tout corriger » |
 | 2 | Export bridge → Workbench complet (champs/haies/zones de l'outil Zone) et test de bout en bout | ⬜ test de bout en bout à faire |
 | 3 | Export biome FF (`m_iBiome` dans `JWK_WorldEntity`) | ✅ |
-| 4 | Corriger la recette R3 (1 bloc > 5 surfaces sur seed 1) | 🟡 `limitPerBlock` ; recette à revérifier |
+| 4 | Corriger la recette R3 (1 bloc > 5 surfaces sur seed 1) | ✅ côté TS : `limitPerBlock` + test R3 (îles aléatoires 2048/4096, seeds 1-8, 0 bloc > 5 surfaces, `tests/biomes/surfaces-limit.test.ts`) ; à reconfirmer une fois dans le Workbench |
 | 5 | Bench limites (objets / arbres) par plateforme + carte de densité | ✅ (budgets indicatifs, à mesurer en jeu) |
 
 ## Priorité 2 — qualité du terrain et de la végétation
@@ -41,9 +47,9 @@ Légende : ✅ livré · 🟡 en partie · ⬜ à faire.
 | # | Tâche | État |
 |---|---|---|
 | 13 | Ville 100-300 habitants (îlots, bouclage des rues, L-system contraint) | ✅ grille de rues avec boucles (zone Habitation) ; ville à îlots `town.ts` : rues bouclées, îlots typés, parcelles sur rue (une par maison, découpage médian de l'îlot par rue la plus proche, sans chevauchement, `TownResult.parcels`, aussi dans le monde aléatoire), maisons face à la rue |
-| 14 | Port / côte, ferme en U, murs et clôtures de village | 🟡 murets, clôtures et ferme en U livrés (sites FARM_* : parcelles larges 26-46 x 46-52 m, ferme au fond + 2 ailes grange/hangar autour de la cour, option `farmyards` de village.ts) ; port à faire |
+| 14 | Port / côte, ferme en U, murs et clôtures de village | ✅ murets, clôtures et ferme en U livrés (sites FARM_* : parcelles larges 26-46 x 46-52 m, ferme au fond + 2 ailes grange/hangar autour de la cour, option `farmyards` de village.ts) ; ✅ ports livrés en 0.7.0 (port réaliste, harbour.ts) et 0.8.0 (ports vanilla entiers par biome) |
 | 15 | Giratoires, croisements dénivelés, ponts sur arcs courts | ✅ giratoires + passage supérieur autoroute + ponts courts sur les petits ruisseaux (culverts.ts : tablier vanilla le plus court selon la largeur, BridgeConcrete_E_01_small pour pistes, ConcreteBridge_01 Narrow/Wide sinon ; pas de prefab de buse en vanilla), dessinés en ocre sur la carte 2D |
-| 16 | Largeur de route depuis OSM, exclure ponts/tunnels | 🟡 largeurs vanilla par classe ; tags OSM lanes/surface à faire |
+| 16 | Largeur de route depuis OSM, exclure ponts/tunnels | ✅ largeur depuis `width` / `lanes` (sinon table par classe), type de route selon `surface` (terre, pavés, béton, piste goudronnée), tunnels exclus, ponts marqués (`osmWidth.ts`, `tests/library/osmRoadTags.test.ts`) ; l'import par schéma (`osmImport.ts`) garde son propre mapping |
 | 17 | Prefabs le long d'une spline (glissières, poteaux, murets) | ✅ murets + glissières (remblai > 1,8 m déjà dans roadFurniture ; guardrails.ts ajoute abords de pont 24 m des deux côtés et extérieur des virages serrés en pente, mêmes générateurs WG_CrashBarrier vanilla, les poteaux recouverts sont retirés) |
 
 ## Priorité 4 — vue 3D et confort
