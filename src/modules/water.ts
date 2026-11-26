@@ -105,7 +105,18 @@ const inside = (pts: number[], x: number, z: number) => {
 //! Carves river beds and lake basins (in place, only lowers). Bank slope ~1:3 over at least 2 grid cells.
 //! water surface under the original ground (m), and the generator width relative to the channel
 const RIVER_SURFACE = 0.5
-const RIVER_OVERWIDTH = 1.3
+export const RIVER_OVERWIDTH = 1.3
+/** widest river spline sent (m). Picture 119: the 117 m tributary sent at Width 152 showed as a dark sheet (the sea under
+ *  its carved bed, cut straight at the confluence) while its 124 m neighbour rendered; same level 0.5 m, same bed -1 m,
+ *  its end 3.7 m from the main centre line, so Width is the one difference left. Capped at the widest seen rendering;
+ *  the ground stays under the water to the traced edge (wetEdge), so the capped water still covers it */
+export const RIVER_MAX_SENT_WIDTH = 124
+export const riverSentWidth = (w: { width: number }) => Math.min(RIVER_MAX_SENT_WIDTH, Math.round(w.width * RIVER_OVERWIDTH))
+/** half width of the water a river shows in game (the spline is sent RIVER_OVERWIDTH wider than traced): vegetation keeps out of it */
+export const riverWetHalf = (w: { width: number }) => Math.max(w.width / 2, riverSentWidth(w) / 2)
+/** bed depth (m, under the water level) of the rivers of a map from a picture: 1.5 m read shallow and light in game
+ *  (picture 120, the bed texture showing through); 2.5 m darkens the water like Arland's rivers */
+export const PICTURE_RIVER_DEPTH = 2.5
 const RIVER_BANK = 0.5 // bank top above the water
 const RIVER_EDGE = 0.15 // ground under the water at the traced edge
 const RIVER_MAXCUT = 2.5
@@ -127,7 +138,7 @@ function downhillCourse(w: Water, at: (x: number, z: number) => number) {
 function riverProfile(w: Water, at: (x: number, z: number) => number) {
   const line = centreLine(downhillCourse(w, at), 4)
   const n = line.length / 2
-  const edge = (w.width * RIVER_OVERWIDTH) / 2
+  const edge = riverWetHalf(w)
   const raw: number[] = []
   let sea = -1
   for (let i = 0; i < n; i++) {
@@ -164,7 +175,7 @@ function riverProfile(w: Water, at: (x: number, z: number) => number) {
 //! painted under each river: pebbles in the bed, dirt on the wet banks (same format as roadMasks)
 export function waterMasks(waters: Water[]) {
   return waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4)
-    .map((w) => ({ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01', side: 'Dirt_01' }))
+    .map((w) => ({ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01', side: 'Dirt_01', sidePeak: 0.35 }))
 }
 
 //! per grid cell: water level of the nearest lake / river where known (NaN elsewhere), wet = under water
@@ -294,7 +305,7 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
       const keep = sea >= 0 ? Math.min(n, Math.max(sea + 2, 2)) : n
       pts.length = keep * 2
       lift.length = keep
-      out.push({ id: w.id, kind: 'spline', closed: false, points: pts.map(r2), generator: wt.generator, paramKeys: ['Width'], paramValues: [String(Math.round(w.width * RIVER_OVERWIDTH))], lift })
+      out.push({ id: w.id, kind: 'spline', closed: false, points: pts.map(r2), generator: wt.generator, paramKeys: ['Width'], paramValues: [String(riverSentWidth(w))], lift })
     } else {
       if (w.pts.length < 6) continue
       const L = lakeLevel(w, at)
@@ -955,7 +966,7 @@ export function riverCorridor(g: Grid, waters: Water[], reach = 12) {
   const d = new Float32Array(g.cols * g.rows).fill(Infinity)
   for (const w of waters) {
     if (WATER_TYPES[w.type].closed || w.pts.length < 4) continue
-    const c = riverCourse(w.pts, w.width), half = w.width / 2, R = half + reach + g.step
+    const c = riverCourse(w.pts, w.width), half = riverWetHalf(w), R = half + reach + g.step
     for (let i = 0; i + 3 < c.length; i += 2) {
       const ax = c[i], az = c[i + 1], bx = c[i + 2], bz = c[i + 3]
       const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - R - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((Math.max(ax, bx) + R - g.minX) / g.step))

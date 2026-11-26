@@ -1,6 +1,6 @@
 // Types of maskPaint.mjs (plain JS so the node bridge imports it without a TS step)
 export interface MaskSurface { name: string; minX?: number; minZ?: number; step: number; cols: number; rows: number; weights: ArrayLike<number> }
-export interface MaskRoad { points: number[]; half: number; edge: number; core: string; side?: string }
+export interface MaskRoad { points: number[]; half: number; edge: number; core: string; side?: string; peak?: number; sidePeak?: number; prio?: number }
 export type MaskColours = Record<string, [number, number, number]> | null
 
 export function roadLayers(side: number, mPerPx: number, roads: MaskRoad[]): Map<string, Float32Array>

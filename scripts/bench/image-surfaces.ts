@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { clusterImage, guessRoles, imageToMap, squareHeights, IMAGE_FOREST_SHARE } from '../../src/modules/imageMap.ts'
 import { heightsFromImage } from '../../src/modules/gaeaImport.ts'
-import { carveWater, type Water } from '../../src/modules/water.ts'
+import { carveWater, type Water, PICTURE_RIVER_DEPTH } from '../../src/modules/water.ts'
 import { computeSurfaces } from '../../src/modules/island.ts'
 import { rasterCover } from '../../src/modules/cover.ts'
 import { generateForests } from '../../src/modules/forestgen.ts'
@@ -16,7 +16,7 @@ const wd = heightsFromImage(squareHeights(r.heights), { size: Math.round(Math.ma
 const g = { minX: 0, minZ: 0, step: wd.step, cols: wd.cols, rows: wd.rows }
 const hs = Array.from(wd.heights)
 const waters: Water[] = r.waters.map((x, i) => x.kind === 'river'
-  ? { id: `R${i}`, type: 'river', pts: x.pts, width: x.width, depth: 1.5, carve: false, wetEdge: true }
+  ? { id: `R${i}`, type: 'river', pts: x.pts, width: x.width, depth: PICTURE_RIVER_DEPTH, carve: false, wetEdge: true }
   : { id: `L${i}`, type: 'lake', pts: x.pts, width: 0, depth: 2, level: 0 })
 carveWater(hs, g, waters)
 let hi = 0

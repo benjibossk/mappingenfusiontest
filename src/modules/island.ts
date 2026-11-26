@@ -322,7 +322,12 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const heath = cover ? open * 0.2 * band(h, maxHeight * 0.5, maxHeight * 0.75) : 0
     if (cover) for (const k of Object.keys(COVER)) weights[k].push(rest * (share?.get(k) ?? 0) + (k === 'Heather_01' ? heath : 0))
     weights.MountainGrass_01.push((open - heath) * mountain)
-    weights.Grass_01.push((open - heath) * (1 - mountain))
+    // open land is not one grass: Arland mixes Grass_03 30 % + Grass_02 8 % + scree-grass + heather in 50-300 m patches
+    // (FIELDS_SURFACES_VANILLA §1/§4). Picture 120: the biome grass alone was 75 % of the land, one beige sheet.
+    // Meadow (Grass_02) patches from low-frequency noise, soft edges, up to 55 % at their heart
+    const lush = cover ? 0.55 * band(variants((c * step) / 110 + 37, (r * step) / 110 + 11), 0.42, 0.72) : 0
+    weights.Grass_02[weights.Grass_02.length - 1] += (open - heath) * (1 - mountain) * lush
+    weights.Grass_01.push((open - heath) * (1 - mountain) * (1 - lush))
   }
   for (const k of names) weights[k] = weights[k].map((w) => (w < 1 / 255 ? 0 : w))
   const out = names.map((name) => ({ ...grid, name, weights: weights[name] }))

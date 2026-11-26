@@ -20,6 +20,7 @@ const ROLE: Record<string, Role> = {
 /** surface name of `name` in biome `b` (unknown names kept) */
 export function biomeSurfaceName(b: Biome, name: string): string {
   if (b.id === DEFAULT_BIOME) return name
+  if (name === 'Pebbles_01' && b.riverBed && SURFACES[b.riverBed]) return b.riverBed
   const r = ROLE[name]
   if (!r) return name
   const n = r.startsWith('road.') ? b.road[r.slice(5) as 'paved' | 'dirt' | 'village'] : b.surfaces[r as SurfaceRole]

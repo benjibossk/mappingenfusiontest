@@ -422,10 +422,15 @@ export function roadShapes(roads: Road[]): ProjectShape[] {
 }
 
 //! road bands for the bridge masks / satellite
+export const ROAD_SIDE_PEAK = 0.35
+export const DIRT_TRACK_PEAK = 0.5
 export function roadMasks(roads: Road[]) {
   return roads.filter((r) => r.pts.length >= 4).map((r) => {
     const T = ROAD_TYPES[r.type]
-    return { points: centreLine(r.pts, 4), half: roadHalf(r), edge: T.shoulder ?? T.edge, core: T.core, side: T.side }
+    // FIELDS_SURFACES_VANILLA §3: shoulders are a dirt excess (29 % at the edge, fading over 4-6 m), dirt tracks barely
+    // painted (20 % inside): full-weight Dirt bands were dark speckled strips along every road (pictures 119 / 120)
+    const dirtTrack = !T.side && /^Dirt_0/.test(T.core)
+    return { points: centreLine(r.pts, 4), half: roadHalf(r), edge: T.shoulder ?? T.edge, core: T.core, side: T.side, ...(T.side ? { sidePeak: ROAD_SIDE_PEAK } : {}), ...(dirtTrack ? { peak: DIRT_TRACK_PEAK } : {}) }
   })
 }
 

@@ -41,7 +41,8 @@ export function roadLayers(side, mPerPx, roads) {
             // core: hard-ish edge (1 m fade), shoulder fills the band outside
             const cw = d <= r.half ? 1 : Math.max(0, 1 - (d - r.half) / 1);
             core[i2] = Math.max(core[i2], cw);
-            shoulder[i2] = Math.max(shoulder[i2], w - cw);
+            // sidePeak < 1: a light shoulder over the ground below (vanilla dirt excess ~29 % at the road edge)
+            shoulder[i2] = Math.max(shoulder[i2], (w - cw) * (r.sidePeak ?? 1));
           } else core[i2] = Math.max(core[i2], w);
         }
       }

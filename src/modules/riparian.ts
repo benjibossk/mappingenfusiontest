@@ -10,7 +10,7 @@
 
 import type { Grid } from './island'
 import { centreLine } from './roads'
-import { riverCourse, WATER_TYPES, type Water } from './water'
+import { riverCourse, riverWetHalf, WATER_TYPES, type Water } from './water'
 import { sampler } from './settlements'
 import { ZONE_AVOID, type ProjectShape } from '../project'
 import { cutRing, flatToPoly } from './zonefill'
@@ -125,7 +125,7 @@ export function riparianBands(heights: ArrayLike<number>, grid: Grid, waters: Wa
       let lv = Infinity
       for (let i = 0; i + 1 < w.pts.length; i += 2) lv = Math.min(lv, at(w.pts[i], w.pts[i + 1]))
       banks.push({ id: w.id, line: centreLine([...w.pts, w.pts[0], w.pts[1]], STATION), half: 0.5, closed: true, level: lv })
-    } else if (w.pts.length >= 4) banks.push({ id: w.id, line: centreLine(riverCourse(w.pts, w.width), STATION), half: w.width / 2, closed: false })
+    } else if (w.pts.length >= 4) banks.push({ id: w.id, line: centreLine(riverCourse(w.pts, w.width), STATION), half: riverWetHalf(w), closed: false }) // the water shown in game, not the traced line width
   }
   const out: RiparianPatch[] = []
   banks.forEach((b, bi) => {
