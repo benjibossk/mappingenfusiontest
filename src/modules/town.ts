@@ -428,12 +428,20 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
   // outbuilding behind a house (Bohemia, Everon: 1.6 per house, 76 % behind, median 9 m back, aligned within 5 deg;
   // the vanilla town disc holds 69 sheds / garages for 88 houses)
   const ANNEX = pool(['annex', 'shed']).filter((b) => b.maxX - b.minX < 14 && b.maxZ - b.minZ < 14)
-  const annex = (ox: number, oz: number, depth: number, maxZ: number, yaw: number, nx: number, nz: number, ux: number, uz: number) => {
+  // the annex stays inside its house's parcel (`lot`); a house with no parcel puts it where no parcel lies
+  const annex = (ox: number, oz: number, depth: number, maxZ: number, yaw: number, nx: number, nz: number, ux: number, uz: number, lot: number[] | null) => {
     if (!ANNEX.length) return
     for (let tr = 0; tr < 3; tr++) {
       const a = pick(ANNEX), d = depth - maxZ + 1.5 + rand() * 3 + a.maxZ, lat = (rand() - 0.5) * 8 // origin -> back face, gap, annex half
       const ay = yaw + (rand() < 0.8 ? (rand() - 0.5) * 8 : rand() < 0.5 ? 90 : -90)
-      if (add(a, ox + nx * d + ux * lat, oz + nz * d + uz * lat, ay, 'annex', a.cat)) return
+      if (add(a, ox + nx * d + ux * lat, oz + nz * d + uz * lat, ay, 'annex', a.cat)) {
+        const c = placed[placed.length - 1].corners
+        let ok = true
+        if (lot) { for (let i = 0; i < c.length && ok; i += 2) if (!inPoly(lot, c[i], c[i + 1])) ok = false }
+        else ok = !res.parcels.some((q) => convexOverlap(q.corners, c))
+        if (ok) return
+        placed.pop()
+      }
     }
   }
   const along = (f: number[], set: { back: number; gap: number; skip: number; annex?: number }, choose: () => Building, role: PlacedRole, cat?: BuildingCat, E = 6) => {
@@ -480,7 +488,7 @@ export function generateTown(polygon: number[], roads: Road[], waters: Water[], 
         }
         if (poly) res.parcels.push({ id: `${pre}_P${res.parcels.length + 1}`, building: placed[placed.length - 1].id, block: parcelBlock, front: [ax + ux * f0 + nx * half, az + uz * f0 + nz * half, ax + ux * f1 + nx * half, az + uz * f1 + nz * half].map((v) => Math.round(v * 100) / 100), corners: poly.map((v) => Math.round(v * 100) / 100) })
         t += w + set.gap
-        if ((role === 'house' || role === 'farmhouse') && cat !== 'civic' && rand() < (set.annex ?? 0)) annex(ox, oz, b.maxZ - b.minZ, b.maxZ, yaw, nx, nz, ux, uz)
+        if ((role === 'house' || role === 'farmhouse') && cat !== 'civic' && rand() < (set.annex ?? 0)) annex(ox, oz, b.maxZ - b.minZ, b.maxZ, yaw, nx, nz, ux, uz, poly)
       } else t += 3
     }
   }

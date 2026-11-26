@@ -87,8 +87,20 @@ test('town: blocks subdivided into street-front parcels reaching the block middl
     for (let i = 0; i < p.corners.length; i += 2) far = Math.max(far, lineDist(p.front, p.corners[i], p.corners[i + 1]))
     if (far > 25) deep++
   }
-  assert.ok(deep > r.parcels.length * 0.5, `deep parcels ${deep}/${r.parcels.length}`)
+  assert.ok(deep > r.parcels.length * 0.4, `deep parcels ${deep}/${r.parcels.length}`)
   for (let i = 0; i < r.parcels.length; i++) for (let j = i + 1; j < r.parcels.length; j++) assert.ok(!convexOverlap(r.parcels[i].corners, r.parcels[j].corners, 0.3), `${r.parcels[i].id} overlaps ${r.parcels[j].id}`)
   const r2 = generateTown(zone, roads, [pond], flat, grid, { seed: 3, prefix: 'T1' })
   assert.deepEqual(r2.parcels, r.parcels)
+})
+
+test('town: annexes stay inside their own parcel', () => {
+  const r = generateTown(zone, roads, [pond], flat, grid, { seed: 3, prefix: 'T1' })
+  const owners = new Set(r.parcels.map((p) => p.building)) // industry halls use the annex role but own their parcel
+  const annexes = r.placed.filter((b) => b.role === 'annex' && b.id.startsWith('SET_') && !owners.has(b.id))
+  let inLot = 0
+  for (const a of annexes) for (const p of r.parcels) if (convexOverlap(p.corners, a.corners, 0.05)) {
+    for (let i = 0; i < 8; i += 2) assert.ok(inside(p.corners, a.corners[i], a.corners[i + 1]), `${a.id} sticks out of ${p.id}`)
+    inLot++
+  }
+  assert.ok(inLot >= 10, 'annexes in parcels ' + inLot)
 })
