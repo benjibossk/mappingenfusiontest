@@ -124,7 +124,7 @@ export const BIOMES: Biome[] = [
     label: { en: 'Woodland (Arland)', fr: 'Woodland (Arland)' },
     desc: { en: 'Flat wooded island, pine stands and fields, same western houses as Everon.', fr: 'Île plate boisée, pinèdes et champs, mêmes maisons occidentales qu’Everon.' },
     availability: 'vanilla', ff: 'WOODLAND', maps: ['Arland'],
-    surfaces: { grass: 'Grass_03', meadow: 'Grass_02', forest: 'ForestConiferous_01_Base', forestConifer: 'ForestPine_01_Base', clearing: 'ForestClearing_Coniferous_01', field: 'Crop_Field_02', dirt: 'Dirt_02', rock: 'Debris_Rock_01', scree: 'Pebbles_01', beach: 'Grass_03_coastal', seabed: 'SeaBed_01', town: 'Concrete_01', heath: 'Heather_01' },
+    surfaces: { grass: 'Grass_03', meadow: 'Grass_02', forest: 'ForestConiferous_01_Base', forestConifer: 'ForestPine_01_Base', clearing: 'ForestClearing_Coniferous_01', field: 'Crop_Field_02', dirt: 'Dirt_02', rock: 'Debris_Rock_01', scree: 'Debris_Rock_01', beach: 'Grass_03_coastal', seabed: 'SeaBed_01', town: 'Concrete_01', heath: 'Heather_01' },
     vegetation: { trees: [w(VEG.pine, 4), w(VEG.pineF, 2), w(VEG.spruce, 2), w(VEG.birch, 2), w(VEG.hornbeam, 1)], bushes: [w(VEG.hazel, 2), w(VEG.hazel2, 1)], treesPerHa: 380, bushesPerHa: 120, gardenTrees: [w(VEG.apple, 2), w(VEG.birch, 1)] },
     buildingStyle: 'western',
     fences: { front: [FENCES.wood1, FENCES.metalDecoE2, FENCES.wood3], side: [FENCES.wood2, FENCES.woodRural] },
