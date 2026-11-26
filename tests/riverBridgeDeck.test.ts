@@ -39,3 +39,23 @@ test('riverBridges: deck trimmed to the gap + a few metres (picture 120: BRIDGE_
     assert.ok(t >= L + 2 && t <= max, `gap ${L}: deck ${t}`)
   }
 })
+
+test('bridge deck ends at most ~6 m past the local water edge (picture 120 round 9: river traced 76 m wide, w.width 96 m, decks 14-16 m on grass)', async () => {
+  const { splitAtWater } = await import('../src/modules/water')
+  const hs = relief(() => 1)
+  // river along z, centre x = 200, local width 76 m (half 38) though its overall width is 96 m
+  const river = { id: 'W', type: 'river' as const, pts: [200, -100, 200, 0, 200, 100, 200, 200], width: 96, widths: [76, 76, 76, 76], depth: 2.5 }
+  const road = { id: 'ROAD_X', kind: 'spline' as const, points: [20, 50, 380, 50] }
+  const { gaps } = splitAtWater([road] as never, [river] as never)
+  assert.equal(gaps.length, 1)
+  const gap = Math.abs(gaps[0].to[0] - gaps[0].from[0])
+  const g2 = { ...g, cols: 200, rows: 50 }
+  const { entities } = riverBridges(gaps, hs, g2, narrow)
+  const decks = entities.filter((e) => e.id.includes('_DECK_'))
+  const lens = decks.map((e) => (e.prefab.includes('Long') ? 26 : 13))
+  const x0 = Math.min(...decks.map((e) => e.x)), x1 = Math.max(...decks.map((e, i) => e.x + lens[i]))
+  const over = Math.max(162 - x0, x1 - 238)
+  assert.ok(gap <= 76 + 2 * 4 + 1, `gap ${gap}`)
+  // 13 m pieces: the deck is the gap (water + 4 m a side) + 1..7.5 m; before, the gap used the 96 m width: 16 m past
+  assert.ok(over <= 7.5 && over >= 4, `deck ${x0}..${x1}, ${over} m past the water`)
+})

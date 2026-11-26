@@ -675,7 +675,7 @@ export function splitAtWater(shapes: ProjectShape[], waters: Water[], margin = 4
   // a river traced from a picture keeps its local widths (its bed is carved to them): test on its own points
   const courses = waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).map((w) => {
     const local = w.widths && w.widths.length === w.pts.length / 2
-    return { c: local ? w.pts : riverCourse(w.pts, w.width), half: (i: number) => (local ? Math.max(w.widths![i / 2], w.widths![i / 2 + 1], w.width) : w.width) / 2 + margin }
+    return { c: local ? w.pts : riverCourse(w.pts, w.width), half: (i: number) => (local ? Math.max(w.widths![i / 2], w.widths![i / 2 + 1]) : w.width) / 2 + margin }
   })
   const lakes = waters.filter((w) => WATER_TYPES[w.type].closed && w.pts.length >= 6)
   const wet = (x: number, z: number) => {
@@ -971,7 +971,7 @@ const PILLAR_DROP = 835
 const WOOD_LEN = 50.3 // PierWooden_02_bridge length (Z -25..25.3)
 const BRIDGE_OVER = 8 // metres of deck buried in each bank
 const BRIDGE_MIN_REST = 1 // deck past each end of the gap at the least (the gap already has 4 m of bank a side), metres
-const BRIDGE_DECK_REST = 5 // deck past each end of the gap aimed at, metres (8 laid decks on the bank grass, picture 120)
+const BRIDGE_DECK_REST = 2 // deck past each end of the gap aimed at, metres: water edge + 4 m gap margin + 2 = 6 m (5 laid decks up to 16 m on the bank grass, picture 120 round 9)
 
 /** [M] steepest deck allowed (rise / run): above it the higher bank sets the deck and the lower end is flagged */
 export const BRIDGE_MAX_PITCH = 0.08
