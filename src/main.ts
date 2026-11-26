@@ -1773,7 +1773,7 @@ function recompose(final: boolean) {
   // lanes are not carved: last, their ground is graded (pads.ts gradeLanes) over pads, berms and runoff beds
   gradeLanes(island.heights, g, setLanes.map((l) => l.pts), pads, beds?.weight)
   if (final) {
-    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks)
+    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, [...areas.filter((a) => a.kind !== 'forest'), ...sentForests(areas.filter((a) => a.kind === 'forest'))], landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks)
     island.colours = { ...SURFACE_COLOURS, ...island.colours }
     if (island.surfaceMasks?.length) applySurfaceMasks(island.surfaces, island.surfaceMasks, (name) => { island!.colours[name] ??= [128, 120, 110] })
     const bad = overfullBlocks(island.surfaces)
@@ -2640,6 +2640,9 @@ $<HTMLButtonElement>('imgGo').addEventListener('click', () => {
     if (imgSrc === src) applyImageMap(r, src.img, src.file)
   }, (e) => { busyFailed = true; $('imgMsg').textContent = (e as Error).message }))
 })
+/** the woods generated for a relief-only picture (async): masks and forests wait for them (picture 120: masks
+ *  sent before the generated forests existed, forests without forest ground) */
+let imgForestGen: Promise<unknown> | null = null
 function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   // a picture map aims at the Arland look: on the default biome, paint with Arland's surfaces (Grass_03 main grass
   // like vanilla Everon / Arland; the Everon set keeps the generators' Grass_01, browner in game); a chosen biome stays
@@ -2690,13 +2693,13 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   const okArgs = { roads: r.roads.length, waters: r.waters.length, bld: r.buildings.length, areas: r.areas.length, hedges: r.hedges.length, lo: Math.round(lo), hi: Math.round(hi) }
   if (!r.areas.some((a) => a.kind === 'forest') && island) {
     const isl = island, near: Site[] = settled.map((b, i) => ({ id: `IMG_S_${i}`, x: b.x, z: b.z, kind: 'hamlet' as const }))
-    void track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites: near, biome: currentBiome, maxShare: IMAGE_FOREST_SHARE }]).promise.then((made) => {
+    imgForestGen = track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites: near, biome: currentBiome, maxShare: IMAGE_FOREST_SHARE }]).promise.then((made) => {
       if (island !== isl) return
       made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
       // the message is written before this async run ends: recount with the generated woods
       $('imgMsg').textContent = logEl.textContent = t('img.ok', { ...okArgs, areas: r.areas.length + made.length })
       recompose(true); draw(); autosave()
-    }, () => {}))
+    }, () => {}).finally(() => { imgForestGen = null }))
   }
   $('imgMsg').textContent = logEl.textContent = t('img.ok', okArgs)
 }
@@ -2756,6 +2759,7 @@ $<HTMLButtonElement>('tHeight').addEventListener('click', () =>
 )
 $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
   run(t('run.l.masks'), async () => {
+    if (imgForestGen) await imgForestGen
     if (!island) throw new Error(t('err.genFirst'))
     const r = await writeMasks({
       addon: txt('tAddon'),
@@ -4546,15 +4550,21 @@ function forestAreaTest(): (x: number, z: number) => boolean {
     return ins
   })
 }
+/** the forests as sent: no tree in a river bed nor a lake, forests cut by the water corridor (width / 2 + 4 m),
+ *  holes split away. The forest ground masks are painted from these same polygons (picture 120: forest ground
+ *  along the river with no tree, painted from the uncut areas) */
+function sentForests(all: MapArea[]): MapArea[] {
+  return clipForestsToWater(all, waters.map((w) => ({ pts: w.pts, width: WATER_TYPES[w.type].closed ? w.width : 2 * riverWetHalf(w), closed: WATER_TYPES[w.type].closed })), { margin: 4 })
+}
 function forestShapesOut(all: MapArea[]): ProjectShape[] {
-  // no tree in a river bed nor a lake: forests cut by the water corridor (width / 2 + 4 m), holes split away
-  const f = clipForestsToWater(all, waters.map((w) => ({ pts: w.pts, width: WATER_TYPES[w.type].closed ? w.width : 2 * riverWetHalf(w), closed: WATER_TYPES[w.type].closed })), { margin: 4 })
+  const f = sentForests(all)
   if (!$<HTMLInputElement>('forestEdge').checked) return f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
   return forestEdgeShapes(forestEdges(f.map((a) => ({ id: a.id, pts: a.pts, leaf: a.leaf, generator: forestGenOf(a), noEdge: a.stage === 'juvenile' || a.stage === 'clearcut' }))))
 }
 // forests: one closed shape per area with the forest generator matching the OSM leaf type (FOREST_ family)
 $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   run(t('run.l.forests'), async () => {
+    if (imgForestGen) await imgForestGen
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
     const shapes = forestShapesOut(f), per = Math.max(0, Math.floor(num('forestBatch') || 0))
@@ -4574,6 +4584,7 @@ $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
 $<HTMLDivElement>('modsBox').append(modsChecklist())
 $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   run(t('run.l.all'), async () => {
+    if (imgForestGen) await imgForestGen
     const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? mySigns() : [] }
     // forests apart (button "Send forests", in batches): the objects go first, the forests later
     const forests = $<HTMLInputElement>('forestLater').checked ? [] : forestShapesOut(areas.filter((a) => a.kind === 'forest'))
