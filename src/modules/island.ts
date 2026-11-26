@@ -235,11 +235,16 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   // beach / coastal grass only along open water: their height bands (+1..+4 m, < 12 m) alone painted every low
   // inland plain as a beach (map from a picture: rivers and lakes at the sea level, the whole valley beach-brown).
   // Arland: a narrow bank strip, grass beyond. Distance to ground under -0.5 m (sea, lakes, river beds).
-  const toWater = waterDistance(heights, cols, rows, step, -0.5)
+  // the sea Sculpt.compose forces on the last 6 % of the map (edge ramp) is not water a coast is measured from: its
+  // coastal grass made a light band along the whole edge (picture 120 east edge, round 9). A real sea reaching the
+  // edge still has its shore further in
+  const edgeN = Math.ceil(0.07 * Math.max(1, cols - 1))
+  const hd = heights.map((h, i) => { const c = i % cols, r = (i - c) / cols; return h < -0.5 && Math.min(c, r, cols - 1 - c, rows - 1 - r) < edgeN ? 1 : h })
+  const toWater = waterDistance(hd, cols, rows, step, -0.5)
   // pebbles / sand / beach grass only on open water (sea, wide lakes): river and pond banks of a map from a picture
   // (all at the sea level) were a pink-grey shingle band (Pebbles_02 ~10 % of the land on picture 120); Arland's
   // inland banks are grass. Open = water more than OPEN_WATER_M from the land, its own bank measured back from there.
-  const toOpen = openWaterDistance(heights, cols, rows, step, -0.5)
+  const toOpen = openWaterDistance(heights, cols, rows, step, -0.5) // (beach: open-ness needs the whole sea; the ramp is cut by fakeCoast)
   const at = (c: number, r: number) => heights[Math.min(Math.max(r, 0), rows - 1) * cols + Math.min(Math.max(c, 0), cols - 1)]
   const covered0 = (i: number, h: number) => !!(cover && cover[i] && h > 1)
   const coverShare = (c: number, r: number) => {
@@ -281,8 +286,11 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     rock -= rock * sv
     const take = (w: number) => { const t = Math.min(free, Math.max(w, 0)); free -= t; return t }
     // dry low ground (a picture map lies at 0-1.5 m over whole plains) is shingle only on the water's edge
-    const shore = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)) * (h > -0.5 ? 1 - band(toWater[i], 4, 10) : 1))
-    const nearBank = 1 - band(toOpen[i], COAST_BEACH_M, COAST_BEACH_M * 2.5), nearCoast = 1 - band(toWater[i], COAST_GRASS_M, COAST_GRASS_M * 2.5)
+    // the map-edge ramp above the sea is no coast either: beach / coastal grass made a light band along the whole
+    // edge slope (picture 120, x 2350-2400, round 9). A real shore there is gentle; the ramp is steep: plain grass
+    const fakeCoast = h > 0 ? (1 - edgeRamp) * band(slope, 0.08, 0.15) : 0
+    const shore = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)) * (h > -0.5 ? 1 - band(toWater[i], 4, 10) : 1) * (1 - fakeCoast))
+    const nearBank = (1 - band(toOpen[i], COAST_BEACH_M, COAST_BEACH_M * 2.5)) * (1 - fakeCoast), nearCoast = (1 - band(toWater[i], COAST_GRASS_M, COAST_GRASS_M * 2.5)) * (1 - fakeCoast)
     const beach = take((1 - band(h, 3.5, 5)) * nearBank)
     // [M] shore band 0-10 m above the sea: Pebbles_02 20-30 % + BeachGrass 10-14 % (FIELDS_SURFACES_VANILLA §3)
     const lowShore = h > 0 ? (1 - band(h, 9, 11)) * nearBank : 0

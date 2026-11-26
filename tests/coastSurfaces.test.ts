@@ -53,3 +53,21 @@ test('computeSurfaces: no Rock_01 band on the map-edge sea ramp (picture 120, gr
   for (let r = 20; r < 80; r++) for (let c = 93; c < cols; c++) edge += rock[r * cols + c]
   assert.equal(edge, 0)
 })
+
+test('computeSurfaces: no beach / coastal grass band on the map-edge ramp, a gentle real shore keeps it (picture 120 round 9, light band east edge)', () => {
+  const cols = 101, rows = 101, step = 8
+  const ramp: number[] = [], shore: number[] = []
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    ramp.push(c < 94 ? 8 : 8 - (c - 93) * 4) // 8 m land falling to the sea floor over the edge band, 0.5 m/m
+    shore.push(c < 60 ? 6 : 6 - (c - 60) * 0.5) // gentle real shore: the sea from x 576 m, inside the map
+  }
+  const coast = (hs: number[], c0 = 86) => {
+    const s = computeSurfaces({ minX: 0, minZ: 0, step, cols, rows }, hs, 40)
+    const w = ['BeachGrass_01', 'Grass_03_coastal', 'Pebbles_02'].map((n) => s.find((q) => q.name === n)!.weights)
+    let t = 0
+    for (let r = 20; r < 80; r++) for (let c = c0; c < cols; c++) if (hs[r * cols + c] > 0) for (const x of w) t += x[r * cols + c]
+    return t
+  }
+  assert.ok(coast(ramp) < 1, `ramp coast weight ${coast(ramp)}`)
+  assert.ok(coast(shore, 40) > 20, `real shore coast weight ${coast(shore, 40)}`)
+})
