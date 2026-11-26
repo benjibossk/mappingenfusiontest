@@ -121,6 +121,11 @@ export const PICTURE_RIVER_DEPTH = 2.5
 const RIVER_BANK = 0.5 // bank top above the water
 const RIVER_MAXCUT = 2.5
 const RIVER_DRY = 0.4 // ground outside the traced bed but under the river ribbon, over the water (0.2 read as speckled grass islands in shallow water, picture 119 round 9)
+/** centre depth of a picture river at a local half width: wide reaches go deeper (Arland-like, ~1 m at the edge,
+ *  up to 4 m at the centre for 100 m+), a 2.5 m bed under a 110 m river showed turquoise shallows (picture 120) */
+export function pictureRiverDepth(base: number, half: number): number {
+  return Math.max(base, Math.min(4, 1 + 3 * Math.min(1, (2 * half) / 100)))
+}
 const RIVER_BED_MIN = 1 // a picture river's bed (wetEdge) stays this far under the water up to its traced edge
 const BANK_MAX_SLOPE = 0.6 // valley side of a river, m/m (~31 deg) // ground outside the traced bed over the water level, metres
 /** length (m) of a river's last stretch held at the sea level before its mouth */
@@ -275,7 +280,8 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
             if (score >= shapedScore[k]) continue // the nearest river shapes the cell
             const wl = level[i] + (level[i + 1] - level[i]) * tt
             const half = halves[i] + (halves[i + 1] - halves[i]) * tt
-            const depth = joined ? w.depth : w.depth * Math.min(1, (along + tt * segLen) / ramp)
+            const baseDepth = w.wetEdge ? pictureRiverDepth(w.depth, half) : w.depth
+            const depth = joined ? baseDepth : baseDepth * Math.min(1, (along + tt * segLen) / ramp)
             let v: number
             if (d <= half) {
               // flat bed to 40 %, then up to just under the water at the traced edge: the whole river surface
