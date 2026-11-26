@@ -7,6 +7,18 @@ export interface ChangelogEntry { version: string; date: string; items: Changelo
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.10.0',
+    date: '2026-11-26',
+    items: [
+      { en: "Towns with blocks and garden parcels, also in the random world", fr: "Villes à îlots avec parcelles de jardin, aussi dans le monde aléatoire" },
+      { en: "Soviet house style (Kolguyev look) for villages and towns", fr: "Style de maisons soviétique (façon Kolguyev) pour villages et villes" },
+      { en: "Power lines reach remote farms across the fields", fr: "L'électricité arrive aux fermes isolées à travers champs" },
+      { en: "OSM import: road surface, tunnels left out, bridges marked", fr: "Import OSM : revêtement des routes, tunnels exclus, ponts marqués" },
+      { en: "Satmap textures generated from your own game, new clean colours mode", fr: "Textures de satmap générées depuis ton jeu, nouveau mode couleurs propres" },
+      { en: "No more objects on roads, fewer Workbench crashes on save", fr: "Plus d'objets sur les routes, moins de plantages du Workbench à la sauvegarde" },
+    ],
+  },
+  {
     version: '0.9.0',
     date: '2026-11-25',
     items: [

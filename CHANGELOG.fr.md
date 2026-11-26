@@ -4,6 +4,8 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+## [0.10.0] - 2026-11-26
+
 ### Ajouté
 
 - Sol : priorité de peinture des masques qui se chevauchent (béton > terre > roche > champs > sol forestier > herbe), le résultat ne dépend plus de l'ordre des masques ; la terre nue est répartie en deux teintes par un bruit basse fréquence (`src/modules/paintPriority.ts`).
@@ -14,6 +16,15 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 - Import OSM : largeur des routes depuis `width` / `lanes`, type de route selon `surface` (terre, pavés, béton, piste goudronnée), tunnels exclus, ponts marqués.
 - Monde aléatoire : parcelles des îlots de ville dessinées comme jardins ; option « Style des maisons » (soviétique) aussi pour le monde aléatoire et l'outil Zone Ville.
 - Villages : option « Style des maisons », soviétique (style Kolguyev) avec les maisons USSR vanilla en bois, préfabriquées, les fermes et la villa Guba (uniquement des GUID déjà référencés dans le dépôt).
+
+### Modifié
+
+- Satmap : les textures de sol vanilla sont générées sur ta machine depuis ton propre jeu (automatiquement, par le bridge) et ne sont plus distribuées ; nouveau mode « Couleurs propres » sans aucun pixel Bohemia.
+- Workbench : « Fix block borders » après l'import des masques devient optionnel (`-TerrainFix`) : il faisait planter chaque sauvegarde qui suivait.
+
+### Corrigé
+
+- Plus d'objets sur les routes : bordures de station-service, accès des bases, haies sur les routes déviées autour des aérodromes, piles de grumes sur leur piste, tombes du cimetière sur le bas-côté.
 
 ## [0.9.0] - 2026-11-25
 

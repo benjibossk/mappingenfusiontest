@@ -8,6 +8,8 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-26
+
 ### Added
 
 - Ground: paint priority for overlapping surface masks (concrete > dirt > rock > fields > forest floor > grass), so the result no longer depends on the mask order; bare ground split into two dirt tones by low-frequency noise (`src/modules/paintPriority.ts`).
@@ -18,6 +20,15 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 - OSM import: road width from `width` / `lanes`, road type from `surface` (dirt, cobbles, concrete, paved track), tunnels left out, bridges marked.
 - Random world: town block parcels drawn as gardens; "House style" option (Soviet) also for the random world and the Town zone tool.
 - Villages: "House style" option, Soviet (Kolguyev look) with the vanilla USSR wooden, prefabricated and farm houses and the Guba villa (only GUIDs referenced in the repo).
+
+### Changed
+
+- Satmap: vanilla ground textures are generated on your machine from your own game install (automatically, by the bridge) and are no longer distributed; new "Clean colours" mode with no Bohemia pixels.
+- Workbench: "Fix block borders" after a mask import is now optional (`-TerrainFix`): it crashed every save right after.
+
+### Fixed
+
+- No more objects on roads: gas station kerbs, base access roads, hedges on roads rerouted around airfields, log piles on their track, cemetery graves on the verge.
 
 ## [0.9.0] - 2026-11-25
 
