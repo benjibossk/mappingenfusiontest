@@ -1006,7 +1006,9 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     if (scat.length) zones.push({ id: 'VEG_SCATTER', kind: 'site', sub: 'scatter', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'scatter'), shapes: [], entities: scat, flat: [], plat: [], roads: [], warnings: [],
       boxes: scat.map((t) => ({ corners: [t.x - 1, t.z - 1, t.x + 1, t.z - 1, t.x + 1, t.z + 1, t.x - 1, t.z + 1], role: 'tree', h: 0.1 })) })
     // rocks / cliffs / scree / field stones on the steepest ranks of the island (cliffRocks.ts, ROCKS_VANILLA.md), 8 m clear of roads, houses, zones and water
-    const nearRoad = (x: number, z: number) => onRoad(x, z) || onRoad(x + 8, z) || onRoad(x - 8, z) || onRoad(x, z + 8) || onRoad(x, z - 8)
+    // big outcrops reach ~15 m from their centre: two rings (8 m, 16 m) so no block lands on or against a road
+    const ring = (x: number, z: number, d: number) => onRoad(x + d, z) || onRoad(x - d, z) || onRoad(x, z + d) || onRoad(x, z - d) || onRoad(x + d * 0.7, z + d * 0.7) || onRoad(x - d * 0.7, z - d * 0.7) || onRoad(x + d * 0.7, z - d * 0.7) || onRoad(x - d * 0.7, z + d * 0.7)
+    const nearRoad = (x: number, z: number) => onRoad(x, z) || ring(x, z, 8) || ring(x, z, 16)
     // bilinear ground for the burial depth (hAt is the nearest vertex: up to ~3 m off on a steep 8 m cell)
     const gAt = (x: number, z: number) => {
       const fx = Math.min(Math.max((x - g.minX) / g.step, 0), g.cols - 1.001), fz = Math.min(Math.max((z - g.minZ) / g.step, 0), g.rows - 1.001)
@@ -1021,6 +1023,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
     const discs = zones.map(zoneDisc).filter((d) => d.r < 600)
     const cliffs = cliffRocks({ box: { minX: g.minX, minZ: g.minZ, maxX: g.minX + span, maxZ: g.minZ + span }, heightAt: hAt, groundAt: gAt, forest: inWood, seed: ss('forests', 'cliffs'), spacing: rockProfile(p.biome).spacing, density: rockProfile(p.biome).density, rockQ: rockProfile(p.biome).rockQ, max: Math.round(rockProfile(p.biome).perKm2 * landKm2),
       ok: (x, z) => !isLakeOrSea(x, z) && !nearRoad(x, z) && !houseNear(x, z) && !discs.some((d) => Math.hypot(d.x - x, d.z - z) < d.r + 8) })
+      .filter((e) => !onRoad(e.x, e.z) && !ring(e.x, e.z, 6)) // each piece of an outcrop, not only its centre
     if (cliffs.length) zones.push({ id: 'CLIFF_ROCKS', kind: 'site', sub: 'cliffs', x: g.minX + span / 2, z: g.minZ + span / 2, yaw: 0, seed: ss('forests', 'cliffs'), shapes: [], entities: cliffs, flat: [], plat: [], roads: [], warnings: [],
       boxes: cliffs.map((t) => ({ corners: [t.x - 3, t.z - 3, t.x + 3, t.z - 3, t.x + 3, t.z + 3, t.x - 3, t.z + 3], role: 'rock', h: 2 })) })
   }

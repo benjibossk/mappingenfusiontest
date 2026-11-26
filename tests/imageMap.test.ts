@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  clusterImage, closeMask, edt, extractBuildings, guessRoles, hatchZone, imageToMap, joinGaps, nearestBuilding,
+  annotationAndShore, nearWater, clusterImage, closeMask, edt, extractBuildings, guessRoles, hatchZone, imageToMap, joinGaps, nearestBuilding,
   reliefFromLevels, roadClass, simplify, splitDark, thin, traceSkeleton, type ClusterRole,
   extractWater, fieldEdges, regularRow, smoothRing, type ImgRoad,
 } from '../src/modules/imageMap.ts'
@@ -56,7 +56,7 @@ test('guessRoles: tactical map palette (land, water, bands, roads, overlays)', (
   const lab: [number, number, number][] = [[74, -3, 8], [62, -13, -4], [71, 5, 11], [68, 11, 16], [63, 25, 25], [57, -1, 8], [9, 2, 9], [44, -4, 14], [36, 34, 28], [99, 0, 1], [65, -9, 9]]
   const share = [0.4, 0.06, 0.2, 0.1, 0.02, 0.02, 0.005, 0.05, 0.006, 0.006, 0.05]
   const r = guessRoles({ lab, share })
-  assert.deepEqual(r.map((x) => x.role), ['land', 'water', 'band', 'band', 'band', 'road', 'building', 'ignore', 'ignore', 'ignore', 'forest'])
+  assert.deepEqual(r.map((x) => x.role), ['land', 'water', 'band', 'band', 'band', 'road', 'building', 'road', 'ignore', 'ignore', 'forest'])
   // redder bands are higher
   assert.ok(r[2].height! < r[3].height! && r[3].height! < r[4].height!)
 })
@@ -143,7 +143,7 @@ test('imageToMap: synthetic tactical map -> river, relief, road, building; overl
   const want = (rgb: number[]) => roles[q.palette.findIndex((p) => Math.abs(p[0] - rgb[0]) + Math.abs(p[1] - rgb[1]) + Math.abs(p[2] - rgb[2]) < 20)]?.role
   assert.equal(want([121, 158, 158]), 'water')
   assert.equal(want([203, 148, 124]), 'band')
-  assert.equal(want([108, 106, 81]), 'ignore')
+  assert.equal(want([108, 106, 81]), 'road') // casing colour; the arrow blob itself never becomes a road (checked below)
   const r = imageToMap(q, roles as ClusterRole[], { size: 640 }) // 4 m per pixel
   assert.equal(r.sizeX, 640)
   const H = (x: number, y: number) => r.heights.data[y * w + x]
@@ -155,7 +155,7 @@ test('imageToMap: synthetic tactical map -> river, relief, road, building; overl
   assert.ok(road, 'road found')
   // the road runs west-east at z = (160 - 120) * 4 = 160 m
   for (let i = 1; i < road!.pts.length; i += 2) assert.ok(Math.abs(road!.pts[i] - 160) < 10)
-  assert.equal(r.buildings.length, 1)
+  assert.equal(r.buildings.length, 1, JSON.stringify(r.buildings.map((b) => [b.x, b.z])) + JSON.stringify(q.palette) + JSON.stringify(roles))
   assert.ok(Math.abs(r.buildings[0].corners[0] - 332) < 30)
 })
 
@@ -201,4 +201,23 @@ test('smoothRing removes stair steps (no right-angle corner left)', () => {
     const cos = (ux * vx + uz * vz) / (Math.hypot(ux, uz) * Math.hypot(vx, vz))
     assert.ok(cos < -0.3, `corner ${i}`)
   }
+})
+
+test('roads: red annotations and river banks never hold a road line', () => {
+  const w = 40, h = 20, N = w * h
+  // cluster 0 land, 1 water (left), 2 red frame (column 30), 3 grey road casing
+  const index = new Uint8Array(N), lvl = new Int16Array(N)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; index[i] = x < 10 ? 1 : x === 30 ? 2 : 0; lvl[i] = x < 10 ? -1 : 0 }
+  const lab: [number, number, number][] = [[74, -3, 8], [62, -13, -4], [45, 40, 30], [57, -1, 8]]
+  const roles = [{ role: 'land' }, { role: 'water' }, { role: 'ignore' }, { role: 'road' }] as Parameters<typeof annotationAndShore>[1]
+  const m = annotationAndShore({ index, lab }, roles, lvl, w, h)
+  assert.equal(m[5 * w + 11], 1, 'bank')
+  assert.equal(m[5 * w + 32], 1, 'frame edge')
+  assert.equal(m[5 * w + 20], 0, 'open land')
+  assert.ok(nearWater(lvl, w, h, 5 * w + 12, 4) && !nearWater(lvl, w, h, 5 * w + 20, 4))
+})
+
+test('guessRoles: dark olive road casing is a road, a red frame is ignored', () => {
+  const r = guessRoles({ lab: [[74, -3, 8], [44, -3, 14], [36, 20, 26], [55, 10, 15]], share: [0.5, 0.05, 0.02, 0.01] })
+  assert.deepEqual(r.map((x) => x.role), ['land', 'road', 'ignore', 'ignore'])
 })

@@ -29,6 +29,8 @@ export function guessRoles(q: Pick<Quantised, 'lab' | 'share'>): ClusterRole[] {
     if (L < 33) return a < -8 ? { role: 'ignore' } : { role: 'building' } // dark green = arrow fill; near black = buildings
     if (b < -1 && a < -3 && L > 40) return { role: 'water' }
     if (a > 28) return { role: 'ignore' } // saturated red lines (front line, circle)
+    // dark olive, neutral hue: the casing of drawn roads (arrow fills of that colour are blobs, dropped as roads)
+    if (L >= 38 && L < 50 && a >= -8 && a <= 2 && b > 8 && b < 20) return { role: 'road' }
     if (L < 50 && (b > 11 || a > 8)) return { role: 'ignore' } // olive / brown overlay arrows
     if (a > 4 && L >= 60 && share > 0.004) return { role: 'band', height: 0 }
     if (a > 4) return { role: 'ignore' } // contour lines over the bands
@@ -389,10 +391,27 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
   // 4. dark marks: solid blobs = buildings, thin dark lines = road casings, aligned dashes = paths / rails
   const dark = new Uint8Array(N)
   for (let i = 0; i < N; i++) if (roleOf[i] === R('building') || roleOf[i] === R('road')) dark[i] = 1
+  // red / orange annotations (zone frame, arrows, letters) and river banks: their anti-aliased edges are no road
+  const notLine = annotationAndShore(q, roles, lvl, w, h)
+  for (let i = 0; i < N; i++) if (notLine[i]) dark[i] = 0
+  // large solid patches of a road colour (overlay arrows of the casing colour) are neither roads nor houses
+  {
+    const rm = new Uint8Array(N)
+    for (let i = 0; i < N; i++) if (roleOf[i] === R('road')) rm[i] = 1
+    const thick = openMask(rm, w, h, Math.max(3, Math.round(12 / mpp)))
+    for (let i = 0; i < N; i++) if (thick[i]) dark[i] = 0
+  }
   const split = splitDark(dark, w, h, mpp)
   // hatched out-of-bounds borders: no road nor building is read there
   const zone = hatchZone(split.lines, w, h)
   for (let i = 0; i < N; i++) if (zone[i]) { split.lines[i] = 0; split.blobs[i] = 0; split.dashes[i] = 0 }
+  // a stub of road casing cut by a bank or a frame is no house: no blob made of road colour next to them
+  {
+    const nd = edt(notLine, w, h)
+    const bad = new Uint8Array(N)
+    for (let i = 0; i < N; i++) if (split.blobs[i] && nd[i] <= 3 && roleOf[i] !== R('building')) bad[i] = 1
+    for (const c of components(split.blobs, w, h)) if (c.some((i) => bad[i])) for (const i of c) split.blobs[i] = 0
+  }
   const buildings = extractBuildings(split.blobs, w, h, mpp)
 
   // 5. roads and paths
@@ -400,7 +419,7 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
   for (const kind of ['road', 'path'] as const) {
     const m = new Uint8Array(N)
     for (let i = 0; i < N; i++) if (kind === 'road' ? split.lines[i] : roleOf[i] === R('path') || split.dashes[i]) m[i] = 1
-    roads.push(...extractLines(m, w, h, mpp, kind, (i) => onContour(lvl, w, h, i, 3)))
+    roads.push(...extractLines(m, w, h, mpp, kind, (i) => onContour(lvl, w, h, i, 3) || nearWater(lvl, w, h, i, 4)))
   }
 
   // 5b. thin lines that do not link two roads: field edges (hedges); the cells they close: fields
@@ -436,6 +455,29 @@ export function imageToMap(q: Quantised, roles: ClusterRole[], o: ImageMapOption
 }
 
 /** opening (erode then dilate by r) */
+/** pixels that never hold a road line: red annotation colours (+3 px) and the rim of the water (2 px) */
+export function annotationAndShore(q: Pick<Quantised, 'index' | 'lab'>, roles: ClusterRole[], lvl: Int16Array, w: number, h: number): Uint8Array {
+  const N = w * h, red = q.lab.map(([L, a], k) => roles[k]?.role === 'ignore' && a > 12 && L < 80)
+  const seed = new Uint8Array(N), out = new Uint8Array(N)
+  for (let i = 0; i < N; i++) if (red[q.index[i]]) seed[i] = 1
+  const d = edt(seed, w, h)
+  const wm = new Uint8Array(N)
+  for (let i = 0; i < N; i++) if (lvl[i] < 0) wm[i] = 1
+  const dw = edt(wm, w, h)
+  for (let i = 0; i < N; i++) if (d[i] <= 3 || (dw[i] > 0 && dw[i] <= 2)) out[i] = 1
+  return out
+}
+
+/** a water pixel within r pixels */
+export function nearWater(lvl: Int16Array, w: number, h: number, i: number, r = 4): boolean {
+  const x = i % w, y = (i - x) / w
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    const X = x + dx, Y = y + dy
+    if (X >= 0 && Y >= 0 && X < w && Y < h && lvl[Y * w + X] < 0) return true
+  }
+  return false
+}
+
 function openMask(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
   const inv = new Uint8Array(w * h)
   for (let i = 0; i < w * h; i++) inv[i] = mask[i] ? 0 : 1
