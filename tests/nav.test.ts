@@ -46,3 +46,19 @@ test('opening a step outside the section follows it', () => {
   assert.equal(followStep(st, 'brush'), st)
   assert.equal(followStep(st, 'roads').section, 'atelier')
 })
+
+test('a freshly created project opens empty on Terrain, the previous project stays intact', async () => {
+  assert.deepEqual(startState(false, 'masks', true), { level: 'dashboard', section: 'terrain' })
+  const { ProjectStore, memoryKV } = await import('../src/projects.ts')
+  const store = new ProjectStore(memoryKV())
+  const a = await store.create('A', { terrain: 'old' }); await store.setActive(a.id)
+  const b = await store.create('B'); await store.setActive(b.id)
+  assert.equal((await store.get(b.id))!.data, null)
+  assert.deepEqual((await store.get(a.id))!.data, { terrain: 'old' })
+  assert.equal((await store.list()).length, 2)
+  // createProject() reloads the page with the single-map autosave key removed: nothing can write the old terrain into B
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+  const fn = main.slice(main.indexOf('async function createProject'), main.indexOf('location.reload()', main.indexOf('async function createProject')))
+  assert.match(fn, /clearTimeout\(saveTimer\)/)
+  assert.match(fn, /removeItem\(PROJECT_KEY\)/)
+})

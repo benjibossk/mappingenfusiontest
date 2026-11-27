@@ -92,7 +92,9 @@ export function sectionOfStep(step: string): Section {
 export function isSection(v: unknown): v is Section { return typeof v === 'string' && (SECTIONS as readonly string[]).includes(v) }
 
 /** where the app opens: an autosaved terrain lands on its dashboard (the last section), otherwise home */
-export function startState(hasTerrain: boolean, saved: unknown): NavState {
+export function startState(hasTerrain: boolean, saved: unknown, fresh = false): NavState {
+  // a project just created (page reloaded clean, see createProject in main.ts) opens on its Terrain section
+  if (fresh) return { level: 'dashboard', section: 'terrain' }
   const s = typeof saved === 'string' ? saved : ''
   return hasTerrain ? { level: 'dashboard', section: isSection(s) ? s : 'terrain' } : { level: 'home', section: 'terrain' }
 }

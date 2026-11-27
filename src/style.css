@@ -863,3 +863,4 @@ button.linkbtn:hover:not(:disabled) { background: none; border: 0; color: var(--
 .app[data-sec="share"] #tabs, .app[data-sec="share"] .stephead, .app[data-sec="share"] .side > .tab, .app[data-sec="share"] .stepnav { display: none !important; }
 .welcome .choices.create.one .wtxt { display: flex; flex-direction: column; gap: 4px; }
 .secbar button { white-space: normal; line-height: 1.1; height: auto; min-height: 34px; text-align: center; }
+.top .projchip { flex: 0 1 auto; min-width: 0; }

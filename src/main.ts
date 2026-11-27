@@ -3270,7 +3270,7 @@ function coachAfter(kind: Entry) {
   setTimeout(render, 0)
 }
 $<HTMLButtonElement>('coachClose').addEventListener('click', () => { $('coach').hidden = true })
-$<HTMLButtonElement>('welcomeTour').addEventListener('click', () => { autoTour = true; void createProject().then(() => runTile({ id: 'island', act: 'click:tGen', step: 'island' })) })
+$<HTMLButtonElement>('welcomeTour').addEventListener('click', () => { void createProject(true) })
 $<HTMLButtonElement>('stepHelp').addEventListener('click', () => openHelp())
 document.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((b) => b.addEventListener('click', () => document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${b.dataset.gotoStep}"]`)?.click()))
 {
@@ -3597,10 +3597,16 @@ document.getElementById('projList')?.addEventListener('click', async (e) => {
 })
 // --- level 3: dashboard of the active project (src/nav.ts): section bar + hub of tiles over the generator steps ---
 const ENTRY_OF: Record<string, Entry> = { tGen: 'new', tRandom: 'random', tReal: 'real' }
-async function createProject(): Promise<void> {
+// a new project starts clean: the pending autosave of the previous one is dropped (it is already saved in its
+// own record), the single-map autosave key is cleared and the page reloads empty on the new project's Terrain
+const FRESH_KEY = 'reforger-mapper.fresh'
+async function createProject(tour = false): Promise<void> {
+  clearTimeout(saveTimer)
+  const prev = islandProject()
+  if (prev && activeProject) await projects.save(activeProject, prev) // keep the previous project as it is now
   await newActiveProject(t('proj.newName.new', { date: new Date().toLocaleString() }))
-  setSection('terrain')
-  setLevel('dashboard')
+  try { localStorage.removeItem(PROJECT_KEY); localStorage.setItem('reforger-mapper.nav', 'terrain'); sessionStorage.setItem(FRESH_KEY, tour ? 'tour' : '1') } catch { /* */ }
+  location.reload()
 }
 $<HTMLButtonElement>('projNew').addEventListener('click', () => void createProject())
 $<HTMLButtonElement>('projExport').addEventListener('click', () => {
@@ -3680,7 +3686,14 @@ navHook = (tab: string) => {
 {
   let saved: string | null = null
   try { saved = localStorage.getItem('reforger-mapper.nav') } catch { /* */ }
-  setSection(startState(true, saved).section, false)
+  let fresh: string | null = null
+  try { fresh = sessionStorage.getItem(FRESH_KEY); sessionStorage.removeItem(FRESH_KEY) } catch { /* */ }
+  const st = startState(true, saved, !!fresh)
+  setSection(st.section, false)
+  if (fresh) {
+    setLevel('dashboard')
+    if (fresh === 'tour') setTimeout(() => { autoTour = true; runTile({ id: 'island', act: 'click:tGen', step: 'island' }) }, 300)
+  }
 }
 void (async () => {
   let legacy: unknown = null
