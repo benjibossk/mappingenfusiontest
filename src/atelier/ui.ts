@@ -25,6 +25,7 @@ import biomeAuto from './data/biomes/temperate_auto.json'
 import texColors from './data/texcolors.json'
 import { openNetworks } from './networks/panel.ts'
 import { openTileFix } from './tilefix/panel.ts'
+import { openZones } from './zones/panel.ts'
 import { atlas, autoCalibrate, biomeRules, classify, coarse, metrics, type Calib, type Grid, type Metrics } from './terrain.ts'
 
 type K = Key
@@ -102,6 +103,7 @@ export function openAtelier() {
       <button id="atFit" type="button" class="secondary">${t('at.zoomFit' as K)}</button>
       <button id="atNetBtn" type="button" class="secondary">${t('at.net.open' as K)}</button>
       <button id="atTexBtn" type="button" class="secondary">${t('at.tex.open' as K)}</button>
+      <button id="atZoneBtn" type="button" class="secondary">${t('at.zn.open' as K)}</button>
       <h4>${t('at.legend' as K)}</h4><div id="atLegend" class="at-legend"></div>
     </aside>
     <div class="at-stage"><canvas id="atMap"></canvas></div>
@@ -138,6 +140,7 @@ export function openAtelier() {
   const toolCtx = () => S.src && S.world ? { src: S.src, world: S.world, terr: S.terr, tiles: S.tiles, H: S.H, log } : null
   $('atNetBtn').addEventListener('click', () => { const c = toolCtx(); if (c) void openNetworks(c, busy); else log(tk('at.net.needWorld'), true) })
   $('atTexBtn').addEventListener('click', () => { const c = toolCtx(); if (c) void openTileFix(c, busy); else log(tk('at.net.needWorld'), true) })
+  $('atZoneBtn').addEventListener('click', () => { const c = toolCtx(); if (c) void openZones({ ...c, objects: S.objects, bodies: S.bodies }, busy); else log(tk('at.net.needWorld'), true) })
   setupMap()
   void pollWb(); setInterval(() => { if (!root.hidden) void pollWb() }, 5000)
   go('s0')

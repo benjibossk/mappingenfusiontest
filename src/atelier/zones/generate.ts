@@ -87,6 +87,7 @@ export function generateZone(H: HeightGrid, world: ZoneWorld, spec: ZoneSpec): Z
   // streets grow from a road (village.ts): a site with no road within 40 m first gets a spine, the link road to
   // the nearest existing road (end point snapped ON it) carried on through the site, or a main street across it.
   let sites: Site[] = []
+  const yards: number[][] = [] // village lots + back gardens: no field / forest on them
   if (spec.villages) {
     if (slopeShare(ground, ring, 0.2) > 0.6) warnings.push('steep')
     sites = zoneSites(ring, tag, spec.seed)
@@ -123,6 +124,7 @@ export function generateZone(H: HeightGrid, world: ZoneWorld, spec: ZoneSpec): Z
     const keptSites = new Set(res.placed.map((q) => q.site))
     res.lanes = v.lanes.filter((l) => keptSites.has(l.id.split('_')[1] ?? ''))
     res.links = res.links.filter((l) => keptSites.has(`${tag}V${l.id.split('_').pop()}`))
+    for (const l of [...v.lots, ...v.gardens]) if (keptSites.has(l.site)) yards.push(l.corners)
     res.parcels = (v.parcels ?? []).filter((p) => keptSites.has(p.site))
     for (const g of gardenFences(v)) if (g.pts.length >= 4 && insideRing(ring, g.pts)) res.hedges.push(g.pts)
     sites = sites.filter((st) => keptSites.has(st.id))
@@ -176,8 +178,9 @@ export function generateZone(H: HeightGrid, world: ZoneWorld, spec: ZoneSpec): Z
   // 4. fields (and their hedges, dirt tracks) in what the villages left
   const obstacles = [
     ...roadObstacles(allRoads.filter((r) => r.pts.length >= 4).map((r) => ({ pts: r.pts, half: roadHalf(r) })), 4, (x, z) => inBox(growBox(box, 50), x, z)),
-    ...[...world.footprints, ...res.placed.map((q) => q.corners)].map(cornersObstacle).filter((p) => !!p),
+    ...[...world.footprints, ...res.placed.map((q) => q.corners), ...yards].map(cornersObstacle).filter((p) => !!p),
     ...lakes.map(flatToPoly).filter((p) => !!p),
+    ...roadObstacles(res.power.map((l) => ({ pts: l.path, half: 8 })), 0), // cleared power corridor
   ] as NonNullable<ReturnType<typeof flatToPoly>>[]
   if (spec.fields) {
     const f = fillFieldZone({ zone: ring, seed: spec.seed, prefix: `${tag}_F`, hedgeSeed: spec.seed + 7, obstacles, ok: (x, z) => !wet(x, z) && pointInPoly(ring, x, z) && Math.abs(ground(x + 5, z) - ground(x - 5, z)) < 1.5 && Math.abs(ground(x, z + 5) - ground(x, z - 5)) < 1.5, roads: allRoads.filter((r) => r.pts.length >= 4).map((r) => r.pts) })
