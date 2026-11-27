@@ -11,6 +11,7 @@ class MG_ProjectShape : JsonApiStruct
 	ref array<string> paramKeys = {};	//!< generator properties (RoadWidth, AdjustHeightMap...)
 	ref array<string> paramValues = {};
 	ref array<float> lift = {};	//!< optional metres above the terrain per point (water level); empty = on the terrain
+	string layer;		//!< optional layer MG_<layer> (Atelier zones: Zone_<name>_*); empty = by generator family
 	bool powerSource;		//!< power line: point 0 is a power source (SCR_PowerlineGeneratorJunctionData.m_bPowerSource)
 
 	void MG_ProjectShape()
@@ -24,6 +25,7 @@ class MG_ProjectShape : JsonApiStruct
 		RegV("paramValues");
 		RegV("lift");
 		RegV("powerSource");
+		RegV("layer");
 	}
 }
 
@@ -60,6 +62,7 @@ class MG_Project : JsonApiStruct
 	ref array<ref MG_ProjectShape> shapes = {};
 	ref array<ref MG_ProjectEntity> entities = {};
 	ref array<float> remove = {};	//!< X/Z pairs: origins of objects already in the world to delete (taken over or removed in the web map)
+	ref array<string> clear = {};	//!< extra name families to delete before building (Atelier zone delete / regenerate: "MGZ<name>_")
 	ref array<string> locked = {};	//!< names never removed; an entry ending with * is a name prefix (bridge: profile/MapGen/locked.json)
 	int ffBiome;	//!< Freedom Fighters JWK_EWorldBiome flag (1 woodland, 2 winter, 4 desert, 8 jungle), 0 = leave as is
 
@@ -70,6 +73,7 @@ class MG_Project : JsonApiStruct
 		RegV("entities");
 		RegV("remove");
 		RegV("locked");
+		RegV("clear");
 		RegV("ffBiome");
 	}
 }
@@ -116,6 +120,14 @@ class MG_ProjectApplier
 
 	//! Returns a one-line report; it starts with "error:" on failure.
 	//! debug labels (shape id floating over its middle), so screenshots tell which object is which
+	//! shape layer: its own MG_<layer> when set (Atelier zones), else the generator family
+	static int ShapeLayer(WorldEditorAPI api, MG_ProjectShape shape)
+	{
+		if (shape.layer != "")
+			return Layer(api, "MG_" + shape.layer);
+		return Layer(api, LayerFor(shape.id, shape.generator));
+	}
+
 	static ref array<string> s_aLabels = {}; //!< "id x y z" for MG_LabelsPlugin
 
 	static void Label(WorldEditorAPI api, MG_ProjectShape shape)
@@ -240,6 +252,11 @@ class MG_ProjectApplier
 			AddFamily(families, fs.id);
 		foreach (MG_ProjectEntity fe : project.entities)
 			AddFamily(families, fe.id);
+		foreach (string cf : project.clear)
+		{
+			if (cf.Length() > 2 && !families.Contains(cf))
+				families.Insert(cf);
+		}
 		array<IEntitySource> old = {};
 		for (int i = api.GetEditorEntityCount() - 1; i >= 0; i--)
 		{
@@ -294,7 +311,7 @@ class MG_ProjectApplier
 			done++;
 			if (done % 50 == 0)
 				Print(string.Format("[MapGen] progress: shapes %1/%2", done, nShapes), LogLevel.NORMAL);
-			IEntitySource shapeMade = MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, Layer(api, LayerFor(shape.id, shape.generator)), shape.lift, shape.powerSource);
+			IEntitySource shapeMade = MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, ShapeLayer(api, shape), shape.lift, shape.powerSource);
 			if (shapeMade)
 				created++;
 			if (rep)
