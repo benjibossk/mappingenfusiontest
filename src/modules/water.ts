@@ -247,8 +247,17 @@ export function pinToLakes(line: number[], level: number[], lakes: Water[]) {
 
 //! painted under each river: pebbles in the bed, dirt on the wet banks (same format as roadMasks)
 export function waterMasks(waters: Water[]) {
-  return waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4)
-    .map((w) => ({ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01' })) // no dirt shoulder: brown line along the banks (picture 119), Arland banks are grass
+  return waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).flatMap((w) => {
+    // a river traced from a picture has its local widths (its bed is carved to them): one band per traced segment at
+    // its own width. The whole course at the overall width (picture 119: 153 m where the water is 70-116 m) laid the
+    // bed pebbles as a 20-40 m brown band on the dry banks of the narrow reaches
+    const local = w.widths && w.widths.length === w.pts.length / 2
+    if (!local) return [{ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01' }] // no dirt shoulder: brown line along the banks (picture 119), Arland banks are grass
+    const out: { points: number[]; half: number; edge: number; core: string }[] = []
+    for (let i = 0; i + 3 < w.pts.length; i += 2)
+      out.push({ points: w.pts.slice(i, i + 4), half: Math.min(w.widths![i / 2], w.widths![i / 2 + 1]) / 2, edge: 3, core: 'Pebbles_01' })
+    return out
+  })
 }
 
 //! per grid cell: water level of the nearest lake / river where known (NaN elsewhere), wet = under water

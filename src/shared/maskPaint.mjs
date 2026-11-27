@@ -14,10 +14,19 @@ export function roadLayers(side, mPerPx, roads) {
     if (!layers.has(name)) layers.set(name, new Float32Array(side * side));
     return layers.get(name);
   };
+  // shoulders are kept apart and only fill what the cores leave: a polyline's next segment (or a crossing
+  // road) puts its shoulder band over this segment's core, and the max() let 10-30 % dirt into the carriageway
+  // (picture 120: 90 % of the asphalt core pixels at 0.7-0.9 -> round dirt / grass spots on the road)
+  const shoulders = new Map();
+  const shoulderOf = (name) => {
+    layer(name);
+    if (!shoulders.has(name)) shoulders.set(name, new Float32Array(side * side));
+    return shoulders.get(name);
+  };
   const smooth = (t) => t * t * (3 - 2 * t);
   for (const r of roads) {
     const core = layer(r.core);
-    const shoulder = r.side ? layer(r.side) : null;
+    const shoulder = r.side ? shoulderOf(r.side) : null;
     const reach = r.half + r.edge;
     const p = r.points;
     for (let i = 0; i + 3 < p.length; i += 2) {
@@ -50,9 +59,11 @@ export function roadLayers(side, mPerPx, roads) {
   }
   // a pixel can't be more than 100 % road: the first layers keep their weight
   const list = [...layers.values()];
+  const sh = [...shoulders.entries()].map(([n, a]) => [layers.get(n), a]);
   for (let i = 0; i < side * side; i++) {
     let left = 1;
     for (const a of list) { if (!a[i]) continue; a[i] = Math.min(a[i], left); left -= a[i]; }
+    for (const [a, s] of sh) { if (!s[i] || left <= 0) continue; const v = Math.min(s[i], left); a[i] += v; left -= v; }
   }
   return layers;
 }
