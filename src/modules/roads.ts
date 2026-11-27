@@ -422,10 +422,21 @@ export function roadShapes(roads: Road[]): ProjectShape[] {
 }
 
 //! road bands for the bridge masks / satellite
+// dirt tracks keep the road priority in the per-block surface limit: as Dirt_01 they had the yard / pole-patch priority
+// (1) and a thin track, under 1 % of its block, was dropped from it (picture 120 sim: trail centre Dirt_01 0 %, dirt road 48 %)
+const ROAD_PRIO = 40
+export const ROAD_SIDE_PEAK = 0.35
+// full weight under the track: at 0.5 the ground pattern showed through the dirt roads (picture 120, round 12)
+export const DIRT_TRACK_PEAK = 1
+export const DIRT_TRACK_EDGE = 1.5
 export function roadMasks(roads: Road[]) {
   return roads.filter((r) => r.pts.length >= 4).map((r) => {
     const T = ROAD_TYPES[r.type]
-    return { points: centreLine(r.pts, 4), half: roadHalf(r), edge: T.shoulder ?? T.edge, core: T.core, side: T.side }
+    // FIELDS_SURFACES_VANILLA §3: shoulders are a dirt excess (29 % at the edge, fading over 4-6 m), dirt tracks barely
+    // painted (20 % inside): full-weight Dirt bands were dark speckled strips along every road (pictures 119 / 120)
+    const dirtTrack = !T.side && /^Dirt_0/.test(T.core)
+    // dirt tracks: full weight under the carriageway (round 12: at 0.5 the ground showed through), only a 1.5 m fade
+    return { points: centreLine(r.pts, 4), half: roadHalf(r), edge: dirtTrack ? Math.min(DIRT_TRACK_EDGE, T.edge) : T.shoulder ?? T.edge, core: T.core, side: T.side, ...(T.side ? { sidePeak: ROAD_SIDE_PEAK } : {}), ...(dirtTrack ? { peak: DIRT_TRACK_PEAK, prio: ROAD_PRIO } : {}) }
   })
 }
 
@@ -692,4 +703,18 @@ export function roadSigns(roads: Road[], driveLeft = false): ProjectEntity[] {
     }
   })
   return out
+}
+
+/** road signs that are not inside a building footprint (corners: 4 points x,z of an oriented box), `margin` metres
+ *  around it: the image import keeps the drawn houses where they are, so a BEND / GIVEWAY sign could stand in one
+ *  (7th live round, 120: 2 "poles in a building" = 2 signs, no power pole) */
+export function signsClearOf(signs: ProjectEntity[], buildings: number[][], margin = 1): ProjectEntity[] {
+  const inside = (c: number[], x: number, z: number) => {
+    const ux = c[2] - c[0], uz = c[3] - c[1], vx = c[6] - c[0], vz = c[7] - c[1]
+    const lu = Math.hypot(ux, uz), lv = Math.hypot(vx, vz)
+    if (!lu || !lv) return false
+    const pu = ((x - c[0]) * ux + (z - c[1]) * uz) / lu, pv = ((x - c[0]) * vx + (z - c[1]) * vz) / lv
+    return pu > -margin && pu < lu + margin && pv > -margin && pv < lv + margin
+  }
+  return signs.filter((s) => !buildings.some((c) => c.length >= 8 && inside(c, s.x, s.z)))
 }

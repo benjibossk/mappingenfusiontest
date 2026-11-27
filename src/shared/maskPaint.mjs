@@ -14,10 +14,19 @@ export function roadLayers(side, mPerPx, roads) {
     if (!layers.has(name)) layers.set(name, new Float32Array(side * side));
     return layers.get(name);
   };
+  // shoulders are kept apart and only fill what the cores leave: a polyline's next segment (or a crossing
+  // road) puts its shoulder band over this segment's core, and the max() let 10-30 % dirt into the carriageway
+  // (picture 120: 90 % of the asphalt core pixels at 0.7-0.9 -> round dirt / grass spots on the road)
+  const shoulders = new Map();
+  const shoulderOf = (name) => {
+    layer(name);
+    if (!shoulders.has(name)) shoulders.set(name, new Float32Array(side * side));
+    return shoulders.get(name);
+  };
   const smooth = (t) => t * t * (3 - 2 * t);
   for (const r of roads) {
     const core = layer(r.core);
-    const shoulder = r.side ? layer(r.side) : null;
+    const shoulder = r.side ? shoulderOf(r.side) : null;
     const reach = r.half + r.edge;
     const p = r.points;
     for (let i = 0; i + 3 < p.length; i += 2) {
@@ -41,7 +50,8 @@ export function roadLayers(side, mPerPx, roads) {
             // core: hard-ish edge (1 m fade), shoulder fills the band outside
             const cw = d <= r.half ? 1 : Math.max(0, 1 - (d - r.half) / 1);
             core[i2] = Math.max(core[i2], cw);
-            shoulder[i2] = Math.max(shoulder[i2], w - cw);
+            // sidePeak < 1: a light shoulder over the ground below (vanilla dirt excess ~29 % at the road edge)
+            shoulder[i2] = Math.max(shoulder[i2], (w - cw) * (r.sidePeak ?? 1));
           } else core[i2] = Math.max(core[i2], w);
         }
       }
@@ -49,9 +59,11 @@ export function roadLayers(side, mPerPx, roads) {
   }
   // a pixel can't be more than 100 % road: the first layers keep their weight
   const list = [...layers.values()];
+  const sh = [...shoulders.entries()].map(([n, a]) => [layers.get(n), a]);
   for (let i = 0; i < side * side; i++) {
     let left = 1;
     for (const a of list) { if (!a[i]) continue; a[i] = Math.min(a[i], left); left -= a[i]; }
+    for (const [a, s] of sh) { if (!s[i] || left <= 0) continue; const v = Math.min(s[i], left); a[i] += v; left -= v; }
   }
   return layers;
 }
@@ -91,6 +103,54 @@ export function sampler(s) {
   };
 }
 
+// --- one dominant surface per pixel ---
+// The engine renders a partial-weight mix (~50/50) as blotches, not as a blend (pictures 119 lake bed SeaBed_01 +
+// Dirt_01 on 46 % of it, 120 village Grass_02 + Grass_03 ~145/110 on 81 % of the land). Vanilla: 45-66 % of the
+// pixels are pure (FIELDS_SURFACES_VANILLA §4), blends 2-5 m. So each pixel's mix is turned into ONE surface picked
+// by a low-frequency, uniformly distributed noise (coherent blobs whose area share = the old weight), with a narrow
+// soft band where the noise crosses a boundary.
+const hash2 = (x, z) => { let h = Math.imul(x | 0, 374761393) ^ Math.imul(z | 0, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function vnoise(x, z) {
+  const x0 = Math.floor(x), z0 = Math.floor(z), fx = x - x0, fz = z - z0;
+  const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
+  const a = hash2(x0, z0), b = hash2(x0 + 1, z0), c = hash2(x0, z0 + 1), d = hash2(x0 + 1, z0 + 1);
+  return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
+}
+const BLOB_M = 40;
+const rawPick = (x, z) => 0.7 * vnoise(x / BLOB_M + 17.3, z / BLOB_M + 5.1) + 0.3 * vnoise(x / (BLOB_M / 3) + 91.7, z / (BLOB_M / 3) + 33.9);
+let CDF = null;
+//! noise 0..1, uniformly distributed (rank of the raw value noise): a surface at weight w gets w of the area
+export function pickNoise(x, z) {
+  if (!CDF) { const n = 8192, v = new Float64Array(n); for (let i = 0; i < n; i++) v[i] = rawPick(hash2(i, 7) * 5000, hash2(i, 11) * 5000); v.sort(); CDF = v; }
+  const r = rawPick(x, z);
+  let lo = 0, hi = CDF.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (CDF[m] < r) lo = m + 1; else hi = m; }
+  return lo / CDF.length;
+}
+const SHARP_EPS = 0.08;
+//! in place: every pixel keeps its total weight, given to one surface (soft only within SHARP_EPS of noise)
+export function sharpenMasks(bytes, side, mPerPx) {
+  const n = bytes.length;
+  if (n < 2) return;
+  const w = new Float64Array(n);
+  const S = (t) => { const v = Math.min(1, Math.max(0, t / SHARP_EPS + 0.5)); return v * v * (3 - 2 * v); };
+  for (let row = 0; row < side; row++) for (let col = 0; col < side; col++) {
+    const i = row * side + col;
+    let tot = 0, cnt = 0, mx = 0;
+    for (let j = 0; j < n; j++) { const v = bytes[j][i]; w[j] = v; tot += v; if (v) { cnt++; if (v > mx) mx = v; } }
+    if (cnt < 2 || mx >= 0.97 * tot) continue;
+    const u = pickNoise(col * mPerPx, (side - 1 - row) * mPerPx);
+    let c = 0, prev = 1, left = Math.min(255, tot), acc = 0;
+    for (let j = 0; j < n; j++) {
+      if (!w[j]) { bytes[j][i] = 0; continue; }
+      c += w[j] / tot;
+      const nxt = c >= 1 - 1e-9 ? 0 : S(u - c);
+      const v = Math.round((prev - nxt) * left);
+      bytes[j][i] = Math.min(255, v); acc += v; prev = nxt;
+    }
+  }
+}
+
 //! Final mask bytes, exactly what writeMasks writes: one Uint8Array(side*side) per name.
 //! surfaces: [{name, minX, minZ, step, cols, rows, weights}] (row 0 = south), roads: see roadLayers,
 //! colours: {name: [r, g, b]} or null. blockPx / margin: engine block (63 px) and read margin (3 px),
@@ -106,6 +166,7 @@ export function paintMasks(side, terrainSize, surfaces, roads = [], colours = nu
     return a;
   });
   const names = surfaces.map((s) => s.name);
+  sharpenMasks(bytes, side, mPerPx);
   stampRoads(bytes, names, side, mPerPx, roads);
   const rgb = colours ? names.map((n) => colours[n] ?? null) : null;
   // road / track cores are kept by the block limiter whatever their share of the block: a crossing road is a

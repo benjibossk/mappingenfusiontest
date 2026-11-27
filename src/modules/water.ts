@@ -28,7 +28,10 @@ export interface Water {
   depth: number // depth below the water level, metres
   auto?: boolean // traced from the simulated rivers (replaced on regeneration)
   carve?: boolean // river: dig a bed; otherwise the water just lies on the ground (banks may cover it)
+  wetEdge?: boolean // river: ground under the water up to the traced edge (map from a picture), banks start outside
   level?: number // lake: fixed water level (dam reservoir, dam.ts); absent = from the shore
+  widths?: number[] // river: traced width (m) at each control point (map from a picture); roads cut over the widest
+  onRiver?: boolean // lake: a swelling of a picture river, its level set to the river's (carveWater)
 }
 
 //! River course the generator can mesh: sharp vertices dropped, corners rounded (Chaikin), so that
@@ -104,9 +107,36 @@ const inside = (pts: number[], x: number, z: number) => {
 //! Carves river beds and lake basins (in place, only lowers). Bank slope ~1:3 over at least 2 grid cells.
 //! water surface under the original ground (m), and the generator width relative to the channel
 const RIVER_SURFACE = 0.5
-const RIVER_OVERWIDTH = 1.3
+export const RIVER_OVERWIDTH = 1.3
+/** widest river spline sent (m). Picture 119: the 117 m tributary sent at Width 152 showed as a dark sheet (the sea under
+ *  its carved bed, cut straight at the confluence) while its 124 m neighbour rendered; same level 0.5 m, same bed -1 m,
+ *  its end 3.7 m from the main centre line, so Width is the one difference left. Capped at the widest seen rendering;
+ *  the ground stays under the water to the traced edge (wetEdge), so the capped water still covers it */
+export const RIVER_MAX_SENT_WIDTH = 124
+export const riverSentWidth = (w: { width: number }) => Math.min(RIVER_MAX_SENT_WIDTH, Math.round(w.width * RIVER_OVERWIDTH))
+/** half width of the water a river shows in game (the spline is sent RIVER_OVERWIDTH wider than traced): vegetation keeps out of it */
+export const riverWetHalf = (w: { width: number }) => Math.max(w.width / 2, riverSentWidth(w) / 2)
+/** bed depth (m, under the water level) of the rivers of a map from a picture: 1.5 m read shallow and light in game
+ *  (picture 120, the bed texture showing through); 2.5 m darkens the water like Arland's rivers */
+export const PICTURE_RIVER_DEPTH = 2.5
+/** centre depth of a lake swelling a picture river: as deep as the wide river middle (pictureRiverDepth max). At 2 m the
+ * bed of picture 120's lakes showed through in turquoise / grass patches (round 11) */
+export const PICTURE_SWELL_LAKE_DEPTH = 4
+/** an inland lake swelling a river lies at least this high over the sea (m): picture 119 round 15, its surface at
+ *  0.13 m sat just over the 0 m sea plane and the sea showed through as dark patches in the lake */
+export const LAKE_MIN_ABOVE_SEA = 1
 const RIVER_BANK = 0.5 // bank top above the water
 const RIVER_MAXCUT = 2.5
+const RIVER_DRY = 0.4 // ground outside the traced bed but under the river ribbon, over the water (0.2 read as speckled grass islands in shallow water, picture 119 round 9)
+/** centre depth of a picture river at a local half width: wide reaches go deeper (Arland-like, ~1 m at the edge,
+ *  up to 4 m at the centre for 100 m+), a 2.5 m bed under a 110 m river showed turquoise shallows (picture 120) */
+export function pictureRiverDepth(base: number, half: number): number {
+  return Math.max(base, Math.min(4, 1 + 3 * Math.min(1, (2 * half) / 100)))
+}
+const RIVER_BED_MIN = 1 // a picture river's bed (wetEdge) stays this far under the water up to its traced edge
+const BANK_MAX_SLOPE = 0.6 // valley side of a river, m/m (~31 deg) // ground outside the traced bed over the water level, metres
+/** length (m) of a river's last stretch held at the sea level before its mouth */
+export const MOUTH_FLAT = (w: { width: number }) => Math.max(40, riverSentWidth(w))
 const sstep = (t: number) => { const u = Math.min(1, Math.max(0, t)); return u * u * (3 - 2 * u) }
 
 //! water level along the river: RIVER_SURFACE under the lowest original ground across the water
@@ -122,12 +152,12 @@ function downhillCourse(w: Water, at: (x: number, z: number) => number) {
   return r
 }
 
-function riverProfile(w: Water, at: (x: number, z: number) => number) {
+function riverProfile(w: Water, at: (x: number, z: number) => number, lakes: Water[] = []) {
   const line = centreLine(downhillCourse(w, at), 4)
   const n = line.length / 2
-  const edge = (w.width * RIVER_OVERWIDTH) / 2
+  const edge = riverWetHalf(w)
   const raw: number[] = []
-  let sea = -1
+  let sea = -1, src = -1
   for (let i = 0; i < n; i++) {
     const x = line[i * 2], z = line[i * 2 + 1]
     const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1)
@@ -135,34 +165,102 @@ function riverProfile(w: Water, at: (x: number, z: number) => number) {
     const L = Math.hypot(tx, tz) || 1
     tx /= L; tz /= L
     const g = at(x, z)
-    if (sea < 0 && g < 0) sea = i
+    // a river drawn from map edge to map edge starts in the sea too (picture 119: both ends under the 120 m
+    // edge sea): the sea is the first wet sample past the dry stretch, not the source itself
+    if (src < 0 && g >= 0) src = i
+    if (src >= 0 && sea < 0 && g < 0) sea = i
     raw.push(Math.min(g, at(x - tz * edge, z + tx * edge), at(x + tz * edge, z - tx * edge)) - RIVER_SURFACE)
   }
+  if (src < 0) src = 0
+  for (let i = 0; i < src; i++) raw[i] = -0.05
   // never rising downstream, but never more than RIVER_MAXCUT under the ground either: past that
   // the water steps up a little rather than sitting at the bottom of a gorge
   const ground = raw.slice()
-  for (let i = 1; i < n; i++) raw[i] = Math.max(Math.min(raw[i], raw[i - 1]), ground[i] - RIVER_MAXCUT)
+  for (let i = src + 1; i < n; i++) raw[i] = Math.max(Math.min(raw[i], raw[i - 1]), ground[i] - RIVER_MAXCUT)
   const R = 6
   const level = raw.map((_, i) => {
     let s = 0, k = 0
     for (let j = Math.max(0, i - R); j <= Math.min(n - 1, i + R); j++) { s += raw[j]; k++ }
     return Math.min(s / k, raw[i])
   })
+  // a river surface never under the sea surface: picture 119, the level (lowest ground across the 124 m water, never
+  // rising downstream) fell to -1.6 m along the main river, its banks were shaped at -1.1 m and the sea flooded
+  // 4.5 ha of land outside the traced bed (a dark stepped sheet near the mouth)
+  for (let i = 0; i < n; i++) level[i] = Math.max(level[i], -0.05)
+  // the last stretch before the sea (one sent width: past the last spline point or two) lies AT the sea level:
+  // picture 119, the ramp up from the shore put the river ribbon 0.3-0.5 m over the sea cells it spans near the
+  // mouth (a dark sheet over the sea, a step where both waters meet)
+  const flat = MOUTH_FLAT(w)
   if (sea >= 0) {
     let d = 0
     for (let i = sea; i >= 0; i--) {
       if (i < sea) d += Math.hypot(line[i * 2 + 2] - line[i * 2], line[i * 2 + 3] - line[i * 2 + 1])
-      level[i] = Math.max(Math.min(level[i], -0.05 + 0.02 * d), Math.min(level[i], ground[i] - RIVER_MAXCUT))
+      level[i] = Math.max(Math.min(level[i], -0.05 + 0.02 * Math.max(0, d - flat)), Math.min(level[i], ground[i] - RIVER_MAXCUT))
     }
     for (let i = sea; i < n; i++) level[i] = -0.05
   }
-  return { line, level, sea }
+  if (src > 0) {
+    // source in the sea: the water climbs out of it as gently as a mouth comes down into it
+    let d = 0
+    for (let i = src; i < n && (sea < 0 || i < sea); i++) {
+      if (i > src) d += Math.hypot(line[i * 2] - line[i * 2 - 2], line[i * 2 + 1] - line[i * 2 - 1])
+      level[i] = Math.max(Math.min(level[i], -0.05 + 0.02 * Math.max(0, d - flat)), Math.min(level[i], ground[i] - RIVER_MAXCUT))
+    }
+    for (let i = 0; i < src; i++) level[i] = -0.05
+  }
+  pinToLakes(line, level, lakes)
+  return { line, level, sea, src }
+}
+
+function inPolygon(p: number[], x: number, z: number) {
+  let c = false
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c
+  }
+  return c
+}
+
+function nearPolygon(p: number[], x: number, z: number, tol: number) {
+  if (inPolygon(p, x, z)) return true
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    const px = p[j], pz = p[j + 1], qx = p[i] - px, qz = p[i + 1] - pz, Q = qx * qx + qz * qz || 1
+    const u = Math.min(1, Math.max(0, ((x - px) * qx + (z - pz) * qz) / Q))
+    if (Math.hypot(x - px - qx * u, z - pz - qz * u) < tol) return true
+  }
+  return false
+}
+
+//! a river ribbon entering / leaving a swelling lake lies exactly at the lake level inside it, never under it upstream
+//! nor over it downstream (round 11: the ribbon ends a few dm off the lake surface showed as mottled patches)
+export function pinToLakes(line: number[], level: number[], lakes: Water[]) {
+  for (const L of lakes) {
+    if (!L.onRiver || L.level === undefined || L.pts.length < 6) continue
+    let a = -1, b = -1
+    // inside, or on the shore (the profile line may stop a few metres short of the ribbon end it was cut to)
+    const near = (x: number, z: number) => nearPolygon(L.pts, x, z, 12)
+    for (let i = 0; i < level.length; i++) if (near(line[i * 2], line[i * 2 + 1])) { if (a < 0) a = i; b = i }
+    if (a < 0) continue
+    for (let i = 0; i < level.length; i++) {
+      if (i < a) level[i] = Math.max(level[i], L.level)
+      else if (i > b) level[i] = Math.min(level[i], L.level)
+      else level[i] = L.level
+    }
+  }
 }
 
 //! painted under each river: pebbles in the bed, dirt on the wet banks (same format as roadMasks)
 export function waterMasks(waters: Water[]) {
-  return waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4)
-    .map((w) => ({ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01', side: 'Dirt_01' }))
+  return waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).flatMap((w) => {
+    // a river traced from a picture has its local widths (its bed is carved to them): one band per traced segment at
+    // its own width. The whole course at the overall width (picture 119: 153 m where the water is 70-116 m) laid the
+    // bed pebbles as a 20-40 m brown band on the dry banks of the narrow reaches
+    const local = w.widths && w.widths.length === w.pts.length / 2
+    if (!local) return [{ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01' }] // no dirt shoulder: brown line along the banks (picture 119), Arland banks are grass
+    const out: { points: number[]; half: number; edge: number; core: string }[] = []
+    for (let i = 0; i + 3 < w.pts.length; i += 2)
+      out.push({ points: w.pts.slice(i, i + 4), half: Math.min(w.widths![i / 2], w.widths![i / 2 + 1]) / 2, edge: 3, core: 'Pebbles_01' })
+    return out
+  })
 }
 
 //! per grid cell: water level of the nearest lake / river where known (NaN elsewhere), wet = under water
@@ -177,6 +275,28 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
   const shaped = new Float32Array(heights.length)
   const shapedScore = new Float32Array(heights.length).fill(Infinity)
   const levels: WaterLevels = { level: new Float32Array(heights.length).fill(NaN), wet: new Uint8Array(heights.length) }
+  // lake rims raised to hold the water: a lake set over low ground (a river swelling lifted LAKE_MIN_ABOVE_SEA) needs banks
+  const rim = new Float32Array(heights.length).fill(-Infinity)
+  const raise = (k: number, v: number) => { if (v > rim[k]) rim[k] = v }
+
+  // a lake swelling a river lies at the river's level (median river level along its shore): from its own
+  // shore it sat 0.4 m under the river water, the ribbon edge showing over it (picture 119)
+  const profiles = waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).map((w) => riverProfile(w, at))
+  for (const w of waters) {
+    if (!w.onRiver || w.level !== undefined || !profiles.length) continue
+    const ls: number[] = []
+    for (let i = 0; i + 1 < w.pts.length; i += 2) {
+      let bd = Infinity, bl = NaN
+      for (const p of profiles) for (let j = 0; j < p.line.length; j += 2) {
+        const d = (p.line[j] - w.pts[i]) ** 2 + (p.line[j + 1] - w.pts[i + 1]) ** 2
+        if (d < bd) { bd = d; bl = p.level[j / 2] }
+      }
+      if (Number.isFinite(bl)) ls.push(bl)
+    }
+    ls.sort((a, b) => a - b)
+    // never close to the sea plane: the river upstream is pinned up to it (pinToLakes), downstream comes down to the mouth
+    if (ls.length) w.level = Math.max(LAKE_MIN_ABOVE_SEA, Math.round(ls[ls.length >> 1] * 100) / 100)
+  }
 
   for (const w of waters) {
     if (w.pts.length < 4) continue
@@ -184,11 +304,39 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
       // the terrain is shaped to the river, not the other way round: a smooth water profile that
       // never rises downstream, a bed under it, banks just above it, then a blend back to the
       // original ground over `fall` metres (the ground is lowered OR raised there)
-      const { line, level } = riverProfile(w, at)
-      const half = Math.max(w.width / 2, step) // the grid cannot hold a narrower channel
+      const { line, level } = riverProfile(w, at, waters)
+      const half0 = Math.max(w.width / 2, step) // the grid cannot hold a narrower channel
+      const wetHalf0 = riverWetHalf(w)
+      // a river traced from a picture is carved to its local traced width (the bridges' gaps use it too), never
+      // wider than the water ribbon sent: picture 119 near 1062,730, the river traced 90-116 m wide carved at its
+      // 70 m median, the rest under the ribbon at +0.2 m: a shallow sheet with grass islands
+      const localW = w.widths && w.widths.length === w.pts.length / 2 ? w.widths : undefined
+      const halfAt = (x: number, z: number) => {
+        if (!localW) return half0
+        let bd = Infinity, bw = w.width
+        for (let j = 0; j + 3 < w.pts.length; j += 2) {
+          const px = w.pts[j], pz = w.pts[j + 1], qx = w.pts[j + 2] - px, qz = w.pts[j + 3] - pz, Q = qx * qx + qz * qz || 1
+          const u = Math.min(1, Math.max(0, ((x - px) * qx + (z - pz) * qz) / Q)), dd = Math.hypot(x - px - qx * u, z - pz - qz * u)
+          if (dd < bd) { bd = dd; bw = localW[j / 2] + (localW[j / 2 + 1] - localW[j / 2]) * u }
+        }
+        return Math.min(Math.max(bw / 2, step), Math.max(half0, wetHalf0 - step))
+      }
+      const halves: number[] = []
+      for (let i = 0; i < line.length / 2; i++) halves.push(halfAt(line[i * 2], line[i * 2 + 1]))
+      const half = Math.max(...halves)
       const fall = Math.max(2 * step, w.width)
-      const reach = half + fall
+      const wetHalf = riverWetHalf(w)
+      // a river cut deep into a hill (picture 120: water 8 m, hilltop 35 m, 30 m away) rose over `fall` at up to 60 deg:
+      // the blend widens with the drop (up to 5x) so the valley side stays under ~BANK_MAX_SLOPE
+      const reach = Math.max(half + 5 * fall, wetHalf + 3 * step)
       const ramp = Math.max(3 * w.width, 2 * step) // the source must not end in a dug pit
+      // ...unless the source end joins another river (picture 119: the tributary's upstream end, as the terrain runs, is
+      // its confluence with the main river; the 351 m depth ramp from there left a shallow sheet with grass islands)
+      const joined = waters.some((o) => o !== w && !WATER_TYPES[o.type].closed && o.pts.length >= 4 && (() => {
+        const c = riverCourse(o.pts, o.width), R = riverWetHalf(o) + step
+        for (let j = 0; j + 3 < c.length; j += 2) if (segDist(line[0], line[1], c[j], c[j + 1], c[j + 2], c[j + 3]) <= R) return true
+        return false
+      })())
       let along = 0
       for (let i = 0; i + 1 < line.length / 2; i++) {
         const ax = line[i * 2], az = line[i * 2 + 1], bx = line[i * 2 + 2], bz = line[i * 2 + 3]
@@ -206,12 +354,29 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
             const score = d / reach
             if (score >= shapedScore[k]) continue // the nearest river shapes the cell
             const wl = level[i] + (level[i + 1] - level[i]) * tt
-            const depth = w.depth * Math.min(1, (along + tt * segLen) / ramp)
+            const half = halves[i] + (halves[i + 1] - halves[i]) * tt
+            const baseDepth = w.wetEdge ? pictureRiverDepth(w.depth, half) : w.depth
+            const depth = joined ? baseDepth : baseDepth * Math.min(1, (along + tt * segLen) / ramp)
             let v: number
             if (d <= half) {
-              const t = Math.max(0, (d / half - 0.4) / 0.6) // flat bed to 40 %, then up to the bank top
-              v = wl - depth + (depth + RIVER_BANK) * sstep(t)
-            } else v = wl + RIVER_BANK + (at(x, z) - wl - RIVER_BANK) * sstep((d - half) / fall)
+              // flat bed to 40 %, then up to just under the water at the traced edge: the whole river surface
+              // (the Workbench river is drawn at the traced width) covers water. Rising to the bank top inside
+              // it left the outer ~20 % above the surface, ground lumps on the water along the banks (picture 120)
+              const t = Math.max(0, (d / half - 0.4) / 0.6)
+              // (wetEdge: rivers of a map from a picture; generated rivers keep their bank-top profile, pads rely on it)
+              // a picture river (wetEdge) stays RIVER_BED_MIN under the water to its edge (0.15 m there left a
+              // band of ground just under the surface, speckled in game); never deeper than the source ramp allows
+              const edge = Math.min(depth, RIVER_BED_MIN)
+              v = w.wetEdge ? wl - depth + (depth - edge) * sstep(t) : wl - depth + (depth + RIVER_BANK) * sstep(t)
+            } else {
+              const drop = at(x, z) - wl - RIVER_BANK
+              const fallK = Math.min(5 * fall, Math.max(fall, (1.5 * Math.abs(drop)) / BANK_MAX_SLOPE))
+              if (d >= half + fallK) continue // past this river's blend: the original ground
+              v = wl + RIVER_BANK + drop * sstep((d - half) / fallK)
+              // outside the traced bed but under the river ribbon (sent wider than traced, straight between points
+              // ~100 m apart): the ground stays over the water, else low flat land floods (picture 119 mouth)
+              if (d <= wetHalf + 2 * step) v = Math.max(v, Math.max(wl, 0) + RIVER_DRY)
+            }
             if (at(x, z) < 0) v = Math.min(v, at(x, z)) // never build banks up in the sea
             shapedScore[k] = score
             shaped[k] = v
@@ -245,6 +410,7 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
             levels.level[r * cols + c] = L; levels.wet[r * cols + c] = 1
           } else if (d < 3 * bank) {
             if (d < bank) lower(r * cols + c, L + Math.min(0.15 * d, 0.3) + 1.5 * (d / bank))
+            if (w.onRiver) raise(r * cols + c, L + 0.3 - 0.15 * Math.max(0, d - bank))
             if (Number.isNaN(levels.level[r * cols + c])) levels.level[r * cols + c] = L
           }
         }
@@ -252,6 +418,7 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
   }
   for (let k = 0; k < heights.length; k++) {
     if (shapedScore[k] < Infinity) heights[k] = shaped[k]
+    else if (rim[k] > heights[k]) heights[k] = rim[k]
     if (target[k] < heights[k]) heights[k] = target[k]
   }
   return levels
@@ -269,26 +436,34 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
     const wt = WATER_TYPES[w.type]
     const r2 = (v: number) => Math.round(v * 100) / 100
     if (!wt.closed) {
-      const pts = centreLine(downhillCourse(w, at), Math.min(LAKE_MAX_SPACING, Math.max(10, w.width * 0.8)))
+      const spacing = Math.min(LAKE_MAX_SPACING, Math.max(10, w.width * 0.8))
+      // the ribbon folds over itself (and the game builds only a stub of it) where the line bends tighter than its
+      // half width: picture 119, 116 m wide river with 25-55 deg turns every 26 m, only the sea showed
+      const pts = easeBends(centreLine(downhillCourse(w, at), spacing), RIVER_BEND_RADIUS * riverSentWidth(w))
       // the water sits on the profile the terrain was shaped to (nearest profile sample)
-      const { line, level, sea: seaAt } = riverProfile(w, at)
+      const { line, level, sea: seaAt, src: srcAt } = riverProfile(w, at, waters)
       const n = pts.length / 2
       const lift: number[] = []
-      let sea = -1
+      let sea = -1, src = -1
       for (let i = 0; i < n; i++) {
         let best = 0, bd = Infinity
         for (let j = 0; j < line.length; j += 2) {
           const d = (line[j] - pts[i * 2]) ** 2 + (line[j + 1] - pts[i * 2 + 1]) ** 2
           if (d < bd) { bd = d; best = j / 2 }
         }
+        if (src < 0 && best >= srcAt) src = i
         if (sea < 0 && seaAt >= 0 && best >= seaAt) sea = i
         lift.push(r2(Math.max(0.1, level[best] - ground(pts[i * 2], pts[i * 2 + 1]))))
       }
-      // a river running on under the sea would show through it: stop one point past the shore
+      // a river running on under the sea would show through it: stop one point past the shore (both ends: a
+      // river from map edge to map edge was cut to its first 2 points, picture 119)
       const keep = sea >= 0 ? Math.min(n, Math.max(sea + 2, 2)) : n
-      pts.length = keep * 2
-      lift.length = keep
-      out.push({ id: w.id, kind: 'spline', closed: false, points: pts.map(r2), generator: wt.generator, paramKeys: ['Width'], paramValues: [String(Math.round(w.width * RIVER_OVERWIDTH))], lift })
+      const from = Math.max(0, Math.min(src - 1, keep - 2))
+      pts.splice(keep * 2)
+      pts.splice(0, from * 2)
+      lift.splice(keep)
+      lift.splice(0, from)
+      out.push({ id: w.id, kind: 'spline', closed: false, points: pts.map(r2), generator: wt.generator, paramKeys: ['Width'], paramValues: [String(riverSentWidth(w))], lift })
     } else {
       if (w.pts.length < 6) continue
       const L = lakeLevel(w, at)
@@ -309,7 +484,61 @@ export function waterShapes(waters: Water[], before: ArrayLike<number>, after: A
       out.push({ id: w.id, kind: 'polyline', closed: true, points: pts.map(r2), generator: wt.generator, lift })
     }
   }
+  // two ribbons ending in the same swelling lake meet through it, not as a tributary (round 11, picture 119: the
+  // lower arm's start snapped onto the upper arm 0.7 m under the lake surface)
+  const swells = waters.filter((w) => w.onRiver && w.level !== undefined && w.pts.length >= 6)
+  joinTributaries(out, ground, (x, z) => swells.some((L) => nearPolygon(L.pts, x, z, 12)))
   return out
+}
+
+/** water level climb (m/m) from a confluence up a tributary */
+const JOIN_SLOPE = 0.03
+
+//! a river ending inside another one meets it at its level: picture 119, the south arm started on the
+//! confluence 2 m above the main river and its flat end cap showed as a dark rectangle with straight edges.
+//! The end goes on to the main river's centre line (cap under the main water) and its level comes down to
+//! the main level, climbing back at JOIN_SLOPE
+export function joinTributaries(shapes: ProjectShape[], ground: (x: number, z: number) => number, inLake: (x: number, z: number) => boolean = () => false) {
+  const rivers = shapes.filter((s) => s.kind === 'spline' && !s.closed && s.lift && s.paramValues?.length)
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  for (const s of rivers) {
+    for (const atStart of [true, false]) {
+      const n = s.points.length / 2
+      if (n < 2) continue
+      const e = atStart ? 0 : n - 1
+      const ex = s.points[e * 2], ez = s.points[e * 2 + 1]
+      if (inLake(ex, ez)) continue
+      let main: ProjectShape | undefined, mi = -1, md = Infinity
+      for (const m of rivers) {
+        if (m === s) continue
+        const half = Number(m.paramValues![0]) / 2
+        for (let i = 0; i < m.points.length / 2; i++) {
+          const d = Math.hypot(m.points[i * 2] - ex, m.points[i * 2 + 1] - ez)
+          if (d < half && d < md) { md = d; mi = i; main = m }
+        }
+      }
+      if (!main) continue
+      const mx = main.points[mi * 2], mz = main.points[mi * 2 + 1]
+      const Lj = main.lift![mi] + ground(mx, mz), mainHalf = Number(main.paramValues![0]) / 2
+      // on to the main centre line, unless already about there
+      if (md > 3) {
+        if (atStart) { s.points.unshift(r2(mx), r2(mz)); s.lift!.unshift(0) } else { s.points.push(r2(mx), r2(mz)); s.lift!.push(0) }
+      }
+      const N = s.points.length / 2
+      let d = 0
+      for (let k = 0; k < N; k++) {
+        const i = atStart ? k : N - 1 - k
+        if (k > 0) { const j = atStart ? i - 1 : i + 1; d += Math.hypot(s.points[i * 2] - s.points[j * 2], s.points[i * 2 + 1] - s.points[j * 2 + 1]) }
+        const g = ground(s.points[i * 2], s.points[i * 2 + 1])
+        // flat at the main level across the main ribbon: climbing there put the arm's water 0.3 m over the main
+        // water inside it, its end cap a straight-edged dark zone (picture 119 round 10 confluence)
+        const cur = s.lift![i] + g, want = Lj + JOIN_SLOPE * Math.max(0, d - mainHalf)
+        if (k > 0 && want >= cur) break
+        s.lift![i] = r2(Math.max(0.1, Math.min(cur, want) - g))
+        if (k === 0) s.lift![i] = r2(Math.max(0, Lj - g))
+      }
+    }
+  }
 }
 
 export const LAKE_MAX_POINTS = 60
@@ -405,6 +634,45 @@ export function simplifyLake(pts: number[], maxPts = LAKE_MAX_POINTS, minSpacing
 
 /** vanilla lake / river bank point spacing is 6.5-26 m (VANILLA_PLACEMENT_OPTIM.md §4) */
 export const LAKE_MAX_SPACING = 26
+
+/** smallest bend radius of a sent river line, in sent widths (ribbon inner edge stays clear of folding) */
+export const RIVER_BEND_RADIUS = 0.75
+
+/** turn (rad) at each inner point of a polyline */
+export function turns(p: number[]): number[] {
+  const out: number[] = []
+  for (let i = 1; i + 1 < p.length / 2; i++) {
+    const a = Math.atan2(p[i * 2 + 1] - p[i * 2 - 1], p[i * 2] - p[i * 2 - 2]), b = Math.atan2(p[i * 2 + 3] - p[i * 2 + 1], p[i * 2 + 2] - p[i * 2])
+    let d = Math.abs(b - a)
+    if (d > Math.PI) d = 2 * Math.PI - d
+    out.push(d)
+  }
+  return out
+}
+
+/** smooth the tight bends of an open line (ends kept) until each turn fits a circle of radius >= minR
+ *  (turn <= segment / minR), or the passes run out; points stay evenly spaced enough for the generator */
+export function easeBends(pts: number[], minR: number, passes = 60): number[] {
+  const p = pts.slice(), n = p.length / 2
+  if (n < 3 || minR <= 0) return p
+  for (let k = 0; k < passes; k++) {
+    let bad = false
+    const t = turns(p)
+    const q = p.slice()
+    for (let i = 1; i < n - 1; i++) {
+      const L = (Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]) + Math.hypot(p[i * 2] - p[i * 2 - 2], p[i * 2 + 1] - p[i * 2 - 1])) / 2
+      // smooth around a tight point (its neighbours too, so the bend spreads rather than kinks next door)
+      const tight = (j: number) => j >= 1 && j < n - 1 && t[j - 1] > L / minR
+      if (!(tight(i) || tight(i - 1) || tight(i + 1))) continue
+      bad = true
+      q[i * 2] = (p[i * 2 - 2] + 2 * p[i * 2] + p[i * 2 + 2]) / 4
+      q[i * 2 + 1] = (p[i * 2 - 1] + 2 * p[i * 2 + 1] + p[i * 2 + 3]) / 4
+    }
+    if (!bad) break
+    for (let i = 0; i < p.length; i++) p[i] = q[i]
+  }
+  return p
+}
 
 //! splits the longest edges (> maxSpacing) of a closed ring at their Catmull-Rom midpoint (a smoothed bank
 //! instead of a straight chord), longest first, while the ring has room (<= maxPts) and stays simple
@@ -522,17 +790,41 @@ export function traceRivers(heights: ArrayLike<number>, grid: Grid, flow: Float3
 //! river (half width + margin) or inside a lake is removed, leaving a gap for a bridge. Pieces are named
 //! <id>_A, <id>_B... The gaps are returned (bridge ends) for the future bridge generator.
 export function splitAtWater(shapes: ProjectShape[], waters: Water[], margin = 4) {
-  const courses = waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).map((w) => ({ c: riverCourse(w.pts, w.width), half: w.width / 2 + margin }))
+  // a river traced from a picture keeps its local widths (its bed is carved to them): test on its own points
+  const courses = waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4).map((w) => {
+    const local = w.widths && w.widths.length === w.pts.length / 2
+    return { c: local ? w.pts : riverCourse(w.pts, w.width), half: (i: number) => (local ? Math.max(w.widths![i / 2], w.widths![i / 2 + 1]) : w.width) / 2 + margin }
+  })
   const lakes = waters.filter((w) => WATER_TYPES[w.type].closed && w.pts.length >= 6)
+  // a lake counts 2 x `margin` m out of its outline too (its bank): cut at the outline, a road ran straight into the lake
+  // down the bank, its end and its dirt band on the shore (picture 120, round 12)
+  const nearOutline = (p: number[], x: number, z: number) => {
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+      const ax = p[j], az = p[j + 1], dx = p[i] - ax, dz = p[i + 1] - az, L2 = dx * dx + dz * dz || 1
+      const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
+      if (Math.hypot(x - ax - dx * t, z - az - dz * t) < 2 * margin) return true // + the carriageway half width
+    }
+    return false
+  }
   const wet = (x: number, z: number) => {
-    for (const l of lakes) if (inside(l.pts, x, z)) return true
+    for (const l of lakes) if (inside(l.pts, x, z) || nearOutline(l.pts, x, z)) return true
     for (const { c, half } of courses)
       for (let i = 0; i + 3 < c.length; i += 2) {
         const ax = c[i], az = c[i + 1], dx = c[i + 2] - ax, dz = c[i + 3] - az, L2 = dx * dx + dz * dz || 1
         const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
-        if (Math.hypot(x - ax - dx * t, z - az - dz * t) < half) return true
+        if (Math.hypot(x - ax - dx * t, z - az - dz * t) < half(i)) return true
       }
     return false
+  }
+  // long road legs (picture roads: one vertex every 50-100 m) can hop over a river with both ends dry:
+  // test (and cut) on legs of 8 m at most, only for roads that touch the water somewhere
+  const dense = (p: number[]) => {
+    const o: number[] = [p[0], p[1]]
+    for (let i = 2; i < p.length; i += 2) {
+      const L = Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]), k = Math.ceil(L / 8)
+      for (let j = 1; j <= k; j++) o.push(p[i - 2] + ((p[i] - p[i - 2]) * j) / k, p[i - 1] + ((p[i + 1] - p[i - 1]) * j) / k)
+    }
+    return o
   }
   // last dry point between a dry point a and a wet point b (bisection)
   const edge = (ax: number, az: number, bx: number, bz: number): [number, number] => {
@@ -549,9 +841,24 @@ export function splitAtWater(shapes: ProjectShape[], waters: Water[], margin = 4
   if (!courses.length && !lakes.length) return { shapes, gaps }
   for (const s of shapes) {
     if (!s.id.startsWith('ROAD_') || s.closed) { out.push(s); continue }
-    const p = s.points, n = p.length / 2
-    const isWet = Array.from({ length: n }, (_, i) => wet(p[i * 2], p[i * 2 + 1]))
-    if (!isWet.some(Boolean)) { out.push(s); continue }
+    const d = dense(s.points)
+    const dWet = Array.from({ length: d.length / 2 }, (_, i) => wet(d[i * 2], d[i * 2 + 1]))
+    if (!dWet.some(Boolean)) { out.push(s); continue }
+    // dry legs keep their own vertices (dense points only where a leg touches the water)
+    const p: number[] = [], isWet: boolean[] = []
+    {
+      const o = s.points
+      p.push(o[0], o[1]); isWet.push(wet(o[0], o[1]))
+      let k = 1
+      for (let i = 2; i < o.length; i += 2) {
+        const L = Math.hypot(o[i] - o[i - 2], o[i + 1] - o[i - 1]), m = Math.ceil(L / 8)
+        let any = false
+        for (let j = 0; j < m; j++) if (dWet[k + j]) any = true
+        for (let j = 0; j < m; j++) if (any || j === m - 1) { p.push(d[(k + j) * 2], d[(k + j) * 2 + 1]); isWet.push(dWet[k + j]) }
+        k += m
+      }
+    }
+    const n = p.length / 2
     const runs: number[][] = []
     let cur: number[] = []
     let gapStart: [number, number] | null = null
@@ -611,15 +918,38 @@ export const EMBANK_YAW: Record<keyof typeof EMBANK, number> = { straight: 0, wa
 
 //! pieces on the outside of every bend (where a real river erodes), plus short random runs on the
 //! straights; each run starts and ends with a `turnin` piece
+/** minimum bank rise (m) over 12 m for an eroded embankment piece */
+export const EMBANK_RISE = 1.2
+
 export function riverBanks(waters: Water[], before: ArrayLike<number>, grid: Grid): ProjectEntity[] {
   const at = sampler(before, grid)
   const out: ProjectEntity[] = []
+  const lakes = waters.filter((w) => WATER_TYPES[w.type].closed && w.pts.length >= 6)
+  const inRing = (p: number[], x: number, z: number) => {
+    let ins = false
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2)
+      if ((p[i + 1] > z) !== (p[j + 1] > z) && x < ((p[j] - p[i]) * (z - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) ins = !ins
+    return ins
+  }
   for (const w of waters) {
     if (WATER_TYPES[w.type].closed || w.pts.length < 4) continue
     const line = centreLine(downhillCourse(w, at), EMBANK_LEN)
     const n = line.length / 2
     if (n < 4) continue
     const off = w.width / 2 // pivot = eroded face, on the edge of the channel
+    // a picture river: its local traced width (the median put pieces 20-30 m out on the dry bank where the river
+    // is narrower, round bumps on picture 119, and in the water where wider)
+    const localW = w.widths && w.widths.length === w.pts.length / 2 ? w.widths : undefined
+    const offAt = (x: number, z: number) => {
+      if (!localW) return off
+      let bd = Infinity, bw = w.width
+      for (let j = 0; j + 3 < w.pts.length; j += 2) {
+        const px = w.pts[j], pz = w.pts[j + 1], qx = w.pts[j + 2] - px, qz = w.pts[j + 3] - pz, Q = qx * qx + qz * qz || 1
+        const u = Math.min(1, Math.max(0, ((x - px) * qx + (z - pz) * qz) / Q)), dd = Math.hypot(x - px - qx * u, z - pz - qz * u)
+        if (dd < bd) { bd = dd; bw = localW[j / 2] + (localW[j / 2 + 1] - localW[j / 2]) * u }
+      }
+      return bw / 2
+    }
     const dir = (i: number) => {
       const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1)
       const tx = line[b * 2] - line[a * 2], tz = line[b * 2 + 1] - line[a * 2 + 1], L = Math.hypot(tx, tz) || 1
@@ -646,8 +976,13 @@ export function riverBanks(waters: Water[], before: ArrayLike<number>, grid: Gri
       if (!s) continue
       const [tx, tz] = dir(i)
       const nx = -tz * s, nz = tx * s // towards the bank
-      const x = line[i * 2] + nx * off, z = line[i * 2 + 1] + nz * off
+      const o = offAt(line[i * 2], line[i * 2 + 1])
+      const x = line[i * 2] + nx * o, z = line[i * 2 + 1] + nz * o
       if (at(x, z) < 0.5) continue // not in the sea
+      if (lakes.some((l) => inRing(l.pts, x, z))) continue // nor in a lake (a river swelling)
+      // an eroded face needs a bank to cut into: on a flat bank (picture valleys at 0-1.5 m) the piece stood as a
+      // round bump on the grass (picture 119 round 11, 81 pieces sent). Ground rising EMBANK_RISE m within 12 m
+      if (at(x + nx * 12, z + nz * 12) - Math.min(at(x, z), at(line[i * 2], line[i * 2 + 1])) < EMBANK_RISE) continue
       const end = side[i - 1] !== s || side[i + 1] !== s
       const kind: keyof typeof EMBANK = end ? 'turnin' : bend[i] ? 'wave' : 'straight'
       // eroded face (-Z of the model) towards the water
@@ -791,10 +1126,12 @@ const BRIDGE = {
 const PILLAR_DROP = 835
 const WOOD_LEN = 50.3 // PierWooden_02_bridge length (Z -25..25.3)
 const BRIDGE_OVER = 8 // metres of deck buried in each bank
+const BRIDGE_MIN_REST = 1 // deck past each end of the gap at the least (the gap already has 4 m of bank a side), metres
+const BRIDGE_DECK_REST = 2 // deck past each end of the gap aimed at, metres: water edge + 4 m gap margin + 2 = 6 m (5 laid decks up to 16 m on the bank grass, picture 120 round 9)
 
 /** [M] steepest deck allowed (rise / run): above it the higher bank sets the deck and the lower end is flagged */
 export const BRIDGE_MAX_PITCH = 0.08
-export interface RiverBridge { id: string; a: [number, number, number]; b: [number, number, number]; slope: number; capped: boolean; deckIds: string[]; half: number }
+export interface RiverBridge { id: string; a: [number, number, number]; b: [number, number, number]; slope: number; /** pitch capped or deck raised over the road bed: the low bank gets a ramp */ capped: boolean; deckIds: string[]; half: number }
 
 //! one bridge per road gap: deck pieces end to end along ONE straight 3D line from the road height on bank A
 //! to the road height on bank B (every piece and pillar on that line, same tilt; capped at BRIDGE_MAX_PITCH).
@@ -818,13 +1155,27 @@ export function riverBridges(gaps: { id: string; from: [number, number]; to: [nu
     // sampled 3 m back on the road side of each end: the bed there, not the river bank carved at the gap edge
     const ex = dx / L, ez = dz / L
     let hA = at(g.from[0] - ex * 3, g.from[1] - ez * 3) + 0.05, hB = at(g.to[0] + ex * 3, g.to[1] + ez * 3) + 0.05
-    let slope = (hB - hA) / L, capped = false
+    let capped = false
+    // stepped relief (picture 120): the bank top just past the 3 m sample, where the deck end goes, stood up to
+    // 4.8 m over the deck. The deck end rests on the highest ground it is buried in (the low road gets a ramp)
+    const over = road.dirt ? 2 : BRIDGE_OVER + 6
+    for (let d = 3; d <= over; d += 1) {
+      const a = at(g.from[0] - ex * d, g.from[1] - ez * d) + 0.05, b = at(g.to[0] + ex * d, g.to[1] + ez * d) + 0.05
+      if (a > hA + 0.3) { hA = a; capped = true }
+      if (b > hB + 0.3) { hB = b; capped = true }
+    }
+    let slope = (hB - hA) / L
     if (Math.abs(slope) > BRIDGE_MAX_PITCH) {
       capped = true
       slope = Math.sign(slope) * BRIDGE_MAX_PITCH
       if (hA > hB) hB = hA + slope * L
       else hA = hB - slope * L
     }
+    // ground inside the gap over the deck line (a bank hump the gap takes in, picture 120 decks 1.4-2.1 m under
+    // it): the whole line goes up to clear it by 0.3 m
+    let lift = 0
+    for (let d = 0; d <= L; d += 2) lift = Math.max(lift, at(g.from[0] + ex * d, g.from[1] + ez * d) + 0.3 - (hA + slope * d))
+    if (lift > 0.05) { hA += lift; hB += lift; capped = true }
     const hMid = (hA + hB) / 2
     const cx = (g.from[0] + g.to[0]) / 2, cz = (g.from[1] + g.to[1]) / 2
     const lineY = (s: number) => hMid + slope * s // s: metres from the gap centre towards `to`
@@ -850,15 +1201,20 @@ export function riverBridges(gaps: { id: string; from: [number, number]; to: [nu
     // The yaw sent is whole degrees: lay the pieces along that rounded direction, else they drift sideways
     const yaw = Math.round((Math.atan2(-dz, dx) * 180) / Math.PI)
     const ux = Math.cos((yaw * Math.PI) / 180), uz = -Math.sin((yaw * Math.PI) / 180)
-    const need = L + 2 * BRIDGE_OVER // the ends go into the banks
+    const need = L + 2 * BRIDGE_DECK_REST // the ends go onto the banks
+    // pieces: the length nearest `need`, never under the gap + BRIDGE_MIN_REST a side. Always rounding up (to 26 m)
+    // laid up to 25 m more deck on the bank grass (picture 120: BRIDGE_1 78 m, BRIDGE_2 143 m over flat banks)
+    const fit = (unit: number) => {
+      const lo = Math.floor(need / unit)
+      return lo * unit >= L + 2 * BRIDGE_MIN_REST && lo > 0 ? lo : Math.ceil(need / unit)
+    }
     let pieces: { prefab: string; len: number }[]
     if (h <= 2.4 && need <= 13) pieces = [{ prefab: BRIDGE.small, len: 13 }]
-    else if (h > 4.5) pieces = Array.from({ length: Math.ceil(need / 26) }, () => ({ prefab: BRIDGE.wide, len: 26 }))
+    else if (h > 4.5) pieces = Array.from({ length: fit(26) }, () => ({ prefab: BRIDGE.wide, len: 26 }))
     else {
-      pieces = Array.from({ length: Math.floor(need / 26) }, () => ({ prefab: BRIDGE.narrowLong, len: 26 }))
-      const rest = need - pieces.length * 26
-      if (rest > 13) pieces.push({ prefab: BRIDGE.narrowLong, len: 26 })
-      else if (rest > 0) pieces.push({ prefab: BRIDGE.narrow, len: 13 })
+      const u = fit(13)
+      pieces = Array.from({ length: u >> 1 }, () => ({ prefab: BRIDGE.narrowLong, len: 26 }))
+      if (u % 2) pieces.push({ prefab: BRIDGE.narrow, len: 13 })
     }
     const total = pieces.reduce((s, p) => s + p.len, 0)
     // pivots are measured along the horizontal; along the tilted deck a piece covers len*cos: shrink the
@@ -893,7 +1249,9 @@ export function bridgeRampPatches(plans: RiverBridge[], heights: ArrayLike<numbe
     const dx = p.b[0] - p.a[0], dz = p.b[1] - p.a[1], L = Math.hypot(dx, dz) || 1
     const ex = dx / L, ez = dz / L
     const sA = at(p.a[0] - ex * 3, p.a[1] - ez * 3), sB = at(p.b[0] + ex * 3, p.b[1] + ez * 3)
-    const useA = p.a[2] - 0.05 - sA > p.b[2] - 0.05 - sB
+    const dA = p.a[2] - 0.05 - sA, dB = p.b[2] - 0.05 - sB
+    // the low bank; both when the deck was raised over both road beds
+    for (const useA of dA > dB ? (dB > 0.3 ? [true, false] : [true]) : (dA > 0.3 ? [false, true] : [false])) {
     const [x0, z0, y0] = useA ? p.a : p.b
     const ox = useA ? -ex : ex, oz = useA ? -ez : ez // outwards, along the road away from the river
     const top = y0 - 0.05, w = p.half + 2, R = BRIDGE_RAMP
@@ -914,6 +1272,7 @@ export function bridgeRampPatches(plans: RiverBridge[], heights: ArrayLike<numbe
       hs.push(Math.round(y * 100) / 100)
     }
     out.push({ minX, minZ, step, cols, rows, heights: hs })
+    }
   }
   return out
 }
@@ -940,3 +1299,90 @@ export function nearBridge(p: RiverBridge | { a: number[]; b: number[] }, b: { x
   for (let k = 0; k + 1 < b.corners.length; k += 2) if (near(b.corners[k], b.corners[k + 1])) return true
   return false
 }
+
+//! River corridor raster: per grid vertex, distance (m) from the river edge (centre-line distance minus half
+//! width; < 0 inside the water) for every open water, carved or not (carve:false rivers leave no wet cell, so
+//! the wet mask alone never kept rocks / trees out of them). Rasterised once up to `reach` m from the banks;
+//! farther cells stay Infinity. `near(x, z, m)` = within m metres of the water (nearest vertex + half a cell).
+export function riverCorridor(g: Grid, waters: Water[], reach = 12) {
+  const d = new Float32Array(g.cols * g.rows).fill(Infinity)
+  for (const w of waters) {
+    if (WATER_TYPES[w.type].closed || w.pts.length < 4) continue
+    const c = riverCourse(w.pts, w.width), half = riverWetHalf(w), R = half + reach + g.step
+    for (let i = 0; i + 3 < c.length; i += 2) {
+      const ax = c[i], az = c[i + 1], bx = c[i + 2], bz = c[i + 3]
+      const c0 = Math.max(0, Math.floor((Math.min(ax, bx) - R - g.minX) / g.step)), c1 = Math.min(g.cols - 1, Math.ceil((Math.max(ax, bx) + R - g.minX) / g.step))
+      const r0 = Math.max(0, Math.floor((Math.min(az, bz) - R - g.minZ) / g.step)), r1 = Math.min(g.rows - 1, Math.ceil((Math.max(az, bz) + R - g.minZ) / g.step))
+      for (let r = r0; r <= r1; r++) for (let q = c0; q <= c1; q++) {
+        const v = segDist(g.minX + q * g.step, g.minZ + r * g.step, ax, az, bx, bz) - half, k = r * g.cols + q
+        if (v < d[k]) d[k] = v
+      }
+    }
+  }
+  const near = (x: number, z: number, m: number) => {
+    const q = Math.round((x - g.minX) / g.step), r = Math.round((z - g.minZ) / g.step)
+    if (q < 0 || r < 0 || q >= g.cols || r >= g.rows) return false
+    return d[r * g.cols + q] <= m + g.step * 0.71
+  }
+  return { dist: d, near }
+}
+
+//! per grid vertex: 1 under a river (its shown width) or a river swelling lake. That water has banks, not a coast
+//! (computeSurfaces: no beach / shingle band from it)
+export function inlandWaterMask(g: Grid, waters: Water[]): Uint8Array {
+  const m = new Uint8Array(g.cols * g.rows)
+  const rc = riverCorridor(g, waters, 0)
+  for (let i = 0; i < m.length; i++) if (rc.dist[i] <= 0) m[i] = 1
+  for (const w of waters) {
+    if (!w.onRiver || w.pts.length < 6) continue
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+    for (let i = 0; i < w.pts.length; i += 2) { x0 = Math.min(x0, w.pts[i]); x1 = Math.max(x1, w.pts[i]); z0 = Math.min(z0, w.pts[i + 1]); z1 = Math.max(z1, w.pts[i + 1]) }
+    for (let r = Math.max(0, Math.floor((z0 - g.minZ) / g.step)); r <= Math.min(g.rows - 1, Math.ceil((z1 - g.minZ) / g.step)); r++)
+      for (let c = Math.max(0, Math.floor((x0 - g.minX) / g.step)); c <= Math.min(g.cols - 1, Math.ceil((x1 - g.minX) / g.step)); c++)
+        if (inPolygon(w.pts, g.minX + c * g.step, g.minZ + r * g.step)) m[r * g.cols + c] = 1
+  }
+  return m
+}
+
+//! the roads as sent (splitAtWater on their shapes), for the ground masks: the uncut bands painted the carriageway
+//! down the bank and into the water where the road itself stops (dirt patch on the shore, picture 120, round 12)
+//! trim (m): an end cut at a lake is pulled back that much more. A band is a round-capped stroke, half + shoulder
+//! (asphalt 4 + 5 m) past its last point: cut 8 m from the outline, the dirt shoulder still reached the water
+//! (picture 120 round 13: road ends 10 m out, mask band outer edge -0.7 / -5 m, same shore as round 12)
+export function roadsOutOfWater<R extends { id: string; pts: number[] }>(roads: R[], shapes: ProjectShape[], waters: Water[], trim = 0): R[] {
+  if (!waters.length) return roads
+  const byId = new Map(roads.map((r) => [r.id, r]))
+  const lakes = waters.filter((w) => WATER_TYPES[w.type].closed && w.pts.length >= 6)
+  const nearLake = (x: number, z: number) => lakes.some((l) => inside(l.pts, x, z) || outlineDist(l.pts, x, z) < LAKE_END_NEAR)
+  const out: R[] = []
+  for (const s of splitAtWater(shapes, waters).shapes) {
+    const base = byId.get(s.id) ?? byId.get(s.id.replace(/_[A-Z]$/, ''))
+    if (!base) continue
+    let pts = s.points
+    if (trim > 0 && lakes.length) {
+      const n = pts.length
+      if (nearLake(pts[n - 2], pts[n - 1])) pts = trimEnd(pts, trim)
+      if (pts.length >= 4 && nearLake(pts[0], pts[1])) pts = reversePts(trimEnd(reversePts(pts), trim))
+      if (pts.length < 4) continue
+    }
+    out.push({ ...base, id: s.id, pts })
+  }
+  return out
+}
+// an end within this of a lake outline was cut by splitAtWater (2 x its 4 m margin) or ends on the bank
+const LAKE_END_NEAR = 12
+function outlineDist(p: number[], x: number, z: number) {
+  let m = Infinity
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    const ax = p[j], az = p[j + 1], dx = p[i] - ax, dz = p[i + 1] - az, L2 = dx * dx + dz * dz || 1
+    const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
+    m = Math.min(m, Math.hypot(x - ax - dx * t, z - az - dz * t))
+  }
+  return m
+}
+function reversePts(p: number[]) {
+  const r: number[] = []
+  for (let i = p.length - 2; i >= 0; i -= 2) r.push(p[i], p[i + 1])
+  return r
+}
+

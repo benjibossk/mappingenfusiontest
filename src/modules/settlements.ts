@@ -618,7 +618,9 @@ export const CAT_COLOUR: Record<BuildingCat, string> = {
 //! yard ground around each house (FIELDS_SURFACES_VANILLA.md §3: short Grass_01 lawn only within 15 m of houses,
 //! 11-14 % of that ring on Everon, and a slight dirt excess within 4-16 m; no gravel). Small round patches,
 //! deterministic per house, laid BEFORE the road and building masks so a road or the house's dirt bed wins.
-export function yardMasks(placed: Pick<Placed, 'corners'>[], seed = 1, lawn = 'Grass_01', dirt = 'Dirt_01') {
+//! `clear(x, z, r)`: true where a patch of radius r would touch a road; such patches are not painted (picture 120
+//! round 11: round lawn / dirt spots dotted the village roads and their shoulders)
+export function yardMasks(placed: Pick<Placed, 'corners'>[], seed = 1, lawn = 'Grass_01', dirt = 'Dirt_01', clear?: (x: number, z: number, r: number) => boolean) {
   const out: { points: number[]; half: number; edge: number; core: string }[] = []
   for (const q of placed) {
     const c = q.corners
@@ -628,6 +630,7 @@ export function yardMasks(placed: Pick<Placed, 'corners'>[], seed = 1, lawn = 'G
     const patch = (rMin: number, rMax: number, size: number, core: string) => {
       const a = rnd() * Math.PI * 2, d = rMin + rnd() * (rMax - rMin), b = rnd() * Math.PI
       const cx = x + Math.cos(a) * d, cz = z + Math.sin(a) * d, l = size * (0.4 + rnd() * 0.6)
+      if (clear?.(cx, cz, l + size * 0.6 + 1.5)) return
       out.push({ points: [cx - Math.cos(b) * l, cz - Math.sin(b) * l, cx + Math.cos(b) * l, cz + Math.sin(b) * l], half: size * 0.6, edge: 1.5, core })
     }
     // ~12 % of the 15 m ring (~700 m²) = ~85 m² of lawn: 4-5 patches of ~4 m; dirt: 2 patches in 4-10 m

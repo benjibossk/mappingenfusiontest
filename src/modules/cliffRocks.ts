@@ -62,6 +62,31 @@ export const rockKind = (prefab: string): Kind | undefined => {
 }
 const DY = new Map<string, number>([...Object.values(ROCK_SETS).flat().map((q) => [q.p, q.dy] as [string, number]), ['{FF262A7485FF0448}Prefabs/Rocks/Granite/GraniteStone_02_V2.et', -0.08]])
 
+/** no rock piece closer than this to a building (m): in-game a GraniteRock / cliff stood against the houses */
+export const ROCK_HOUSE_CLEAR = 25
+/** within this distance of a building only the small pieces (slab, boulder, cluster, stone, beach) stay (m) */
+export const ROCK_SETTLEMENT_SMALL = 80
+/** rocks kept clear of the buildings: nothing within `clear` m, no cliff face / big rock within `small` m.
+ *  Non-rock entities pass through. houses: building centres. */
+export function rocksClearOfHouses<T extends Pick<ProjectEntity, 'prefab' | 'x' | 'z'>>(es: T[], houses: { x: number; z: number }[], clear = ROCK_HOUSE_CLEAR, small = ROCK_SETTLEMENT_SMALL): T[] {
+  if (!houses.length) return es
+  const C = small, cells = new Map<string, { x: number; z: number }[]>()
+  for (const h of houses) { const k = `${Math.floor(h.x / C)},${Math.floor(h.z / C)}`; const l = cells.get(k); if (l) l.push(h); else cells.set(k, [h]) }
+  const nearest = (x: number, z: number) => {
+    let d = Infinity
+    const cx = Math.floor(x / C), cz = Math.floor(z / C)
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const h of cells.get(`${cx + i},${cz + j}`) ?? []) d = Math.min(d, Math.hypot(h.x - x, h.z - z))
+    return d
+  }
+  return es.filter((e) => {
+    const k = rockKind(e.prefab)
+    if (!k) return true
+    const d = nearest(e.x, e.z)
+    if (d < clear) return false
+    return !(d < small && (k === 'cliff' || k === 'rock'))
+  })
+}
+
 /** sinks the granite pieces placed elsewhere (vegLayers scatter) by their vanilla median pivot offset: a
  *  GraniteRock on ycm 0 floats ~5 m above the ground. Entities that already carry ycm are left alone. */
 export function buryRocks<T extends ProjectEntity>(es: T[], groundAt: (x: number, z: number) => number): T[] {

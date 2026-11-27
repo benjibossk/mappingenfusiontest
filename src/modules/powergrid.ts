@@ -755,7 +755,41 @@ export function planGrid(input: GridInput, o: Partial<GridOptions> = {}): GridPl
       lines.splice(k, 1, ...parts)
     }
   }
+  if (bld) clearPolesOfBuildings(ob, lines)
   return { lines, stations, access, failed, unfed, entrances, farms }
+}
+
+/** last pass: no pole (end poles included: fixPoles keeps both ends, they tie lines together) within
+ *  POLE_BLD_CLEAR m of a house nor on a carriageway. Picture maps put street LV ends inside houses (pictures 119 / 120: 3 and 2 poles).
+ *  The same spot always moves to the same place, so lines sharing that end stay tied; their paths follow. */
+export const POLE_BLD_CLEAR = 1.5
+export function clearPolesOfBuildings(ob: PowerObstacles, lines: { poles: number[]; path: number[] }[]): number {
+  const memo = new Map<string, [number, number] | null>()
+  const spot = (x: number, z: number): [number, number] | null => {
+    const key = `${x.toFixed(3)},${z.toFixed(3)}`
+    if (memo.has(key)) return memo.get(key)!
+    let got: [number, number] | null = null
+    for (let r = 2; r <= 16 && !got; r += 2) for (let a = 0; a < 16 && !got; a++) {
+      const px = x + Math.cos((a * Math.PI) / 8) * r, pz = z + Math.sin((a * Math.PI) / 8) * r
+      if (ob.poleOk(px, pz)) got = [px, pz]
+    }
+    // nothing fully free (yard, junction): at least off the houses
+    for (let r = 2; r <= 16 && !got; r += 2) for (let a = 0; a < 16 && !got; a++) {
+      const px = x + Math.cos((a * Math.PI) / 8) * r, pz = z + Math.sin((a * Math.PI) / 8) * r
+      if (ob.bldDist(px, pz, 3) >= POLE_BLD_CLEAR && ob.roadEdge(px, pz) >= 0.5) got = [px, pz]
+    }
+    memo.set(key, got)
+    return got
+  }
+  let n = 0
+  for (const l of lines) for (const arr of l.path === l.poles ? [l.poles] : [l.poles, l.path]) for (let i = 0; i + 1 < arr.length; i += 2) {
+    if (ob.bldDist(arr[i], arr[i + 1], 3) >= POLE_BLD_CLEAR && ob.roadEdge(arr[i], arr[i + 1]) >= 0.5) continue
+    const q = spot(arr[i], arr[i + 1])
+    if (!q) continue
+    if (arr === l.poles) n++
+    arr[i] = q[0]; arr[i + 1] = q[1]
+  }
+  return n
 }
 
 const PARALLEL_D = 25, PARALLEL_MIN = 60

@@ -169,7 +169,7 @@ if ($fixButtons.Count -and -not $script:importFailed) {
     # in nvtt (2026-11-20 13:45). Wait for 'Reimporting Done' in the live console.log before saving.
     # Only when it was launched: with -NoNormalMap nothing prints it (the old 6 min wait then skipped the save).
     if (-not $NoNormalMap) {
-      $logDir = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+      $logDir = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object { (Get-Item (Join-Path $_.FullName "console.log") -ErrorAction SilentlyContinue).LastWriteTime } -Descending | Select-Object -First 1
       $clog = Join-Path $logDir.FullName 'console.log'; $done = $false; $quiet = 0
       for ($i = 0; $i -lt 180 -and -not $done; $i++) {
         Start-Sleep -Seconds 2
@@ -189,7 +189,7 @@ if (-not $NoSave) {
   # re-encoding textures. 30 s of quiet console was not enough: the save right after the import + "Fix block
   # borders" crashed twice in nvtt::CubeSurface::toGamma (2026-11-21), a save ~10 min later worked.
   # So: console.log quiet for >= $QuietSec (max $QuietMaxSec of waiting), THEN a fixed $SaveDelaySec.
-  $ld = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  $ld = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object { (Get-Item (Join-Path $_.FullName "console.log") -ErrorAction SilentlyContinue).LastWriteTime } -Descending | Select-Object -First 1
   $cl = Join-Path $ld.FullName 'console.log'
   $qEnd = (Get-Date).AddSeconds($QuietMaxSec); $age = 0
   while ((Get-Date) -lt $qEnd) { $age = ((Get-Date) - (Get-Item $cl).LastWriteTime).TotalSeconds; if ($age -ge $QuietSec) { break }; Start-Sleep -Seconds 5 }

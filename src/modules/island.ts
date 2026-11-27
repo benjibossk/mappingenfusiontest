@@ -186,8 +186,42 @@ export function settlementMask(grid: Grid, footprints: number[][], margin = SETT
   return m
 }
 
+/** beach / pebbles fade out from this distance to open water (m, gone at x2.5); coastal grass from COAST_GRASS_M */
+export const COAST_BEACH_M = 25
+export const COAST_GRASS_M = 60
+/** per vertex: distance (m) to the nearest vertex lower than `below` (chamfer 3-4, both passes); Infinity when none */
+export function waterDistance(heights: ArrayLike<number>, cols: number, rows: number, step: number, below: number): Float32Array {
+  const N = cols * rows, d = new Float32Array(N).fill(Infinity), D = step * Math.SQRT2
+  for (let i = 0; i < N; i++) if (heights[i] < below) d[i] = 0
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const i = r * cols + c
+    if (c > 0) d[i] = Math.min(d[i], d[i - 1] + step)
+    if (r > 0) { d[i] = Math.min(d[i], d[i - cols] + step); if (c > 0) d[i] = Math.min(d[i], d[i - cols - 1] + D); if (c + 1 < cols) d[i] = Math.min(d[i], d[i - cols + 1] + D) }
+  }
+  for (let r = rows - 1; r >= 0; r--) for (let c = cols - 1; c >= 0; c--) {
+    const i = r * cols + c
+    if (c + 1 < cols) d[i] = Math.min(d[i], d[i + 1] + step)
+    if (r + 1 < rows) { d[i] = Math.min(d[i], d[i + cols] + step); if (c + 1 < cols) d[i] = Math.min(d[i], d[i + cols + 1] + D); if (c > 0) d[i] = Math.min(d[i], d[i + cols - 1] + D) }
+  }
+  return d
+}
+
+/** water at least this far from the land is open water (sea, wide lake), not a river */
+export const OPEN_WATER_M = 40
+/** per vertex: distance (m) to the bank of open water (vertices under `below` more than OPEN_WATER_M from the land) */
+export function openWaterDistance(heights: ArrayLike<number>, cols: number, rows: number, step: number, below: number): Float32Array {
+  const N = cols * rows, inv = new Float32Array(N)
+  for (let i = 0; i < N; i++) inv[i] = heights[i] < below ? 1 : -1
+  const toLand = waterDistance(inv, cols, rows, step, 0)
+  const core = new Float32Array(N)
+  for (let i = 0; i < N; i++) core[i] = toLand[i] > OPEN_WATER_M ? -1 : 1
+  const d = waterDistance(core, cols, rows, step, 0)
+  for (let i = 0; i < N; i++) d[i] = Math.max(0, d[i] - OPEN_WATER_M)
+  return d
+}
+
 //! `settle` (settlementMask): no bare Rock_01 in and around the villages; that ground goes to a grass / dirt blend.
-export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array, settle?: Float32Array, masks?: ReliefMasks): SurfaceGrid[] {
+export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number, river?: Float32Array, cover?: Uint8Array, settle?: Float32Array, masks?: ReliefMasks, inland?: Uint8Array): SurfaceGrid[] {
   const { cols, rows, step } = grid
   const names = Object.keys(COLOURS).concat(cover ? Object.keys(COVER) : [])
   const weights: Record<string, number[]> = Object.fromEntries(names.map((k) => [k, []]))
@@ -198,6 +232,25 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   const variants = noise2(9157, 2)
   // rock from slope AND relief context, capped share; scree at cliff feet only (rockMask.ts)
   const rm = rockMasks(heights, cols, rows, step, maxHeight, shape)
+  // beach / coastal grass only along open water: their height bands (+1..+4 m, < 12 m) alone painted every low
+  // inland plain as a beach (map from a picture: rivers and lakes at the sea level, the whole valley beach-brown).
+  // Arland: a narrow bank strip, grass beyond. Distance to ground under -0.5 m (sea, lakes, river beds).
+  // the sea Sculpt.compose forces on the last 6 % of the map (edge ramp) is not water a coast is measured from: its
+  // coastal grass made a light band along the whole edge (picture 120 east edge, round 9). A real sea reaching the
+  // edge still has its shore further in
+  // since the edge band (edgeBand.ts) is a natural shore, only the outermost 1 % (deep sea bed) is left out
+  const edgeN = Math.ceil(0.01 * Math.max(1, cols - 1))
+  // `inland` water (rivers, river swelling lakes) has no coast: picture 119 round 11, its 100-200 m wide river and
+  // lake counted as open water and painted their low banks as a 30-60 m beach (BeachGrass 56-67 %, Pebbles_02 7-24 %
+  // of the bank 0-30 m), brown in game. Arland: grass to the edge, a narrow pebble line
+  const inl = inland && inland.length === heights.length ? inland : undefined
+  const hd = heights.map((h, i) => { const c = i % cols, r = (i - c) / cols; return (h < -0.5 && Math.min(c, r, cols - 1 - c, rows - 1 - r) < edgeN) || inl?.[i] ? 1 : h })
+  const toInland = inl ? waterDistance(Array.from(inl, (v) => (v ? -1 : 1)), cols, rows, step, 0) : undefined
+  const toWater = waterDistance(hd, cols, rows, step, -0.5)
+  // pebbles / sand / beach grass only on open water (sea, wide lakes): river and pond banks of a map from a picture
+  // (all at the sea level) were a pink-grey shingle band (Pebbles_02 ~10 % of the land on picture 120); Arland's
+  // inland banks are grass. Open = water more than OPEN_WATER_M from the land, its own bank measured back from there.
+  const toOpen = openWaterDistance(inl ? heights.map((h, i) => (inl[i] ? 1 : h)) : heights, cols, rows, step, -0.5) // (beach: open-ness needs the whole sea; the ramp is cut by fakeCoast)
   const at = (c: number, r: number) => heights[Math.min(Math.max(r, 0), rows - 1) * cols + Math.min(Math.max(c, 0), cols - 1)]
   const covered0 = (i: number, h: number) => !!(cover && cover[i] && h > 1)
   const coverShare = (c: number, r: number) => {
@@ -220,13 +273,24 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const slope = Math.hypot(at(c + 1, r) - at(c - 1, r), at(c, r + 1) - at(c, r - 1)) / (2 * step)
     // coast, after the plan in docs/ARCHITECTURE.md "Côtes": seabed < -3, shore -3..+1, beach +1..+4,
     // back-beach +4..+10, cliffs where steep near the water
-    const deepAll = 1 - band(h, -4, -2)
+    // inland water (river, river swelling lake) is lake bed to its edge: its -4..-0.5 m shelf was the coast's sandy
+    // strip (Dirt / sand + pebbles), a beige-brown band through the water along every bank of picture 119 (bank 1-10 px
+    // of the masks: Dirt_01 49-55 %). No bare sand patches in it either
+    const wetInl = !!inl?.[i] && h < -0.5
+    const deepAll = wetInl ? 1 : 1 - band(h, -4, -2)
     // a weight under ~50 % does not show through the seabed in the Workbench: sand wins at the heart of
     // each patch (75 %) and fades out over a wide border
-    const bare = deepAll * 0.75 * band(patches((c * step) / 45, (r * step) / 45), 0.52, 0.75)
+    // (hard-edged: a 0.52..0.75 soft ramp left half the bed of picture 119 a SeaBed / dirt mix, blotches in game)
+    // only on the shallow shelf: the deep sea bed is one calm SeaBed (the patches all over the picture-map sea read as
+    // a beige / grey camouflage on the satmap, round 20)
+    const bare = wetInl ? 0 : deepAll * band(patches((c * step) / 45, (r * step) / 45), 0.6, 0.64) * (1 - band(-h, 8, 12))
     const deep = deepAll - bare
     const bed = river ? Math.min(river[i], 1 - deepAll) : 0
-    const cliff = Math.min(1, rm.rock[i] + rm.scree[i]) * (h > -2 ? 1 : 0) * (1 - bed)
+    // the map-edge sea ramp (Sculpt.compose: the last 6 % of the map forced down to the sea floor) is no cliff: a
+    // straight grey Rock_01 band ran along the whole edge slope (picture 120, x 2350-2400). Coastal grass there
+    // edgeBand.ts made that edge a natural shore: rock where it is steep, like any coast (Arland cliffs)
+    const edgeRamp = 1
+    const cliff = Math.min(1, rm.rock[i] + rm.scree[i]) * (h > -2 ? 1 : 0) * (1 - bed) * edgeRamp
     let scree = Math.min(cliff, rm.scree[i] * (1 - bed))
     let rock = cliff - scree
     // village banks: the rock weight becomes 75 % grass (free ground) + 25 % dirt
@@ -235,13 +299,26 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     let free = clamp01(1 - deepAll - bed - cliff + rock * sv * 0.75)
     rock -= rock * sv
     const take = (w: number) => { const t = Math.min(free, Math.max(w, 0)); free -= t; return t }
-    const shore = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)))
-    const beach = take(1 - band(h, 3.5, 5))
+    // dry low ground (a picture map lies at 0-1.5 m over whole plains) is shingle only on the water's edge
+    // the map-edge ramp above the sea is no coast either: beach / coastal grass made a light band along the whole
+    // edge slope (picture 120, x 2350-2400, round 9). A real shore there is gentle; the ramp is steep: plain grass
+    // no beach on a steep shore anywhere (cliff coast): rock / grass there, sand where it is gentle
+    const fakeCoast = h > 0 ? band(slope, 0.3, 0.5) : 0
+    const shore0 = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)) * (h > -0.5 ? 1 - band(toWater[i], 4, 10) : 1) * (1 - fakeCoast))
+    // that strip is mostly sand, a few pebbles (beach sand above the water, sandy bed under it): all shingle, the
+    // shallow shelf (-2.5..-0.5 m, 90-100 % Pebbles_02) showed as a line of dark rocks along the whole gentle south
+    // coast of picture 120 (round 11)
+    const sandShare = 1 - 0.3 * (0.6 + 0.8 * variants((c * step) / 40, (r * step) / 40))
+    const dryShore = h > -0.5 ? shore0 * sandShare : 0, wetSand = h > -0.5 ? 0 : shore0 * sandShare
+    const shore = shore0 - dryShore - wetSand
+    const nearBank = (1 - band(toOpen[i], COAST_BEACH_M, COAST_BEACH_M * 2.5)) * (1 - fakeCoast), nearCoast = (1 - band(toWater[i], COAST_GRASS_M, COAST_GRASS_M * 2.5)) * (1 - fakeCoast)
+    const beach = take((1 - band(h, 3.5, 5)) * nearBank)
     // [M] shore band 0-10 m above the sea: Pebbles_02 20-30 % + BeachGrass 10-14 % (FIELDS_SURFACES_VANILLA §3)
-    const lowShore = h > 0 ? 1 - band(h, 9, 11) : 0
+    const lowShore = h > 0 ? (1 - band(h, 9, 11)) * nearBank : 0
     const pebbles = take(0.25 * lowShore * (0.6 + 0.8 * variants((c * step) / 40, (r * step) / 40)))
     const sand = take(0.12 * lowShore)
-    const coastal = take(1 - band(h, 9, 12))
+    const pebbleLine = toInland && h > -0.5 ? take(0.5 * (1 - band(toInland[i], 2, 6))) : 0
+    const coastal = take((1 - band(h, 9, 12)) * nearCoast)
     // [M] MountainGrass 15 % at 200-300 m, ~42 % above 300 m on Everon (top ~370 m): relative 0.55 / 0.8 of the range
     const high = 0.15 * band(h, maxHeight * 0.5, maxHeight * 0.6) + 0.27 * band(h, maxHeight * 0.75, maxHeight * 0.85)
     const inland = band(h, 10, 16)
@@ -259,9 +336,12 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const rest = Math.max(free, 0)
     weights.SeaBed_01.push(deep)
     weights.Pebbles_01.push(bed)
-    weights.Pebbles_02.push(shore + pebbles)
-    weights.Dirt_02.push(bare + villageDirt) // sandy look
-    weights.BeachGrass_01.push(beach + sand)
+    weights.Pebbles_02.push(shore + pebbles + pebbleLine)
+    // the dry strip on the water's edge is a sand beach (Dirt_02), BeachGrass_01 (dark olive on the satmap) only behind
+    // it: picture 120 round 20 showed a dark green rim and no beach
+    const beachSand = beach * (1 - band(h, 1.5, 2.5)) // the low strip of the beach is bare sand
+    weights.Dirt_02.push(bare + villageDirt + wetSand + dryShore + beachSand) // sandy look
+    weights.BeachGrass_01.push(beach - beachSand + sand)
     weights.Grass_03_coastal.push(coastal)
     weights.Rock_01.push(rock)
     weights.Debris_Rock_01.push(scree)
@@ -278,7 +358,14 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const heath = cover ? open * 0.2 * band(h, maxHeight * 0.5, maxHeight * 0.75) : 0
     if (cover) for (const k of Object.keys(COVER)) weights[k].push(rest * (share?.get(k) ?? 0) + (k === 'Heather_01' ? heath : 0))
     weights.MountainGrass_01.push((open - heath) * mountain)
-    weights.Grass_01.push((open - heath) * (1 - mountain))
+    // open land is not one grass: Arland mixes Grass_03 30 % + Grass_02 8 % + scree-grass + heather in 50-300 m patches
+    // (FIELDS_SURFACES_VANILLA §1/§4). Picture 120: the biome grass alone was 75 % of the land, one beige sheet.
+    // Meadow (Grass_02) patches from low-frequency noise, soft edges, up to 55 % at their heart
+    // whole meadows (threshold of the 110 m noise, a few metres of blend): a 55 % soft blend was a Grass_02 / Grass_03
+    // ~145/110 mix on 81 % of picture 120, blotches in game
+    const lush = cover ? band(variants((c * step) / 110 + 37, (r * step) / 110 + 11), 0.61, 0.65) : 0
+    weights.Grass_02[weights.Grass_02.length - 1] += (open - heath) * (1 - mountain) * lush
+    weights.Grass_01.push((open - heath) * (1 - mountain) * (1 - lush))
   }
   for (const k of names) weights[k] = weights[k].map((w) => (w < 1 / 255 ? 0 : w))
   const out = names.map((name) => ({ ...grid, name, weights: weights[name] }))

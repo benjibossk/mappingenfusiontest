@@ -1,29 +1,823 @@
 {
-  "_doc": "Clean satmap palette (mode 'clean', bridge/satmap-clean.mjs): hand-tuned sRGB per surface, no pixel taken from BI files. grain = strength of the procedural detail (0..1), scale = size of the finest detail in metres.",
+  "_doc": "Satmap palette (bridge/satmap-clean.mjs): one flat sRGB colour per surface + procedural noise, no game file read (Bohemia advice). Colours re-tuned 2026-11-27 on the top-down Arland satellite map (reforger.recoil.org/arland viewer, median of a box or of a pixel class, see 'src'; already satmap colours, no sunlight factor). 'hand:' entries are derived, no reference area. grain = strength of the procedural detail (0..1), scale = size of the finest detail in metres. families = fallback colour for unknown / mod surfaces, matched on the material name.",
   "surfaces": {
-    "SeaBed_01": { "rgb": [94, 90, 76], "grain": 0.5, "scale": 4 },
-    "BeachGrass_01": { "rgb": [148, 138, 104], "grain": 0.6, "scale": 3 },
-    "Grass_01": { "rgb": [76, 88, 51], "grain": 0.8, "scale": 3 },
-    "Grass_02": { "rgb": [68, 84, 48], "grain": 0.8, "scale": 3 },
-    "Grass_03": { "rgb": [98, 102, 66], "grain": 0.8, "scale": 3 },
-    "Grass_03_coastal": { "rgb": [102, 106, 68], "grain": 0.8, "scale": 3 },
-    "MountainGrass_01": { "rgb": [93, 96, 68], "grain": 0.8, "scale": 3 },
-    "MountainGrass_02": { "rgb": [100, 102, 76], "grain": 0.8, "scale": 3 },
-    "Heather_01": { "rgb": [108, 90, 92], "grain": 0.9, "scale": 3 },
-    "Rock_01": { "rgb": [110, 106, 98], "grain": 1.0, "scale": 2 },
-    "Debris_Rock_01": { "rgb": [116, 110, 100], "grain": 1.0, "scale": 2 },
-    "Pebbles_01": { "rgb": [112, 108, 96], "grain": 0.9, "scale": 1.5 },
-    "Pebbles_02": { "rgb": [126, 120, 106], "grain": 0.9, "scale": 1.5 },
-    "Dirt_01": { "rgb": [124, 104, 76], "grain": 0.7, "scale": 2 },
-    "Dirt_02": { "rgb": [132, 114, 88], "grain": 0.7, "scale": 2 },
-    "Dirt_03": { "rgb": [98, 82, 60], "grain": 0.7, "scale": 2 },
-    "ForestDeciduous_01_Base": { "rgb": [70, 72, 45], "grain": 0.9, "scale": 4 },
-    "ForestConiferous_01_Base": { "rgb": [58, 61, 43], "grain": 0.9, "scale": 4 },
-    "Crop_Field_01": { "rgb": [136, 116, 80], "grain": 0.5, "scale": 3 },
-    "Crop_Field_02": { "rgb": [110, 92, 66], "grain": 0.5, "scale": 3 },
-    "Asphalt_01": { "rgb": [64, 64, 66], "grain": 0.3, "scale": 1 },
-    "Cobblestone_01_Wave": { "rgb": [104, 98, 88], "grain": 0.6, "scale": 1 },
-    "Concrete_01": { "rgb": [140, 139, 133], "grain": 0.3, "scale": 2 },
-    "Concrete_02": { "rgb": [146, 146, 140], "grain": 0.3, "scale": 2 }
+    "SeaBed_01": {
+      "rgb": [
+        111,
+        104,
+        80
+      ],
+      "grain": 0.5,
+      "scale": 4,
+      "src": "hand: shoreline sand darkened for wet river/sea bed"
+    },
+    "BeachGrass_01": {
+      "rgb": [
+        106,
+        101,
+        74
+      ],
+      "grain": 0.6,
+      "scale": 3,
+      "src": "hand: between Grass_03_coastal and SeaBed_01"
+    },
+    "Grass_01": {
+      "rgb": [
+        94,
+        98,
+        50
+      ],
+      "grain": 0.8,
+      "scale": 3,
+      "src": "reforger.recoil.org arland satmap, central meadow (centre shot 700,380 120x100) ; nudged +8 toward Everon meadow boxes (recoil everon: meadow 115,114,57 / meadow2 90,99,46) since ours read 84,90,47"
+    },
+    "Grass_02": {
+      "rgb": [
+        77,
+        80,
+        45
+      ],
+      "grain": 0.8,
+      "scale": 3,
+      "src": "reforger.recoil.org arland satmap, eastern meadow (east shot 300,500 150x120)"
+    },
+    "Grass_03": {
+      "rgb": [
+        120,
+        107,
+        63
+      ],
+      "grain": 0.8,
+      "scale": 3,
+      "src": "reforger.recoil.org arland satmap, dry meadow patch (centre shot 220,400 150x100)"
+    },
+    "Grass_03_coastal": {
+      "rgb": [
+        76,
+        76,
+        49
+      ],
+      "grain": 0.8,
+      "scale": 3,
+      "src": "reforger.recoil.org arland satmap, coastal grass strip (eastcoast shot 600,560 200x50)"
+    },
+    "MountainGrass_01": {
+      "rgb": [
+        68,
+        72,
+        42
+      ],
+      "grain": 0.8,
+      "scale": 3,
+      "src": "hand: Grass_02 x0.88"
+    },
+    "MountainGrass_02": {
+      "rgb": [
+        74,
+        77,
+        50
+      ],
+      "grain": 0.8,
+      "scale": 3,
+      "src": "hand: Grass_02 darker/greyer"
+    },
+    "Heather_01": {
+      "rgb": [
+        90,
+        78,
+        70
+      ],
+      "grain": 0.9,
+      "scale": 3,
+      "src": "hand: no heather identified on Arland"
+    },
+    "Rock_01": {
+      "rgb": [
+        132,
+        127,
+        119
+      ],
+      "grain": 1,
+      "scale": 2,
+      "src": "reforger.recoil.org arland satmap cliff rocks, toned down 15% (prefabs read paler than ground)"
+    },
+    "Debris_Rock_01": {
+      "rgb": [
+        123,
+        118,
+        109
+      ],
+      "grain": 1,
+      "scale": 2,
+      "src": "hand: Rock_01 tone, -15%"
+    },
+    "Pebbles_01": {
+      "rgb": [
+        135,
+        129,
+        117
+      ],
+      "grain": 0.9,
+      "scale": 1.5,
+      "src": "hand: between Rock_01 and SeaBed_01"
+    },
+    "Pebbles_02": {
+      "rgb": [
+        148,
+        141,
+        128
+      ],
+      "grain": 0.9,
+      "scale": 1.5,
+      "src": "hand: Rock_01 warmer"
+    },
+    "Dirt_01": {
+      "rgb": [
+        152,
+        137,
+        115
+      ],
+      "grain": 0.7,
+      "scale": 2,
+      "src": "reforger.recoil.org arland satmap, dirt track centre (centre shot 836,470 8x20)"
+    },
+    "Dirt_02": {
+      "rgb": [
+        133,
+        119,
+        88
+      ],
+      "grain": 0.7,
+      "scale": 2,
+      "src": "hand: mean of Dirt_01 and Dirt_03"
+    },
+    "Dirt_03": {
+      "rgb": [
+        114,
+        101,
+        61
+      ],
+      "grain": 0.7,
+      "scale": 2,
+      "src": "reforger.recoil.org arland satmap, forest floor / bare soil (centre shot, brown pixel class)"
+    },
+    "ForestDeciduous_01_Base": {
+      "rgb": [
+        64,
+        70,
+        40
+      ],
+      "grain": 1.1,
+      "scale": 5,
+      "src": "reforger.recoil.org everon satmap, broadleaf wood canopy south of the road (67,73,41) pulled darker: reads ~0.7x meadow lum"
+    },
+    "ForestConiferous_01_Base": {
+      "rgb": [
+        54,
+        60,
+        38
+      ],
+      "grain": 1.1,
+      "scale": 5,
+      "src": "reforger.recoil.org everon satmap conifer stand, darker than broadleaf; hand-scaled from the broadleaf box"
+    },
+    "Crop_Field_01": {
+      "rgb": [
+        169,
+        151,
+        100
+      ],
+      "grain": 0.5,
+      "scale": 3,
+      "src": "reforger.recoil.org everon satmap, ripe wheat field west of the St Philippe road (box median)"
+    },
+    "Crop_Field_02": {
+      "rgb": [
+        130,
+        101,
+        65
+      ],
+      "grain": 0.5,
+      "scale": 3,
+      "src": "reforger.recoil.org everon satmap, ploughed field plots near St Philippe (box median, two plots)"
+    },
+    "Asphalt_01": {
+      "rgb": [
+        87,
+        84,
+        80
+      ],
+      "grain": 0.3,
+      "scale": 1,
+      "src": "reforger.recoil.org arland satmap, airfield service road (airfield shot, dark grey pixel class)"
+    },
+    "Cobblestone_01_Wave": {
+      "rgb": [
+        120,
+        114,
+        104
+      ],
+      "grain": 0.6,
+      "scale": 1,
+      "src": "hand: between Asphalt_01 and Concrete_01"
+    },
+    "Concrete_01": {
+      "rgb": [
+        159,
+        151,
+        140
+      ],
+      "grain": 0.3,
+      "scale": 2,
+      "src": "reforger.recoil.org arland satmap, airfield runway/apron (airfield shot, light grey pixel class)"
+    },
+    "Concrete_02": {
+      "rgb": [
+        165,
+        158,
+        148
+      ],
+      "grain": 0.3,
+      "scale": 2,
+      "src": "hand: Concrete_01 +4%"
+    },
+    "ForestPine_01_Base": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        54,
+        60,
+        38
+      ],
+      "src": "hand: = ForestConiferous_01_Base"
+    },
+    "ForestConiferous_02": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        54,
+        60,
+        38
+      ],
+      "src": "hand: = ForestConiferous_01_Base"
+    },
+    "ForestDeciduous_02": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        60,
+        72,
+        38
+      ],
+      "src": "hand: ForestDeciduous_01_Base greener (tropical)"
+    },
+    "ForestClearing_Deciduous_01": {
+      "grain": 0.9,
+      "scale": 3,
+      "rgb": [
+        80,
+        84,
+        46
+      ],
+      "src": "hand: between Grass_02 and forest canopy"
+    },
+    "ForestClearing_Coniferous_01": {
+      "grain": 0.9,
+      "scale": 3,
+      "rgb": [
+        74,
+        78,
+        45
+      ],
+      "src": "hand: between Grass_02 and conifer canopy"
+    },
+    "Cobblestone_01_Wave_V2": {
+      "grain": 0.6,
+      "scale": 1,
+      "rgb": [
+        120,
+        114,
+        104
+      ],
+      "src": "hand: = Cobblestone_01_Wave"
+    },
+    "Debris_Rock_01_V2": {
+      "grain": 1,
+      "scale": 2,
+      "rgb": [
+        123,
+        118,
+        109
+      ],
+      "src": "hand: = Debris_Rock_01"
+    },
+    "Grass_01_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        106,
+        112,
+        85
+      ],
+      "src": "enfumap.com kolguyev fogless satellite, west shore near Gorshkovo (pixel-class median), open grass"
+    },
+    "Grass_02_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        95,
+        100,
+        76
+      ],
+      "src": "hand: Grass_01_aut x0.9"
+    },
+    "ForestDeciduous_01_Base_aut": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        48,
+        54,
+        42
+      ],
+      "src": "enfumap.com kolguyev fogless satellite, west shore near Gorshkovo (pixel-class median), canopy (40,48,40 incl. shadow) lifted slightly"
+    },
+    "ForestConiferous_01_Base_aut": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        42,
+        49,
+        40
+      ],
+      "src": "enfumap.com kolguyev fogless satellite, west shore near Gorshkovo (pixel-class median), dark canopy class"
+    },
+    "ForestConiferous_02_aut": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        42,
+        49,
+        40
+      ],
+      "src": "hand: = ForestConiferous_01_Base_aut"
+    },
+    "ForestClearing_Coniferous_01_aut": {
+      "grain": 0.9,
+      "scale": 3,
+      "rgb": [
+        80,
+        85,
+        66
+      ],
+      "src": "hand: between Grass_02_aut and the aut canopy"
+    },
+    "Heather_01_aut": {
+      "grain": 0.9,
+      "scale": 3,
+      "rgb": [
+        96,
+        84,
+        72
+      ],
+      "src": "hand: Heather_01 browner"
+    },
+    "MountainGrass_01_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        96,
+        100,
+        78
+      ],
+      "src": "hand: Grass_01_aut x0.9, greyer"
+    },
+    "MountainGrass_02_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        100,
+        100,
+        82
+      ],
+      "src": "hand: Grass_01_aut greyer"
+    },
+    "MountainGrass_03_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        110,
+        106,
+        86
+      ],
+      "src": "hand: Grass_01_aut, drier"
+    }
+  },
+  "families": [
+    {
+      "match": "grass|meadow|moss|heather",
+      "rgb": [
+        94,
+        98,
+        50
+      ]
+    },
+    {
+      "match": "forest|leaves|needle",
+      "rgb": [
+        67,
+        66,
+        44
+      ]
+    },
+    {
+      "match": "asphalt|road|tarmac",
+      "rgb": [
+        87,
+        84,
+        80
+      ]
+    },
+    {
+      "match": "concrete|cobble|paving|pavement|tile",
+      "rgb": [
+        159,
+        151,
+        140
+      ]
+    },
+    {
+      "match": "rock|cliff|stone|pebble|gravel|debris|scree",
+      "rgb": [
+        145,
+        139,
+        128
+      ]
+    },
+    {
+      "match": "sand|beach|seabed|shore",
+      "rgb": [
+        135,
+        126,
+        99
+      ]
+    },
+    {
+      "match": "dirt|mud|soil|field|crop|farm|path|track",
+      "rgb": [
+        133,
+        119,
+        88
+      ]
+    }
+  ],
+  "biomes": {
+    "_doc": "Per-biome overrides, same entry format as surfaces. Key = map biome id (src/data/biomes.ts), aliases = climate ids (src/biomes/groundClasses.ts). A biome only needs an entry when the same surface name must read differently there; missing names fall back to the base palette.",
+    "desert": {
+      "aliases": [
+        "desertique"
+      ],
+      "surfaces": {
+        "Dirt_02": {
+          "rgb": [
+            199,
+            188,
+            179
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "enfumap.com anizay fogless satellite (desert community map by Temppa), open ground west of Naw (box median), pale packed ground (desert grass role)"
+        },
+        "Pebbles_01": {
+          "rgb": [
+            212,
+            203,
+            193
+          ],
+          "grain": 0.8,
+          "scale": 2,
+          "src": "enfumap.com anizay fogless satellite (desert community map by Temppa), open ground west of Naw (box median), lighter gravel flat (desert meadow role)"
+        },
+        "Dirt_01": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: Anizay ground darkened for the desert scrub (forest role)"
+        },
+        "Crop_Field_02": {
+          "rgb": [
+            180,
+            165,
+            136
+          ],
+          "grain": 0.5,
+          "scale": 3,
+          "src": "hand: Anizay ground, slightly warmer (irrigated plots); desaturated from 170,150,112 which read as olive patches"
+        },
+        "Grass_01": {
+          "rgb": [
+            196,
+            184,
+            170
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground (Dirt_02 measure), base grass role"
+        },
+        "Grass_01_aut": {
+          "rgb": [
+            196,
+            184,
+            170
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground (Dirt_02 measure), base grass role"
+        },
+        "Grass_02": {
+          "rgb": [
+            190,
+            178,
+            162
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground, a shade darker (second grass)"
+        },
+        "Grass_02_aut": {
+          "rgb": [
+            190,
+            178,
+            162
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground, a shade darker (second grass)"
+        },
+        "Grass_03": {
+          "rgb": [
+            202,
+            188,
+            168
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground, warmer (dry grass role)"
+        },
+        "Grass_03_coastal": {
+          "rgb": [
+            205,
+            193,
+            175
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay pale open ground toward Pebbles_01 measure (coastal / dune grass role)"
+        },
+        "BeachGrass_01": {
+          "rgb": [
+            205,
+            193,
+            175
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay pale open ground toward Pebbles_01 measure (coastal / dune grass role)"
+        },
+        "MountainGrass_01": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "MountainGrass_02": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "MountainGrass_01_aut": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "MountainGrass_02_aut": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "MountainGrass_03_aut": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "Heather_01": {
+          "rgb": [
+            184,
+            170,
+            152
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay ground between Dirt_02 and Dirt_01 measures (scrub heath role)"
+        },
+        "Heather_01_aut": {
+          "rgb": [
+            184,
+            170,
+            152
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay ground between Dirt_02 and Dirt_01 measures (scrub heath role)"
+        },
+        "ForestDeciduous_01_Base": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestConiferous_01_Base": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestPine_01_Base": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestConiferous_02": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestDeciduous_02": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestDeciduous_01_Base_aut": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestConiferous_01_Base_aut": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestConiferous_02_aut": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestClearing_Deciduous_01": {
+          "rgb": [
+            190,
+            177,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay between open ground and scrub (clearing role)"
+        },
+        "ForestClearing_Coniferous_01": {
+          "rgb": [
+            190,
+            177,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay between open ground and scrub (clearing role)"
+        },
+        "ForestClearing_Coniferous_01_aut": {
+          "rgb": [
+            190,
+            177,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay between open ground and scrub (clearing role)"
+        },
+        "Crop_Field_01": {
+          "rgb": [
+            182,
+            164,
+            124
+          ],
+          "grain": 0.5,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay irrigated plots, lighter than Crop_Field_02 override"
+        },
+        "Dirt_03": {
+          "rgb": [
+            168,
+            152,
+            126
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay tracks, Dirt_01 override darkened"
+        },
+        "Pebbles_02": {
+          "rgb": [
+            196,
+            186,
+            172
+          ],
+          "grain": 0.8,
+          "scale": 2,
+          "src": "hand: from enfumap Anizay gravel, between Dirt_02 and Pebbles_01 measures (beach/clearing role)"
+        },
+        "SeaBed_01": {
+          "rgb": [
+            150,
+            134,
+            108
+          ],
+          "grain": 0.6,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay ground darkened and warmed: wet sandy river/sea bed"
+        },
+        "Debris_Rock_01": {
+          "rgb": [
+            158,
+            140,
+            114
+          ],
+          "grain": 0.7,
+          "scale": 2,
+          "src": "hand: from enfumap Anizay ground (Dirt_01 measure) darkened and warmed: in the desert biome the river bed (Pebbles_01 -> scree role) and scree export as Debris_Rock_01, read as wet sandy bed"
+        }
+      }
+    }
   }
 }

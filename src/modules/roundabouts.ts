@@ -210,6 +210,18 @@ export function villageWalls(roads: Road[], inVillage: (x: number, z: number) =>
       const wall = offsetLine(line, side * (roadHalf(road) + 1.5))
       let cur: number[] = [], k = 0
       const flush = () => {
+        // the offset bunches the points on the inside of a bend: one under 0.5 m from the previous one was dropped
+        // by the Workbench (picture 119, ROAD_ASPHALTE_ETROITE_1_WALL_R0: sent 13, built 12, flagged suspect)
+        const kept: number[] = []
+        for (let i = 0; i + 1 < cur.length; i += 2) {
+          const n = kept.length
+          if (n && Math.hypot(cur[i] - kept[n - 2], cur[i + 1] - kept[n - 1]) < 1.5) {
+            if (i + 2 >= cur.length && n >= 4) { kept[n - 2] = cur[i]; kept[n - 1] = cur[i + 1] } // the end stays
+            continue
+          }
+          kept.push(cur[i], cur[i + 1])
+        }
+        cur = kept
         let l = 0
         for (let i = 2; i < cur.length; i += 2) l += Math.hypot(cur[i] - cur[i - 2], cur[i + 1] - cur[i - 1])
         if (l >= 15) shapes.push({ id: `${road.id}_WALL_${side > 0 ? 'L' : 'R'}${k++}`, kind: 'polyline', closed: false, points: cur.map((v) => Math.round(v * 100) / 100), generator: VILLAGE_WALL })

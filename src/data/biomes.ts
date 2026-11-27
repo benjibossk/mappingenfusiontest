@@ -29,6 +29,8 @@ export interface Biome {
   fences: { front: string[]; side: string[] } // wall generator prefabs
   props: string[] // garden / yard props
   road: { paved: string; dirt: string; village: string } // surface names
+  /** surface under the river water (generators write Pebbles_01, else its scree role) */
+  riverBed?: string
   drape: { ground: string; forest: string; field: string; rock: string; sand: string; water: string } // #rrggbb
   missing: { en: string; fr: string } // what only mods can bring
 }
@@ -124,12 +126,16 @@ export const BIOMES: Biome[] = [
     label: { en: 'Woodland (Arland)', fr: 'Woodland (Arland)' },
     desc: { en: 'Flat wooded island, pine stands and fields, same western houses as Everon.', fr: 'Île plate boisée, pinèdes et champs, mêmes maisons occidentales qu’Everon.' },
     availability: 'vanilla', ff: 'WOODLAND', maps: ['Arland'],
-    surfaces: { grass: 'Grass_03', meadow: 'Grass_02', forest: 'ForestConiferous_01_Base', forestConifer: 'ForestPine_01_Base', clearing: 'ForestClearing_Coniferous_01', field: 'Crop_Field_02', dirt: 'Dirt_02', rock: 'Debris_Rock_01', scree: 'Pebbles_01', beach: 'Grass_03_coastal', seabed: 'SeaBed_01', town: 'Concrete_01', heath: 'Heather_01' },
+    surfaces: { grass: 'Grass_03', meadow: 'Grass_02', forest: 'ForestConiferous_01_Base', forestConifer: 'ForestPine_01_Base', clearing: 'ForestClearing_Coniferous_01', field: 'Grass_02', dirt: 'Dirt_01', rock: 'Debris_Rock_01', scree: 'Debris_Rock_01', beach: 'Grass_03_coastal', seabed: 'SeaBed_01', town: 'Concrete_01', heath: 'Heather_01' },
     vegetation: { trees: [w(VEG.pine, 4), w(VEG.pineF, 2), w(VEG.spruce, 2), w(VEG.birch, 2), w(VEG.hornbeam, 1)], bushes: [w(VEG.hazel, 2), w(VEG.hazel2, 1)], treesPerHa: 380, bushesPerHa: 120, gardenTrees: [w(VEG.apple, 2), w(VEG.birch, 1)] },
     buildingStyle: 'western',
     fences: { front: [FENCES.wood1, FENCES.metalDecoE2, FENCES.wood3], side: [FENCES.wood2, FENCES.woodRural] },
     props: [PROPS.woodLogB, PROPS.firewoodCrate, PROPS.hayBale, PROPS.beehiveGreen],
-    road: { paved: 'Asphalt_01', dirt: 'Dirt_02', village: 'Concrete_01' },
+    // Arland paints no crop and no Dirt_02 (FIELDS_SURFACES_VANILLA §1: Dirt_01 5.6 %, Pebbles_02 5.2 %): fields are
+    // meadow patches, dirt / shoulders Dirt_01 (Dirt_02 / Crop_Field_02 were the dark speckled bands), river bed Pebbles_02
+    // (scree = Debris_Rock_01 made dark blotches under shallow water)
+    road: { paved: 'Asphalt_01', dirt: 'Dirt_01', village: 'Concrete_01' },
+    riverBed: 'Pebbles_02',
     drape: { ground: '#738f4f', forest: '#2f4f2a', field: '#b09f5c', rock: '#85806f', sand: '#d1c393', water: '#3d6a86' },
     missing: { en: 'Nothing: full vanilla set.', fr: 'Rien : jeu vanilla complet.' },
   },

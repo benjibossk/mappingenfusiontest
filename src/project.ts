@@ -94,6 +94,15 @@ export interface Project {
   entities?: ProjectEntity[]
   remove?: number[] // X/Z origins of objects already in the world to delete (taken over or removed in the map)
   ffBiome?: number // Freedom Fighters JWK_EWorldBiome flag set on JWK_WorldEntity.m_iBiome (src/ffbiome.ts)
+  /** after the Apply, the bridge calls MG_SetupWorld (MG_SetupWorldApi.c): base world managers (CameraManager,
+   *  Lighting, FogHaze, EnvProbe...) created only when absent; bounds rocks / save off unless set */
+  setupWorld?: { managers?: boolean; bounds?: boolean; save?: boolean }
+  /** names (or "PREFIX*") the Apply must not remove although their family is sent (forests sent in batches) */
+  locked?: string[]
+  /** a full send: the families of earlier sends missing from this one are cleared too (bridge families.json) */
+  replaceAll?: boolean
+  /** families a full send leaves in place (forests sent later, in batches) */
+  keep?: string[]
 }
 
 export const GENERATORS = {

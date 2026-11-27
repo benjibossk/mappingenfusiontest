@@ -3,6 +3,7 @@
 // after each stroke step (cheap), rivers can follow live.
 
 import { noise2 } from './island'
+import { applyIslandCoast } from './edgeBand'
 
 export class Sculpt {
   readonly mc: number // macro nodes per side
@@ -14,6 +15,10 @@ export class Sculpt {
   private step: number
   private maxHeight: number
   seaDepth = 30
+  seed = 1
+  /** map made from a picture: the land shrunk into an island with the random generator's coast (edgeBand.ts);
+   *  other maps (generated islands, imported worlds, worldgen.ts) keep the former 6 % edge ramp */
+  islandCoast = false
   private keepFine = false
 
   constructor(
@@ -27,6 +32,7 @@ export class Sculpt {
     keepFine = false,
   ) {
     this.cols = cols
+    this.seed = seed
     this.step = step
     this.maxHeight = maxHeight
     const size = (cols - 1) * step
@@ -81,17 +87,24 @@ export class Sculpt {
         const m = this.macroAt(c * step, r * step)
         const rough = m > 0 ? 3 + 0.12 * Math.min(m, this.maxHeight) : 1.5
         let h = this.keepFine ? m + this.detail[r * cols + c] : m + this.detail[r * cols + c] * rough
-        // the map edge stays sea whatever is painted: no land cut by the border
-        const edge = Math.min(c, r, cols - 1 - c, cols - 1 - r) / (cols - 1)
-        if (edge < 0.06) {
-          const t = edge / 0.06
-          const floor = -this.seaDepth
-          h = floor + (Math.min(h, -2) - floor) * t * t + (h - Math.min(h, -2)) * t * t * t
-        }
         this.heights[r * cols + c] = h
       }
     }
+    // the map edge stays sea whatever is painted
+    if (this.islandCoast) applyIslandCoast(this.heights, cols, cols, step, this.seed, this.seaDepth)
+    else this.legacyRamp()
     return this.heights
+  }
+
+  //! the edge of every map but the picture ones: last 6 % of the map forced down to the sea floor
+  private legacyRamp() {
+    const { cols } = this
+    for (let r = 0; r < cols; r++) for (let c = 0; c < cols; c++) {
+      const edge = Math.min(c, r, cols - 1 - c, cols - 1 - r) / (cols - 1)
+      if (edge >= 0.06) continue
+      const t = edge / 0.06, floor = -this.seaDepth, i = r * cols + c, h = this.heights[i]
+      this.heights[i] = floor + (Math.min(h, -2) - floor) * t * t + (h - Math.min(h, -2)) * t * t * t
+    }
   }
 
   //! one brush step on the macro grid. dt-like strength: metres per step at the brush centre.

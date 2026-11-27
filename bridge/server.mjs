@@ -21,8 +21,9 @@
 // No dependencies: node bridge/server.mjs
 
 import { missingBaseEntities } from "./world-setup.mjs";
+import { familiesPlan } from "./families.mjs";
 import { createServer } from "node:http";
-import { execFile, spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { Socket } from "node:net";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -30,7 +31,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { listTerrainMaterials, prepareTerrain } from "./terrain-file.mjs";
-import { maskSide, middlesPath, png, resetTerrainMiddles, terrainMiddles, writeMasks, writeSatellite } from "./terrain-masks.mjs";
+import { maskSide, png, writeMasks, writeSatellite } from "./terrain-masks.mjs";
 import { handleAtelier } from "./atelier.mjs";
 import { handleOutside } from "./outside.mjs";
 
@@ -88,7 +89,20 @@ function setupWorldParams(o, size) {
     normalMenu: String(b.normalMenu ?? ""), bordersMenu: String(b.bordersMenu ?? "") };
 }
 
-function callWorkbench(apiFunc, params = {}, timeoutMs = 120_000) {
+// The NET API listener refuses connections for a while after a long call (heightmap / setup world):
+// a refused connection is retried for up to 90 s instead of failing the whole send (picture 120, round 9: MG_ApplyProject ECONNREFUSED).
+async function callWorkbench(apiFunc, params = {}, timeoutMs = 120_000) {
+  const until = Date.now() + (timeoutMs >= 60_000 ? 90_000 : 0);
+  for (;;) {
+    try { return await callWorkbenchOnce(apiFunc, params, timeoutMs); }
+    catch (e) {
+      if (!/ECONNREFUSED/.test(e.message) || Date.now() > until) throw e;
+      await new Promise((ok) => setTimeout(ok, 3000));
+    }
+  }
+}
+
+function callWorkbenchOnce(apiFunc, params = {}, timeoutMs = 120_000) {
   const version = Buffer.alloc(4);
   version.writeInt32LE(1);
   const request = Buffer.concat([
@@ -243,6 +257,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/audit") {
       const out = join(tmpdir(), `mg-audit-${process.pid}.json`);
       rmSync(out, { force: true });
+      const auditStart = Date.now() - 2000;
       const script = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "mg-audit.mjs");
       await new Promise((ok) => execFile(process.execPath, [script, "--live", "--json", out], { timeout: 180000 }, () => ok()));
       if (!existsSync(out)) return send(res, 500, { status: "error", message: "audit failed (Workbench closed?)" });
@@ -253,7 +268,10 @@ const server = createServer(async (req, res) => {
       try {
         const wb = await callWorkbench("MG_ListMaterials", {}, 5_000);
         const f = worldFile(wb?.world);
-        if (f) base = missingBaseEntities(f);
+        // the live world too (entities.txt, just rewritten by mg-audit --live): the send's setup is not saved yet
+        const ents = join(PROFILE_DIR, "MapGen", "entities.txt");
+        const live = existsSync(ents) && statSync(ents).mtimeMs >= auditStart ? readFileSync(ents, "latin1") : "";
+        if (f) base = missingBaseEntities(f, live);
       } catch { /* Workbench busy: skip this check */ }
       if (base) { counts.base = base.length; r.findings.base = base; }
       return send(res, 200, { status: "ok", counts, terrain: r.terrain, findings: Object.fromEntries(Object.entries(r.findings).map(([k, l]) => [k, l.slice(0, 20)])) });
@@ -304,14 +322,22 @@ const server = createServer(async (req, res) => {
         add("entities", o);
       }
       parts.push(cur);
-      // hand-made work to keep: profile/MapGen/locked.json = ["NAME", "PREFIX*", ...]. Honoured only once
-      // MG_ApplyProjectPlugin.c reads the "locked" field (TODO addon side); unknown JSON fields are ignored until then.
+      // hand-made work to keep: profile/MapGen/locked.json = ["NAME", "PREFIX*", ...], read by
+      // MG_ApplyProjectPlugin.c (IsLocked): those root entities are never removed by the family replace.
       let locked = [];
       try { const l = JSON.parse(readFileSync(join(PROFILE_DIR, "MapGen", "locked.json"), "utf-8")); if (Array.isArray(l)) locked = l.filter((x) => typeof x === "string" && x); } catch {}
+      // + the names the project itself keeps (forests sent in batches: the batches already sent)
+      if (Array.isArray(project.locked)) for (const x of project.locked) if (typeof x === "string" && x && !locked.includes(x)) locked.push(x);
       if (locked.length) console.log(`[apply] ${locked.length} locked name(s)/prefix(es) passed to the Workbench`);
+      // families of earlier sends that this full send no longer has: cleared too (floating rocks of an older map)
+      const famFile = join(PROFILE_DIR, "MapGen", "families.json");
+      let famStored = null;
+      try { const l = JSON.parse(readFileSync(famFile, "utf-8")); if (Array.isArray(l)) famStored = l; } catch {}
+      const fam = familiesPlan(famStored, project);
+      if (fam.clear.length) console.log(`[apply] families of earlier sends cleared: ${fam.clear.join(" ")}`);
       for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (/^mapgen\.\d+\.json$/.test(f)) rmSync(join(PROFILE_DIR, "MapGen", f));
       parts.forEach((p, k) => {
-        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0, ...(locked.length ? { locked } : {}) } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
+        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0, ...(locked.length ? { locked } : {}), ...(fam.clear.length ? { clearFamilies: fam.clear } : {}) } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
         writeFileSync(k === 0 ? PROJECT_FILE : join(PROFILE_DIR, "MapGen", `mapgen.${k}.json`), JSON.stringify(body), "utf-8");
       });
       console.log(`[apply] ${project.shapes.length} shapes, ${(project.entities ?? []).length} objects in ${parts.length} file(s)`);
@@ -320,6 +346,7 @@ const server = createServer(async (req, res) => {
       writeFileSync(join(PROFILE_DIR, "MapGen", "sent.txt"), sent.lines.join("\n"), "utf-8");
       rmSync(join(PROFILE_DIR, "MapGen", "built.txt"), { force: true });
       const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" }, 600_000); // big worlds take minutes
+      if (result.status !== "error") { try { writeFileSync(famFile, JSON.stringify(fam.after), "utf-8"); } catch {} }
       if (Array.isArray(project.comments)) await pushComments(project.comments).catch((e) => console.log("[apply] comments: " + e.message));
       // opt-in post-Apply world setup (MG_SetupWorldApi.c): managers, world-bounds rocks, save
       if (project.setupWorld && result.status !== "error") {
@@ -419,17 +446,15 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/masks") {
-      const { addon, world, terrainSize, surfaces, colours, roads = [], fileNames, readme, satSource, relief, seed } = JSON.parse(await readBody(req));
+      const { addon, world, terrainSize, surfaces, colours, roads = [], fileNames, readme, relief, seed, biome } = JSON.parse(await readBody(req));
       if (!/^[\w .-]+$/.test(addon ?? "") || !/^[\w/ .-]+$/.test(world ?? "") || world.includes(".."))
         return send(res, 400, { error: "addon / world invalid" });
       if (!(terrainSize > 0) || !Array.isArray(surfaces)) return send(res, 400, { error: "terrainSize / surfaces missing" });
       const side = maskSide(join(ADDONS_DIR, addon, world, basename(world) + ".terr"));
       const dir = join(PROFILE_DIR, "MapGen", "masks", basename(world));
       const result = writeMasks(dir, side, terrainSize, surfaces, roads, colours, { fileNames, readme });
-      let source = satSource === "clean" ? "clean" : "vanilla";
-      if (source === "vanilla" && !vanillaTexturesReady()) { source = "clean"; result.satNote = "textures vanilla non générées: lance npm run satmap:textures"; }
       if (colours) result.satellite = writeSatellite(join(dir, "..", basename(world) + "_satellite.png"), 4096, terrainSize, surfaces, colours, undefined, roads,
-        { source, relief: source === "clean" ? relief : undefined, seed });
+        { relief, seed, biome });
       return send(res, 200, result);
     }
 
@@ -492,6 +517,7 @@ const server = createServer(async (req, res) => {
 
     send(res, 404, { error: "unknown route" });
   } catch (e) {
+    console.error(`[bridge] ${req.method} ${req.url} failed: ${e.message}`);
     send(res, 502, { error: e.message });
   }
 });
@@ -564,28 +590,3 @@ function compareBuilt(project, warnings) {
   return { lines: [summary, "", ...lines], summary };
 }
 
-// vanilla satmap textures (BI-derived, never in the repo): generated once from the user's own game install
-// (scripts/harvest-terrain-middles.ts, ENFUSION_GAME_PATH or its default path); false = fall back to clean
-let triedHarvest = false;
-function vanillaTexturesReady() {
-  if (terrainMiddles().size) return true;
-  if (triedHarvest) return false;
-  triedHarvest = true;
-  try {
-    const game = findGameDir();
-    if (!game) return false;
-    spawnSync(`npx tsx scripts/harvest-terrain-middles.ts "${game}"`, { cwd: join(dirname(fileURLToPath(import.meta.url)), ".."), shell: true, stdio: "ignore", timeout: 300000 });
-  } catch { /* no game install: clean mode */ }
-  resetTerrainMiddles();
-  return existsSync(middlesPath()) && terrainMiddles().size > 0;
-}
-//! installed Arma Reforger (game, not Tools): ENFUSION_GAME_PATH, then every Steam library (libraryfolders.vdf)
-function findGameDir() {
-  const libs = [process.env.ENFUSION_GAME_PATH ? dirname(dirname(dirname(process.env.ENFUSION_GAME_PATH))) : null];
-  for (const steam of ["C:/Program Files (x86)/Steam", "C:/Program Files/Steam", "D:/Steam", "D:/SteamLibrary"]) {
-    libs.push(steam);
-    try { for (const m of readFileSync(join(steam, "steamapps", "libraryfolders.vdf"), "utf-8").matchAll(/"path"\s+"([^"]+)"/g)) libs.push(m[1].replace(/\\/g, "/")); } catch { /* no Steam here */ }
-  }
-  const cands = [process.env.ENFUSION_GAME_PATH, ...libs.filter(Boolean).map((l) => join(l, "steamapps", "common", "Arma Reforger"))];
-  return cands.find((d) => d && existsSync(join(d, "addons", "data"))) ?? null;
-}

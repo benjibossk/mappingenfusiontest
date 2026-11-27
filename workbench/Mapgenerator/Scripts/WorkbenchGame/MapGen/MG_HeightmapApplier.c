@@ -18,6 +18,10 @@ class MG_HeightmapApplier
 	protected float m_fMinX, m_fMinZ, m_fStep;
 	protected int m_iCols, m_iRows;
 	protected ref array<float> m_aH = {};
+	// finer local patches (heightpatch.txt, written by the bridge: harbour quay step at 2 m), sampled before the grid
+	protected ref array<float> m_aPHead = {}; // minX minZ step cols rows, 5 per patch
+	protected ref array<float> m_aPH = {};
+	protected ref array<int> m_aPOff = {};
 
 	//------------------------------------------------------------------------------------------------
 	//! Returns a report; starts with "error:" on failure.
@@ -26,6 +30,7 @@ class MG_HeightmapApplier
 		string err = Load(file);
 		if (err)
 			return "error: " + err;
+		int patches = LoadPatches("$profile:MapGen/heightpatch.txt");
 
 		WorldEditor worldEditor = Workbench.GetModule(WorldEditor);
 		WorldEditorAPI api = worldEditor.GetApi();
@@ -104,13 +109,31 @@ class MG_HeightmapApplier
 		float cz = (mins[2] + maxs[2]) * 0.5;
 
 		return string.Format("%1 x %2 grid (step %3 m) on %4 x %5 vertices (cell %6 m), %7/%8 tiles written", m_iCols, m_iRows, m_fStep, vx, vz, cell, tiles, tilesX * tilesZ)
-			+ string.Format(" (first tile: get %1, %2 values; begin %3; centre now %4, wanted %5)", firstGet, firstCount, began, api.GetTerrainSurfaceY(cx, cz), Sample(cx, cz)) + string.Format(" (129-wide writes %1)", tilesFull);
+			+ string.Format(" (first tile: get %1, %2 values; begin %3; centre now %4, wanted %5)", firstGet, firstCount, began, api.GetTerrainSurfaceY(cx, cz), Sample(cx, cz)) + string.Format(" (129-wide writes %1, %2 fine patch(es))", tilesFull, patches);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	//! bilinear, clamped to the grid
 	protected float Sample(float x, float z)
 	{
+		for (int p; p < m_aPOff.Count(); p++)
+		{
+			float pst = m_aPHead[p * 5 + 2];
+			int pc = m_aPHead[p * 5 + 3];
+			int pr = m_aPHead[p * 5 + 4];
+			float qx = (x - m_aPHead[p * 5]) / pst;
+			float qz = (z - m_aPHead[p * 5 + 1]) / pst;
+			if (qx < 0 || qz < 0 || qx > pc - 1 || qz > pr - 1)
+				continue;
+			int px = Math.Min(Math.Floor(qx), pc - 2);
+			int pz = Math.Min(Math.Floor(qz), pr - 2);
+			float tx = qx - px;
+			float tz = qz - pz;
+			int j = m_aPOff[p] + pz * pc + px;
+			float pa = m_aPH[j] + (m_aPH[j + 1] - m_aPH[j]) * tx;
+			float pb = m_aPH[j + pc] + (m_aPH[j + pc + 1] - m_aPH[j + pc]) * tx;
+			return pa + (pb - pa) * tz;
+		}
 		float gx = Math.Clamp((x - m_fMinX) / m_fStep, 0, m_iCols - 1);
 		float gz = Math.Clamp((z - m_fMinZ) / m_fStep, 0, m_iRows - 1);
 		int x0 = Math.Min(Math.Floor(gx), m_iCols - 2);
@@ -121,6 +144,52 @@ class MG_HeightmapApplier
 		float a = m_aH[i] + (m_aH[i + 1] - m_aH[i]) * fx;
 		float b = m_aH[i + m_iCols] + (m_aH[i + m_iCols + 1] - m_aH[i + m_iCols]) * fx;
 		return a + (b - a) * fz;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! per patch: a line "minX minZ step cols rows", then rows lines of values (row-major, row 0 = south); missing file = no patch
+	protected int LoadPatches(string file)
+	{
+		m_aPHead.Clear();
+		m_aPH.Clear();
+		m_aPOff.Clear();
+		if (!FileIO.FileExists(file))
+			return 0;
+		FileHandle fh = FileIO.OpenFile(file, FileMode.READ);
+		if (!fh)
+			return 0;
+		string head, line;
+		array<string> parts = {};
+		while (fh.ReadLine(head) >= 0)
+		{
+			parts.Clear();
+			head.Split(" ", parts, true);
+			if (parts.Count() < 5)
+				break;
+			int cols = parts[3].ToInt();
+			int rows = parts[4].ToInt();
+			if (cols < 2 || rows < 2)
+				break;
+			int off = m_aPH.Count();
+			for (int k; k < 5; k++)
+				m_aPHead.Insert(parts[k].ToFloat());
+			for (int r; r < rows && fh.ReadLine(line) >= 0; r++)
+			{
+				parts.Clear();
+				line.Split(" ", parts, true);
+				foreach (string v : parts)
+					m_aPH.Insert(v.ToFloat());
+			}
+			if (m_aPH.Count() != off + cols * rows)
+			{
+				m_aPH.Resize(off);
+				m_aPHead.Resize(m_aPHead.Count() - 5);
+				break;
+			}
+			m_aPOff.Insert(off);
+		}
+		fh.Close();
+		return m_aPOff.Count();
 	}
 
 	//------------------------------------------------------------------------------------------------

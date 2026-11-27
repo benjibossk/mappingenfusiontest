@@ -67,7 +67,11 @@ class MG_SetupWorld : NetApiHandler
 		"Prefabs/World/Game/PreloadManager.et",
 		"Prefabs/World/Game/ForestSyncManager.et",
 		"Prefabs/Sounds/SoundWorld/SoundWorld_Base.et",
-		"Prefabs/Sounds/Environment/AmbientSounds_Everon.et"
+		"Prefabs/Sounds/Environment/AmbientSounds_Everon.et",
+		// the rest of the vanilla Entities Setup list (1_BaseWorldSetup.conf), also flagged by bridge/world-setup.mjs
+		"Prefabs/Systems/Radio/RadioBroadcastManager_Everon.et",
+		"Prefabs/Sounds/Music/MusicManager_Base.et",
+		"Prefabs/World/Game/MapEntity.et"
 	};
 
 	//! same order as MANAGERS: entity classes that already fill the role (a hand-placed light, fog,
@@ -84,7 +88,10 @@ class MG_SetupWorld : NetApiHandler
 		"BasePreloadManager|SCR_PreloadManager",
 		"",
 		"SoundWorld",
-		""
+		"",
+		"",
+		"",
+		"SCR_MapEntity"
 	};
 
 	protected ref map<string, ResourceName> m_mFound = new map<string, ResourceName>();

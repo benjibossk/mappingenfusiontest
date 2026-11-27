@@ -98,9 +98,9 @@ test('opt-in ground biome body + bridge writes import-ordered names and LISEZMOI
     assert.ok(files.some(f => /__manquant\.png$/.test(f)))
     assert.match(readFileSync(join(r.orderDir!, '00_LISEZMOI_import.txt'), 'utf-8'), /Ordre d'import/)
     rmSync(r.orderDir!, { recursive: true, force: true })
-    // default call unchanged: plain surface names, no readme
+    // default call: plain surface names, no readme; SeaBed_01 from the previous export is blanked (stale-layer fix)
     const r2 = writeMasks(dir, 65, (cols - 1) * step, body.surfaces, [], null)
-    assert.deepEqual(readdirSync(dir).sort(), ['Grass_01.png']); assert.deepEqual(r2.written, ['Grass_01'])
+    assert.deepEqual(readdirSync(dir).sort(), ['Grass_01.png', 'SeaBed_01.png', 'mapgen-layers.json']); assert.ok(r2.written.includes('Grass_01'))
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 

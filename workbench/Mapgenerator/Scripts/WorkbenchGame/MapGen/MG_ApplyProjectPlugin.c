@@ -11,7 +11,9 @@ class MG_ProjectShape : JsonApiStruct
 	ref array<string> paramKeys = {};	//!< generator properties (RoadWidth, AdjustHeightMap...)
 	ref array<string> paramValues = {};
 	ref array<float> lift = {};	//!< optional metres above the terrain per point (water level); empty = on the terrain
+	ref array<int> junctions = {};	//!< power line: point indices where a branch leaves (default m_JunctionData)
 	bool powerSource;		//!< power line: point 0 is a power source (SCR_PowerlineGeneratorJunctionData.m_bPowerSource)
+	bool perPoint;		//!< power line: one pole per point (SCR_PowerlineGeneratorPointData.m_bGeneratePerPoint)
 
 	void MG_ProjectShape()
 	{
@@ -24,6 +26,8 @@ class MG_ProjectShape : JsonApiStruct
 		RegV("paramValues");
 		RegV("lift");
 		RegV("powerSource");
+		RegV("junctions");
+		RegV("perPoint");
 	}
 }
 
@@ -39,6 +43,10 @@ class MG_ProjectEntity : JsonApiStruct
 	string layer;		//!< "<type>_<ix>_<iz>" (web tool, 2 km squares) -> layer MG_<layer>; empty = MG_RoadSigns
 	int pitch;			//!< degrees, tilt on the slope (small props / fences); 0 = upright
 	int roll;
+	int pitchcd;		//!< centi-degrees, exact tilt of pitched bridge decks (wins over pitch / roll)
+	int rollcd;
+	int yawcd;			//!< centi-degrees, exact yaw when it has decimals (web bridge); wins over yaw
+	int scalepm;		//!< uniform scale in per mille (vanilla tree / bush size variation); 0 = 1
 
 	void MG_ProjectEntity()
 	{
@@ -51,6 +59,10 @@ class MG_ProjectEntity : JsonApiStruct
 		RegV("layer");
 		RegV("pitch");
 		RegV("roll");
+		RegV("pitchcd");
+		RegV("rollcd");
+		RegV("scalepm");
+		RegV("yawcd");
 	}
 }
 
@@ -61,6 +73,7 @@ class MG_Project : JsonApiStruct
 	ref array<ref MG_ProjectEntity> entities = {};
 	ref array<float> remove = {};	//!< X/Z pairs: origins of objects already in the world to delete (taken over or removed in the web map)
 	ref array<string> locked = {};	//!< names never removed; an entry ending with * is a name prefix (bridge: profile/MapGen/locked.json)
+	ref array<string> clearFamilies = {};	//!< more families to replace although nothing of them is sent (what a previous send made: bridge families.json)
 	int ffBiome;	//!< Freedom Fighters JWK_EWorldBiome flag (1 woodland, 2 winter, 4 desert, 8 jungle), 0 = leave as is
 
 	void MG_Project()
@@ -70,6 +83,7 @@ class MG_Project : JsonApiStruct
 		RegV("entities");
 		RegV("remove");
 		RegV("locked");
+		RegV("clearFamilies");
 		RegV("ffBiome");
 	}
 }
@@ -240,6 +254,11 @@ class MG_ProjectApplier
 			AddFamily(families, fs.id);
 		foreach (MG_ProjectEntity fe : project.entities)
 			AddFamily(families, fe.id);
+		foreach (string cf : project.clearFamilies)
+		{
+			if (cf.Length() > 1 && cf.EndsWith("_") && !families.Contains(cf))
+				families.Insert(cf);
+		}
 		array<IEntitySource> old = {};
 		for (int i = api.GetEditorEntityCount() - 1; i >= 0; i--)
 		{
@@ -276,11 +295,15 @@ class MG_ProjectApplier
 				}
 			}
 		}
-		// a shape still selected in the spline tool while it is deleted leaves the tool on a dead entity (crash on the next click)
-		if (!old.IsEmpty())
-			api.ClearEntitySelection();
-		foreach (IEntitySource src : old)
-			api.DeleteEntity(src);
+		// one batch delete (one-by-one DeleteEntity crashed the Workbench, 2026-11-24), after renaming every target to
+		// a unique name: the editor finds an entity by name inside its delete action, so sources sharing a name were
+		// refused silently (668 on one send, PARCEL_ fences left floating at sea, 2026-11-26). See MG_WorldClean.
+		int leftCount = MG_WorldClean.DeleteSources(api, old);
+		if (leftCount > 0)
+			Print(string.Format("[MapGen] %1 old object(s) refused by DeleteEntities (still in the world)", leftCount), LogLevel.WARNING);
+		// names already in the world (locked work, other families): a new object never takes one of them
+		set<string> taken = new set<string>();
+		MG_WorldClean.RootNames(api, taken);
 
 		// report of what was really built, line per shape / object, compared by the bridge with what was sent
 		// S <id> <ok|FAIL> <points sent> <points built> <generator children>   E <id> <ok|FAIL> <x> <z>
@@ -294,9 +317,12 @@ class MG_ProjectApplier
 			done++;
 			if (done % 50 == 0)
 				Print(string.Format("[MapGen] progress: shapes %1/%2", done, nShapes), LogLevel.NORMAL);
-			IEntitySource shapeMade = MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, Layer(api, LayerFor(shape.id, shape.generator)), shape.lift, shape.powerSource);
+			IEntitySource shapeMade = MG_ShapeBuilder.Create(api, shape.id, shape.points, shape.closed, shape.generator, shape.kind == "spline", shape.paramKeys, shape.paramValues, Layer(api, LayerFor(shape.id, shape.generator)), shape.lift, shape.powerSource, shape.junctions, shape.perPoint);
 			if (shapeMade)
+			{
 				created++;
+				MG_WorldClean.MakeUnique(api, shapeMade, shape.id, taken);
+			}
 			if (rep)
 			{
 				int nPts = 0;
@@ -355,14 +381,22 @@ class MG_ProjectApplier
 			}
 			if (made)
 			{
+				MG_WorldClean.MakeUnique(api, made, ent.id, taken);
 				// the angles argument of CreateEntity is ignored here: set the yaw explicitly.
 				// StaticModelEntity (e.g. eroded banks) has no "angles": it uses angleX/Y/Z
-				string rot = "0 " + ent.yaw.ToString() + " 0";
+				float yawF = ent.yaw;
+				if (ent.yawcd != 0)
+					yawF = ent.yawcd * 0.01;
+				string rot = "0 " + yawF.ToString() + " 0";
 				if (ent.pitch != 0 || ent.roll != 0) // small props / fences tilted on the slope (web tool, SlopeAngles convention)
-					rot = ent.pitch.ToString() + " " + ent.yaw.ToString() + " " + ent.roll.ToString();
+					rot = ent.pitch.ToString() + " " + yawF.ToString() + " " + ent.roll.ToString();
+				if (ent.pitchcd != 0 || ent.rollcd != 0) // bridge deck on its common pitched line (web tool water.ts)
+					rot = (ent.pitchcd * 0.01).ToString() + " " + yawF.ToString() + " " + (ent.rollcd * 0.01).ToString();
 				if (ent.id.Contains("_BANK_")) // banks follow the slope; buildings stay upright (height sent by the site)
 					rot = SlopeAngles(api, ent.x, ent.z, ent.yaw);
 				api.SetVariableValue(made, null, "angles", rot);
+				if (ent.scalepm > 0)
+					api.SetVariableValue(made, null, "scale", (ent.scalepm * 0.001).ToString());
 				// some prefabs (buildings) keep their height relative to the terrain: the live origin then
 				// ends up at ground + asked. Measure the offset and store the height that lands on pos.
 				IEntity placedEnt = api.SourceToEntity(made);

@@ -58,7 +58,7 @@ export function median3(img: Rgba): Rgba {
 // ---- k-means ------------------------------------------------------------------------------------
 //! Deterministic k-means in CIELAB (k-means++ seeding with a fixed LCG, stride sampling).
 export function quantise(src: Rgba, o: QuantiseOptions = {}): Quantised {
-  const k = Math.max(1, Math.min(o.k ?? 5, 8))
+  const k = Math.max(1, Math.min(o.k ?? 5, 16))
   let img = src
   if (o.median) img = median3(img)
   if (o.blur) img = boxBlur(img, Math.round(o.blur))

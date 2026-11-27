@@ -284,10 +284,12 @@ if (terrain)
 let tStats = null;
 if (terrain && target) {
   let n = 0, bad = 0, max = 0, sum = 0;
-  for (let r = 0; r < target.rows; r++) for (let c = 0; c < target.cols; c++) {
-    const x = target.minX + c * target.step, z = target.minZ + r * target.step;
-    if (x >= terrain.minX + (terrain.cols - 1) * terrain.step || z >= terrain.minZ + (terrain.rows - 1) * terrain.step) continue;
-    const want = patchAt(x, z) ?? target.v[r * target.cols + c], d = terrain.at(x, z) - want;
+  // compared on the exported nodes (8 m): interpolating the 8 m export at the 4 m sent cells made up to 7.5 m of
+  // false gaps on steep river banks (119: 819 cells, 120: 2411), the sent grid is the finer one to interpolate
+  for (let r = 0; r < terrain.rows; r++) for (let c = 0; c < terrain.cols; c++) {
+    const x = terrain.minX + c * terrain.step, z = terrain.minZ + r * terrain.step;
+    if (x < target.minX || z < target.minZ || x > target.minX + (target.cols - 1) * target.step || z > target.minZ + (target.rows - 1) * target.step) continue;
+    const want = patchAt(x, z) ?? target.at(x, z), d = terrain.v[r * terrain.cols + c] - want;
     n++; sum += Math.abs(d);
     if (Math.abs(d) > max) max = Math.abs(d);
     if (Math.abs(d) > TOL) { bad++; if (findings.terrain.length < 500) findings.terrain.push({ x, z, sent: r1(want), built: r1(d + want), delta: r1(d) }); }

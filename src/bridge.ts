@@ -85,7 +85,7 @@ export const applyHeightmap = (grid: object) => post<{ message: string }>('/heig
 
 /** writes one mask PNG per surface + <world>_satellite.png, to import by hand in the Workbench */
 export const writeMasks = (body: object) =>
-  post<{ dir: string; written: string[]; satellite?: { file: string }; satNote?: string; orderDir?: string; ordered?: string[] }>('/masks', body)
+  post<{ dir: string; written: string[]; satellite?: { file: string }; orderDir?: string; ordered?: string[] }>('/masks', body)
 
 /** writes profile/MapGen/ingamemap.png from an RGBA buffer (renderIngameMap in modules/ingameMap.ts) */
 export function writeIngameMap(img: { width: number; height: number; data: Uint8ClampedArray }) {
@@ -141,7 +141,7 @@ export async function pushComments(comments: WbComment[]): Promise<boolean> {
 /** live audit of the open world after a send (bridge POST /audit = scripts/mg-audit.mjs --live) */
 export interface AuditResult { status: string; counts: Record<string, number>; findings: Record<string, Record<string, unknown>[]>; message?: string }
 export async function auditWorld(): Promise<AuditResult> {
-  const res = await fetch(`${BRIDGE_URL}/audit`, { method: 'POST' })
+  const res = await fetch(`${BRIDGE_URL}/audit`, { method: 'POST', signal: AbortSignal.timeout(240000) }) // the bridge gives mg-audit 180 s
   const r = (await res.json()) as AuditResult
   if (!res.ok) throw new Error(r.message ?? `audit ${res.status}`)
   return r

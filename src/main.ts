@@ -25,7 +25,7 @@ import { FOREST_AVOID, GENERATORS, forestAvoidMissing, withAvoid, type Project, 
 import { openRealWorld, type RealPlace } from './realWorld'
 import { rasterCover, rle, unrle } from './modules/cover'
 import { osmBuildings } from './modules/realBuildings'
-import { WATER_TYPES, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, type Water, type WaterType } from './modules/water'
+import { WATER_TYPES, riverWetHalf, PICTURE_RIVER_DEPTH, PICTURE_SWELL_LAKE_DEPTH, carveWater, riverBanks, riverCourse, waterMasks, placeLakes, roadsOutOfWater, splitAtWater, bridges, riverBridges, bridgeRampPatches, patchedAt, nearBridge, traceRivers, waterShapes, inlandWaterMask, type Water, type WaterType } from './modules/water'
 import { refReadOnly, setRefReadOnly, BRIDGE_URL, applyHeightmap, getStatus, getExisting, getTemplates, getCamera, setCamera, pushComments, type WbComment, type WbCamera, getWorld, type Existing, type ExistingObject, type ExistingShape, type WorldExport, prepareSurfaces, sendToWorkbench, writeIngameMap, writeMasks as writeMasksRaw, auditWorld } from './bridge'
 import { computeSurfaces, settlementMask, SURFACE_COLOURS, generateIsland, overfullBlocks, type Island } from './modules/island'
 import { computeRivers } from './modules/hydro'
@@ -34,7 +34,8 @@ import { type CampaignResult } from './modules/campaign'
 import { CROP_COLOURS, colourCrops, type Crop } from './modules/fieldlayout'
 import { cutForests, isAutumnBiome, riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
-import { forestEdges, forestEdgeShapes } from './modules/forestEdge'
+import { forestEdges, forestEdgeShapes, forestFloorAreas } from './modules/forestEdge'
+import { clipRingToRect, coastRect, coastNoise, cutLineAtSea, islandMargin, keepOnIsland, polyCentroidSea, riverMouths, RIVER_MOUTH_M, SEA_CUT } from './modules/edgeBand'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
@@ -47,7 +48,7 @@ import { ZONE_FILL_TYPES, ZONE_MAX_SLOPE, ZONE_PRIORITY, clipPlots, cutRing, fil
 import { cutAtRoads } from './modules/roadGaps'
 import { dropCoveredPosts, extraGuardrails } from './modules/guardrails'
 import { noiseBerms } from './modules/noiseBerms'
-import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, roadShapes, snap, type Road, type RoadType } from './modules/roads'
+import { ROAD_COLOURS, ROAD_TYPES, carveRoads, centreLine, layBeds, roadFurniture, roadHalf, roadMasks, roadSigns, signsClearOf, roadShapes, snap, type Road, type RoadType } from './modules/roads'
 
 // map layers the user can hide (floating "Calques" panel)
 const LAYERS = ['existing', 'areas', 'countryside', 'fields', 'runoff', 'water', 'roads', 'power', 'furniture', 'sites', 'buildings', 'zones', 'bridges', 'issues', 'density', 'names', 'rp', 'desire', 'lights'] as const
@@ -108,11 +109,15 @@ function splitLongLegs(pts: number[], max: number, closed: boolean): number[] {
   }
   return out
 }
+const insideTerrain = <E extends { x: number; z: number }>(es: E[], g: { minX: number; minZ: number; step: number; cols: number; rows: number }) =>
+  es.filter((e) => e.x >= g.minX && e.z >= g.minZ && e.x <= g.minX + (g.cols - 1) * g.step && e.z <= g.minZ + (g.rows - 1) * g.step)
 const toWb = async (p: Project) => {
   const before = p.shapes.reduce((n, sh) => n + sh.points.length, 0), count = p.shapes.length
-  p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).map((sh) => (sh.kind === 'polyline' && sh.closed && !sh.lift?.length ? { ...sh, points: splitLongLegs(sh.points, 200, true) } : sh)).filter((sh) => sh.points.length >= 4) }
+  p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).map(liftRoadShape).map((sh) => (sh.kind === 'polyline' && sh.closed && !sh.lift?.length ? { ...sh, points: splitLongLegs(sh.points, 200, true) } : sh)).filter((sh) => sh.points.length >= 4) }
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   // Workbench layer per type and 2 km square, small props / fences tilted on the slope (VANILLA_PLACEMENT_OPTIM.md)
+  // nothing outside the terrain: an object past the edge stands in the void at its own height
+  if (p.entities?.length && island) p = { ...p, entities: insideTerrain(p.entities, island.grid) }
   if (p.entities?.length) { const ents = withWbLayers(p.entities); p = { ...p, entities: island ? withSlopeTilt(ents, islandHeightAt) : ents } }
   // every forest generator must avoid objects / roads / power lines (withAvoid forces it): 0 expected
   const noAvoid = forestAvoidMissing(p.shapes)
@@ -132,6 +137,8 @@ import { SITE_RADIUS, pickSites, type Site, type SiteKind } from './modules/netw
 import { validate, type Issue } from './modules/validate'
 import { applyFixes, bridgeChecks, heightRangeCheck, preSendChecks, zoneLines, type PreIssue } from './validate/preSend'
 import { generateForests } from './modules/forestgen'
+import { clipForestsToWater } from './modules/forestWater'
+import { sendForests } from './modules/forestBatches'
 import { worldToIsland } from './modules/importWorld'
 import { applySurfaceMasks, heightsFromImage, maskKind, maskOnGrid, readHeightFile, readPngImage, reliefMasks, type SurfaceMask } from './modules/gaeaImport'
 import type { ReliefMasks } from './modules/gaeaRelief'
@@ -152,6 +159,7 @@ import { suggestAirfield, parseAirfieldSub, generateAirfield, flattenAirfield, a
 import { airFootprint, airfieldConflicts, airfieldCost, clearAirfield, inFoot, snapAirfield, type ClearReport, type ClearWorld } from './modules/airClear'
 import { heightAt as gridHeight } from './modules/gen-common'
 import { suggestSurfaces, satelliteSurfaces, packRgbaMask, previewRgba, type Quantised } from './modules/satmask'
+import { IMAGE_FOREST_SHARE, IMG_ROLES, clearOfRoads, guessRoles as guessImgRoles, inImageWater, roadClass, squareHeights, type ClusterRole, type ImageMapResult, type ImgRole } from './modules/imageMap'
 import { withSlopeTilt } from './modules/slopeAlign'
 import { LAYERS as GEN_LAYERS, withWbLayers, markBuilt, setGlobalSeed, setLayerSeed, staleLayers, type LayerId, type LayerMap } from './modules/layers'
 import { applyPads, gradeLanes, layPads } from './modules/pads'
@@ -175,7 +183,7 @@ const GC_FIELDS: readonly [string, Key, keyof BiomeSettings, boolean][] = [
 import { finalLayers } from './preview/finalMasks'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, type ZoneLeafChoice } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
-import { sanitizeRoadShape } from './modules/roadSanitize'
+import { liftRoadShape, sanitizeRoadShape } from './modules/roadSanitize'
 import { camLookAt, worldToMap } from './modules/wbCamera'
 import { buildingsFor } from './data/buildings'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
@@ -505,6 +513,21 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="tReal" type="button" class="secondary" title="${t('hint.tReal')}">${t('btn.tReal')}</button>
         <button id="tImport" type="button" class="secondary" title="${t('hint.tImport')}">${t('btn.tImport')}</button>
         <button id="tGaea" type="button" class="secondary" title="${t('hint.tGaea')}">${t('btn.tGaea')}</button>
+        <button id="tImg" type="button" class="secondary" title="${t('img.tip')}">${t('img.btn')}</button>
+      </div>
+      <div id="imgBox" hidden>
+        <p class="hint">${t('img.help')}</p>
+        <div class="form">
+        <label class="wide">${t('img.file')} <input id="imgFile" type="file" accept="image/png,image/jpeg,image/webp,image/*"></label>
+        <label>${t('img.size')} <input id="imgSize" type="number" value="3" min="0.2" max="20" step="0.1"></label>
+        <label>${t('img.k')} <input id="imgK" type="number" value="12" min="3" max="16" step="1"></label>
+        <button id="imgAnalyse" type="button" class="secondary">${t('img.analyse')}</button>
+        </div>
+        <ul id="imgPal" class="swatches img-pal"></ul>
+        <div class="form">
+        <button id="imgGo" type="button">${t('img.go')}</button>
+        <span id="imgMsg" class="hint"></span>
+        </div>
       </div>
       <div id="gaeaBox" hidden>
         <p class="hint">${t('gaea.help')}</p>
@@ -788,6 +811,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="row">
         <button id="forestGen" type="button" class="secondary">${t('btn.forestGen')}</button>
         <button id="forestSend" type="button" class="secondary">${t('btn.forestSend')}</button>
+        <label title="${t('tip.forestBatch')}">${t('lbl.forestBatch')} <input id="forestBatch" type="number" min="0" step="10" value="40" style="width:5em"></label>
         <button id="areasClear" type="button" class="secondary">${t('btn.areasClear')}</button>
       </div>
       <details class="adv" id="satBox"><summary>${t('legend.sat')} ${info('info.sat')}</summary>
@@ -814,12 +838,16 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
       <div id="exportLayers" class="exportlayers" aria-live="polite"></div>
       <button id="sendAll" type="button" class="big">${t('btn.sendAll')}</button>
+      <label title="${t('lbl.wbBase.tip')}"><input type="checkbox" id="wbBase"> ${t('lbl.wbBase')}</label>
+      <label title="${t('lbl.forestLater.tip')}"><input type="checkbox" id="forestLater"> ${t('lbl.forestLater')}</label>
+      <!-- the Workbench check after a send: in sight under the send button (inside the closed pre-send details it
+           looked empty whenever everything was fine, since that box only opens on problems) -->
+      <div id="wbAudit" class="wbaudit" aria-live="polite" hidden></div>
       <details class="adv" id="checkBox"><summary>${t('legend.check')}</summary>
         ${hint('hint.check')}
         <label>${t('lbl.platform')} <select id="checkPlatform">${PLATFORMS.map((p) => `<option value="${p}"${p === 'xss' ? ' selected' : ''}>${t(('platform.' + p) as Parameters<typeof t>[0])}</option>`).join('')}</select></label>
         <button id="checkRun" type="button" class="secondary">${t('btn.check')}</button>
         <p id="checkDensity" class="hint"></p>
-        <div id="wbAudit" class="wbaudit" hidden></div>
         <button id="checkFixAll" type="button" class="secondary" hidden></button>
         <ul id="checkList" class="issues"></ul>
       </details>
@@ -842,7 +870,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <li><button id="tHeight" type="button" class="secondary">${t('btn.tHeight')}</button><span class="hint">${t('wb.open')}</span></li>
           <li><button id="tMasks" type="button" class="secondary">${t('btn.tMasks')}</button><span class="hint">${t('wb.thenImport')}</span></li>
         </ol>
-        <label>${t('lbl.satSource')} <select id="satSource"><option value="vanilla">${t('opt.satVanilla')}</option><option value="clean">${t('opt.satClean')}</option></select></label>
         <div class="hint">${t('hint.satSource')}</div>
         <details id="gcBox"><summary>${t('gc.title')}</summary>
           <label><input id="gcOn" type="checkbox"> ${t('gc.on')}</label>
@@ -1748,7 +1775,7 @@ function recompose(final: boolean) {
   // lanes are not carved: last, their ground is graded (pads.ts gradeLanes) over pads, berms and runoff beds
   gradeLanes(island.heights, g, setLanes.map((l) => l.pts), pads, beds?.weight)
   if (final) {
-    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, areas, landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks)
+    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, [...areas.filter((a) => a.kind !== 'forest'), ...forestFloorAreas(sentForests(areas.filter((a) => a.kind === 'forest')))], landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks, inlandWaterMask(g, waters))
     island.colours = { ...SURFACE_COLOURS, ...island.colours }
     if (island.surfaceMasks?.length) applySurfaceMasks(island.surfaces, island.surfaceMasks, (name) => { island!.colours[name] ??= [128, 120, 110] })
     const bad = overfullBlocks(island.surfaces)
@@ -2532,12 +2559,165 @@ function useWorld(w: WorldExport) {
   existing = { objects: [], shapes: [] }
   removed = []
   areas = []
+  // the zones (cliff rocks, scatter / field trees, sites) carry absolute heights of the previous relief: kept,
+  // they floated over / sank into the new one (map from an image: rocks in the rivers)
+  zones = []
+  worldBridges = []
+  riparian = []; ripaSig = ''
+  countryside = []
+  powerLines = []; powerStations = []; powerAccess = []
   landCover = null
   credits = []
   waterInfo()
   view.x = minX + (cols * step) / 2
   view.z = minZ + (rows * step) / 2
   view.mpp = (cols * step) / map.width
+}
+// --- map from an image (imageMap.ts): colours -> roles -> relief, water, roads, forests, buildings ---
+let imgSrc: { img: HTMLImageElement; file: File; rgba: { width: number; height: number; data: Uint8ClampedArray } } | null = null
+let imgQ: Quantised | null = null
+let imgRoles: ClusterRole[] = []
+$<HTMLButtonElement>('tImg').addEventListener('click', () => { const b = $<HTMLDivElement>('imgBox'); b.hidden = !b.hidden })
+$<HTMLInputElement>('imgFile').addEventListener('change', () => {
+  const f = $<HTMLInputElement>('imgFile').files?.[0]
+  imgQ = null; imgRoles = []; imgSrc = null
+  $('imgPal').textContent = ''
+  if (!f) return
+  const img = new Image()
+  img.onload = () => {
+    // working copy at most 1024 px on the long side (thin lines stay readable, the analysis stays fast)
+    const k = Math.min(1, 1024 / Math.max(img.width, img.height))
+    const cv = document.createElement('canvas')
+    cv.width = Math.max(1, Math.round(img.width * k)); cv.height = Math.max(1, Math.round(img.height * k))
+    const c2 = cv.getContext('2d')!
+    c2.drawImage(img, 0, 0, cv.width, cv.height)
+    const d = c2.getImageData(0, 0, cv.width, cv.height)
+    imgSrc = { img, file: f, rgba: { width: d.width, height: d.height, data: d.data } }
+    $<HTMLButtonElement>('imgAnalyse').click()
+  }
+  img.onerror = () => { $('imgMsg').textContent = t('err.traceImg', { name: f.name }) }
+  img.src = URL.createObjectURL(f)
+})
+function renderImgPalette() {
+  const ul = $('imgPal')
+  ul.textContent = ''
+  if (!imgQ) return
+  imgQ.palette.forEach(([r, g, b], i) => {
+    const li = el('li')
+    const sw = el('i', 'swatch')
+    sw.style.background = `rgb(${r},${g},${b})`
+    const pct = el('span', 'hint', `${(imgQ!.share[i] * 100).toFixed(1)} %`)
+    const sel = el('select')
+    sel.setAttribute('aria-label', t('img.pal', { n: i + 1 }))
+    for (const k of IMG_ROLES) { const o = el('option', '', t(('img.role.' + k) as Key)); o.value = k; sel.append(o) }
+    sel.value = imgRoles[i].role
+    const hgt = el('input') as HTMLInputElement
+    hgt.type = 'number'; hgt.step = '5'; hgt.className = 'img-h'
+    hgt.title = hgt.ariaLabel = t('img.h')
+    hgt.value = String(imgRoles[i].height ?? 25)
+    hgt.hidden = imgRoles[i].role !== 'band'
+    sel.addEventListener('change', () => { imgRoles[i] = { role: sel.value as ImgRole, ...(sel.value === 'band' ? { height: Number(hgt.value) || 25 } : {}) }; hgt.hidden = sel.value !== 'band' })
+    hgt.addEventListener('change', () => { if (imgRoles[i].role === 'band') imgRoles[i].height = Number(hgt.value) || 0 })
+    li.append(sw, pct, sel, hgt)
+    ul.append(li)
+  })
+}
+$<HTMLButtonElement>('imgAnalyse').addEventListener('click', () => {
+  if (!imgSrc) { $('imgMsg').textContent = t('img.noFile'); return }
+  const t0 = performance.now(), src = imgSrc
+  void track(runGen<Quantised>('imgCluster', [src.rgba, Math.max(3, Math.min(16, num('imgK') || 12))]).promise.then((q) => {
+    if (imgSrc !== src) return
+    imgQ = q
+    imgRoles = guessImgRoles(q)
+    renderImgPalette()
+    $('imgMsg').textContent = t('img.analysed', { n: q.palette.length, w: q.width, h: q.height, ms: Math.round(performance.now() - t0) })
+  }, (e) => { busyFailed = true; $('imgMsg').textContent = (e as Error).message }))
+})
+$<HTMLButtonElement>('imgGo').addEventListener('click', () => {
+  if (!imgSrc) { $('imgMsg').textContent = t('img.noFile'); return }
+  if (!imgQ) { $('imgMsg').textContent = t('img.noPal'); return }
+  if (!imgRoles.some((r) => r.role === 'land' || r.role === 'water' || r.role === 'band')) { $('imgMsg').textContent = t('img.noLand'); return }
+  const src = imgSrc, size = Math.max(200, (num('imgSize') || 3) * 1000)
+  void track(runGen<ImageMapResult>('imageMap', [imgQ, imgRoles, { size }]).promise.then((r) => {
+    if (imgSrc === src) applyImageMap(r, src.img, src.file)
+  }, (e) => { busyFailed = true; $('imgMsg').textContent = (e as Error).message }))
+})
+/** the woods generated for a relief-only picture (async): masks and forests wait for them (picture 120: masks
+ *  sent before the generated forests existed, forests without forest ground) */
+let imgForestGen: Promise<unknown> | null = null
+function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
+  // a picture map aims at the Arland look: on the default biome, paint with Arland's surfaces (Grass_03 main grass
+  // like vanilla Everon / Arland; the Everon set keeps the generators' Grass_01, browner in game); a chosen biome stays
+  if (currentBiome === DEFAULT_BIOME) setBiome('woodland_arland')
+  // the picture gives the water: no runoff simulation left on from an earlier world (it carved dry stream beds,
+  // dark Pebbles bands without any water entity, picture 119)
+  $<HTMLInputElement>('rLive').checked = false
+  const S = Math.round(Math.max(r.sizeX, r.sizeZ))
+  const hm = squareHeights(r.heights)
+  let lo = Infinity, hi = -Infinity
+  for (const v of hm.data) { if (v < lo) lo = v; if (v > hi) hi = v }
+  const w = heightsFromImage(hm, { size: S, minHeight: 0, maxHeight: 0 })
+  $<HTMLInputElement>('tSize').value = String(S)
+  useWorld(w)
+  imported = null // a new relief, not the world open in the Workbench
+  // a picture map ends as an island with the random generator's coast (edgeBand.ts), not a block with a sheer wall
+  sculpt!.islandCoast = true
+  island!.masks = undefined
+  island!.surfaceMasks = undefined
+  // roads: vanilla class from the drawn thickness, relative to the typical road of the picture
+  const ws = r.roads.filter((x) => x.kind === 'road').map((x) => x.width).sort((a, b) => a - b)
+  const median = ws.length ? ws[ws.length >> 1] : 1
+  for (const x of r.roads) { const type = roadClass(x.width, median, x.kind); roads.push({ id: nextRoadId(type), type, pts: x.pts }) }
+  for (const x of r.waters) {
+    if (x.kind === 'river') waters.push({ id: nextWaterId('river'), type: 'river', pts: x.pts, width: x.width, ...(x.widths ? { widths: x.widths } : {}), depth: PICTURE_RIVER_DEPTH, carve: false, wetEdge: true })
+    else waters.push({ id: nextWaterId('lake'), type: 'lake', pts: x.pts, width: 0, depth: x.onRiver ? PICTURE_SWELL_LAKE_DEPTH : 2, ...(x.onRiver ? { onRiver: true } : { level: 0 }) }) // a river swelling: level from its banks
+  }
+  r.areas.forEach((a, k) => areas.push({ id: `${a.kind === 'forest' ? 'FOREST' : 'FIELD'}_IMG_${k + 1}`, kind: a.kind, ...(a.kind === 'forest' ? { leaf: 'mixed' as const } : {}), pts: a.pts, holes: a.holes }))
+  // field edges of the picture: hedges, as the Fields zone tool lays them
+  if (r.hedges.length) {
+    result ??= { fields: [], hedges: [], shapes: [] }
+    for (const h of r.hedges) {
+      const pts: [number, number][] = []
+      for (let i = 0; i < h.length; i += 2) pts.push([h[i], h[i + 1]])
+      result.hedges.push(pts)
+      result.shapes.push({ id: `IMG_Hedge_${result.shapes.length}`, kind: 'polyline', closed: false, points: h.map((v) => Math.round(v * 100) / 100), generator: GENERATORS.hedgeCorylus })
+    }
+  }
+  // island coast (edgeBand.ts): roads stop at the shore, rivers end in a mouth just past it, lakes in the sea dropped
+  sculpt!.compose()
+  const coast = coastSea()
+  if (coast) {
+    roads = roads.flatMap((q) => cutLineAtSea(q.pts, coast).map((pts, k) => ({ ...q, id: k ? `${q.id}_${k + 1}` : q.id, pts })))
+    waters = waters.flatMap((w) => {
+      if (WATER_TYPES[w.type].closed) return polyCentroidSea(w.pts, coast) ? [] : [w]
+      const runs = cutLineAtSea(w.pts, coast, 4, 30)
+      if (runs.length === 1 && runs[0].length === w.pts.length) return [w]
+      return runs.map((pts, k) => ({ ...w, id: k ? `${w.id}_${k + 1}` : w.id, widths: undefined, pts: riverMouths(pts, w.pts, RIVER_MOUTH_M) }))
+    })
+  }
+  // no house in the water: off the traced river / lakes and off ground carved under the water level
+  settled = clearOfRoads(r.buildings, roads.map((q) => ({ pts: q.pts, half: roadHalf(q) }))).filter((b) => !inImageWater(r.waters, b.x, b.z, 6) && !(terrain && heightAt(terrain, b.x, b.z) < 1) && !coast?.(b.x, b.z)).map((b, i) => ({ id: `IMG_BLD_${i + 1}`, site: 'IMG', prefab: b.prefab, cat: b.cat, x: b.x, z: b.z, yaw: b.yaw, corners: b.corners, role: 'house' as const }))
+  $<HTMLInputElement>('tMax').value = String(Math.max(1, Math.ceil(hi)))
+  $<HTMLInputElement>('tSeaLevel').value = '0'
+  // the picture stays under the map as a tracing image (square pictures only: the tracing fills the terrain)
+  if (Math.abs(img.width - img.height) <= 2) { traceImg = img; void saveTrace(file) }
+  setInfo(); powerInfo(); waterInfo(); roadInfo()
+  recompose(true)
+  draw()
+  // a relief-only picture (no forest colour): woods like Arland (~11 % massifs + trees outside),
+  // generated on the relief, kept away from the drawn buildings
+  const okArgs = { roads: r.roads.length, waters: r.waters.length, bld: r.buildings.length, areas: r.areas.length, hedges: r.hedges.length, lo: Math.round(lo), hi: Math.round(hi) }
+  if (!r.areas.some((a) => a.kind === 'forest') && island) {
+    const isl = island, near: Site[] = settled.map((b, i) => ({ id: `IMG_S_${i}`, x: b.x, z: b.z, kind: 'hamlet' as const }))
+    imgForestGen = track(runGen<ReturnType<typeof generateForests>>('forests', [isl.heights, isl.grid, { seed: num('tSeed'), cover: 0.35, sites: near, biome: currentBiome, maxShare: IMAGE_FOREST_SHARE }]).promise.then((made) => {
+      if (island !== isl) return
+      made.forEach((f, k) => areas.push({ id: `FOREST_GEN_${k + 1}`, kind: 'forest', leaf: f.leaf, pts: f.pts }))
+      // the message is written before this async run ends: recount with the generated woods
+      $('imgMsg').textContent = logEl.textContent = t('img.ok', { ...okArgs, areas: r.areas.length + made.length })
+      recompose(true); draw(); autosave()
+    }, () => {}).finally(() => { imgForestGen = null }))
+  }
+  $('imgMsg').textContent = logEl.textContent = t('img.ok', okArgs)
 }
 // --- relief made in Gaea (or any terrain tool): heightmap + optional masks; roads, villages... are generated on it ---
 $<HTMLButtonElement>('tGaea').addEventListener('click', () => { const b = $<HTMLDivElement>('gaeaBox'); b.hidden = !b.hidden })
@@ -2595,28 +2775,38 @@ $<HTMLButtonElement>('tHeight').addEventListener('click', () =>
 )
 $<HTMLButtonElement>('tMasks').addEventListener('click', () =>
   run(t('run.l.masks'), async () => {
+    if (imgForestGen) await imgForestGen
     if (!island) throw new Error(t('err.genFirst'))
-    const r = await writeMasks({
-      addon: txt('tAddon'),
-      world: txt('tWorld'),
-      ...maskBody(island.surfaces),
-    })
-    return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '') + (r.satNote ? '\n' + t('hint.satNoVanilla') : '')
+    return masksNow()
   }),
 )
+/** writes the ground masks of the current map (masks button and "Tout envoyer": pictures 119 / 120, the mask files
+ *  on disk were still the previous map's when only "Tout envoyer" was used) */
+async function masksNow(): Promise<string> {
+  const r = await writeMasks({
+    addon: txt('tAddon'),
+    world: txt('tWorld'),
+    ...maskBody(island!.surfaces),
+  })
+  return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '')}
 
-// satmap texture source (licensing doubt on the BI middle textures): vanilla (default) or clean (no BI pixel)
-const satSourceSel = $<HTMLSelectElement>('satSource')
-try { satSourceSel.value = localStorage.getItem('reforger-mapper.satSource') === 'clean' ? 'clean' : 'vanilla' } catch { /* private window */ }
-satSourceSel.addEventListener('change', () => { try { localStorage.setItem('reforger-mapper.satSource', satSourceSel.value) } catch { /* storage blocked */ } })
-/** clean mode also sends the height grid (hillshade) and the seed; the PNG written stays the same file / size / format */
+// satmap: flat vanilla-matched colours + seeded noise (seed) + hillshade (relief), no game file read
 function satSourceBody(): Record<string, unknown> {
-  if (satSourceSel.value !== 'clean') return { satSource: 'vanilla' }
-  return { satSource: 'clean', seed: num('tSeed'), relief: island ? { ...island.grid, heights: Array.from(island.heights) } : undefined }
+  // satmap palette overrides (library/satmap-clean-palette.json "biomes"): climate ground classes first when on, then the map biome
+  const biome = $<HTMLInputElement>('gcOn').checked ? [gcBiome(), currentBiome] : [currentBiome]
+  return { seed: num('tSeed'), relief: island ? { ...island.grid, heights: Array.from(island.heights) } : undefined, biome }
+}
+// road mask ends at a lake pulled back by the band reach (asphalt half 4 + shoulder 5 m), see roadsOutOfWater
+const LAKE_MASK_TRIM = 9
+/** picture maps: road ground cut where the island coast put the sea, like the road shapes sent (keepOnIsland): a trail
+ *  dropped from the send left its pale Dirt_01 strip alone on the crest (picture 120 round 19) */
+function seaCutBands<T extends { points: number[] }>(bands: T[]): T[] {
+  const sea = coastSea()
+  return sea ? bands.flatMap((b) => cutLineAtSea(b.points, sea, 4, 0).map((points) => ({ ...b, points }))) : bands
 }
 /** the mask body of every export (and of the preview's final masks, preview/finalMasks.ts) */
 function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
-  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled), ...desireMasks(), ...roadMasks(roads), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
+  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...seaCutBands([...yardMasks(settled, 1, 'Grass_01', 'Dirt_01', roadClear()), ...desireMasks(), ...roadMasks(roadsOutOfWater(roads, roadShapes(roads), waters, LAKE_MASK_TRIM))]), ...waterMasks(waters), ...seaCutBands(roadMasks([...setLanes, ...setPaths])), ...buildingMasks(settled), ...seaCutBands([...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))]), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
 }
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
 const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => {
@@ -3697,7 +3887,7 @@ $<HTMLButtonElement>('roadClear').addEventListener('click', () => { roads = []; 
 $<HTMLButtonElement>('roadSend').addEventListener('click', () =>
   run(t('run.l.routes'), async () => {
     if (!roads.length) throw new Error(t('err.noRoad'))
-    return toWb({ version: 0, shapes: [...allRoadShapes(), ...powerShapes()], entities: [...($<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []), ...stationEntities(powerStations)] })
+    return toWb({ version: 0, shapes: [...allRoadShapes(), ...powerShapes()], entities: [...($<HTMLInputElement>('roadFurn').checked ? mySigns() : []), ...stationEntities(powerStations)] })
   }),
 )
 roadInfo()
@@ -3760,7 +3950,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
     logEl.textContent = t('test.p1')
     out.push(t('test.relief', { msg: (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message }))
     logEl.textContent = t('test.p2')
-    out.push(t('test.routes', { msg: await toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }) }))
+    out.push(t('test.routes', { msg: await toWb({ version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? mySigns() : [] }) }))
     logEl.textContent = t('test.p3')
     const r = await writeMasks({
       addon: txt('tAddon'), world: txt('tWorld'), ...maskBody(island.surfaces),
@@ -3776,7 +3966,7 @@ $<HTMLButtonElement>('roadTestAll').addEventListener('click', () =>
 function refreshFurniture() {
   if (!roads.length || !island) { furn = null; $<HTMLSpanElement>('furnInfo').textContent = ''; return }
   const shapes = allRoadShapes().filter((s) => s.kind === 'polyline')
-  const signs = roadSigns(roads, $<HTMLInputElement>('roadLeft').checked)
+  const signs = mySigns()
   furn = { shapes, signs }
   const len = (tag: string) => shapes.filter((s) => s.id.includes(tag)).reduce((a, s) => {
     for (let i = 2; i + 1 < s.points.length; i += 2) a += Math.hypot(s.points[i] - s.points[i - 2], s.points[i + 1] - s.points[i - 1])
@@ -4385,27 +4575,71 @@ function forestAreaTest(): (x: number, z: number) => boolean {
     return ins
   })
 }
-function forestShapesOut(f: MapArea[]): ProjectShape[] {
+/** the forests as sent: no tree in a river bed nor a lake, forests cut by the water corridor (width / 2 + 4 m),
+ *  holes split away. The forest ground masks are painted from these same polygons (picture 120: forest ground
+ *  along the river with no tree, painted from the uncut areas) */
+function sentForests(all: MapArea[]): MapArea[] {
+  const R = edgeRect()
+  const f = clipForestsToWater(all, waters.map((w) => ({ pts: w.pts, width: WATER_TYPES[w.type].closed ? w.width : 2 * riverWetHalf(w), closed: WATER_TYPES[w.type].closed })), { margin: 4 })
+  // picture maps: forests kept inside the island coast (edgeBand.ts coastRect)
+  return R ? f.map((a) => ({ ...a, pts: clipRingToRect(a.pts, R) })).filter((a) => a.pts.length >= 6) : f
+}
+/** picture maps (island coast, edgeBand.ts): the rectangle areas stay in, null otherwise */
+function edgeRect() {
+  if (!island || !sculpt?.islandCoast) return null
+  const g = island.grid
+  return coastRect(g.minX, g.minZ, (Math.min(g.cols, g.rows) - 1) * g.step)
+}
+/** picture maps: true where the island coast put the ground under the sea (inside the coast margin only, so river
+ *  beds inland never count) */
+function coastSea(): ((x: number, z: number) => boolean) | null {
+  if (!island || !sculpt?.islandCoast) return null
+  // the composed relief (sculpt), before the river carving: a river bed inland is no sea
+  const g = island.grid, H = sculpt.heights, n = coastNoise(sculpt.seed)
+  return (x, z) => {
+    const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
+    return H[r * g.cols + c] < SEA_CUT && islandMargin(c, r, g.cols, g.rows, n((c * g.step) / 600, (r * g.step) / 600)) > 0
+  }
+}
+function forestShapesOut(all: MapArea[]): ProjectShape[] {
+  const f = sentForests(all)
   if (!$<HTMLInputElement>('forestEdge').checked) return f.map((a) => ({ id: a.id, kind: 'polyline', closed: true, points: a.pts, generator: forestGenOf(a), avoid: FOREST_AVOID }))
   return forestEdgeShapes(forestEdges(f.map((a) => ({ id: a.id, pts: a.pts, leaf: a.leaf, generator: forestGenOf(a), noEdge: a.stage === 'juvenile' || a.stage === 'clearcut' }))))
 }
 // forests: one closed shape per area with the forest generator matching the OSM leaf type (FOREST_ family)
 $<HTMLButtonElement>('forestSend').addEventListener('click', () =>
   run(t('run.l.forests'), async () => {
+    if (imgForestGen) await imgForestGen
     const f = areas.filter((a) => a.kind === 'forest')
     if (!f.length) throw new Error(t('err.noForest'))
-    return toWb({ version: 0, shapes: forestShapesOut(f), entities: prodLogEntities() })
+    const shapes = forestShapesOut(f), per = Math.max(0, Math.floor(num('forestBatch') || 0))
+    // in batches: one Apply + save per batch, a pause in between (the Workbench reached 12.7 GB with all at once);
+    // the forest ground masks are rewritten at the end from the same forests (sentForests, picture 119 round 9)
+    return sendForests(shapes, per, {
+      send: async (sh, k, n, locked) => {
+        if (n === 1) return toWb({ version: 0, shapes: sh, entities: prodLogEntities() })
+        logEl.textContent = t('log.forestBatch', { k: k + 1, n, shapes: sh.length })
+        return t('log.forestBatch', { k: k + 1, n, shapes: sh.length }) + '\n' + await toWb({ version: 0, shapes: sh, entities: k === 0 ? prodLogEntities() : [], locked, setupWorld: { managers: false, bounds: false, save: true } })
+      },
+      masks: island ? () => masksNow() : undefined,
+      pause: () => new Promise((r) => setTimeout(r, 4000)),
+    })
   }),
 )
 // everything at once (roads + water, forests, buildings): one project, the log says what went
 $<HTMLDivElement>('modsBox').append(modsChecklist())
 $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
   run(t('run.l.all'), async () => {
-    const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : [] }
-    const forests = forestShapesOut(areas.filter((a) => a.kind === 'forest'))
+    if (imgForestGen) await imgForestGen
+    const wr: Project = waters.length && island ? waterAndRoads() : { version: 0, shapes: allRoadShapes(), entities: $<HTMLInputElement>('roadFurn').checked ? mySigns() : [] }
+    // forests apart (button "Send forests", in batches): the objects go first, the forests later
+    const forests = $<HTMLInputElement>('forestLater').checked ? [] : forestShapesOut(areas.filter((a) => a.kind === 'forest'))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
-    const shapes = [...wr.shapes, ...(result?.shapes ?? []), ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
+    const shapes0 = [...wr.shapes, ...(result?.shapes ?? []), ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities0 = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
+    // picture maps (island coast, edgeBand.ts): roads stop on the shore, objects in the sea dropped, areas kept in
+    const R = edgeRect(), sea = coastSea(), kept = R && sea ? keepOnIsland({ version: 0, shapes: shapes0, entities: entities0 }, sea, R) : { version: 0 as const, shapes: shapes0, entities: entities0 }
+    const shapes = kept.shapes, entities = kept.entities ?? []
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')
@@ -4413,7 +4647,15 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     depsEl.textContent = deps; depsEl.hidden = !deps
     // relief first: objects are dropped on the ground that is there when they are created
     const relief = island ? (await applyHeightmap({ ...island.grid, heights: island.heights, patches: heightPatches() })).message + '\n' : ''
-    const msg = relief + await toWb({ version: 0, shapes, entities }) + (deps ? '\n' + deps : '')
+    // the mask files follow the map sent (their import stays a separate step, wb-import-masks): a failure is
+    // reported, never blocks the send, and says the files on disk may be the previous map's
+    let masks = ''
+    if (island) {
+      try { masks = (await masksNow()) + '\n' } catch (err) { masks = t('log.masksStale', { msg: (err as Error).message }) + '\n' }
+    }
+    // opt-in: the bridge then adds the base world entities the world lacks (MG_SetupWorld, only when absent)
+    const base = $<HTMLInputElement>('wbBase').checked ? { setupWorld: { managers: true, bounds: false, save: false } } : {}
+    const msg = relief + masks + await toWb({ version: 0, shapes, entities, ...base, replaceAll: true, keep: $<HTMLInputElement>('forestLater').checked ? ['FOREST_'] : [] }) + (deps ? '\n' + deps : '')
     sentSigs = stepSigs().slice(0, 6); sentSig = sentSigs.join('|')
     addOp({ kind: 'history', action: 'send', detail: '', step: 'wb', x: view.x, z: view.z })
     refreshSteps()
@@ -4427,6 +4669,7 @@ async function runAudit(): Promise<void> {
   box.hidden = false; box.textContent = t('audit.running')
   try {
     const r = await auditWorld()
+    r.counts ??= {}
     const bad = Object.entries(r.counts).filter(([, n]) => n > 0)
     box.innerHTML = `<b>${bad.length ? t('audit.bad', { n: bad.reduce((a, [, n]) => a + n, 0) }) : t('audit.ok')}</b><ul class="issues">${Object.entries(r.counts).map(([k, n]) => `<li class="${n ? 'bad' : 'ok'}">${n ? '✖' : '✔'} ${t(('audit.' + k) as Key)} : ${n}${k === 'base' && n ? '<br><small>' + ((r.findings as Record<string, unknown[]>).base ?? []).join(', ') + ' · ' + t('audit.base.fix') + '</small>' : ''}</li>`).join('')}</ul>`
     if (bad.length) ($('checkBox') as HTMLDetailsElement).open = true
@@ -4701,6 +4944,8 @@ $<HTMLButtonElement>('wTest').addEventListener('click', () =>
 // water changes where the roads are cut (bridge gaps): the roads always go with it
 // roads that get a wooden bridge instead of a concrete one
 const DIRT_ROADS = new Set<RoadType>(['dirt', 'dirt2', 'forest', 'trailDirt', 'trailGravel', 'trailForest'])
+/** road signs out of the placed buildings (an image map keeps its drawn houses where they are) */
+function mySigns() { return signsClearOf(roadSigns(roads, $<HTMLInputElement>('roadLeft').checked), settled.map((b) => b.corners ?? [])) }
 function waterAndRoads(): Project {
   const furn = $<HTMLInputElement>('roadFurn').checked
   const split = splitAtWater(roadShapesWithFurniture(), waters)
@@ -4709,7 +4954,7 @@ function waterAndRoads(): Project {
     version: 0,
     shapes: [...allWaterShapes(), ...split.shapes, ...($<HTMLInputElement>('wRipa').checked ? riparianShapes(riparian, { autumn: isAutumnBiome(biome(currentBiome)) }) : [])],
     entities: [
-      ...(furn ? roadSigns(roads, $<HTMLInputElement>('roadLeft').checked) : []),
+      ...(furn ? mySigns() : []),
       ...(island && preWater ? riverBanks(waters, preWater, island.grid) : []),
       ...(island ? bridges(split.gaps.filter((g) => !noBridge.has(gapKey(g))), island.heights, island.grid, half) : []), // final relief: the abutments meet the road beds
     ],
@@ -4958,6 +5203,19 @@ function existingRoads(): Road[] {
 /** fence and wall pieces (generator 'Fence', reference maps): drawn above the forest and the buildings */
 /** desire paths (desirePaths.ts): worn-ground mask bands from the doors to the nearest road, memoised per world */
 let desireMemo: { key: string; bands: MaskBand[] } | null = null
+/** (x, z, r) => a disc of radius r touches a road (its painted band: half + shoulder) */
+function roadClear(): (x: number, z: number, r: number) => boolean {
+  const segs: number[][] = []
+  for (const q of [...roads, ...setLanes, ...setPaths]) {
+    const T = ROAD_TYPES[q.type], h = roadHalf(q) + (T?.shoulder ?? T?.edge ?? 0)
+    for (let i = 0; i + 3 < q.pts.length; i += 2) segs.push([q.pts[i], q.pts[i + 1], q.pts[i + 2], q.pts[i + 3], h])
+  }
+  return (x, z, r) => segs.some(([ax, az, bx, bz, h]) => {
+    if (x < Math.min(ax, bx) - h - r || x > Math.max(ax, bx) + h + r || z < Math.min(az, bz) - h - r || z > Math.max(az, bz) + h + r) return false
+    const qx = bx - ax, qz = bz - az, Q = qx * qx + qz * qz || 1, u = Math.min(1, Math.max(0, ((x - ax) * qx + (z - az) * qz) / Q))
+    return Math.hypot(x - ax - qx * u, z - az - qz * u) < h + r
+  })
+}
 function desireMasks(): MaskBand[] {
   const rs = [...roads, ...existingRoads(), ...setLanes, ...setPaths].filter((r) => r.pts.length >= 4)
   const key = `${settled.length}|${settled[0]?.id}|${settled[settled.length - 1]?.x}|${rs.length}|${setParcels.length}`
