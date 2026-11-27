@@ -68,40 +68,13 @@ export function maskSide(terrPath) {
 //! Satellite map (Manage -> Satellite Map -> Import, untick "linear colour space"): RGB PNG, row 0 = NORTH,
 //! each pixel = weighted mix of the surface colours, background colour where no surface has weight.
 //! colours: {surfaceName: [r, g, b]}. Without it the terrain renders white.
-// vanilla "middle" textures of the surfaces (scripts/harvest-terrain-middles.ts), idea of MapGeneratorPro
-// satmap_v2_textured (MIT (c) Giorbev): each surface is its real texture tiled on the ground, scaled so its
-// mean stays the colour the app chose (the satellite keeps its calibrated tones, plus the grain)
-// The file is BI-derived: generated locally (npm run satmap:textures), git-ignored, never shipped.
-// REFORGER_TERRAIN_MIDDLES overrides its path (tests use a tiny synthetic fixture).
-let MIDDLES = null;
-export const middlesPath = () => process.env.REFORGER_TERRAIN_MIDDLES || join(dirname(fileURLToPath(import.meta.url)), "..", "library", "terrain-middles.json");
-//! forget the cached tiles (after a generation, or a path change)
-export function resetTerrainMiddles() { MIDDLES = null; }
-export function terrainMiddles() {
-  if (MIDDLES) return MIDDLES;
-  try {
-    const j = JSON.parse(readFileSync(middlesPath(), "utf-8"));
-    MIDDLES = new Map(Object.entries(j.surfaces).map(([k, v]) => [k.toLowerCase(), { side: j.side, repeat: v.repeat, mean: v.mean, tile: Buffer.from(v.tile, "base64") }]));
-  } catch { MIDDLES = new Map(); }
-  return MIDDLES;
-}
-//! texture of one surface at world (x, z), as a factor per channel around 1 (null = flat colour)
-export function middleFactor(name, x, z) {
-  const m = terrainMiddles().get(String(name).replace(/\.emat$/i, "").split("/").pop().toLowerCase());
-  if (!m) return null;
-  const u = Math.floor(((x / m.repeat) % 1 + 1) % 1 * m.side), v = Math.floor(((z / m.repeat) % 1 + 1) % 1 * m.side);
-  const o = (v * m.side + u) * 3;
-  return [m.tile[o] / Math.max(1, m.mean[0]), m.tile[o + 1] / Math.max(1, m.mean[1]), m.tile[o + 2] / Math.max(1, m.mean[2])];
-}
-
-//! textured: true / false (legacy) or { source: "vanilla" (default, BI middle textures) | "clean" (no BI pixel:
-//! hand palette + seeded noise + hillshade, bridge/satmap-clean.mjs), relief?: height grid, seed? }.
-//! Same file, size and format whatever the source.
-export function writeSatellite(outFile, side, terrainSize, surfaces, colours, background = [40, 60, 80], roads = [], textured = true) {
-  const o = typeof textured === "object" && textured ? textured : { source: textured ? "vanilla" : "flat" };
-  const clean = o.source === "clean", vanilla = o.source === "vanilla" || o.source === undefined;
+//! opts: { relief?: height grid (hillshade), seed? }. Every surface = one flat colour hand-matched to the
+//! vanilla look (bridge/satmap-clean.mjs) + seeded multi-scale noise + relief shading. No game file is read
+//! (Bohemia advice, HorribleGoat: no thumbnails derived from the game textures).
+export function writeSatellite(outFile, side, terrainSize, surfaces, colours, background = [40, 60, 80], roads = [], opts = {}) {
+  const o = opts && typeof opts === "object" ? opts : {};
   const seed = Number.isFinite(o.seed) ? o.seed | 0 : 1;
-  const shade = clean ? hillshade(o.relief) : () => 1;
+  const shade = hillshade(o.relief);
   const mPerPx = terrainSize / (side - 1);
   const samplers = surfaces.map((s) => ({ name: s.name, c: colours[s.name] ?? [128, 128, 128], f: sampler(s) }));
   const layers = roadLayers(side, mPerPx, roads);
@@ -115,7 +88,7 @@ export function writeSatellite(outFile, side, terrainSize, surfaces, colours, ba
       const w = Math.min(a[row * side + col], 1 - road);
       if (!w) continue;
       road += w;
-      const rc = clean ? cleanColour(name, c, x, z, seed) : c;
+      const rc = cleanColour(name, c, x, z, seed);
       for (let k = 0; k < 3; k++) racc[k] += Math.min(255, rc[k]) * w;
     }
     let total = 0;
@@ -124,14 +97,13 @@ export function writeSatellite(outFile, side, terrainSize, surfaces, colours, ba
       const w = Math.min(Math.max(f(x, z), 0), 1);
       if (!w) continue;
       total += w;
-      if (clean) { const cc = cleanColour(name, c, x, z, seed); for (let k = 0; k < 3; k++) acc[k] += Math.min(255, cc[k]) * w; continue; }
-      const t = vanilla ? middleFactor(name, x, z) : null;
-      for (let k = 0; k < 3; k++) acc[k] += Math.min(255, c[k] * (t ? t[k] : 1)) * w;
+      const cc = cleanColour(name, c, x, z, seed);
+      for (let k = 0; k < 3; k++) acc[k] += Math.min(255, cc[k]) * w;
     }
     const land = Math.min(total, 1) + road * (1 - Math.min(total, 1));
     if (total < 1) for (let k = 0; k < 3; k++) acc[k] += background[k] * (1 - total);
     const n = Math.max(total, 1);
-    const sh = clean && land > 0 ? 1 + (shade(x, z) - 1) * land : 1;
+    const sh = land > 0 ? 1 + (shade(x, z) - 1) * land : 1;
     return acc.map((v, k) => Math.min(255, Math.max(0, Math.round(((v / n) * (1 - road) + racc[k]) * sh))));
   }, 3));
   return { file: outFile, side };

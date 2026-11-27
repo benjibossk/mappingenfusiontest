@@ -146,7 +146,7 @@ flowchart LR
 
 **Importer le monde ouvert** : relief, routes, rivières et lacs deviennent modifiables ; bâtiments et panneaux restent verrouillés ; les objets remplacés ne sont supprimés que par l'envoi qui les reconstruit (pas de doublons).
 
-Textures de la satmap : le mode vanilla utilise des textures générées localement depuis ta propre installation du jeu (`npm run satmap:textures`), jamais distribuées ; le mode « couleurs propres » n'utilise aucun fichier du jeu.
+Satmap : l'outil ne lit aucun fichier du jeu pour la produire. Sur le conseil d'un développeur de Bohemia, chaque surface reçoit une couleur unie accordée à l'aspect vanilla en jeu, plus un bruit multi-échelle à graine (aucun motif répété) et l'ombrage du relief. Les surfaces inconnues (mods) prennent la couleur de leur famille (herbe, route, roche, sable, terre...).
 
 ## Collaboration
 

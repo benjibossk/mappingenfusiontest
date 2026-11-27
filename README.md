@@ -146,7 +146,7 @@ flowchart LR
 
 Importing a world in progress (**Import the open world**): relief, roads, rivers and lakes become editable; buildings and signs stay locked; objects replaced are deleted only by the send that rebuilds them (no duplicates).
 
-Satmap textures: the vanilla mode uses textures generated locally from your own game install (`npm run satmap:textures`), never distributed; the "clean colours" mode uses no game file.
+Satmap: the tool reads no game file for it. Following the advice of a Bohemia developer, each surface gets one flat colour hand-matched to the vanilla in-game look, plus a seeded multi-scale noise (no repeating swatch) and the relief shading. Unknown (mod) surfaces take the colour of their family (grass, road, rock, sand, dirt...).
 
 ## Collaboration
 

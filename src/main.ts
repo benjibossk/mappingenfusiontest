@@ -869,7 +869,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <li><button id="tHeight" type="button" class="secondary">${t('btn.tHeight')}</button><span class="hint">${t('wb.open')}</span></li>
           <li><button id="tMasks" type="button" class="secondary">${t('btn.tMasks')}</button><span class="hint">${t('wb.thenImport')}</span></li>
         </ol>
-        <label>${t('lbl.satSource')} <select id="satSource"><option value="vanilla">${t('opt.satVanilla')}</option><option value="clean">${t('opt.satClean')}</option></select></label>
         <div class="hint">${t('hint.satSource')}</div>
         <details id="gcBox"><summary>${t('gc.title')}</summary>
           <label><input id="gcOn" type="checkbox"> ${t('gc.on')}</label>
@@ -2774,17 +2773,11 @@ async function masksNow(): Promise<string> {
     world: txt('tWorld'),
     ...maskBody(island!.surfaces),
   })
-  return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '') + (r.satNote ? '\n' + t('hint.satNoVanilla') : '')
-}
+  return t('log.masks', { files: r.written.join(', '), dir: r.dir, sat: r.satellite?.file ?? '—' }) + (r.orderDir ? '\n' + r.orderDir : '')}
 
-// satmap texture source (licensing doubt on the BI middle textures): vanilla (default) or clean (no BI pixel)
-const satSourceSel = $<HTMLSelectElement>('satSource')
-try { satSourceSel.value = localStorage.getItem('reforger-mapper.satSource') === 'clean' ? 'clean' : 'vanilla' } catch { /* private window */ }
-satSourceSel.addEventListener('change', () => { try { localStorage.setItem('reforger-mapper.satSource', satSourceSel.value) } catch { /* storage blocked */ } })
-/** clean mode also sends the height grid (hillshade) and the seed; the PNG written stays the same file / size / format */
+// satmap: flat vanilla-matched colours + seeded noise (seed) + hillshade (relief), no game file read
 function satSourceBody(): Record<string, unknown> {
-  if (satSourceSel.value !== 'clean') return { satSource: 'vanilla' }
-  return { satSource: 'clean', seed: num('tSeed'), relief: island ? { ...island.grid, heights: Array.from(island.heights) } : undefined }
+  return { seed: num('tSeed'), relief: island ? { ...island.grid, heights: Array.from(island.heights) } : undefined }
 }
 // road mask ends at a lake pulled back by the band reach (asphalt half 4 + shoulder 5 m), see roadsOutOfWater
 const LAKE_MASK_TRIM = 9
