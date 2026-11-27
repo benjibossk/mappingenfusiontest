@@ -3,13 +3,13 @@
   "surfaces": {
     "SeaBed_01": {
       "rgb": [
-        135,
-        126,
-        99
+        111,
+        104,
+        80
       ],
       "grain": 0.5,
       "scale": 4,
-      "src": "reforger.recoil.org arland satmap, east coast shoreline sand (eastcoast shot, warm-light pixel class)"
+      "src": "hand: shoreline sand darkened for wet river/sea bed"
     },
     "BeachGrass_01": {
       "rgb": [
@@ -93,23 +93,23 @@
     },
     "Rock_01": {
       "rgb": [
-        155,
-        149,
-        140
+        132,
+        127,
+        119
       ],
       "grain": 1,
       "scale": 2,
-      "src": "reforger.recoil.org arland satmap, cliff rocks north (north shot, grey pixel class)"
+      "src": "reforger.recoil.org arland satmap cliff rocks, toned down 15% (prefabs read paler than ground)"
     },
     "Debris_Rock_01": {
       "rgb": [
-        145,
-        139,
-        128
+        123,
+        118,
+        109
       ],
       "grain": 1,
       "scale": 2,
-      "src": "hand: Rock_01 x0.93"
+      "src": "hand: Rock_01 tone, -15%"
     },
     "Pebbles_01": {
       "rgb": [
