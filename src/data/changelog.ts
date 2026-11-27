@@ -7,6 +7,17 @@ export interface ChangelogEntry { version: string; date: string; items: Changelo
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.11.0-beta.1',
+    date: '2026-11-27',
+    items: [
+      { en: "Pre-release: island coast, Atelier zones and automatic satmap import not yet tested in the Workbench", fr: "Préversion : côte en île, zones de l'Atelier et import auto de la satmap pas encore testés dans le Workbench" },
+      { en: "Map from an image, with rivers, lakes, bridges and a natural island coast", fr: "Carte depuis une image, avec rivières, lacs, ponts et une côte d'île naturelle" },
+      { en: "Satmap from flat colours and noise per biome, no game file read (Bohemia's advice), imported automatically", fr: "Satmap en couleurs unies et bruit par biome, sans lire de fichier du jeu (conseil de Bohemia), importée automatiquement" },
+      { en: "Everon-like forest floor", fr: "Sol de forêt façon Everon" },
+      { en: "Atelier zones: villages, power, fields, roads and forest in a drawn zone of an existing world", fr: "Zones de l'Atelier : villages, électricité, champs, routes et forêt dans une zone dessinée d'un monde existant" },
+    ],
+  },
+  {
     version: '0.10.1',
     date: '2026-11-26',
     items: [

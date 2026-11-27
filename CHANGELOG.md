@@ -8,9 +8,17 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
-### Added
+## [0.11.0-beta.1] - 2026-11-27
 
+Pre-release. Not yet tested in the Workbench: the island coast of picture maps, Atelier zone generation (the modified Workbench plugin is not compiled yet) and the automatic satmap import.
+
+### Added
 - **Map from an image** (Terrain > Image): any map picture (topographic, relief bands, countryside plan) is split into colours; give each colour a role (land, water, height band, forest, field, field edge, building, road, path / rail, ignore) and the tool builds the relief, roads, rivers (centre line + width profile, even for wide rivers) or lakes, buildings, smoothed forests, fields closed by their edges and hedges. Dotted rail lines never become buildings.
+- Picture maps: rivers, lakes and bridges; a picture map becomes an island with a natural coast (seabed, river mouths, sand beaches).
+- Satmap: flat colours plus noise, one palette per biome. It no longer reads any game file, following Bohemia's advice.
+- Automatic satmap import into the Workbench (`wb-import-satmap.ps1`).
+- Everon-like forest floor.
+- Atelier zones: draw a zone on an existing world and generate villages, power lines, fields, roads and forest in it. Entities only, heights are never touched. The Workbench plugin `MG_ApplyProjectPlugin.c` gains `layer` (per-zone layers) and `clear` (delete / regenerate a zone).
 
 ## [0.10.1] - 2026-11-26
 

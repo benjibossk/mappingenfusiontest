@@ -4,9 +4,17 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
-### Ajouté
+## [0.11.0-beta.1] - 2026-11-27
 
+Préversion. Pas encore testé dans le Workbench : la côte en île des cartes depuis une image, la génération de zones de l'Atelier (plugin Workbench modifié, pas encore compilé) et l'import automatique de la satmap.
+
+### Ajouté
 - **Carte depuis une image** (Terrain > Image) : n’importe quelle image de carte (topographique, bandes de relief, plan de campagne) est découpée en couleurs ; on donne un rôle à chaque couleur (terre, eau, bande d’altitude, forêt, champ, bord de champ, bâtiment, route, chemin / rail, ignorer) et l’outil construit le relief, les routes, les rivières (axe + profil de largeur, même larges) ou lacs, les bâtiments, les forêts lissées, les champs fermés par leurs bords et les haies. Les voies ferrées en pointillés ne deviennent jamais des bâtiments.
+- Cartes depuis une image : rivières, lacs et ponts ; une carte depuis une image devient une île avec une côte naturelle (fond marin, embouchures, plages de sable).
+- Satmap : couleurs unies plus bruit, une palette par biome. Elle ne lit plus aucun fichier du jeu, sur le conseil de Bohemia.
+- Import automatique de la satmap dans le Workbench (`wb-import-satmap.ps1`).
+- Sol de forêt façon Everon.
+- Zones de l'Atelier : on dessine une zone sur un monde existant et on y génère villages, lignes électriques, champs, routes et forêt. Entités seulement, jamais les hauteurs. Le plugin Workbench `MG_ApplyProjectPlugin.c` gagne `layer` (calques par zone) et `clear` (supprimer / régénérer une zone).
 
 ## [0.10.1] - 2026-11-26
 
