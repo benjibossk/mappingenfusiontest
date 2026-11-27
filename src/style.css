@@ -833,3 +833,33 @@ button.linkbtn:hover:not(:disabled) { background: none; border: 0; color: var(--
 .exportlayers .exp-empty{opacity:.55}
 .exportlayers .exp-sent span{color:#5fa24a}
 .exportlayers .exp-resend span,.exportlayers .exp-ready span{color:#e1a12e}
+
+/* UI reorg (docs/UI_REORG.md): home / projects screens of #welcome, project chip, section bar + hub */
+.welcome[data-screen="home"] .wgroup { display: none; }
+.welcome[data-screen="projects"] .whead { display: none; }
+.welcome .whomelead { margin: 4px 0 0; max-width: 620px; font-size: 15px; color: var(--tx-3); }
+.welcome .whome { display: flex; gap: 12px; justify-content: center; margin-top: 18px; }
+.welcome .whome .big { height: 48px; padding: 0 28px; font-size: 16px; display: inline-flex; align-items: center; gap: 10px; }
+.welcome .wprojhead { display: flex; align-items: center; gap: 16px; margin-bottom: 4px; }
+.welcome .choices.create.one { grid-template-columns: minmax(0, 1fr); }
+.welcome .choices.create.one button { height: 96px; flex-direction: row; align-items: center; gap: 18px; }
+.welcome .wfoot { gap: 12px; flex-wrap: wrap; }
+.projchip { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; height: 28px; padding: 0 10px; background: var(--ink-3); border: 1px solid var(--line-2); color: var(--tx-1); font-size: 12px; text-transform: none; letter-spacing: 0; }
+.projchip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.secbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.secbar button { display: flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 6px; background: var(--ink-3); border: 1px solid var(--line-2); color: var(--tx-3); font-size: 12px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; }
+.secbar button span { overflow: hidden; text-overflow: ellipsis; }
+.secbar button[aria-selected="true"] { background: var(--amber-bg); border-color: var(--amber); color: var(--tx-1); }
+.secbar button[aria-selected="true"] .ic { color: var(--amber-hi); }
+.sechub { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2); }
+.sechub > .hint { margin: 0; }
+.sechub .wglabel { margin-top: 4px; }
+.hubgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.hubtile { min-height: 34px; padding: 4px 8px; text-align: left; background: var(--ink-2); border: 1px solid var(--line-2); color: var(--tx-2); font-size: 12px; text-transform: none; letter-spacing: 0; line-height: 1.2; }
+.hubtile:hover:not(:disabled) { border-color: var(--amber); color: var(--tx-1); }
+.hubtile em { font: normal 10px var(--f-mono); color: var(--tx-4); text-transform: uppercase; }
+.hubtile.at em { color: var(--amber-hi); }
+.hubtile:disabled { opacity: .55; border-style: dashed; }
+.app[data-sec="share"] #tabs, .app[data-sec="share"] .stephead, .app[data-sec="share"] .side > .tab, .app[data-sec="share"] .stepnav { display: none !important; }
+.welcome .choices.create.one .wtxt { display: flex; flex-direction: column; gap: 4px; }
+.secbar button { white-space: normal; line-height: 1.1; height: auto; min-height: 34px; text-align: center; }

@@ -80,9 +80,12 @@ function log(msg: string, err = false) {
 }
 
 // ---------------------------------------------------------------- layout
-export function openAtelier() {
+/** `at`: a step (s0-s6) or a tool panel (net / tex / zone) to open, from the dashboard tiles of main.ts */
+export function openAtelier(at?: string) {
   try { sessionStorage.setItem(OPEN_KEY, '1') } catch { /* storage blocked */ }
-  if (root) { root.hidden = false; return }
+  const step = at && (STEPS as readonly string[]).includes(at) ? at as Step : null
+  const tool = at ? ({ net: 'atNetBtn', tex: 'atTexBtn', zone: 'atZoneBtn' } as Record<string, string>)[at] : undefined
+  if (root) { root.hidden = false; if (step) go(step); if (tool) $(tool).click(); return }
   root = document.createElement('div')
   root.id = 'atelier'; root.className = 'atelier'
   root.innerHTML = `
@@ -143,7 +146,8 @@ export function openAtelier() {
   $('atZoneBtn').addEventListener('click', () => { const c = toolCtx(); if (c) void openZones({ ...c, objects: S.objects, bodies: S.bodies }, busy); else log(tk('at.net.needWorld'), true) })
   setupMap()
   void pollWb(); setInterval(() => { if (!root.hidden) void pollWb() }, 5000)
-  go('s0')
+  go(step ?? 's0')
+  if (tool) $(tool).click()
 }
 
 /** reopen after a language switch */

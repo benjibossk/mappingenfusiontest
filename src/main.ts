@@ -146,6 +146,7 @@ import { REF_MAPS, loadRefMap, refHeights, refBuildings, refFences, forestMask, 
 import { parcelItems, parcelPool, type Parcel } from './modules/templates'
 import { libraryParcels, openParcels } from './parcels'
 import { ProjectStore, indexedKV, memoryKV, type ProjectMeta } from './projects'
+import { SECTIONS, SECTION_STEPS, SECTION_TILES, followStep, startState, type Level, type NavState, type Section, type Tile } from './nav'
 import { CAT_COLOUR, settle, settlementEntities, buildingMasks, yardMasks, settlementShapes, type Placed, type Square } from './modules/settlements'
 import { heightAt, isLand, loadHeightmap, renderTerrain, type Heightmap } from './terrain'
 import { desirePaths, type MaskBand } from './modules/desirePaths'
@@ -186,6 +187,10 @@ import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/c
 import { liftRoadShape, sanitizeRoadShape } from './modules/roadSanitize'
 import { camLookAt, worldToMap } from './modules/wbCamera'
 import { buildingsFor } from './data/buildings'
+// three-level navigation (src/nav.ts): home / projects screens on #welcome, dashboard = the map + its sections
+var nav: NavState = { level: 'home', section: 'terrain' }
+var navHook: ((tab: string) => void) | null = null
+var navHadTerrain = false
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)
 
 // the side panel is a guided path: one step per tab, in the order a map is built
@@ -239,6 +244,7 @@ const ICON: Record<string, string> = {
   search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
   cam: '<path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/>',
 }
+const SEC_ICON: Record<Section, string> = { terrain: 'island', atelier: 'pin', masks: 'globe', sat: 'map', diag: 'check', share: 'users' }
 const ic = (n: string, size = 18) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICON[n]}</svg>`
 const info = (k: Key) => `<i class="info" title="${t(k)}" aria-label="${t(k)}" role="img">${ic('info', 13)}</i>`
 type K = Parameters<typeof t>[0]
@@ -282,6 +288,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <button id="undo" class="hist" title="${t('app.undo')}" aria-label="${t('app.undo')}">${ic('undo')}</button>
     <button id="redo" class="hist" title="${t('app.redo')}" aria-label="${t('app.redo')}">${ic('redo')}</button>
     <span id="status" class="status" role="button" tabindex="0" title="${t('wb.chip.tip')}">${t('wb.chip.off')}</span>
+    <button id="projChip" type="button" class="projchip" title="${t('nav.chip.tip')}">${ic('folder', 14)}<span id="projChipName">${t('nav.chip.none')}</span></button>
     <span id="collabInfo" class="hint"></span>
     <span class="grow"></span>
     <button id="oneClick" class="hist withlbl" type="button" title="${t('replay.one.tip')}" aria-label="${t('replay.one.tip')}">${ic('dice')}<span>${t('replay.one')}</span></button>
@@ -405,30 +412,31 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
       </div>
     </div>
-    <div id="welcome" class="welcome" hidden>
+    <div id="welcome" class="welcome" data-screen="home" hidden>
       <div class="wresume"><span class="kicker">${t('welcome.resume.k')}</span><span class="wrtext">${t('welcome.resume.lead')}</span><span class="grow"></span><button type="button" id="welcomeResume" hidden>${t('menu.resume')} →</button></div>
       <div class="whead">
         <span class="kicker">${t('welcome.kicker')}</span>
         <h2>${t('welcome.title2')}</h2>
         <p>${t('welcome.lead')}</p>
+        <p class="whomelead">${t('nav.home.lead')}</p>
+        <div class="whome"><button type="button" id="homeProjects" class="big">${ic('folder', 18)} ${t('nav.home.go')} →</button></div>
         <button type="button" id="welcomeTour" class="rm-link wtour">${ic('help', 16)}<span>${t('welcome.tour')}</span></button>
       </div>
       <div class="wgroup">
-        <span class="wglabel">${t('proj.title')}</span>
-        <div id="projList" class="projlist"></div>
-        <div id="projDash" class="projdash" hidden><span class="wglabel" id="dashTitle"></span><div class="dashgrid">${([['terrain','island'],['atelier','pin'],['masks','globe'],['sat','map'],['diag','check'],['share','users']] as const).map(([k, i]) => `<button type="button" data-dash="${k}">${ic(i, 22)}<span class="wtxt"><strong>${t(('dash.' + k) as Key)}</strong><span>${t(('dash.' + k + '.tip') as Key)}</span></span></button>`).join('')}</div></div>
-        <span class="wglabel">${t('welcome.g.create')}</span>
-        <div class="choices create">
-          <button type="button" data-go="tGen" class="rec">${ic('island', 28)}<strong>${t('welcome.new')}</strong><span>${t('welcome.new.tip')}</span><em>${t('welcome.new.foot')}</em></button>
-          <button type="button" data-go="tRandom">${ic('dice', 28)}<strong>${t('welcome.random')}</strong><span>${t('welcome.random.tip')}</span><em class="nocaps">${t('welcome.random.foot')}</em></button>
-          <button type="button" data-go="tReal">${ic('map', 28)}<strong>${t('welcome.real')}</strong><span>${t('welcome.real.tip')}</span><em>${t('welcome.real.foot')}</em></button>
+        <div class="wprojhead"><button type="button" id="homeBack" class="rm-link">← ${t('nav.back')}</button><span class="kicker">${t('nav.proj.k')}</span></div>
+        <span class="wglabel">${t('nav.proj.create')}</span>
+        <div class="choices create one">
+          <button type="button" id="projNew" class="rec">${ic('island', 28)}<span class="wtxt"><strong>${t('nav.proj.create')}</strong><span>${t('nav.proj.create.tip')}</span></span></button>
         </div>
+        <span class="wglabel">${t('nav.proj.open')}</span>
+        <div id="projList" class="projlist"></div>
+        <span class="wglabel">${t('nav.proj.io')}</span>
+        <div class="wfoot"><button type="button" data-go="pOpen" class="wfile" title="${t('welcome.open.tip')}">${ic('folder', 16)} ${t('nav.proj.import')}</button><button type="button" id="projExport" class="wfile">${ic('folder', 16)} ${t('nav.proj.export')}</button></div>
         <span class="wglabel">${t('welcome.g.existing')}</span>
         <div class="choices existing">
           <button type="button" id="welcomeJoin">${ic('users', 28)}<span class="wtxt"><strong>${t('welcome.join')}</strong><span>${t('welcome.join.tip')}</span></span><em>${t('welcome.join.foot')}</em></button>
           <button type="button" id="welcomeAtelier">${ic('folder', 28)}<span class="wtxt"><strong>${t('welcome.atelier')}</strong><span>${t('welcome.atelier.tip')}</span></span><em>${t('welcome.atelier.foot')}</em></button>
         </div>
-        <div class="wfoot"><button type="button" data-go="pOpen" class="wfile" title="${t('welcome.open.tip')}">${ic('folder', 16)} ${t('welcome.file')}</button></div>
       </div>
     </div>
     <div id="ctxMenu" class="ctxmenu" hidden></div>
@@ -494,6 +502,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <button id="sideCollapse" type="button" class="sidecollapse" aria-controls="sidePanel" aria-expanded="true" title="${t('side.hide')}" aria-label="${t('side.hide')}">${ic('caret', 16)}</button>
   <aside class="side" id="sidePanel">
     <button id="sideToggle" type="button" class="secondary sidetog" aria-expanded="true" aria-controls="tabs">${ic('caret', 14)}<span>${t('side.toggle')}</span></button>
+    <nav id="secbar" class="secbar" role="tablist" aria-label="${t('nav.sections')}">${SECTIONS.map((s) => `<button type="button" role="tab" data-sec="${s}" title="${t(('dash.' + s + '.tip') as Key)}" aria-selected="false">${ic(SEC_ICON[s], 16)}<span>${t(('dash.' + s) as Key)}</span></button>`).join('')}</nav>
+    <div id="secHub" class="sechub"></div>
     <ol class="tabs stepper" id="tabs">
       ${STEPS.map((s, i) => `<li><button type="button" data-tab="${s.tab}"${i === 0 ? ' class="active"' : ''} title="${t(s.lead)}"><b>${i + 1}</b><span>${t(s.tab === 'camp' ? 'step.fields.short' : s.label)}</span><i class="badge"></i></button></li>`).join('')}
     </ol>
@@ -2966,7 +2976,12 @@ function refreshSteps() {
   const btns = document.querySelectorAll<HTMLButtonElement>('#tabs [data-tab]')
   if (btns.length !== STEPS.length) return
   const welcome = document.getElementById('welcome')
-  if (welcome) { welcome.hidden = !menuOpen && !!sig[0]; $('welcomeResume').hidden = !sig[0] }
+  if (welcome) {
+    // a terrain that appears (autosave at start-up, joined map, opened file) lands on its dashboard
+    if (sig[0] && !navHadTerrain && !menuOpen && nav.level !== 'dashboard') navHook?.('@dashboard')
+    navHadTerrain = !!sig[0]
+    welcome.hidden = nav.level === 'dashboard'; $('welcomeResume').hidden = !sig[0]
+  }
   STEPS.forEach((s, i) => {
     const up = UP[i].map((j) => sig[j]).join('|')
     let state: 'todo' | 'done' | 'stale' = 'todo'
@@ -3010,6 +3025,7 @@ function showStep(tab: string) {
   document.querySelector<HTMLElement>('.app')!.dataset.step = tab
   if (tab === 'villages') document.getElementById('setDensity')?.dispatchEvent(new Event('input')) // value may come from a loaded project
   try { localStorage.setItem('reforger-mapper.step', tab) } catch { /* private window */ }
+  navHook?.(tab)
 }
 const goStep = (d: number) => {
   const cur = tabButtons.findIndex((x) => x.classList.contains('active'))
@@ -3254,7 +3270,7 @@ function coachAfter(kind: Entry) {
   setTimeout(render, 0)
 }
 $<HTMLButtonElement>('coachClose').addEventListener('click', () => { $('coach').hidden = true })
-$<HTMLButtonElement>('welcomeTour').addEventListener('click', () => { autoTour = true; document.querySelector<HTMLButtonElement>('#welcome [data-go="tGen"]')?.click() })
+$<HTMLButtonElement>('welcomeTour').addEventListener('click', () => { autoTour = true; void createProject().then(() => runTile({ id: 'island', act: 'click:tGen', step: 'island' })) })
 $<HTMLButtonElement>('stepHelp').addEventListener('click', () => openHelp())
 document.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((b) => b.addEventListener('click', () => document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${b.dataset.gotoStep}"]`)?.click()))
 {
@@ -3288,11 +3304,24 @@ document.querySelectorAll<HTMLButtonElement>('[data-goto-step]').forEach((b) => 
 $('coach').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('coach').hidden = true })
 $<HTMLButtonElement>('welcomeJoin').addEventListener('click', () => { entry = 'join'; coachAfter('join'); if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false; $<HTMLInputElement>('collabRoom').focus() })
 // Mode Atelier (src/atelier/): own full-screen layout, loaded on demand; reopened after a language switch
-const openAtelier = () => void import('./atelier/ui').then((m) => m.openAtelier())
-$<HTMLButtonElement>('welcomeAtelier').addEventListener('click', openAtelier)
+const openAtelier = (at?: string) => void import('./atelier/ui').then((m) => m.openAtelier(at))
+$<HTMLButtonElement>('welcomeAtelier').addEventListener('click', () => openAtelier())
 // top-left Menu: back to the welcome screen (the current map stays; "Resume" or any path card closes it)
-const closeMenu = () => { menuOpen = false; if ($('welcomeResume').hidden === false) $('welcome').hidden = true }
-$<HTMLButtonElement>('brandMenu').addEventListener('click', () => { menuOpen = true; $('welcome').hidden = false; $('welcomeResume').hidden || $<HTMLButtonElement>('welcomeResume').focus() })
+// level switch: home / projects are two screens of #welcome, the dashboard is the map + side panel
+function setLevel(l: Level) {
+  nav.level = l; menuOpen = l !== 'dashboard'
+  const w = $('welcome')
+  w.hidden = l === 'dashboard'; w.dataset.screen = l === 'projects' ? 'projects' : 'home'
+  if (l === 'projects') void renderProjects()
+  else if (l === 'home' && !$('welcomeResume').hidden) $<HTMLButtonElement>('welcomeResume').focus()
+  saveNav()
+}
+const saveNav = () => { try { localStorage.setItem('reforger-mapper.nav', nav.section) } catch { /* private window */ } }
+const closeMenu = () => setLevel('dashboard')
+$<HTMLButtonElement>('brandMenu').addEventListener('click', () => setLevel('home'))
+$<HTMLButtonElement>('homeProjects').addEventListener('click', () => setLevel('projects'))
+$<HTMLButtonElement>('homeBack').addEventListener('click', () => setLevel('home'))
+$<HTMLButtonElement>('projChip').addEventListener('click', () => setLevel('projects'))
 $<HTMLButtonElement>('welcomeResume').addEventListener('click', closeMenu)
 $('welcome').addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('button[id^="welcome"]:not(#welcomeResume)')) menuOpen = false }, true)
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuOpen && !$('welcome').hidden) closeMenu() })
@@ -3301,6 +3330,7 @@ const ENTRY: Record<string, Entry> = { tGen: 'new', tRandom: 'random', tReal: 'r
 document.querySelectorAll<HTMLButtonElement>('#welcome [data-go]').forEach((b) => b.addEventListener('click', () => {
   entry = ENTRY[b.dataset.go!] ?? null
   if (entry && entry !== 'open') void newActiveProject(t(`proj.newName.${entry}` as Key, { date: new Date().toLocaleString() }))
+  menuOpen = false // the opened / made terrain lands on its dashboard
   forceBusy = true
   $<HTMLButtonElement>(b.dataset.go!).click()
   forceBusy = false
@@ -3527,8 +3557,8 @@ async function renderProjects(): Promise<void> {
     <button type="button" class="rm-link" data-act="export">${t('proj.export')}</button>
     <button type="button" class="rm-link" data-act="del">${t('proj.del')}</button></div>`
   const act = all.find((m) => m.id === activeProject)
-  $('projDash').hidden = !act || !island
-  if (act) $('dashTitle').textContent = t('dash.title', { name: act.name })
+  $('projChipName').textContent = act ? act.name : t('nav.chip.none')
+  $<HTMLButtonElement>('projExport').disabled = !act
   const shown = projShowAll ? all : all.slice(0, 3)
   box.innerHTML = (all.length ? shown.map(row).join('') : `<p class="pnone">${t('proj.none')}</p>`)
     + (all.length > 3 ? `<button type="button" class="rm-link" data-act="all">${projShowAll ? '−' : '+'} ${t('proj.all', { n: all.length })}</button>` : '')
@@ -3565,22 +3595,93 @@ document.getElementById('projList')?.addEventListener('click', async (e) => {
   }
   void renderProjects()
 })
-// project dashboard (Giorbev's 6 entries): each one leads to the place of the app that does it
-const goTab = (tab: string, then?: () => void) => {
-  closeMenu(); $('welcome').hidden = true; menuOpen = false
-  document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${tab}"]`)?.click()
-  if (then) setTimeout(then, 50)
+// --- level 3: dashboard of the active project (src/nav.ts): section bar + hub of tiles over the generator steps ---
+const ENTRY_OF: Record<string, Entry> = { tGen: 'new', tRandom: 'random', tReal: 'real' }
+async function createProject(): Promise<void> {
+  await newActiveProject(t('proj.newName.new', { date: new Date().toLocaleString() }))
+  setSection('terrain')
+  setLevel('dashboard')
 }
-const focusEl = (id: string) => { const el = document.getElementById(id); el?.scrollIntoView({ block: 'center' }); el?.classList.add('flash'); setTimeout(() => el?.classList.remove('flash'), 1600) }
-document.getElementById('projDash')?.addEventListener('click', (e) => {
-  const k = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-dash]')?.dataset.dash
-  if (k === 'terrain') goTab('island')
-  else if (k === 'atelier') goTab('water')
-  else if (k === 'masks') goTab('wb', () => focusEl('tMasks'))
-  else if (k === 'sat') goTab('camp', () => focusEl('satSend'))
-  else if (k === 'diag') goTab('wb', () => { $<HTMLButtonElement>('checkRun').click(); ;($('checkBox') as HTMLDetailsElement).open = true; focusEl('checkRun'); void runAudit() })
-  else if (k === 'share') { closeMenu(); $('welcome').hidden = true; menuOpen = false; if (!$('collab').classList.contains('active')) $<HTMLButtonElement>('collab').click(); $('collabBox').hidden = false }
+$<HTMLButtonElement>('projNew').addEventListener('click', () => void createProject())
+$<HTMLButtonElement>('projExport').addEventListener('click', () => {
+  if (activeProject) document.querySelector<HTMLButtonElement>(`#projList .projrow[data-id="${activeProject}"] [data-act="export"]`)?.click()
 })
+const clickStep = (tab: string) => document.querySelector<HTMLButtonElement>(`#tabs [data-tab="${tab}"]`)?.click()
+const focusEl = (id: string) => {
+  const el = document.getElementById(id)
+  if (!el) return
+  for (let d = el.closest('details'); d; d = d.parentElement?.closest('details') ?? null) d.open = true
+  if (el instanceof HTMLDetailsElement) el.open = true
+  el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600)
+}
+function runTile(tl: Tile) {
+  const [kind, arg] = tl.act.split(':')
+  if (kind === 'soon') return
+  if (kind === 'level') return setLevel(arg as Level)
+  if (kind === 'atelier') return openAtelier(arg)
+  if (tl.step) clickStep(tl.step)
+  if (kind === 'step') clickStep(arg)
+  else if (kind === 'focus') setTimeout(() => focusEl(arg), 50)
+  else if (kind === 'click') {
+    const e = ENTRY_OF[arg]
+    if (e) { entry = e; if (!activeProject) void newActiveProject(t(`proj.newName.${e}` as Key, { date: new Date().toLocaleString() })) }
+    const btn = $<HTMLButtonElement>(arg)
+    for (let d = btn.closest('details'); d; d = d.parentElement?.closest('details') ?? null) d.open = true
+    forceBusy = !!e
+    if (!tl.focus || document.getElementById(tl.focus)?.hidden) btn.click() // a box toggle: the tile only opens it
+    forceBusy = false
+    if (tl.focus) setTimeout(() => focusEl(tl.focus!), 50)
+  }
+}
+function renderHub(s: Section) {
+  const tiles = SECTION_TILES[s]
+  const groups: (string | undefined)[] = []
+  for (const tl of tiles) if (!groups.includes(tl.group)) groups.push(tl.group)
+  const tile = (tl: Tile) => {
+    const soon = tl.act === 'soon', at = tl.act.startsWith('atelier:')
+    return `<button type="button" class="hubtile${at ? ' at' : ''}" data-tile="${tl.id}"${soon ? ' disabled' : ''}>${t(`nav.t.${s}.${tl.id}` as Key)}${soon ? ` <em>${t('nav.soon')}</em>` : ''}${at ? ' <em>A</em>' : ''}</button>`
+  }
+  $('secHub').innerHTML = `<p class="hint">${t(('nav.lead.' + s) as Key)}</p>`
+    + groups.map((g) => `${g ? `<span class="wglabel">${t(('nav.g.' + g) as Key)}</span>` : ''}<div class="hubgrid">${tiles.filter((x) => x.group === g).map(tile).join('')}</div>`).join('')
+}
+$('secHub').addEventListener('click', (e) => {
+  const id = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-tile]')?.dataset.tile
+  const tl = SECTION_TILES[nav.section].find((x) => x.id === id)
+  if (tl) runTile(tl)
+})
+function setSection(s: Section, pickStep = true) {
+  nav.section = s
+  const app = document.querySelector<HTMLElement>('.app')!
+  app.dataset.sec = s
+  document.querySelectorAll<HTMLButtonElement>('#secbar [data-sec]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.sec === s)))
+  const steps = SECTION_STEPS[s]
+  tabButtons.forEach((b) => { (b.closest('li') as HTMLElement).hidden = !steps.includes(b.dataset.tab!) })
+  renderHub(s)
+  const cur = tabButtons.find((x) => x.classList.contains('active'))?.dataset.tab ?? ''
+  if (pickStep && steps.length && !steps.includes(cur)) clickStep(steps[0])
+  saveNav()
+}
+document.getElementById('secbar')?.addEventListener('click', (e) => {
+  const s = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-sec]')?.dataset.sec as Section | undefined
+  if (!s) return
+  setSection(s)
+})
+navHook = (tab: string) => {
+  if (tab === '@dashboard') {
+    let saved: string | null = null
+    try { saved = localStorage.getItem('reforger-mapper.nav') } catch { /* */ }
+    const st = startState(true, saved)
+    setSection(st.section, false); setLevel('dashboard')
+    return
+  }
+  const n = followStep(nav, tab)
+  if (n.section !== nav.section) setSection(n.section, false)
+}
+{
+  let saved: string | null = null
+  try { saved = localStorage.getItem('reforger-mapper.nav') } catch { /* */ }
+  setSection(startState(true, saved).section, false)
+}
 void (async () => {
   let legacy: unknown = null
   try { const s0 = localStorage.getItem(PROJECT_KEY); legacy = s0 ? JSON.parse(s0) : null } catch { /* */ }
