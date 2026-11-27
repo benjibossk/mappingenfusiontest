@@ -296,6 +296,9 @@ const server = createServer(async (req, res) => {
       const text = await readBody(req);
       const project = JSON.parse(text);
       if (!Array.isArray(project.shapes)) return send(res, 400, { error: "project.shapes missing" });
+      // Atelier zone send (src/atelier/zones/send.ts): entities and shapes only, the terrain is never touched
+      if (project.noHeights) { delete project.setupWorld; console.log("[apply] zone send (noHeights): no world setup, no terrain write"); }
+      const clear = Array.isArray(project.clear) ? project.clear.filter((x) => typeof x === "string" && /^MGZ\w*_$/.test(x)) : [];
 
       mkdirSync(join(PROFILE_DIR, "MapGen"), { recursive: true });
       // power grid topology (nodes / edges / feeders / consumers) next to mapgen.json, never sent to the Workbench reader
@@ -337,7 +340,7 @@ const server = createServer(async (req, res) => {
       if (fam.clear.length) console.log(`[apply] families of earlier sends cleared: ${fam.clear.join(" ")}`);
       for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (/^mapgen\.\d+\.json$/.test(f)) rmSync(join(PROFILE_DIR, "MapGen", f));
       parts.forEach((p, k) => {
-        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0, ...(locked.length ? { locked } : {}), ...(fam.clear.length ? { clearFamilies: fam.clear } : {}) } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
+        const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0, ...(locked.length ? { locked } : {}), ...(fam.clear.length ? { clearFamilies: fam.clear } : {}), ...(clear.length ? { clear } : {}) } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
         writeFileSync(k === 0 ? PROJECT_FILE : join(PROFILE_DIR, "MapGen", `mapgen.${k}.json`), JSON.stringify(body), "utf-8");
       });
       console.log(`[apply] ${project.shapes.length} shapes, ${(project.entities ?? []).length} objects in ${parts.length} file(s)`);
