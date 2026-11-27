@@ -32,7 +32,7 @@ button.rm-icon:hover:not(:disabled) { background: var(--ink-4); border-color: va
 .top #collabInfo { flex: 0 1 auto; }
 .top .hist.withlbl { width: auto; height: var(--h-md); padding: 0 10px; gap: 6px; display: inline-flex; align-items: center; }
 .top .hist.withlbl > span { font: 500 var(--fs-sm) var(--f-head); letter-spacing: .08em; text-transform: uppercase; }
-.top .status { flex: 0 1 auto; min-width: 34px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top .status { flex: none; min-width: 34px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* bouton caméra Workbench : même famille que les autres, plus de gros bouton ambre sur 2 lignes */
 .top .camtog { color: var(--tx-3); }
 .top .camtog.active { color: var(--amber-hi); border-color: transparent; box-shadow: none; }
