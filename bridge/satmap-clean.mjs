@@ -5,19 +5,33 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-let PALETTE = null, FAMILIES = [];
+let PALETTE = null, FAMILIES = [], BIOMES = new Map();
 export function cleanPalette() {
   if (PALETTE) return PALETTE;
   try {
     const j = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "library", "satmap-clean-palette.json"), "utf-8"));
     PALETTE = new Map(Object.entries(j.surfaces).map(([k, v]) => [k.toLowerCase(), v]));
     FAMILIES = (j.families ?? []).map((f) => ({ re: new RegExp(f.match, "i"), rgb: f.rgb }));
-  } catch { PALETTE = new Map(); FAMILIES = []; }
+    // per-biome overrides: {biomeId: {aliases?: [...], surfaces: {name: entry}}}, aliases = climate ids (groundClasses.ts)
+    BIOMES = new Map();
+    for (const [id, b] of Object.entries(j.biomes ?? {})) {
+      const m = new Map(Object.entries(b.surfaces ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
+      for (const a of [id, ...(b.aliases ?? [])]) BIOMES.set(a.toLowerCase(), m);
+    }
+  } catch { PALETTE = new Map(); FAMILIES = []; BIOMES = new Map(); }
   return PALETTE;
 }
 const key = (name) => String(name).replace(/\.emat$/i, "").split("/").pop().toLowerCase();
-//! palette entry of a surface (GUID / path / case ignored), null if not in the table
-export const cleanEntry = (name) => cleanPalette().get(key(name)) ?? null;
+//! palette entry of a surface (GUID / path / case ignored), null if not in the table. biome: id or list of ids
+//! (map biome src/data/biomes.ts, climate src/biomes/groundClasses.ts); the first override found wins, else the base palette
+export function cleanEntry(name, biome) {
+  const p = cleanPalette(), k = key(name);
+  for (const b of [biome].flat()) {
+    const e = b ? BIOMES.get(String(b).toLowerCase())?.get(k) : null;
+    if (e) return e;
+  }
+  return p.get(k) ?? null;
+}
 //! family colour of an unknown (mod) surface from its name (grass, forest, road, rock, sand, dirt...), null if none
 export function familyColour(name) {
   cleanPalette();
@@ -65,8 +79,8 @@ export function hillshade(relief) {
 }
 
 //! colour of one surface at world (x, z) in clean mode: palette (or the app colour) x noise grain
-export function cleanColour(name, appColour, x, z, seed = 1) {
-  const e = cleanEntry(name);
+export function cleanColour(name, appColour, x, z, seed = 1, biome) {
+  const e = cleanEntry(name, biome);
   const c = e?.rgb ?? familyColour(name) ?? appColour;
   const grain = e?.grain ?? 0.6, scale = e?.scale ?? 3;
   const n = fbm(x, z, scale, seed), broad = fbm(x, z, 60, seed + 101);

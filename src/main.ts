@@ -2777,7 +2777,9 @@ async function masksNow(): Promise<string> {
 
 // satmap: flat vanilla-matched colours + seeded noise (seed) + hillshade (relief), no game file read
 function satSourceBody(): Record<string, unknown> {
-  return { seed: num('tSeed'), relief: island ? { ...island.grid, heights: Array.from(island.heights) } : undefined }
+  // satmap palette overrides (library/satmap-clean-palette.json "biomes"): climate ground classes first when on, then the map biome
+  const biome = $<HTMLInputElement>('gcOn').checked ? [gcBiome(), currentBiome] : [currentBiome]
+  return { seed: num('tSeed'), relief: island ? { ...island.grid, heights: Array.from(island.heights) } : undefined, biome }
 }
 // road mask ends at a lake pulled back by the band reach (asphalt half 4 + shoulder 5 m), see roadsOutOfWater
 const LAKE_MASK_TRIM = 9

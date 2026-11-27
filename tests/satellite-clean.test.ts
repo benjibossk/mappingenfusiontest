@@ -53,3 +53,15 @@ test('satellite: the satmap code has no game texture path left', () => {
     assert.ok(!/\.edds|terrain-middles|middleFactor/i.test(src), f)
   }
 })
+
+test('satellite: a biome override changes the colour, other names and unknown biomes fall back to the base palette', () => {
+  const base = cleanEntry('Dirt_02')!, desert = cleanEntry('Dirt_02', 'desert')!
+  assert.notDeepEqual(desert.rgb, base.rgb, 'desert override')
+  assert.deepEqual(cleanEntry('Dirt_02', 'desertique')!.rgb, desert.rgb, 'climate alias')
+  assert.deepEqual(cleanEntry('Dirt_02', ['glaciaire', 'desert'])!.rgb, desert.rgb, 'first override found wins')
+  assert.deepEqual(cleanEntry('Dirt_02', 'temperate_everon')!.rgb, base.rgb, 'no override: base')
+  assert.deepEqual(cleanEntry('Asphalt_01', 'desert')!.rgb, cleanEntry('Asphalt_01')!.rgb, 'name not overridden: base')
+  assert.notDeepEqual(cleanColour('Dirt_02', [0, 0, 0], 5, 5, 1, 'desert'), cleanColour('Dirt_02', [0, 0, 0], 5, 5, 1))
+  // every surface a map biome paints has a palette entry
+  for (const n of ['Grass_01_aut', 'ForestPine_01_Base', 'MountainGrass_03_aut', 'ForestDeciduous_02', 'Cobblestone_01_Wave_V2']) assert.ok(cleanEntry(n), n)
+})

@@ -163,43 +163,43 @@
     },
     "ForestDeciduous_01_Base": {
       "rgb": [
-        67,
-        66,
-        44
+        64,
+        70,
+        40
       ],
-      "grain": 0.9,
-      "scale": 4,
-      "src": "reforger.recoil.org arland satmap, forest canopy (east shot 1000,700 200x150)"
+      "grain": 1.1,
+      "scale": 5,
+      "src": "reforger.recoil.org everon satmap, broadleaf wood canopy south of the road (67,73,41) pulled darker: reads ~0.7x meadow lum"
     },
     "ForestConiferous_01_Base": {
       "rgb": [
+        54,
         60,
-        61,
-        40
+        38
       ],
-      "grain": 0.9,
-      "scale": 4,
-      "src": "reforger.recoil.org arland satmap, forest canopy (centre shot 80,560 300x150)"
+      "grain": 1.1,
+      "scale": 5,
+      "src": "reforger.recoil.org everon satmap conifer stand, darker than broadleaf; hand-scaled from the broadleaf box"
     },
     "Crop_Field_01": {
       "rgb": [
-        120,
-        107,
-        63
+        169,
+        151,
+        100
       ],
       "grain": 0.5,
       "scale": 3,
-      "src": "hand: no crop fields on Arland, = dry meadow"
+      "src": "reforger.recoil.org everon satmap, ripe wheat field west of the St Philippe road (box median)"
     },
     "Crop_Field_02": {
       "rgb": [
-        100,
-        88,
-        58
+        130,
+        101,
+        65
       ],
       "grain": 0.5,
       "scale": 3,
-      "src": "hand: darker dry meadow"
+      "src": "reforger.recoil.org everon satmap, ploughed field plots near St Philippe (box median, two plots)"
     },
     "Asphalt_01": {
       "rgb": [
@@ -240,6 +240,176 @@
       "grain": 0.3,
       "scale": 2,
       "src": "hand: Concrete_01 +4%"
+    },
+    "ForestPine_01_Base": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        54,
+        60,
+        38
+      ],
+      "src": "hand: = ForestConiferous_01_Base"
+    },
+    "ForestConiferous_02": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        54,
+        60,
+        38
+      ],
+      "src": "hand: = ForestConiferous_01_Base"
+    },
+    "ForestDeciduous_02": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        60,
+        72,
+        38
+      ],
+      "src": "hand: ForestDeciduous_01_Base greener (tropical)"
+    },
+    "ForestClearing_Deciduous_01": {
+      "grain": 0.9,
+      "scale": 3,
+      "rgb": [
+        80,
+        84,
+        46
+      ],
+      "src": "hand: between Grass_02 and forest canopy"
+    },
+    "ForestClearing_Coniferous_01": {
+      "grain": 0.9,
+      "scale": 3,
+      "rgb": [
+        74,
+        78,
+        45
+      ],
+      "src": "hand: between Grass_02 and conifer canopy"
+    },
+    "Cobblestone_01_Wave_V2": {
+      "grain": 0.6,
+      "scale": 1,
+      "rgb": [
+        120,
+        114,
+        104
+      ],
+      "src": "hand: = Cobblestone_01_Wave"
+    },
+    "Debris_Rock_01_V2": {
+      "grain": 1,
+      "scale": 2,
+      "rgb": [
+        123,
+        118,
+        109
+      ],
+      "src": "hand: = Debris_Rock_01"
+    },
+    "Grass_01_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        106,
+        112,
+        85
+      ],
+      "src": "enfumap.com kolguyev fogless satellite, west shore near Gorshkovo (pixel-class median), open grass"
+    },
+    "Grass_02_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        95,
+        100,
+        76
+      ],
+      "src": "hand: Grass_01_aut x0.9"
+    },
+    "ForestDeciduous_01_Base_aut": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        48,
+        54,
+        42
+      ],
+      "src": "enfumap.com kolguyev fogless satellite, west shore near Gorshkovo (pixel-class median), canopy (40,48,40 incl. shadow) lifted slightly"
+    },
+    "ForestConiferous_01_Base_aut": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        42,
+        49,
+        40
+      ],
+      "src": "enfumap.com kolguyev fogless satellite, west shore near Gorshkovo (pixel-class median), dark canopy class"
+    },
+    "ForestConiferous_02_aut": {
+      "grain": 1.1,
+      "scale": 5,
+      "rgb": [
+        42,
+        49,
+        40
+      ],
+      "src": "hand: = ForestConiferous_01_Base_aut"
+    },
+    "ForestClearing_Coniferous_01_aut": {
+      "grain": 0.9,
+      "scale": 3,
+      "rgb": [
+        80,
+        85,
+        66
+      ],
+      "src": "hand: between Grass_02_aut and the aut canopy"
+    },
+    "Heather_01_aut": {
+      "grain": 0.9,
+      "scale": 3,
+      "rgb": [
+        96,
+        84,
+        72
+      ],
+      "src": "hand: Heather_01 browner"
+    },
+    "MountainGrass_01_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        96,
+        100,
+        78
+      ],
+      "src": "hand: Grass_01_aut x0.9, greyer"
+    },
+    "MountainGrass_02_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        100,
+        100,
+        82
+      ],
+      "src": "hand: Grass_01_aut greyer"
+    },
+    "MountainGrass_03_aut": {
+      "grain": 0.8,
+      "scale": 3,
+      "rgb": [
+        110,
+        106,
+        86
+      ],
+      "src": "hand: Grass_01_aut, drier"
     }
   },
   "families": [
@@ -299,5 +469,55 @@
         88
       ]
     }
-  ]
+  ],
+  "biomes": {
+    "_doc": "Per-biome overrides, same entry format as surfaces. Key = map biome id (src/data/biomes.ts), aliases = climate ids (src/biomes/groundClasses.ts). A biome only needs an entry when the same surface name must read differently there; missing names fall back to the base palette.",
+    "desert": {
+      "aliases": [
+        "desertique"
+      ],
+      "surfaces": {
+        "Dirt_02": {
+          "rgb": [
+            199,
+            188,
+            179
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "enfumap.com anizay fogless satellite (desert community map by Temppa), open ground west of Naw (box median), pale packed ground (desert grass role)"
+        },
+        "Pebbles_01": {
+          "rgb": [
+            212,
+            203,
+            193
+          ],
+          "grain": 0.8,
+          "scale": 2,
+          "src": "enfumap.com anizay fogless satellite (desert community map by Temppa), open ground west of Naw (box median), lighter gravel flat (desert meadow role)"
+        },
+        "Dirt_01": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: Anizay ground darkened for the desert scrub (forest role)"
+        },
+        "Crop_Field_02": {
+          "rgb": [
+            170,
+            150,
+            112
+          ],
+          "grain": 0.5,
+          "scale": 3,
+          "src": "hand: Anizay ground, warmer (irrigated plots)"
+        }
+      }
+    }
+  }
 }

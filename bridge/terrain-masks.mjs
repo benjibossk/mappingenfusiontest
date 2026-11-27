@@ -68,13 +68,14 @@ export function maskSide(terrPath) {
 //! Satellite map (Manage -> Satellite Map -> Import, untick "linear colour space"): RGB PNG, row 0 = NORTH,
 //! each pixel = weighted mix of the surface colours, background colour where no surface has weight.
 //! colours: {surfaceName: [r, g, b]}. Without it the terrain renders white.
-//! opts: { relief?: height grid (hillshade), seed? }. Every surface = one flat colour hand-matched to the
+//! opts: { relief?: height grid (hillshade), seed?, biome?: id or [ids] selecting the palette overrides }. Every surface = one flat colour hand-matched to the
 //! vanilla look (bridge/satmap-clean.mjs) + seeded multi-scale noise + relief shading. No game file is read
 //! (Bohemia advice, HorribleGoat: no thumbnails derived from the game textures).
 export function writeSatellite(outFile, side, terrainSize, surfaces, colours, background = [40, 60, 80], roads = [], opts = {}) {
   const o = opts && typeof opts === "object" ? opts : {};
   const seed = Number.isFinite(o.seed) ? o.seed | 0 : 1;
   const shade = hillshade(o.relief);
+  const biome = o.biome;
   const mPerPx = terrainSize / (side - 1);
   const samplers = surfaces.map((s) => ({ name: s.name, c: colours[s.name] ?? [128, 128, 128], f: sampler(s) }));
   const layers = roadLayers(side, mPerPx, roads);
@@ -88,7 +89,7 @@ export function writeSatellite(outFile, side, terrainSize, surfaces, colours, ba
       const w = Math.min(a[row * side + col], 1 - road);
       if (!w) continue;
       road += w;
-      const rc = cleanColour(name, c, x, z, seed);
+      const rc = cleanColour(name, c, x, z, seed, biome);
       for (let k = 0; k < 3; k++) racc[k] += Math.min(255, rc[k]) * w;
     }
     let total = 0;
@@ -97,7 +98,7 @@ export function writeSatellite(outFile, side, terrainSize, surfaces, colours, ba
       const w = Math.min(Math.max(f(x, z), 0), 1);
       if (!w) continue;
       total += w;
-      const cc = cleanColour(name, c, x, z, seed);
+      const cc = cleanColour(name, c, x, z, seed, biome);
       for (let k = 0; k < 3; k++) acc[k] += Math.min(255, cc[k]) * w;
     }
     const land = Math.min(total, 1) + road * (1 - Math.min(total, 1));

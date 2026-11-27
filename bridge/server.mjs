@@ -446,7 +446,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/masks") {
-      const { addon, world, terrainSize, surfaces, colours, roads = [], fileNames, readme, relief, seed } = JSON.parse(await readBody(req));
+      const { addon, world, terrainSize, surfaces, colours, roads = [], fileNames, readme, relief, seed, biome } = JSON.parse(await readBody(req));
       if (!/^[\w .-]+$/.test(addon ?? "") || !/^[\w/ .-]+$/.test(world ?? "") || world.includes(".."))
         return send(res, 400, { error: "addon / world invalid" });
       if (!(terrainSize > 0) || !Array.isArray(surfaces)) return send(res, 400, { error: "terrainSize / surfaces missing" });
@@ -454,7 +454,7 @@ const server = createServer(async (req, res) => {
       const dir = join(PROFILE_DIR, "MapGen", "masks", basename(world));
       const result = writeMasks(dir, side, terrainSize, surfaces, roads, colours, { fileNames, readme });
       if (colours) result.satellite = writeSatellite(join(dir, "..", basename(world) + "_satellite.png"), 4096, terrainSize, surfaces, colours, undefined, roads,
-        { relief, seed });
+        { relief, seed, biome });
       return send(res, 200, result);
     }
 
