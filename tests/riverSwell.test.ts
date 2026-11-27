@@ -64,3 +64,18 @@ test('ribbon levels are pinned to the swelling lake level at the lake', async ()
   pinToLakes(line, level, [{ id: 'L', type: 'lake', pts: [-50, 80, 50, 80, 50, 120, -50, 120], width: 0, depth: 4, onRiver: true, level: 1.8 }])
   assert.deepEqual(level, [3, 2.5, 1.8, 1.5, 1])
 })
+
+test('a river swelling lake near the sea sits at least 1 m over it, the river upstream not under it (picture 119)', async () => {
+  const { carveWater, LAKE_MIN_ABOVE_SEA } = await import('../src/modules/water')
+  const g = { minX: 0, minZ: 0, step: 4, cols: 200, rows: 200 }
+  // low coastal plain: 0.6 m falling to the sea (under 0) past z 700
+  const hs = Array.from({ length: 200 * 200 }, (_, k) => { const z = Math.floor(k / 200) * 4; return z < 700 ? 0.6 - z * 0.0005 : -3 })
+  const river = { id: 'R', type: 'river' as const, pts: [400, 0, 400, 400, 400, 796], width: 40, depth: 2.5, carve: false, wetEdge: true }
+  const lake = { id: 'L', type: 'lake' as const, pts: [360, 300, 440, 300, 470, 400, 440, 500, 360, 500, 330, 400], width: 0, depth: 4, onRiver: true }
+  carveWater(hs, g, [river, lake])
+  assert.ok(lake.level! >= LAKE_MIN_ABOVE_SEA, String(lake.level))
+  // the shore rim holds the water (west bank, 4 m outside the outline at z 400)
+  assert.ok(hs[(400 / 4) * 200 + 324 / 4] >= lake.level!, String(hs[(400 / 4) * 200 + 324 / 4]))
+  // the river bed upstream was raised with it: its banks over the lake level just before the lake
+  assert.ok(hs[(260 / 4) * 200 + 424 / 4] < lake.level! + 1.5)
+})

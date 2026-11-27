@@ -122,6 +122,9 @@ export const PICTURE_RIVER_DEPTH = 2.5
 /** centre depth of a lake swelling a picture river: as deep as the wide river middle (pictureRiverDepth max). At 2 m the
  * bed of picture 120's lakes showed through in turquoise / grass patches (round 11) */
 export const PICTURE_SWELL_LAKE_DEPTH = 4
+/** an inland lake swelling a river lies at least this high over the sea (m): picture 119 round 15, its surface at
+ *  0.13 m sat just over the 0 m sea plane and the sea showed through as dark patches in the lake */
+export const LAKE_MIN_ABOVE_SEA = 1
 const RIVER_BANK = 0.5 // bank top above the water
 const RIVER_MAXCUT = 2.5
 const RIVER_DRY = 0.4 // ground outside the traced bed but under the river ribbon, over the water (0.2 read as speckled grass islands in shallow water, picture 119 round 9)
@@ -272,6 +275,9 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
   const shaped = new Float32Array(heights.length)
   const shapedScore = new Float32Array(heights.length).fill(Infinity)
   const levels: WaterLevels = { level: new Float32Array(heights.length).fill(NaN), wet: new Uint8Array(heights.length) }
+  // lake rims raised to hold the water: a lake set over low ground (a river swelling lifted LAKE_MIN_ABOVE_SEA) needs banks
+  const rim = new Float32Array(heights.length).fill(-Infinity)
+  const raise = (k: number, v: number) => { if (v > rim[k]) rim[k] = v }
 
   // a lake swelling a river lies at the river's level (median river level along its shore): from its own
   // shore it sat 0.4 m under the river water, the ribbon edge showing over it (picture 119)
@@ -288,7 +294,8 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
       if (Number.isFinite(bl)) ls.push(bl)
     }
     ls.sort((a, b) => a - b)
-    if (ls.length) w.level = Math.round(ls[ls.length >> 1] * 100) / 100
+    // never close to the sea plane: the river upstream is pinned up to it (pinToLakes), downstream comes down to the mouth
+    if (ls.length) w.level = Math.max(LAKE_MIN_ABOVE_SEA, Math.round(ls[ls.length >> 1] * 100) / 100)
   }
 
   for (const w of waters) {
@@ -403,6 +410,7 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
             levels.level[r * cols + c] = L; levels.wet[r * cols + c] = 1
           } else if (d < 3 * bank) {
             if (d < bank) lower(r * cols + c, L + Math.min(0.15 * d, 0.3) + 1.5 * (d / bank))
+            if (w.onRiver) raise(r * cols + c, L + 0.3 - 0.15 * Math.max(0, d - bank))
             if (Number.isNaN(levels.level[r * cols + c])) levels.level[r * cols + c] = L
           }
         }
@@ -410,6 +418,7 @@ export function carveWater(heights: number[], grid: Grid, waters: Water[]): Wate
   }
   for (let k = 0; k < heights.length; k++) {
     if (shapedScore[k] < Infinity) heights[k] = shaped[k]
+    else if (rim[k] > heights[k]) heights[k] = rim[k]
     if (target[k] < heights[k]) heights[k] = target[k]
   }
   return levels
