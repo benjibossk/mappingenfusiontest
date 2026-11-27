@@ -272,10 +272,15 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const slope = Math.hypot(at(c + 1, r) - at(c - 1, r), at(c, r + 1) - at(c, r - 1)) / (2 * step)
     // coast, after the plan in docs/ARCHITECTURE.md "Côtes": seabed < -3, shore -3..+1, beach +1..+4,
     // back-beach +4..+10, cliffs where steep near the water
-    const deepAll = 1 - band(h, -4, -2)
+    // inland water (river, river swelling lake) is lake bed to its edge: its -4..-0.5 m shelf was the coast's sandy
+    // strip (Dirt / sand + pebbles), a beige-brown band through the water along every bank of picture 119 (bank 1-10 px
+    // of the masks: Dirt_01 49-55 %). No bare sand patches in it either
+    const wetInl = !!inl?.[i] && h < -0.5
+    const deepAll = wetInl ? 1 : 1 - band(h, -4, -2)
     // a weight under ~50 % does not show through the seabed in the Workbench: sand wins at the heart of
     // each patch (75 %) and fades out over a wide border
-    const bare = deepAll * 0.75 * band(patches((c * step) / 45, (r * step) / 45), 0.52, 0.75)
+    // (hard-edged: a 0.52..0.75 soft ramp left half the bed of picture 119 a SeaBed / dirt mix, blotches in game)
+    const bare = wetInl ? 0 : deepAll * band(patches((c * step) / 45, (r * step) / 45), 0.6, 0.64)
     const deep = deepAll - bare
     const bed = river ? Math.min(river[i], 1 - deepAll) : 0
     // the map-edge sea ramp (Sculpt.compose: the last 6 % of the map forced down to the sea floor) is no cliff: a
@@ -348,7 +353,9 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     // open land is not one grass: Arland mixes Grass_03 30 % + Grass_02 8 % + scree-grass + heather in 50-300 m patches
     // (FIELDS_SURFACES_VANILLA §1/§4). Picture 120: the biome grass alone was 75 % of the land, one beige sheet.
     // Meadow (Grass_02) patches from low-frequency noise, soft edges, up to 55 % at their heart
-    const lush = cover ? 0.55 * band(variants((c * step) / 110 + 37, (r * step) / 110 + 11), 0.42, 0.72) : 0
+    // whole meadows (threshold of the 110 m noise, a few metres of blend): a 55 % soft blend was a Grass_02 / Grass_03
+    // ~145/110 mix on 81 % of picture 120, blotches in game
+    const lush = cover ? band(variants((c * step) / 110 + 37, (r * step) / 110 + 11), 0.61, 0.65) : 0
     weights.Grass_02[weights.Grass_02.length - 1] += (open - heath) * (1 - mountain) * lush
     weights.Grass_01.push((open - heath) * (1 - mountain) * (1 - lush))
   }

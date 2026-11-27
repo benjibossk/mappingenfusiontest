@@ -37,14 +37,19 @@ test('river spline width capped (picture 119: a 152 m wide spline showed as a da
   assert.ok(riverWetHalf(wide) >= 117 / 2, 'the traced width stays clear of trees')
 })
 
-test('road shoulders and dirt tracks paint a light dirt excess, not a full band', () => {
+test('road shoulders paint a light dirt excess; dirt tracks are full weight under the carriageway, narrow fade (round 12)', () => {
   const m = roadMasks([{ id: 'A', type: 'asphaltNarrow', pts: [0, 50, 100, 50] }, { id: 'D', type: 'dirt', pts: [0, 20, 100, 20] }] as never)
   assert.equal(m[0].sidePeak, 0.35)
-  assert.equal(m[1].peak, 0.5)
-  const L = roadLayers(101, 1, m as never)
+  assert.equal(m[1].peak, 1)
+  assert.ok(m[1].edge <= 1.5)
+  const L = roadLayers(101, 1, m as never), d = L.get('Dirt_01')!
+  const at = (x: number, z: number) => d[(100 - z) * 101 + x]
+  assert.equal(at(50, 20), 1) // track centre
+  assert.equal(at(50, 20 + Math.ceil(m[1].half + m[1].edge)), 0) // nothing past the fade
+  // asphalt shoulder (z 50 + 4 .. + 9): still a light excess
   let side = 0
-  for (const v of L.get('Dirt_01')!) side = Math.max(side, v)
-  assert.ok(side <= 0.5 + 1e-6, `dirt weight ${side}`)
+  for (let z = 55; z <= 60; z++) side = Math.max(side, at(50, z))
+  assert.ok(side <= 0.35 + 1e-6, `shoulder weight ${side}`)
 })
 
 test('Arland: no crop / Dirt_02 (absent from vanilla Arland), river bed Pebbles_02 not scree', () => {

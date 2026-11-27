@@ -248,7 +248,7 @@ export function pinToLakes(line: number[], level: number[], lakes: Water[]) {
 //! painted under each river: pebbles in the bed, dirt on the wet banks (same format as roadMasks)
 export function waterMasks(waters: Water[]) {
   return waters.filter((w) => !WATER_TYPES[w.type].closed && w.pts.length >= 4)
-    .map((w) => ({ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01', side: 'Dirt_01', sidePeak: 0.35 }))
+    .map((w) => ({ points: centreLine(riverCourse(w.pts, w.width), 4), half: w.width / 2, edge: 2, core: 'Pebbles_01' })) // no dirt shoulder: brown line along the banks (picture 119), Arland banks are grass
 }
 
 //! per grid cell: water level of the nearest lake / river where known (NaN elsewhere), wet = under water
@@ -778,8 +778,18 @@ export function splitAtWater(shapes: ProjectShape[], waters: Water[], margin = 4
     return { c: local ? w.pts : riverCourse(w.pts, w.width), half: (i: number) => (local ? Math.max(w.widths![i / 2], w.widths![i / 2 + 1]) : w.width) / 2 + margin }
   })
   const lakes = waters.filter((w) => WATER_TYPES[w.type].closed && w.pts.length >= 6)
+  // a lake counts 2 x `margin` m out of its outline too (its bank): cut at the outline, a road ran straight into the lake
+  // down the bank, its end and its dirt band on the shore (picture 120, round 12)
+  const nearOutline = (p: number[], x: number, z: number) => {
+    for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+      const ax = p[j], az = p[j + 1], dx = p[i] - ax, dz = p[i + 1] - az, L2 = dx * dx + dz * dz || 1
+      const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
+      if (Math.hypot(x - ax - dx * t, z - az - dz * t) < 2 * margin) return true // + the carriageway half width
+    }
+    return false
+  }
   const wet = (x: number, z: number) => {
-    for (const l of lakes) if (inside(l.pts, x, z)) return true
+    for (const l of lakes) if (inside(l.pts, x, z) || nearOutline(l.pts, x, z)) return true
     for (const { c, half } of courses)
       for (let i = 0; i + 3 < c.length; i += 2) {
         const ax = c[i], az = c[i + 1], dx = c[i + 2] - ax, dz = c[i + 3] - az, L2 = dx * dx + dz * dz || 1
@@ -1314,4 +1324,17 @@ export function inlandWaterMask(g: Grid, waters: Water[]): Uint8Array {
         if (inPolygon(w.pts, g.minX + c * g.step, g.minZ + r * g.step)) m[r * g.cols + c] = 1
   }
   return m
+}
+
+//! the roads as sent (splitAtWater on their shapes), for the ground masks: the uncut bands painted the carriageway
+//! down the bank and into the water where the road itself stops (dirt patch on the shore, picture 120, round 12)
+export function roadsOutOfWater<R extends { id: string; pts: number[] }>(roads: R[], shapes: ProjectShape[], waters: Water[]): R[] {
+  if (!waters.length) return roads
+  const byId = new Map(roads.map((r) => [r.id, r]))
+  const out: R[] = []
+  for (const s of splitAtWater(shapes, waters).shapes) {
+    const base = byId.get(s.id) ?? byId.get(s.id.replace(/_[A-Z]$/, ''))
+    if (base) out.push({ ...base, id: s.id, pts: s.points })
+  }
+  return out
 }

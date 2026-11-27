@@ -422,15 +422,21 @@ export function roadShapes(roads: Road[]): ProjectShape[] {
 }
 
 //! road bands for the bridge masks / satellite
+// dirt tracks keep the road priority in the per-block surface limit: as Dirt_01 they had the yard / pole-patch priority
+// (1) and a thin track, under 1 % of its block, was dropped from it (picture 120 sim: trail centre Dirt_01 0 %, dirt road 48 %)
+const ROAD_PRIO = 40
 export const ROAD_SIDE_PEAK = 0.35
-export const DIRT_TRACK_PEAK = 0.5
+// full weight under the track: at 0.5 the ground pattern showed through the dirt roads (picture 120, round 12)
+export const DIRT_TRACK_PEAK = 1
+export const DIRT_TRACK_EDGE = 1.5
 export function roadMasks(roads: Road[]) {
   return roads.filter((r) => r.pts.length >= 4).map((r) => {
     const T = ROAD_TYPES[r.type]
     // FIELDS_SURFACES_VANILLA §3: shoulders are a dirt excess (29 % at the edge, fading over 4-6 m), dirt tracks barely
     // painted (20 % inside): full-weight Dirt bands were dark speckled strips along every road (pictures 119 / 120)
     const dirtTrack = !T.side && /^Dirt_0/.test(T.core)
-    return { points: centreLine(r.pts, 4), half: roadHalf(r), edge: T.shoulder ?? T.edge, core: T.core, side: T.side, ...(T.side ? { sidePeak: ROAD_SIDE_PEAK } : {}), ...(dirtTrack ? { peak: DIRT_TRACK_PEAK } : {}) }
+    // dirt tracks: full weight under the carriageway (round 12: at 0.5 the ground showed through), only a 1.5 m fade
+    return { points: centreLine(r.pts, 4), half: roadHalf(r), edge: dirtTrack ? Math.min(DIRT_TRACK_EDGE, T.edge) : T.shoulder ?? T.edge, core: T.core, side: T.side, ...(T.side ? { sidePeak: ROAD_SIDE_PEAK } : {}), ...(dirtTrack ? { peak: DIRT_TRACK_PEAK, prio: ROAD_PRIO } : {}) }
   })
 }
 

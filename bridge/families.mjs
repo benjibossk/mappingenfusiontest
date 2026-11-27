@@ -8,7 +8,10 @@ export const APP_FAMILIES = ["ROAD_", "WATER_", "FOREST_", "FIELD_", "SET_", "CL
   "ACCESS_", "SITE_", "RP_", "RIPA_", "REF_", "RB_", "PLANT_", "OSM_", "MIL_", "JCT_", "IND_", "FEEDER_", "FARM_",
   // settlements (worldgen TOWN_/VILLAGE_/HAMLET_ sites), dams, airfields, street lamps, field trees, scatter, kept roads:
   // missing here, TOWN_ and DAM_ were never cleared and piled up under the same names (650 duplicates, 2026-11-26)
-  "TOWN_", "VILLAGE_", "HAMLET_", "DAM_", "AIR_", "LAMP_", "STREETLIGHTS_", "TREES_", "VEG_", "EXIST_"];
+  "TOWN_", "VILLAGE_", "HAMLET_", "DAM_", "AIR_", "LAMP_", "STREETLIGHTS_", "TREES_", "VEG_", "EXIST_",
+  // feathered bush belts of the small woods (worldgen featheredBelt, ids BELT_<k>_B<n>): never cleared, 7 093 hazel
+  // bushes of an older random world stayed in MG_Test through pictures 119 and 120, in their lakes (round 12)
+  "BELT_"];
 
 export function familyOf(id) {
   const u = String(id ?? "").indexOf("_");
