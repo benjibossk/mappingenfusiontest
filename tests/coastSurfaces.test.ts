@@ -31,7 +31,7 @@ test('computeSurfaces: river banks and low dry plains get no shingle / beach (op
   const shingle = (c: number) => w('Pebbles_02', c) + w('BeachGrass_01', c)
   assert.ok(shingle(26) < 0.05, `river bank ${shingle(26)}`) // 12 m from the river
   assert.ok(shingle(45) < 0.05, `plain at 0.8 m, 100 m from any water ${shingle(45)}`)
-  assert.ok(shingle(72) > 0.3, `sea shore ${shingle(72)}`)
+  assert.ok(shingle(72) + w('Dirt_02', 72) > 0.3, `sea shore ${shingle(72)}`)
 })
 
 test('openWaterDistance: a river is not open water, the sea is', () => {
@@ -78,8 +78,8 @@ test('computeSurfaces: inland water (wide picture river) gets grass banks with a
   const w = (s: ReturnType<typeof computeSurfaces>, name: string, c: number) => { const g = s.find((q) => q.name === name); return g ? g.weights[50 * cols + c] : 0 }
   const before = computeSurfaces({ minX: 0, minZ: 0, step, cols, rows }, heights, 40)
   const after = computeSurfaces({ minX: 0, minZ: 0, step, cols, rows }, heights, 40, undefined, undefined, undefined, undefined, inland)
-  assert.ok(w(before, 'BeachGrass_01', 70) > 0.3, 'a 120 m wide river counted as open water: beach 20 m off')
-  assert.ok(w(after, 'BeachGrass_01', 70) < 0.01 && w(after, 'Pebbles_02', 70) < 0.01)
+  assert.ok(w(before, 'BeachGrass_01', 70) + w(before, 'Dirt_02', 70) > 0.3, 'a 120 m wide river counted as open water: beach 20 m off')
+  assert.ok(w(after, 'BeachGrass_01', 70) + w(after, 'Dirt_02', 70) < 0.01 && w(after, 'Pebbles_02', 70) < 0.01)
   assert.ok(w(after, 'Pebbles_02', 66) > 0.2, `pebble line at the edge ${w(after, 'Pebbles_02', 66)}`)
 })
 

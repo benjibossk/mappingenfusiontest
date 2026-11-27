@@ -11,12 +11,17 @@ import type { Project, ProjectShape } from '../project'
 /** land share of the generator's default island (worldParams landRatio): the coast sits where margin = ISLAND_LAND */
 export const ISLAND_LAND = 0.6
 /** generator constants (island.ts): rounded corner radius, margin width, noise amplitude (map fractions) */
-export const MARGIN_CORNER = 0.3, MARGIN_WIDTH = 0.2, MARGIN_NOISE = 0.12
+export const MARGIN_CORNER = 0.3, MARGIN_WIDTH = 0.2, MARGIN_NOISE = 0.3
 /** ground under this (m) inside the margin is sea: content there is cut */
 export const SEA_CUT = 0.5
 
 /** generator noise for a map seed (same call as generateIsland) */
-export const coastNoise = (seed: number) => noise2(seed)
+/** multi-scale coast noise (args in 600 m units): bays and headlands of a few hundred m, coves of ~80 m, so the coast
+ *  is not a square ring (round 20, picture 120) */
+export function coastNoise(seed: number) {
+  const a = noise2(seed), b = noise2(seed + 101), c = noise2(seed + 202)
+  return (u: number, v: number) => 0.55 * a(u, v) + 0.3 * b(u * 2.7 + 3.1, v * 2.7 - 1.7) + 0.15 * c(u * 7.5 - 5.3, v * 7.5 + 2.9)
+}
 
 /** sea margin of island.ts at grid cell (c, r): 0 inland, up to 1.2 at the map edge */
 export function islandMargin(c: number, r: number, cols: number, rows: number, k: number): number {
@@ -33,7 +38,9 @@ export function coastHeight(h: number, margin: number, seaDepth: number): number
     const f = Math.pow(Math.min(1, land / ISLAND_LAND), 1.3)
     return h > 1 ? 1 + (h - 1) * f : h
   }
-  return Math.min(h, Math.max(land * seaDepth * 6, -seaDepth))
+  // a shallow shelf first (sand under the waves), then the drop: the straight land * seaDepth * 6 put a 2-3 m step at
+  // the waterline, steep enough to be painted rock all round picture 120 (round 21: no beach anywhere)
+  return Math.min(h, -seaDepth * Math.pow(Math.min(1, -land / 0.2), 1.8))
 }
 
 /** applies the island coast to a square grid of heights (in place) */
@@ -155,4 +162,25 @@ export function keepOnIsland(p: Project, sea: (x: number, z: number) => boolean,
     } else cutLineAtSea(s.points, sea).forEach((pts, k, all) => shapes.push({ ...s, id: all.length > 1 ? `${s.id}_C${k + 1}` : s.id, points: pts }))
   }
   return { ...p, shapes, entities: p.entities?.filter((e) => !sea(e.x, e.z)) }
+}
+
+/** river mouth: how far a river cut at the coast runs on into the sea (m) */
+export const RIVER_MOUTH_M = 25
+
+/** a river run cut out of `orig` at the coast: each end that was cut (not an end of the original line) runs on
+ *  RIVER_MOUTH_M m in its direction, so the bed opens into the sea instead of stopping short of it */
+export function riverMouths(run: number[], orig: number[], ext: number): number[] {
+  const out = run.slice(), n = out.length
+  const same = (x: number, z: number, i: number) => Math.hypot(x - orig[i], z - orig[i + 1]) < 1e-6
+  if (n >= 4 && !same(out[0], out[1], 0)) { const dx = out[0] - out[2], dz = out[1] - out[3], L = Math.hypot(dx, dz) || 1; out.unshift(out[0] + (dx / L) * ext, out[1] + (dz / L) * ext) }
+  const m = out.length
+  if (m >= 4 && !same(out[m - 2], out[m - 1], orig.length - 2)) { const dx = out[m - 2] - out[m - 4], dz = out[m - 1] - out[m - 3], L = Math.hypot(dx, dz) || 1; out.push(out[m - 2] + (dx / L) * ext, out[m - 1] + (dz / L) * ext) }
+  return out
+}
+
+/** a closed ring whose vertex average lies in the sea */
+export function polyCentroidSea(pts: number[], sea: (x: number, z: number) => boolean): boolean {
+  let x = 0, z = 0, n = 0
+  for (let i = 0; i + 1 < pts.length; i += 2) { x += pts[i]; z += pts[i + 1]; n++ }
+  return n > 0 && sea(x / n, z / n)
 }

@@ -281,7 +281,9 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     // a weight under ~50 % does not show through the seabed in the Workbench: sand wins at the heart of
     // each patch (75 %) and fades out over a wide border
     // (hard-edged: a 0.52..0.75 soft ramp left half the bed of picture 119 a SeaBed / dirt mix, blotches in game)
-    const bare = wetInl ? 0 : deepAll * band(patches((c * step) / 45, (r * step) / 45), 0.6, 0.64)
+    // only on the shallow shelf: the deep sea bed is one calm SeaBed (the patches all over the picture-map sea read as
+    // a beige / grey camouflage on the satmap, round 20)
+    const bare = wetInl ? 0 : deepAll * band(patches((c * step) / 45, (r * step) / 45), 0.6, 0.64) * (1 - band(-h, 8, 12))
     const deep = deepAll - bare
     const bed = river ? Math.min(river[i], 1 - deepAll) : 0
     // the map-edge sea ramp (Sculpt.compose: the last 6 % of the map forced down to the sea floor) is no cliff: a
@@ -335,8 +337,11 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     weights.SeaBed_01.push(deep)
     weights.Pebbles_01.push(bed)
     weights.Pebbles_02.push(shore + pebbles + pebbleLine)
-    weights.Dirt_02.push(bare + villageDirt + wetSand) // sandy look
-    weights.BeachGrass_01.push(beach + sand + dryShore)
+    // the dry strip on the water's edge is a sand beach (Dirt_02), BeachGrass_01 (dark olive on the satmap) only behind
+    // it: picture 120 round 20 showed a dark green rim and no beach
+    const beachSand = beach * (1 - band(h, 1.5, 2.5)) // the low strip of the beach is bare sand
+    weights.Dirt_02.push(bare + villageDirt + wetSand + dryShore + beachSand) // sandy look
+    weights.BeachGrass_01.push(beach - beachSand + sand)
     weights.Grass_03_coastal.push(coastal)
     weights.Rock_01.push(rock)
     weights.Debris_Rock_01.push(scree)

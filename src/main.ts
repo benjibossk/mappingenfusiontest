@@ -35,7 +35,7 @@ import { CROP_COLOURS, colourCrops, type Crop } from './modules/fieldlayout'
 import { cutForests, isAutumnBiome, riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
 import { forestEdges, forestEdgeShapes, forestFloorAreas } from './modules/forestEdge'
-import { clipRingToRect, coastRect, coastNoise, cutLineAtSea, islandMargin, keepOnIsland, SEA_CUT } from './modules/edgeBand'
+import { clipRingToRect, coastRect, coastNoise, cutLineAtSea, islandMargin, keepOnIsland, polyCentroidSea, riverMouths, RIVER_MOUTH_M, SEA_CUT } from './modules/edgeBand'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
@@ -2683,8 +2683,20 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
       result.shapes.push({ id: `IMG_Hedge_${result.shapes.length}`, kind: 'polyline', closed: false, points: h.map((v) => Math.round(v * 100) / 100), generator: GENERATORS.hedgeCorylus })
     }
   }
+  // island coast (edgeBand.ts): roads stop at the shore, rivers end in a mouth just past it, lakes in the sea dropped
+  sculpt!.compose()
+  const coast = coastSea()
+  if (coast) {
+    roads = roads.flatMap((q) => cutLineAtSea(q.pts, coast).map((pts, k) => ({ ...q, id: k ? `${q.id}_${k + 1}` : q.id, pts })))
+    waters = waters.flatMap((w) => {
+      if (WATER_TYPES[w.type].closed) return polyCentroidSea(w.pts, coast) ? [] : [w]
+      const runs = cutLineAtSea(w.pts, coast, 4, 30)
+      if (runs.length === 1 && runs[0].length === w.pts.length) return [w]
+      return runs.map((pts, k) => ({ ...w, id: k ? `${w.id}_${k + 1}` : w.id, widths: undefined, pts: riverMouths(pts, w.pts, RIVER_MOUTH_M) }))
+    })
+  }
   // no house in the water: off the traced river / lakes and off ground carved under the water level
-  settled = clearOfRoads(r.buildings, roads.map((q) => ({ pts: q.pts, half: roadHalf(q) }))).filter((b) => !inImageWater(r.waters, b.x, b.z, 6) && !(terrain && heightAt(terrain, b.x, b.z) < 1)).map((b, i) => ({ id: `IMG_BLD_${i + 1}`, site: 'IMG', prefab: b.prefab, cat: b.cat, x: b.x, z: b.z, yaw: b.yaw, corners: b.corners, role: 'house' as const }))
+  settled = clearOfRoads(r.buildings, roads.map((q) => ({ pts: q.pts, half: roadHalf(q) }))).filter((b) => !inImageWater(r.waters, b.x, b.z, 6) && !(terrain && heightAt(terrain, b.x, b.z) < 1) && !coast?.(b.x, b.z)).map((b, i) => ({ id: `IMG_BLD_${i + 1}`, site: 'IMG', prefab: b.prefab, cat: b.cat, x: b.x, z: b.z, yaw: b.yaw, corners: b.corners, role: 'house' as const }))
   $<HTMLInputElement>('tMax').value = String(Math.max(1, Math.ceil(hi)))
   $<HTMLInputElement>('tSeaLevel').value = '0'
   // the picture stays under the map as a tracing image (square pictures only: the tracing fills the terrain)
@@ -2794,7 +2806,7 @@ function seaCutBands<T extends { points: number[] }>(bands: T[]): T[] {
 }
 /** the mask body of every export (and of the preview's final masks, preview/finalMasks.ts) */
 function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
-  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled, 1, 'Grass_01', 'Dirt_01', roadClear()), ...desireMasks(), ...seaCutBands(roadMasks(roadsOutOfWater(roads, roadShapes(roads), waters, LAKE_MASK_TRIM))), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
+  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...seaCutBands([...yardMasks(settled, 1, 'Grass_01', 'Dirt_01', roadClear()), ...desireMasks(), ...roadMasks(roadsOutOfWater(roads, roadShapes(roads), waters, LAKE_MASK_TRIM))]), ...waterMasks(waters), ...seaCutBands(roadMasks([...setLanes, ...setPaths])), ...buildingMasks(settled), ...seaCutBands([...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed'))]), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
 }
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
 const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => {
@@ -4582,7 +4594,8 @@ function edgeRect() {
  *  beds inland never count) */
 function coastSea(): ((x: number, z: number) => boolean) | null {
   if (!island || !sculpt?.islandCoast) return null
-  const g = island.grid, H = island.heights, n = coastNoise(sculpt.seed)
+  // the composed relief (sculpt), before the river carving: a river bed inland is no sea
+  const g = island.grid, H = sculpt.heights, n = coastNoise(sculpt.seed)
   return (x, z) => {
     const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
     return H[r * g.cols + c] < SEA_CUT && islandMargin(c, r, g.cols, g.rows, n((c * g.step) / 600, (r * g.step) / 600)) > 0
