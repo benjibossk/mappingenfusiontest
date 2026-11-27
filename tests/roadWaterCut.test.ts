@@ -24,3 +24,19 @@ test('splitAtWater: a dry road keeps its own vertices', () => {
   const { shapes } = splitAtWater([road as never], [river])
   assert.deepEqual(shapes[0].points, road.points)
 })
+
+test('roadsOutOfWater: a mask road cut at a lake is pulled back by the band reach, a dry end is kept', async () => {
+  const { roadsOutOfWater } = await import('../src/modules/water')
+  const lake: Water = { id: 'L', type: 'lake', pts: [200, 0, 400, 0, 400, 200, 200, 200], width: 0, depth: 3, carve: false } as never
+  const pts = [0, 100, 100, 100, 300, 100]
+  const road = { id: 'ROAD_9', pts }
+  const shape = { id: 'ROAD_9', kind: 'spline' as const, closed: false, points: pts }
+  const plain = roadsOutOfWater([road], [shape as never], [lake])
+  const trimmed = roadsOutOfWater([road], [shape as never], [lake], 9)
+  assert.equal(trimmed.length, 1)
+  const endX = (r: { pts: number[] }) => r.pts[r.pts.length - 2]
+  assert.ok(endX(plain[0]) <= 192, String(endX(plain[0])))
+  assert.ok(Math.abs(endX(trimmed[0]) - (endX(plain[0]) - 9)) < 0.01, `${endX(trimmed[0])} vs ${endX(plain[0])}`)
+  assert.equal(trimmed[0].pts[0], 0) // the dry start is not trimmed
+  assert.ok(200 - endX(trimmed[0]) >= 4 + 5 + 3) // band (half 4 + shoulder 5) stops >= 3 m before the outline
+})

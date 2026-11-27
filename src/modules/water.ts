@@ -1328,13 +1328,43 @@ export function inlandWaterMask(g: Grid, waters: Water[]): Uint8Array {
 
 //! the roads as sent (splitAtWater on their shapes), for the ground masks: the uncut bands painted the carriageway
 //! down the bank and into the water where the road itself stops (dirt patch on the shore, picture 120, round 12)
-export function roadsOutOfWater<R extends { id: string; pts: number[] }>(roads: R[], shapes: ProjectShape[], waters: Water[]): R[] {
+//! trim (m): an end cut at a lake is pulled back that much more. A band is a round-capped stroke, half + shoulder
+//! (asphalt 4 + 5 m) past its last point: cut 8 m from the outline, the dirt shoulder still reached the water
+//! (picture 120 round 13: road ends 10 m out, mask band outer edge -0.7 / -5 m, same shore as round 12)
+export function roadsOutOfWater<R extends { id: string; pts: number[] }>(roads: R[], shapes: ProjectShape[], waters: Water[], trim = 0): R[] {
   if (!waters.length) return roads
   const byId = new Map(roads.map((r) => [r.id, r]))
+  const lakes = waters.filter((w) => WATER_TYPES[w.type].closed && w.pts.length >= 6)
+  const nearLake = (x: number, z: number) => lakes.some((l) => inside(l.pts, x, z) || outlineDist(l.pts, x, z) < LAKE_END_NEAR)
   const out: R[] = []
   for (const s of splitAtWater(shapes, waters).shapes) {
     const base = byId.get(s.id) ?? byId.get(s.id.replace(/_[A-Z]$/, ''))
-    if (base) out.push({ ...base, id: s.id, pts: s.points })
+    if (!base) continue
+    let pts = s.points
+    if (trim > 0 && lakes.length) {
+      const n = pts.length
+      if (nearLake(pts[n - 2], pts[n - 1])) pts = trimEnd(pts, trim)
+      if (pts.length >= 4 && nearLake(pts[0], pts[1])) pts = reversePts(trimEnd(reversePts(pts), trim))
+      if (pts.length < 4) continue
+    }
+    out.push({ ...base, id: s.id, pts })
   }
   return out
 }
+// an end within this of a lake outline was cut by splitAtWater (2 x its 4 m margin) or ends on the bank
+const LAKE_END_NEAR = 12
+function outlineDist(p: number[], x: number, z: number) {
+  let m = Infinity
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    const ax = p[j], az = p[j + 1], dx = p[i] - ax, dz = p[i + 1] - az, L2 = dx * dx + dz * dz || 1
+    const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / L2))
+    m = Math.min(m, Math.hypot(x - ax - dx * t, z - az - dz * t))
+  }
+  return m
+}
+function reversePts(p: number[]) {
+  const r: number[] = []
+  for (let i = p.length - 2; i >= 0; i -= 2) r.push(p[i], p[i + 1])
+  return r
+}
+
