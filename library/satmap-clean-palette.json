@@ -23,13 +23,13 @@
     },
     "Grass_01": {
       "rgb": [
-        86,
-        93,
-        48
+        94,
+        98,
+        50
       ],
       "grain": 0.8,
       "scale": 3,
-      "src": "reforger.recoil.org arland satmap, central meadow (centre shot 700,380 120x100)"
+      "src": "reforger.recoil.org arland satmap, central meadow (centre shot 700,380 120x100) ; nudged +8 toward Everon meadow boxes (recoil everon: meadow 115,114,57 / meadow2 90,99,46) since ours read 84,90,47"
     },
     "Grass_02": {
       "rgb": [
@@ -416,9 +416,9 @@
     {
       "match": "grass|meadow|moss|heather",
       "rgb": [
-        86,
-        93,
-        48
+        94,
+        98,
+        50
       ]
     },
     {
@@ -509,13 +509,313 @@
         },
         "Crop_Field_02": {
           "rgb": [
-            170,
-            150,
-            112
+            180,
+            165,
+            136
           ],
           "grain": 0.5,
           "scale": 3,
-          "src": "hand: Anizay ground, warmer (irrigated plots)"
+          "src": "hand: Anizay ground, slightly warmer (irrigated plots); desaturated from 170,150,112 which read as olive patches"
+        },
+        "Grass_01": {
+          "rgb": [
+            196,
+            184,
+            170
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground (Dirt_02 measure), base grass role"
+        },
+        "Grass_01_aut": {
+          "rgb": [
+            196,
+            184,
+            170
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground (Dirt_02 measure), base grass role"
+        },
+        "Grass_02": {
+          "rgb": [
+            190,
+            178,
+            162
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground, a shade darker (second grass)"
+        },
+        "Grass_02_aut": {
+          "rgb": [
+            190,
+            178,
+            162
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground, a shade darker (second grass)"
+        },
+        "Grass_03": {
+          "rgb": [
+            202,
+            188,
+            168
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground, warmer (dry grass role)"
+        },
+        "Grass_03_coastal": {
+          "rgb": [
+            205,
+            193,
+            175
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay pale open ground toward Pebbles_01 measure (coastal / dune grass role)"
+        },
+        "BeachGrass_01": {
+          "rgb": [
+            205,
+            193,
+            175
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay pale open ground toward Pebbles_01 measure (coastal / dune grass role)"
+        },
+        "MountainGrass_01": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "MountainGrass_02": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "MountainGrass_01_aut": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "MountainGrass_02_aut": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "MountainGrass_03_aut": {
+          "rgb": [
+            186,
+            174,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay open ground darkened toward rock (upland role)"
+        },
+        "Heather_01": {
+          "rgb": [
+            184,
+            170,
+            152
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay ground between Dirt_02 and Dirt_01 measures (scrub heath role)"
+        },
+        "Heather_01_aut": {
+          "rgb": [
+            184,
+            170,
+            152
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay ground between Dirt_02 and Dirt_01 measures (scrub heath role)"
+        },
+        "ForestDeciduous_01_Base": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestConiferous_01_Base": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestPine_01_Base": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestConiferous_02": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestDeciduous_02": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestDeciduous_01_Base_aut": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestConiferous_01_Base_aut": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestConiferous_02_aut": {
+          "rgb": [
+            176,
+            162,
+            140
+          ],
+          "grain": 0.9,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay scrub ground (same as desert Dirt_01, forest role)"
+        },
+        "ForestClearing_Deciduous_01": {
+          "rgb": [
+            190,
+            177,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay between open ground and scrub (clearing role)"
+        },
+        "ForestClearing_Coniferous_01": {
+          "rgb": [
+            190,
+            177,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay between open ground and scrub (clearing role)"
+        },
+        "ForestClearing_Coniferous_01_aut": {
+          "rgb": [
+            190,
+            177,
+            158
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay between open ground and scrub (clearing role)"
+        },
+        "Crop_Field_01": {
+          "rgb": [
+            182,
+            164,
+            124
+          ],
+          "grain": 0.5,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay irrigated plots, lighter than Crop_Field_02 override"
+        },
+        "Dirt_03": {
+          "rgb": [
+            168,
+            152,
+            126
+          ],
+          "grain": 0.7,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay tracks, Dirt_01 override darkened"
+        },
+        "Pebbles_02": {
+          "rgb": [
+            196,
+            186,
+            172
+          ],
+          "grain": 0.8,
+          "scale": 2,
+          "src": "hand: from enfumap Anizay gravel, between Dirt_02 and Pebbles_01 measures (beach/clearing role)"
+        },
+        "SeaBed_01": {
+          "rgb": [
+            150,
+            134,
+            108
+          ],
+          "grain": 0.6,
+          "scale": 3,
+          "src": "hand: from enfumap Anizay ground darkened and warmed: wet sandy river/sea bed"
+        },
+        "Debris_Rock_01": {
+          "rgb": [
+            158,
+            140,
+            114
+          ],
+          "grain": 0.7,
+          "scale": 2,
+          "src": "hand: from enfumap Anizay ground (Dirt_01 measure) darkened and warmed: in the desert biome the river bed (Pebbles_01 -> scree role) and scree export as Debris_Rock_01, read as wet sandy bed"
         }
       }
     }
