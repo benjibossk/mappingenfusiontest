@@ -7,7 +7,7 @@
 
 import { buildingsFor, type HouseStyle } from '../data/buildings'
 import { gridTopology, type PowerTopology } from './powergrid'
-import { dedupeRing } from './forestEdge'
+import { dedupeRing, forestFloorAreas } from './forestEdge'
 import { Sculpt } from './sculpt'
 import { applyPads, layPads } from './pads'
 import { WORLD } from '../data/worldParams'
@@ -1115,7 +1115,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // 11. surfaces (5 per block at most)
   await step('surfaces')
   const settleM = settlementMask(g, settlement.placed.map((q) => q.corners))
-  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas.filter((a) => !a.id.startsWith('FOREST_GP_')), ...cropCover(camp)]) /* gameplay copses / belts: trees on grass, like vanilla hedge woods */, settleM)
+  let surfaces = computeSurfaces(g, cur.heights, isl.maxHeight, cur.sim.river, rasterCover(g, [...areas.filter((a) => a.kind !== 'forest'), ...forestFloorAreas(areas.filter((a) => a.kind === 'forest' && !a.id.startsWith('FOREST_GP_'))), ...cropCover(camp)]) /* gameplay copses / belts: trees on grass, like vanilla hedge woods */, settleM)
   // the rocky ground the vanilla rocks sit in: scree halo + bare rock at cliffs (cliffRocks.ts paintRockSurfaces)
   const rockZone = zones.find((zn) => zn.id === 'CLIFF_ROCKS')
   if (rockZone) paintRockSurfaces(surfaces, rockStamps(rockZone.entities), undefined, settleM)

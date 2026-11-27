@@ -115,3 +115,28 @@ export function dedupeRing(pts: number[], min: number): number[] {
   while (out.length > 6 && Math.hypot(out[0] - out[out.length - 2], out[1] - out[out.length - 1]) < min) out.splice(-2, 2)
   return out.length >= 6 ? out : pts
 }
+
+export interface FloorOptions {
+  inset?: number // m, forest floor starts this far inside the outline (default 25)
+  minArea?: number // m², forests smaller than this get no forest floor at all (default 20000 = 2 ha)
+}
+/** where the forest-floor ground goes, like vanilla Everon (Giorbev's study): only under the CORE of large forests
+ *  (about half of the wooded area), the outline inset by ~25 m; edges, small groves and copses stay on the
+ *  surrounding grass (Grass_03 / Grass_02). Never wider than the forest itself, so never floor without trees.
+ *  Returns copies of the areas with the inset outer rings (a forest pinched in two gives two pieces). */
+export function forestFloorAreas<T extends { id: string; pts: number[] }>(forests: T[], o: FloorOptions = {}): T[] {
+  const ins = o.inset ?? 25, minA = o.minArea ?? 20000, out: T[] = []
+  for (const f of forests) {
+    if (f.pts.length < 6 || flatArea(f.pts) < minA) continue
+    const A = flatToPoly(f.pts)
+    let b: Poly | null = null
+    try { b = A && bufferM(A, -ins) } catch { b = null }
+    if (!b) continue
+    const polys = b.geometry.type === 'Polygon' ? [b.geometry.coordinates] : b.geometry.coordinates
+    polys.forEach((pc, k) => {
+      const pts = pc[0].slice(0, -1).flatMap((q) => [q[0], q[1]])
+      if (pts.length >= 6 && flatArea(pts) >= 100) out.push({ ...f, id: polys.length > 1 ? `${f.id}_F${k + 1}` : f.id, pts })
+    })
+  }
+  return out
+}

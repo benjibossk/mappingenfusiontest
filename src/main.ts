@@ -34,7 +34,7 @@ import { type CampaignResult } from './modules/campaign'
 import { CROP_COLOURS, colourCrops, type Crop } from './modules/fieldlayout'
 import { cutForests, isAutumnBiome, riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
-import { forestEdges, forestEdgeShapes } from './modules/forestEdge'
+import { forestEdges, forestEdgeShapes, forestFloorAreas } from './modules/forestEdge'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
@@ -1774,7 +1774,7 @@ function recompose(final: boolean) {
   // lanes are not carved: last, their ground is graded (pads.ts gradeLanes) over pads, berms and runoff beds
   gradeLanes(island.heights, g, setLanes.map((l) => l.pts), pads, beds?.weight)
   if (final) {
-    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, [...areas.filter((a) => a.kind !== 'forest'), ...sentForests(areas.filter((a) => a.kind === 'forest'))], landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks, inlandWaterMask(g, waters))
+    island.surfaces = computeSurfaces(g, island.heights, num('tMax'), rivers, rasterCover(g, [...areas.filter((a) => a.kind !== 'forest'), ...forestFloorAreas(sentForests(areas.filter((a) => a.kind === 'forest')))], landCover && landCover.cols === g.cols ? landCover.data : undefined), settled.length ? settlementMask(g, settled.map((q) => q.corners)) : undefined, island.masks, inlandWaterMask(g, waters))
     island.colours = { ...SURFACE_COLOURS, ...island.colours }
     if (island.surfaceMasks?.length) applySurfaceMasks(island.surfaces, island.surfaceMasks, (name) => { island!.colours[name] ??= [128, 120, 110] })
     const bad = overfullBlocks(island.surfaces)
