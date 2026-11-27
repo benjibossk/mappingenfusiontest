@@ -37,6 +37,9 @@ const STEP = Number(opt("--step", 8));
 const TOL = Number(opt("--tol", 0.5));
 const MAX = Number(opt("--max", 15));
 const JSON_OUT = opt("--json", null);
+// --zone <tag>: audit an Atelier zone send (mapgen-zone-<tag>.json) instead of the main mapgen.json
+const ZONE = opt("--zone", null);
+const STEM = ZONE ? `mapgen-zone-${ZONE}` : "mapgen";
 const PROFILE = process.env.MAPGEN_WB_PROFILE ?? join(homedir(), "Documents", "My Games", "ArmaReforgerWorkbench", "profile");
 const DIR = join(PROFILE, "MapGen");
 const BRIDGE = `http://127.0.0.1:${process.env.MAPGEN_BRIDGE_PORT ?? 5780}`;
@@ -51,7 +54,7 @@ if (LIVE) {
 // --- sent project ---
 const shapes = [], sent = [];
 for (let i = 0; ; i++) {
-  const f = join(DIR, i === 0 ? "mapgen.json" : `mapgen.${i}.json`);
+  const f = join(DIR, i === 0 ? `${STEM}.json` : `${STEM}.${i}.json`);
   if (!existsSync(f)) break;
   const j = JSON.parse(readFileSync(f, "utf-8"));
   shapes.push(...(j.shapes ?? []));
