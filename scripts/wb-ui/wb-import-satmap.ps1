@@ -4,7 +4,7 @@
 # No keyboard, no focus. No script API exists for this (Workbench API has no satellite/supertexture import, checked
 # 2026-11-27): the dialog IS the supertexture generation (it bakes <world>N_supertexture tiles = distant colour),
 # so there is no separate "regenerate supertexture" step.
-# SAFE ORDER: send -> quiet wait -> wb-save -> wb-import-masks (normal map) -> THIS -> wb-save (or let it save).
+# SAFE ORDER: send -> quiet wait -> wb-save -> wb-import-masks (normal map) -> THIS (saves first) -> wb-save (or let it save).
 param(
   [string]$File = "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\profile\MapGen\masks\MG_Test_satellite.png",
   [int]$TimeoutSec = 900,
@@ -51,6 +51,9 @@ function SetCheck($dlg, $name, [bool]$on) {
 $we = WE; if (-not $we) { throw 'World Editor window not found' }
 # a normal / vegetation map generation still running (right after wb-import-masks) swallowed the OK (round r19): wait for it
 for ($i = 0; $i -lt 300 -and @(Visible | Where-Object { $_.Current.ClassName -match 'Progress' }).Count; $i++) { Start-Sleep -Seconds 2 }
+# the import refuses to run on unsaved terrain ('There are terrain changes present. Save your changes first.'),
+# and wb-import-masks -NoSave leaves the regenerated normal map unsaved (v0.11 validation): save first
+"pre-save: " + ((node (Join-Path $PSScriptRoot 'wb-save.mjs') 2>&1) -join ' '); Start-Sleep -Seconds 5
 $btn = Find $we 'Import satellite map...' 'Button'
 if (-not $btn) {
   $mt = Find $we 'Manage' 'TabItem'
