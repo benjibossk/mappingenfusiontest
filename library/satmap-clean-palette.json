@@ -1,285 +1,302 @@
 {
-  "_doc": "Satmap palette (bridge/satmap-clean.mjs): one flat sRGB colour per surface + procedural noise, no game file read (Bohemia advice). Entries with 'src' were sampled from vanilla renders (median of a pure-material patch of a top-down Workbench viewport capture, x0.8 to remove the direct sunlight); the others are hand-tuned. grain = strength of the procedural detail (0..1), scale = size of the finest detail in metres. families = fallback colour for unknown / mod surfaces, matched on the material name.",
+  "_doc": "Satmap palette (bridge/satmap-clean.mjs): one flat sRGB colour per surface + procedural noise, no game file read (Bohemia advice). Colours re-tuned 2026-11-27 on the top-down Arland satellite map (reforger.recoil.org/arland viewer, median of a box or of a pixel class, see 'src'; already satmap colours, no sunlight factor). 'hand:' entries are derived, no reference area. grain = strength of the procedural detail (0..1), scale = size of the finest detail in metres. families = fallback colour for unknown / mod surfaces, matched on the material name.",
   "surfaces": {
     "SeaBed_01": {
       "rgb": [
-        94,
-        90,
-        76
+        135,
+        126,
+        99
       ],
       "grain": 0.5,
-      "scale": 4
+      "scale": 4,
+      "src": "reforger.recoil.org arland satmap, east coast shoreline sand (eastcoast shot, warm-light pixel class)"
     },
     "BeachGrass_01": {
       "rgb": [
-        148,
-        138,
-        104
+        106,
+        101,
+        74
       ],
       "grain": 0.6,
-      "scale": 3
+      "scale": 3,
+      "src": "hand: between Grass_03_coastal and SeaBed_01"
     },
     "Grass_01": {
       "rgb": [
-        118,
-        123,
-        70
+        86,
+        93,
+        48
       ],
       "grain": 0.8,
       "scale": 3,
-      "src": "goal16-g120-14.png (80,330)-(230,480)"
+      "src": "reforger.recoil.org arland satmap, central meadow (centre shot 700,380 120x100)"
     },
     "Grass_02": {
       "rgb": [
-        118,
-        123,
-        70
+        77,
+        80,
+        45
       ],
       "grain": 0.8,
       "scale": 3,
-      "src": "goal16-g120-14.png (80,330)-(230,480)"
+      "src": "reforger.recoil.org arland satmap, eastern meadow (east shot 300,500 150x120)"
     },
     "Grass_03": {
       "rgb": [
-        142,
-        129,
-        110
+        120,
+        107,
+        63
       ],
       "grain": 0.8,
       "scale": 3,
-      "src": "goal16-g120-14.png (650,750)-(850,1050)"
+      "src": "reforger.recoil.org arland satmap, dry meadow patch (centre shot 220,400 150x100)"
     },
     "Grass_03_coastal": {
       "rgb": [
-        146,
-        133,
-        112
+        76,
+        76,
+        49
       ],
       "grain": 0.8,
       "scale": 3,
-      "src": "Grass_03 + 3%"
+      "src": "reforger.recoil.org arland satmap, coastal grass strip (eastcoast shot 600,560 200x50)"
     },
     "MountainGrass_01": {
       "rgb": [
-        93,
-        96,
-        68
+        68,
+        72,
+        42
       ],
       "grain": 0.8,
-      "scale": 3
+      "scale": 3,
+      "src": "hand: Grass_02 x0.88"
     },
     "MountainGrass_02": {
       "rgb": [
-        100,
-        102,
-        76
+        74,
+        77,
+        50
       ],
       "grain": 0.8,
-      "scale": 3
+      "scale": 3,
+      "src": "hand: Grass_02 darker/greyer"
     },
     "Heather_01": {
       "rgb": [
-        108,
         90,
-        92
+        78,
+        70
       ],
       "grain": 0.9,
-      "scale": 3
+      "scale": 3,
+      "src": "hand: no heather identified on Arland"
     },
     "Rock_01": {
       "rgb": [
-        110,
-        106,
-        98
+        155,
+        149,
+        140
       ],
-      "grain": 1.0,
-      "scale": 2
+      "grain": 1,
+      "scale": 2,
+      "src": "reforger.recoil.org arland satmap, cliff rocks north (north shot, grey pixel class)"
     },
     "Debris_Rock_01": {
       "rgb": [
-        116,
-        110,
-        100
+        145,
+        139,
+        128
       ],
-      "grain": 1.0,
-      "scale": 2
+      "grain": 1,
+      "scale": 2,
+      "src": "hand: Rock_01 x0.93"
     },
     "Pebbles_01": {
       "rgb": [
-        112,
-        108,
-        96
+        135,
+        129,
+        117
       ],
       "grain": 0.9,
-      "scale": 1.5
+      "scale": 1.5,
+      "src": "hand: between Rock_01 and SeaBed_01"
     },
     "Pebbles_02": {
       "rgb": [
-        126,
-        120,
-        106
+        148,
+        141,
+        128
       ],
       "grain": 0.9,
-      "scale": 1.5
+      "scale": 1.5,
+      "src": "hand: Rock_01 warmer"
     },
     "Dirt_01": {
       "rgb": [
-        110,
-        86,
-        63
+        152,
+        137,
+        115
       ],
       "grain": 0.7,
       "scale": 2,
-      "src": "goal16-g120-10.png (600,300)-(800,500)"
+      "src": "reforger.recoil.org arland satmap, dirt track centre (centre shot 836,470 8x20)"
     },
     "Dirt_02": {
       "rgb": [
-        103,
-        88,
-        76
+        133,
+        119,
+        88
       ],
       "grain": 0.7,
       "scale": 2,
-      "src": "goal16-g120-10.png (100,700)-(400,1000)"
+      "src": "hand: mean of Dirt_01 and Dirt_03"
     },
     "Dirt_03": {
       "rgb": [
-        98,
-        82,
-        60
+        114,
+        101,
+        61
       ],
       "grain": 0.7,
-      "scale": 2
+      "scale": 2,
+      "src": "reforger.recoil.org arland satmap, forest floor / bare soil (centre shot, brown pixel class)"
     },
     "ForestDeciduous_01_Base": {
       "rgb": [
-        70,
-        72,
-        45
+        67,
+        66,
+        44
       ],
       "grain": 0.9,
-      "scale": 4
+      "scale": 4,
+      "src": "reforger.recoil.org arland satmap, forest canopy (east shot 1000,700 200x150)"
     },
     "ForestConiferous_01_Base": {
       "rgb": [
-        58,
+        60,
         61,
-        43
+        40
       ],
       "grain": 0.9,
-      "scale": 4
+      "scale": 4,
+      "src": "reforger.recoil.org arland satmap, forest canopy (centre shot 80,560 300x150)"
     },
     "Crop_Field_01": {
       "rgb": [
-        136,
-        116,
-        80
+        120,
+        107,
+        63
       ],
       "grain": 0.5,
-      "scale": 3
+      "scale": 3,
+      "src": "hand: no crop fields on Arland, = dry meadow"
     },
     "Crop_Field_02": {
       "rgb": [
-        110,
-        92,
-        66
+        100,
+        88,
+        58
       ],
       "grain": 0.5,
-      "scale": 3
+      "scale": 3,
+      "src": "hand: darker dry meadow"
     },
     "Asphalt_01": {
       "rgb": [
-        96,
-        88,
-        86
+        87,
+        84,
+        80
       ],
       "grain": 0.3,
       "scale": 1,
-      "src": "goal16-g120-14.png (420,470)-(470,520)"
+      "src": "reforger.recoil.org arland satmap, airfield service road (airfield shot, dark grey pixel class)"
     },
     "Cobblestone_01_Wave": {
       "rgb": [
-        104,
-        98,
-        88
+        120,
+        114,
+        104
       ],
       "grain": 0.6,
-      "scale": 1
+      "scale": 1,
+      "src": "hand: between Asphalt_01 and Concrete_01"
     },
     "Concrete_01": {
       "rgb": [
-        140,
-        139,
-        133
-      ],
-      "grain": 0.3,
-      "scale": 2
-    },
-    "Concrete_02": {
-      "rgb": [
-        146,
-        146,
+        159,
+        151,
         140
       ],
       "grain": 0.3,
-      "scale": 2
+      "scale": 2,
+      "src": "reforger.recoil.org arland satmap, airfield runway/apron (airfield shot, light grey pixel class)"
+    },
+    "Concrete_02": {
+      "rgb": [
+        165,
+        158,
+        148
+      ],
+      "grain": 0.3,
+      "scale": 2,
+      "src": "hand: Concrete_01 +4%"
     }
   },
   "families": [
     {
       "match": "grass|meadow|moss|heather",
       "rgb": [
-        118,
-        123,
-        70
+        86,
+        93,
+        48
       ]
     },
     {
       "match": "forest|leaves|needle",
       "rgb": [
-        70,
-        72,
-        45
+        67,
+        66,
+        44
       ]
     },
     {
       "match": "asphalt|road|tarmac",
       "rgb": [
-        96,
-        88,
-        86
+        87,
+        84,
+        80
       ]
     },
     {
       "match": "concrete|cobble|paving|pavement|tile",
       "rgb": [
-        140,
-        139,
-        133
+        159,
+        151,
+        140
       ]
     },
     {
       "match": "rock|cliff|stone|pebble|gravel|debris|scree",
       "rgb": [
-        112,
-        108,
-        96
+        145,
+        139,
+        128
       ]
     },
     {
       "match": "sand|beach|seabed|shore",
       "rgb": [
-        148,
-        138,
-        104
+        135,
+        126,
+        99
       ]
     },
     {
       "match": "dirt|mud|soil|field|crop|farm|path|track",
       "rgb": [
-        110,
-        86,
-        63
+        133,
+        119,
+        88
       ]
     }
   ]
