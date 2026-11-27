@@ -4,6 +4,21 @@ Version française du [CHANGELOG.md](CHANGELOG.md) (la version anglaise fait foi
 
 ## [Non publié]
 
+## [0.11.0-beta.2] - 2026-11-27
+
+Préversion. Vérifiée dans le vrai Workbench : le plugin compile, une carte depuis une image envoyée en île a une côte naturelle et un contrôle propre, les zones de l'Atelier s'envoient, se renvoient et se suppriment sans toucher aux hauteurs.
+
+### Ajouté
+- Nouvelle navigation (schéma de Giorbev) : Accueil, Projets (créer, ouvrir, renommer, dupliquer, exporter, supprimer, importer, rejoindre une salle partagée) et un tableau de bord du projet en six sections (Terrain, Atelier, Masques, Satellite et topo, Diagnostic, Partage) dont les tuiles ouvrent les outils existants. Terrain propose nouvelle île, monde aléatoire, depuis une image, importer une heightmap, monde ouvert dans le Workbench, lieu réel, sculpter et carte vanilla de référence. QGIS est affiché « bientôt ». La place de chaque fonction est dans `docs/UI_REORG.md`.
+- Un Workbench par projet : `wb-launch.ps1` passe par un lanceur commun qui donne à chaque projet son propre port NET API (à partir de 5777), lance avec les bons dossiers d'addons et signale les fenêtres bloquantes.
+
+### Corrigé
+- Créer un projet démarre sur une carte vide ; l'ancien projet est enregistré tel quel et n'est plus copié dans le nouveau.
+- Le statut du Workbench dans la barre du haut n'est plus coupé.
+- L'import de la satmap enregistre d'abord le terrain (le Workbench le refusait tant que des changements de terrain n'étaient pas enregistrés).
+- Régénérer une zone de l'Atelier ne prend plus ses propres maisons, routes et poteaux pour des obstacles.
+- Les zones de l'Atelier ont leur propre fichier projet (`mapgen-zone-<tag>.json`) : le `mapgen.json` de l'île reste intact et `mg-audit --zone <tag>` contrôle une zone.
+
 ## [0.11.0-beta.1] - 2026-11-27
 
 Préversion. Pas encore testé dans le Workbench : la côte en île des cartes depuis une image, la génération de zones de l'Atelier (plugin Workbench modifié, pas encore compilé) et l'import automatique de la satmap.

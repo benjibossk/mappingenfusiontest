@@ -7,6 +7,16 @@ export interface ChangelogEntry { version: string; date: string; items: Changelo
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.11.0-beta.2',
+    date: '2026-11-27',
+    items: [
+      { en: "New navigation: Home, Projects and a project dashboard in six sections", fr: "Nouvelle navigation : Accueil, Projets et un tableau de bord du projet en six sections" },
+      { en: "One Workbench per project, each on its own NET API port", fr: "Un Workbench par projet, chacun sur son propre port NET API" },
+      { en: "Checked in the Workbench: island coast, Atelier zones and satmap import work", fr: "Vérifié dans le Workbench : côte en île, zones de l'Atelier et import de la satmap fonctionnent" },
+      { en: "A new project starts empty; Atelier zones keep their own project file", fr: "Un nouveau projet démarre vide ; les zones de l'Atelier ont leur propre fichier projet" },
+    ],
+  },
+  {
     version: '0.11.0-beta.1',
     date: '2026-11-27',
     items: [

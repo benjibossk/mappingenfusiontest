@@ -8,6 +8,21 @@ Versions stay below 1.0.0 while the tool is a work in progress.
 
 ## [Unreleased]
 
+## [0.11.0-beta.2] - 2026-11-27
+
+Pre-release. Checked in the real Workbench: the plugin compiles, a picture map sent as an island has a natural coast and a clean audit, Atelier zones send, re-send and delete without touching the heights.
+
+### Added
+- New navigation (Giorbev's schema): Home, Projects (create, open, rename, duplicate, export, delete, import, join a shared room) and a project dashboard with six sections (Terrain, Atelier, Masks, Satellite & topo, Diagnostic, Share) whose tiles open the existing tools. Terrain offers new island, random world, from a picture, import a heightmap, world open in the Workbench, real place, sculpt and vanilla reference map. QGIS is shown as coming soon. The full map of where every feature went is in `docs/UI_REORG.md`.
+- One Workbench per project: `wb-launch.ps1` now delegates to a shared launcher that gives each project its own NET API port (from 5777), launches with the right addon folders and reports blocking dialogs.
+
+### Fixed
+- Creating a project starts from an empty map; the previous project is saved as it is and no longer copied into the new one.
+- The Workbench status in the top bar is no longer cut off.
+- Satmap import saves the terrain first (the Workbench refused it while terrain changes were unsaved).
+- Re-generating an Atelier zone no longer treats its own houses, roads and poles as obstacles.
+- Atelier zones use their own project file (`mapgen-zone-<tag>.json`), so the island's `mapgen.json` stays intact and `mg-audit --zone <tag>` can audit a zone.
+
 ## [0.11.0-beta.1] - 2026-11-27
 
 Pre-release. Not yet tested in the Workbench: the island coast of picture maps, Atelier zone generation (the modified Workbench plugin is not compiled yet) and the automatic satmap import.
