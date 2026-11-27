@@ -1,36 +1,39 @@
-# Launches a project's Workbench on ITS OWN NET API port, then checks the link reaches the right Workbench.
+# Launches the Mapgenerator Workbench on ITS OWN NET API port and checks the link.
 #   powershell -ExecutionPolicy Bypass -File scripts/wb-ui/wb-launch.ps1                (Mapgenerator, port 5777)
 #   powershell -ExecutionPolicy Bypass -File scripts/wb-ui/wb-launch.ps1 -Gproj <addon.gproj> -Port 5778
-# Why: the NET API port is a WORKBENCH option, global to the Windows user (registry
-# HKCU\Software\Bohemia Interactive\Arma Reforger Workbench\Workbench, value NetAPI_Port, DWORD; absent = 5775),
-# read only at startup. Two Workbenches on 5775 steal each other's link (2026-11-25: sends and a compile landed on
-# F44_Core). So: write the port, start this Workbench, wait for it to listen, put the registry back to default so the
-# other projects keep 5775, then prove the link with MG_Status (a function only the Mapgenerator addon has).
-# 5776 is taken by the script debugger: do not use it. Never touches another project's Workbench.
+# Delegates to the shared launcher C:\Users\benbo\tools\wb-launch\wb-launch.ps1 when present (port registry,
+# cross-session lock, PID/cmdline check, blocking-dialog detection, -addonsDir fix). Otherwise falls back to a
+# minimal local launch. Why a port per project: the NET API port is a global Workbench option (registry
+# HKCU\Software\Bohemia Interactive\Arma Reforger Workbench\Workbench, NetAPI_Port, DWORD; absent = 5775), read
+# only at startup; two Workbenches on 5775 steal each other's link. 5776 = script debugger.
 param(
   [string]$Gproj = "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\addons\Mapgenerator\addon.gproj",
   [int]$Port = $(if ($env:MAPGEN_WB_PORT) { [int]$env:MAPGEN_WB_PORT } else { 5777 }),
   [string]$Exe = 'D:\SteamLibrary\steamapps\common\Arma Reforger Tools\Workbench\ArmaReforgerWorkbenchSteamDiag.exe',
   [string]$GameDir = 'D:\SteamLibrary\steamapps\common\Arma Reforger',
-  [string]$Probe = 'MG_Status'
+  [string]$Probe = 'MG_Status',
+  [string]$Shared = $(if ($env:WB_LAUNCH_PS1) { $env:WB_LAUNCH_PS1 } else { "$env:USERPROFILE\tools\wb-launch\wb-launch.ps1" })
 )
+if (Test-Path $Shared) {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $Shared -Gproj $Gproj -Port $Port -Probe $Probe -Exe $Exe -GameDir $GameDir
+  exit $LASTEXITCODE
+}
+Write-Output "shared launcher not found ($Shared): minimal local launch"
 $key = 'HKCU:\Software\Bohemia Interactive\Arma Reforger Workbench\Workbench'
 $busy = netstat -ano | Select-String ":$Port .*LISTENING"
-if ($busy) { Write-Output "port $Port already listening (a Workbench is already up there, nothing launched): testing the link"; $l = $busy }
+if ($busy) { Write-Output "port $Port already listening: testing the link"; $l = $busy }
 else {
-New-ItemProperty -Path $key -Name NetAPI_Port -Value $Port -PropertyType DWord -Force | Out-Null
-try {
-  $p = Start-Process $Exe -ArgumentList "-gproj `"$Gproj`" -wbModule WorldEditor" -WorkingDirectory $GameDir -PassThru
-  Write-Output "launched PID $($p.Id) on port $Port"
-  $t = 0
-  do { Start-Sleep 5; $t += 5; $l = netstat -ano | Select-String ":$Port .*LISTENING" } until ($l -or $t -ge 300)
-} finally {
-  # back to the default (5775) for every other Workbench started later
-  Remove-ItemProperty -Path $key -Name NetAPI_Port -ErrorAction SilentlyContinue
+  New-ItemProperty -Path $key -Name NetAPI_Port -Value $Port -PropertyType DWord -Force | Out-Null
+  try {
+    # cwd = game folder AND explicit -addonsDir, else "Missing Addon: can't find 58D0FB3206B6F859"
+    $dirs = @("$GameDir\addons", "$env:USERPROFILE\Documents\My Games\ArmaReforger\addons") -join ','
+    $p = Start-Process $Exe -ArgumentList "-gproj `"$Gproj`" -addonsDir `"$dirs`" -wbModule WorldEditor" -WorkingDirectory $GameDir -PassThru
+    Write-Output "launched PID $($p.Id) on port $Port"
+    $t = 0
+    do { Start-Sleep 5; $t += 5; $l = netstat -ano | Select-String ":$Port .*LISTENING" } until ($l -or $t -ge 300 -or $p.HasExited)
+  } finally { Remove-ItemProperty -Path $key -Name NetAPI_Port -ErrorAction SilentlyContinue }
 }
-}
-if (-not $l) { Write-Output "FAILED: nothing listens on $Port after $t s"; exit 1 }
-# link test: same framing as bridge/server.mjs
+if (-not $l) { Write-Output "FAILED: nothing listens on $Port (check for a blocking dialog, e.g. Missing Addon)"; exit 1 }
 $node = @"
 const {Socket}=require('net');const p=s=>{const b=Buffer.from(s);const l=Buffer.alloc(4);l.writeInt32LE(b.length);return Buffer.concat([l,b])};
 const v=Buffer.alloc(4);v.writeInt32LE(1);const s=new Socket(),c=[];setTimeout(()=>{console.log('LINK TIMEOUT');process.exit(1)},15000);
