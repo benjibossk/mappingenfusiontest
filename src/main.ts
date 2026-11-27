@@ -112,7 +112,7 @@ const insideTerrain = <E extends { x: number; z: number }>(es: E[], g: { minX: n
   es.filter((e) => e.x >= g.minX && e.z >= g.minZ && e.x <= g.minX + (g.cols - 1) * g.step && e.z <= g.minZ + (g.rows - 1) * g.step)
 const toWb = async (p: Project) => {
   const before = p.shapes.reduce((n, sh) => n + sh.points.length, 0), count = p.shapes.length
-  p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).map((sh) => (sh.kind === 'polyline' && sh.closed && !sh.lift?.length ? { ...sh, points: splitLongLegs(sh.points, 200, true) } : sh)).filter((sh) => sh.points.length >= 4) }
+  p = { ...p, shapes: p.shapes.map(withAvoid).map(sanitizeRoadShape).map((sh) => (sh.kind === 'spline' && !sh.lift?.length ? { ...sh, points: cleanSpline(sh.points) } : sh)).map(liftRoadShape).map((sh) => (sh.kind === 'polyline' && sh.closed && !sh.lift?.length ? { ...sh, points: splitLongLegs(sh.points, 200, true) } : sh)).filter((sh) => sh.points.length >= 4) }
   const lostPts = (before - p.shapes.reduce((n, sh) => n + sh.points.length, 0)) / 2 - (count - p.shapes.length), crumbs = count - p.shapes.length
   // Workbench layer per type and 2 km square, small props / fences tilted on the slope (VANILLA_PLACEMENT_OPTIM.md)
   // nothing outside the terrain: an object past the edge stands in the void at its own height
@@ -182,7 +182,7 @@ const GC_FIELDS: readonly [string, Key, keyof BiomeSettings, boolean][] = [
 import { finalLayers } from './preview/finalMasks'
 import { drapeTint, forestGeneratorFor, mixedNeedle, treeTint, zoneForestLeaf, type ZoneLeafChoice } from './biomes/vegetation'
 import { registerAtelierCollab, notifyAtelierCollab } from './atelier/networks/comments'
-import { sanitizeRoadShape } from './modules/roadSanitize'
+import { liftRoadShape, sanitizeRoadShape } from './modules/roadSanitize'
 import { camLookAt, worldToMap } from './modules/wbCamera'
 import { buildingsFor } from './data/buildings'
 var menuOpen = false // the welcome screen was reopened from the top-left Menu (declared early: read by the step render)

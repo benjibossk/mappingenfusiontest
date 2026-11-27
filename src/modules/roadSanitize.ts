@@ -59,3 +59,22 @@ export function sanitizeRoadShape(sh: ProjectShape): ProjectShape {
   if (!isRoadGenerator(sh.generator) || sh.lift?.length) return sh
   return { ...sh, kind: 'spline', points: sanitizeRoad(sh.points, roadWidthOf(sh)).map((v) => Math.round(v * 100) / 100) }
 }
+
+/** road mesh height over the ground (m) at each spline point: the RoadEntity is a straight mesh between the points and
+ *  the generators keep AdjustHeightMap off, so on a village slope (picture 120 cam 10, 13 %) the 2 m terrain cells rose
+ *  through it and the street showed only as the painted Asphalt_01 mask with round grass spots. Arland's roads sit on
+ *  ground flattened by the generator; here the mesh is lifted a little instead, points no more than 5 m apart */
+export const ROAD_MESH_LIFT = 0.15
+const ROAD_LIFT_SPACING = 5
+export function liftRoadShape(sh: ProjectShape): ProjectShape {
+  if (!isRoadGenerator(sh.generator) || sh.lift?.length || sh.points.length < 4) return sh
+  const p = sh.points, out: number[] = []
+  for (let i = 0; i + 1 < p.length; i += 2) {
+    if (i) {
+      const ax = p[i - 2], az = p[i - 1], n = Math.ceil(Math.hypot(p[i] - ax, p[i + 1] - az) / ROAD_LIFT_SPACING)
+      for (let k = 1; k < n; k++) out.push(Math.round((ax + ((p[i] - ax) * k) / n) * 100) / 100, Math.round((az + ((p[i + 1] - az) * k) / n) * 100) / 100)
+    }
+    out.push(p[i], p[i + 1])
+  }
+  return { ...sh, points: out, lift: out.filter((_, i) => i % 2 === 0).map(() => ROAD_MESH_LIFT) }
+}
