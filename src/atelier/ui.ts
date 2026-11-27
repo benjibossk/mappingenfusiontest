@@ -270,7 +270,8 @@ async function loadWorld(w: WorldRef) {
         stage(tk('at.open.layersRead') + ' — ' + list[i].path.split('/').pop(), i, list.length); await yieldUI()
         const { bytes, sha } = await src.read(list[i].path), text = new TextDecoder().decode(bytes)
         const { lines } = splitLines(text), o = layerObjects(lines)
-        for (const k of ['roads', 'buildings', 'trees', 'port', 'walls'] as const) for (const v of o[k] as unknown[]) (merged[k] as unknown[]).push(v) // no spread: 100k+ items overflow the stack
+        const file = list[i].path.split('/').pop()!
+        for (const k of ['roads', 'buildings', 'trees', 'port', 'walls'] as const) for (const v of o[k] as { layer?: string }[]) { if (k !== 'trees') v.layer = file; (merged[k] as unknown[]).push(v) } // no spread: 100k+ items overflow the stack
         merged.entities += o.entities
         if (hasWater(text)) { S.layerTexts.set(list[i].path, { text, sha }); S.bodies.push(...waterBodies(lines, list[i].path)) }
       }

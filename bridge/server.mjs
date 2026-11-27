@@ -299,6 +299,11 @@ const server = createServer(async (req, res) => {
       // Atelier zone send (src/atelier/zones/send.ts): entities and shapes only, the terrain is never touched
       if (project.noHeights) { delete project.setupWorld; console.log("[apply] zone send (noHeights): no world setup, no terrain write"); }
       const clear = Array.isArray(project.clear) ? project.clear.filter((x) => typeof x === "string" && /^MGZ\w*_$/.test(x)) : [];
+      // a zone has its own project file (mapgen-zone-<tag>.json + parts): the main mapgen.json of the island
+      // stays intact (mg-audit, re-sends); zones also stay out of families.json (a full send keeps them)
+      const zone = project.noHeights && clear.length ? clear[0].slice(3, -1) : "";
+      const stem = zone ? `mapgen-zone-${zone}` : "mapgen";
+      const projectFile = join(PROFILE_DIR, "MapGen", `${stem}.json`);
 
       mkdirSync(join(PROFILE_DIR, "MapGen"), { recursive: true });
       // power grid topology (nodes / edges / feeders / consumers) next to mapgen.json, never sent to the Workbench reader
@@ -336,20 +341,20 @@ const server = createServer(async (req, res) => {
       const famFile = join(PROFILE_DIR, "MapGen", "families.json");
       let famStored = null;
       try { const l = JSON.parse(readFileSync(famFile, "utf-8")); if (Array.isArray(l)) famStored = l; } catch {}
-      const fam = familiesPlan(famStored, project);
+      const fam = zone ? { clear: [], after: famStored } : familiesPlan(famStored, project);
       if (fam.clear.length) console.log(`[apply] families of earlier sends cleared: ${fam.clear.join(" ")}`);
-      for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (/^mapgen\.\d+\.json$/.test(f)) rmSync(join(PROFILE_DIR, "MapGen", f));
+      for (const f of readdirSync(join(PROFILE_DIR, "MapGen"))) if (f.startsWith(stem + ".") && /^\.\d+\.json$/.test(f.slice(stem.length))) rmSync(join(PROFILE_DIR, "MapGen", f));
       parts.forEach((p, k) => {
         const body = k === 0 ? { version: project.version, shapes: p.shapes, entities: p.entities, remove: project.remove ?? [], ffBiome: project.ffBiome ?? 0, ...(locked.length ? { locked } : {}), ...(fam.clear.length ? { clearFamilies: fam.clear } : {}), ...(clear.length ? { clear } : {}) } : { version: project.version, shapes: p.shapes, entities: p.entities, remove: [] };
-        writeFileSync(k === 0 ? PROJECT_FILE : join(PROFILE_DIR, "MapGen", `mapgen.${k}.json`), JSON.stringify(body), "utf-8");
+        writeFileSync(k === 0 ? projectFile : join(PROFILE_DIR, "MapGen", `${stem}.${k}.json`), JSON.stringify(body), "utf-8");
       });
       console.log(`[apply] ${project.shapes.length} shapes, ${(project.entities ?? []).length} objects in ${parts.length} file(s)`);
 
       const sent = sentReport(project);
-      writeFileSync(join(PROFILE_DIR, "MapGen", "sent.txt"), sent.lines.join("\n"), "utf-8");
+      writeFileSync(join(PROFILE_DIR, "MapGen", zone ? `sent-zone-${zone}.txt` : "sent.txt"), sent.lines.join("\n"), "utf-8");
       rmSync(join(PROFILE_DIR, "MapGen", "built.txt"), { force: true });
-      const result = await callWorkbench("MG_ApplyProject", { file: "$profile:MapGen/mapgen.json" }, 600_000); // big worlds take minutes
-      if (result.status !== "error") { try { writeFileSync(famFile, JSON.stringify(fam.after), "utf-8"); } catch {} }
+      const result = await callWorkbench("MG_ApplyProject", { file: `$profile:MapGen/${stem}.json` }, 600_000); // big worlds take minutes
+      if (result.status !== "error" && !zone) { try { writeFileSync(famFile, JSON.stringify(fam.after), "utf-8"); } catch {} }
       if (Array.isArray(project.comments)) await pushComments(project.comments).catch((e) => console.log("[apply] comments: " + e.message));
       // opt-in post-Apply world setup (MG_SetupWorldApi.c): managers, world-bounds rocks, save
       if (project.setupWorld && result.status !== "error") {

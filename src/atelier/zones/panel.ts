@@ -22,19 +22,24 @@ export async function openZones(ctx: ZoneCtx, busy: Busy) {
   const H = ctx.H
   if (!H) { ctx.log(tk('at.zn.noHeights'), true); return }
   // existing power network (poles + power line splines), read once, read-only
-  let power: number[] = []
+  // per layer file, so a zone can ignore its own previous output (MG_Zone_<tag>_*) when it is generated again
+  const powerByFile = new Map<string, number[]>()
   if (ctx.world.layersDir) {
-    const p = await busy(tk('at.zn.reading'), async (stage) => {
-      const list = await ctx.src.list(ctx.world.layersDir!, ['.layer']), ex: Extract = { insts: [], splines: [], grpCount: new Map() }
+    await busy(tk('at.zn.reading'), async (stage) => {
+      const list = await ctx.src.list(ctx.world.layersDir!, ['.layer'])
       for (let i = 0; i < list.length; i++) {
         stage(list[i].path.split('/').pop()!, i, list.length)
+        const ex: Extract = { insts: [], splines: [], grpCount: new Map() }
         extract(new TextDecoder().decode((await ctx.src.read(list[i].path)).bytes), list[i].path, { inst: (pf) => isPole(pf), spline: (c) => isPowerGen(c) }, ex)
+        const pts = [...ex.insts.flatMap((q) => [q.x, q.z]), ...ex.splines.flatMap((s) => s.pts.flatMap((q) => [q[0], q[2]]))]
+        if (pts.length) powerByFile.set(list[i].path.split('/').pop()!, pts)
         if (i % 8 === 0) await new Promise((r) => setTimeout(r, 0))
       }
-      return [...ex.insts.flatMap((q) => [q.x, q.z]), ...ex.splines.flatMap((s) => s.pts.flatMap((q) => [q[0], q[2]]))]
     })
-    power = p ?? []
   }
+  const ownLayer = (tag: string) => (file: string | undefined) => !!file && file.startsWith(`MG_Zone_${tag}_`)
+  const powerFor = (tag: string) => { const own = ownLayer(tag), out: number[] = []; for (const [f, pts] of powerByFile) if (!own(f)) for (const v of pts) out.push(v); return out }
+  const power = [...powerByFile.values()].flat() // all of it, for the map
   const zones: Zone[] = []
   let cur: Zone | null = null, draw: { mode: 'rect' | 'poly'; pts: number[] } | null = null, hover: [number, number] | null = null
   const ui = shell('atZones', tk('at.zn.title'), () => {})
@@ -113,8 +118,9 @@ export async function openZones(ctx: ZoneCtx, busy: Busy) {
     const done = await busy(tk('at.zn.generate'), async () => {
       await new Promise((r) => setTimeout(r, 0))
       const box = growBox(ringBox(z.spec.ring), POWER_REACH)
-      const w = zoneWorld(ctx.objects, ctx.bodies, power, box)
-      z.res = generateZone(H!, w, { ...z.spec, name: zoneTag(z.spec.name) }); z.sent = null
+      const tag = zoneTag(z.spec.name)
+      const w = zoneWorld(ctx.objects, ctx.bodies, powerFor(tag), box, ownLayer(tag))
+      z.res = generateZone(H!, w, { ...z.spec, name: tag }); z.sent = null
       return true
     }).catch((e) => { ctx.log(tk('at.zn.err', { m: String((e as Error).message ?? e) }), true); return false })
     if (done && z.res) ctx.log(tk('at.zn.made', { name: z.spec.name, h: z.res.placed.length, r: z.res.lanes.length + z.res.links.length, p: z.res.power.length, s: z.res.stations.length, f: z.res.fields.length, w: z.res.forests.length, c: z.res.heights.cols, rr: z.res.heights.rows, st: z.res.heights.step }))

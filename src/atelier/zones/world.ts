@@ -23,15 +23,16 @@ const ROAD_OF: Record<string, { type: RoadType; width: number }> = { asphalt: { 
 const near = (box: Box, xs: number[], zs: number[]) => Math.min(...xs) <= box[2] && Math.max(...xs) >= box[0] && Math.min(...zs) <= box[3] && Math.max(...zs) >= box[1]
 
 /** existing content near `box` (world metres) as generator inputs */
-export function zoneWorld(objects: LayerObjects | null, bodies: WaterBody[], power: number[], box: Box): ZoneWorld {
+/** `skip(layerFile)` true = ignore that layer's objects (the zone's own previous output when it is generated again) */
+export function zoneWorld(objects: LayerObjects | null, bodies: WaterBody[], power: number[], box: Box, skip: (layer: string | undefined) => boolean = () => false): ZoneWorld {
   const out: ZoneWorld = { roads: [], waters: [], footprints: [], power: [] }
   if (objects) {
     objects.roads.forEach((r, i) => {
-      if (r.pts.length < 2 || !near(box, r.pts.map((p) => p[0]), r.pts.map((p) => p[1]))) return
+      if (skip(r.layer) || r.pts.length < 2 || !near(box, r.pts.map((p) => p[0]), r.pts.map((p) => p[1]))) return
       const t = ROAD_OF[r.type] ?? ROAD_OF.dirt
       out.roads.push({ id: `EXIST_ROAD_${i}`, type: t.type, width: t.width, pts: r.pts.flat() })
     })
-    const fp = (o: { x: number; z: number; yaw?: number; prefab?: string }, half: number) => { if (inBox(box, o.x, o.z)) out.footprints.push(objectFootprint(o, half).corners) }
+    const fp = (o: { x: number; z: number; yaw?: number; prefab?: string; layer?: string }, half: number) => { if (!skip(o.layer) && inBox(box, o.x, o.z)) out.footprints.push(objectFootprint(o, half).corners) }
     for (const b of objects.buildings) fp(b, b.type === 'industrial' ? FALLBACK_HALF.industrial : FALLBACK_HALF.house)
     for (const w of objects.walls) fp(w, 1.5)
     for (const p of objects.port) fp(p, FALLBACK_HALF.port)

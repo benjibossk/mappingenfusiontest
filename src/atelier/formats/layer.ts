@@ -152,11 +152,12 @@ export function wallType(prefab: string): WallKind | null {
 }
 
 export interface LayerObjects {
-  roads: { type: RoadSurface; pts: [number, number][] }[]
-  buildings: { x: number; z: number; type: BuildingKind; yaw?: number; prefab?: string }[]
+  /** `layer` = source .layer file name, set by the Atelier loader (zones skip their own previous output) */
+  roads: { type: RoadSurface; pts: [number, number][]; layer?: string }[]
+  buildings: { x: number; z: number; type: BuildingKind; yaw?: number; prefab?: string; layer?: string }[]
   trees: { x: number; z: number; type: TreeKind }[]
-  port: { x: number; z: number; yaw: number; type: PortKind; prefab: string }[]
-  walls: { x: number; z: number; yaw: number; type: WallKind; prefab: string }[]
+  port: { x: number; z: number; yaw: number; type: PortKind; prefab: string; layer?: string }[]
+  walls: { x: number; z: number; yaw: number; type: WallKind; prefab: string; layer?: string }[]
   entities: number
 }
 
