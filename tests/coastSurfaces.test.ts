@@ -42,7 +42,7 @@ test('openWaterDistance: a river is not open water, the sea is', () => {
   assert.ok(d[15 * cols + 38] <= 8, `next to the sea ${d[15 * cols + 38]}`)
 })
 
-test('computeSurfaces: no Rock_01 band on the map-edge sea ramp (picture 120, grey band along the east edge)', () => {
+test('computeSurfaces: a steep map-edge shore is a cliff coast now (edgeBand.ts natural shore): rock, like Arland', () => {
   const cols = 101, rows = 101, step = 8
   const heights: number[] = []
   // plateau at 30 m falling into the sea over the last 6 % of the map (Sculpt.compose edge ramp), 45 deg
@@ -51,10 +51,10 @@ test('computeSurfaces: no Rock_01 band on the map-edge sea ramp (picture 120, gr
   const rock = s.find((q) => q.name === 'Rock_01')!.weights
   let edge = 0
   for (let r = 20; r < 80; r++) for (let c = 93; c < cols; c++) edge += rock[r * cols + c]
-  assert.equal(edge, 0)
+  assert.ok(edge > 0, 'rock on the steep edge shore')
 })
 
-test('computeSurfaces: no beach / coastal grass band on the map-edge ramp, a gentle real shore keeps it (picture 120 round 9, light band east edge)', () => {
+test('computeSurfaces: a gentle real shore keeps its beach / coastal grass (the map edge is a real shore since edgeBand.ts)', () => {
   const cols = 101, rows = 101, step = 8
   const ramp: number[] = [], shore: number[] = []
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
@@ -68,7 +68,6 @@ test('computeSurfaces: no beach / coastal grass band on the map-edge ramp, a gen
     for (let r = 20; r < 80; r++) for (let c = c0; c < cols; c++) if (hs[r * cols + c] > 0) for (const x of w) t += x[r * cols + c]
     return t
   }
-  assert.ok(coast(ramp) < 1, `ramp coast weight ${coast(ramp)}`)
   assert.ok(coast(shore, 40) > 20, `real shore coast weight ${coast(shore, 40)}`)
 })
 

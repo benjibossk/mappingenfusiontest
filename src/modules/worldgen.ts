@@ -402,7 +402,7 @@ export async function generateWorld(p: WorldParams, cb: { progress?: (stage: Wor
   // the relief the page builds from this island (main.ts applyWorld -> tGen -> Sculpt.compose: 32 m macro + its own
   // detail noise) is what is drawn and sent: place everything on that one, not on the raw island (seed 21 live:
   // 32 % of land cells up to 9 m off, rocks buried, slopes / shores judged on another terrain)
-  { const sc = new Sculpt(island.grid.cols, island.grid.step, isl.maxHeight, isl.seed, island.heights, 32, isl.relief !== 'classic'); sc.seaDepth = isl.seaDepth; island.heights = sc.compose().slice() }
+  { const sc = new Sculpt(island.grid.cols, island.grid.step, isl.maxHeight, isl.seed, island.heights, 32, isl.relief !== 'classic'); sc.seaDepth = isl.seaDepth; sc.edgeBand = false; island.heights = sc.compose().slice() }
   const g = island.grid, base = island.heights
   // 2. rivers + lakes (same as the Water step's "Generate")
   await step('water')

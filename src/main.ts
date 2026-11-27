@@ -35,6 +35,7 @@ import { CROP_COLOURS, colourCrops, type Crop } from './modules/fieldlayout'
 import { cutForests, isAutumnBiome, riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
 import { forestEdges, forestEdgeShapes, forestFloorAreas } from './modules/forestEdge'
+import { clipRingToRect, contentRect, keepOffEdgeBand } from './modules/edgeBand'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
@@ -4558,7 +4559,16 @@ function forestAreaTest(): (x: number, z: number) => boolean {
  *  holes split away. The forest ground masks are painted from these same polygons (picture 120: forest ground
  *  along the river with no tree, painted from the uncut areas) */
 function sentForests(all: MapArea[]): MapArea[] {
-  return clipForestsToWater(all, waters.map((w) => ({ pts: w.pts, width: WATER_TYPES[w.type].closed ? w.width : 2 * riverWetHalf(w), closed: WATER_TYPES[w.type].closed })), { margin: 4 })
+  const R = edgeRect()
+  const f = clipForestsToWater(all, waters.map((w) => ({ pts: w.pts, width: WATER_TYPES[w.type].closed ? w.width : 2 * riverWetHalf(w), closed: WATER_TYPES[w.type].closed })), { margin: 4 })
+  // nothing in the island edge band (edgeBand.ts): forests clipped to the content rectangle
+  return R ? f.map((a) => ({ ...a, pts: clipRingToRect(a.pts, R) })).filter((a) => a.pts.length >= 6) : f
+}
+/** the content rectangle (map minus the island edge band), null without a map */
+function edgeRect() {
+  if (!island) return null
+  const g = island.grid
+  return contentRect(g.minX, g.minZ, (Math.min(g.cols, g.rows) - 1) * g.step)
 }
 function forestShapesOut(all: MapArea[]): ProjectShape[] {
   const f = sentForests(all)
@@ -4595,7 +4605,10 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const forests = $<HTMLInputElement>('forestLater').checked ? [] : forestShapesOut(areas.filter((a) => a.kind === 'forest'))
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
-    const shapes = [...wr.shapes, ...(result?.shapes ?? []), ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
+    const shapes0 = [...wr.shapes, ...(result?.shapes ?? []), ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities0 = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
+    // the island edge band (edgeBand.ts) holds shore and sea only: roads stop before it, objects and areas kept out
+    const R = edgeRect(), kept = R ? keepOffEdgeBand({ version: 0, shapes: shapes0, entities: entities0 }, R) : { version: 0 as const, shapes: shapes0, entities: entities0 }
+    const shapes = kept.shapes, entities = kept.entities ?? []
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })
       + (powerLines.length ? ' · ' + t('log.sendingPower', { n: powerLines.length }) : '')

@@ -238,7 +238,8 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
   // the sea Sculpt.compose forces on the last 6 % of the map (edge ramp) is not water a coast is measured from: its
   // coastal grass made a light band along the whole edge (picture 120 east edge, round 9). A real sea reaching the
   // edge still has its shore further in
-  const edgeN = Math.ceil(0.07 * Math.max(1, cols - 1))
+  // since the edge band (edgeBand.ts) is a natural shore, only the outermost 1 % (deep sea bed) is left out
+  const edgeN = Math.ceil(0.01 * Math.max(1, cols - 1))
   // `inland` water (rivers, river swelling lakes) has no coast: picture 119 round 11, its 100-200 m wide river and
   // lake counted as open water and painted their low banks as a 30-60 m beach (BeachGrass 56-67 %, Pebbles_02 7-24 %
   // of the bank 0-30 m), brown in game. Arland: grass to the edge, a narrow pebble line
@@ -285,7 +286,8 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     const bed = river ? Math.min(river[i], 1 - deepAll) : 0
     // the map-edge sea ramp (Sculpt.compose: the last 6 % of the map forced down to the sea floor) is no cliff: a
     // straight grey Rock_01 band ran along the whole edge slope (picture 120, x 2350-2400). Coastal grass there
-    const edgeRamp = band(Math.min(c, r, cols - 1 - c, rows - 1 - r) / Math.max(1, cols - 1), 0.07, 0.1)
+    // edgeBand.ts made that edge a natural shore: rock where it is steep, like any coast (Arland cliffs)
+    const edgeRamp = 1
     const cliff = Math.min(1, rm.rock[i] + rm.scree[i]) * (h > -2 ? 1 : 0) * (1 - bed) * edgeRamp
     let scree = Math.min(cliff, rm.scree[i] * (1 - bed))
     let rock = cliff - scree
@@ -298,7 +300,8 @@ export function computeSurfaces(grid: Grid, heights: number[], maxHeight: number
     // dry low ground (a picture map lies at 0-1.5 m over whole plains) is shingle only on the water's edge
     // the map-edge ramp above the sea is no coast either: beach / coastal grass made a light band along the whole
     // edge slope (picture 120, x 2350-2400, round 9). A real shore there is gentle; the ramp is steep: plain grass
-    const fakeCoast = h > 0 ? (1 - edgeRamp) * band(slope, 0.08, 0.15) : 0
+    // no beach on a steep shore anywhere (cliff coast): rock / grass there, sand where it is gentle
+    const fakeCoast = h > 0 ? band(slope, 0.3, 0.5) : 0
     const shore0 = take(band(h, -4, -2) * (1 - band(h, 0.5, 1.5)) * (h > -0.5 ? 1 - band(toWater[i], 4, 10) : 1) * (1 - fakeCoast))
     // that strip is mostly sand, a few pebbles (beach sand above the water, sandy bed under it): all shingle, the
     // shallow shelf (-2.5..-0.5 m, 90-100 % Pebbles_02) showed as a line of dark rocks along the whole gentle south
