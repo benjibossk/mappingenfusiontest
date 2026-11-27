@@ -99,7 +99,8 @@ while ((Get-Date) -lt $deadline) {
 "satellite import finished in $([int]((Get-Date) - $t0).TotalSeconds) s" + $(if ($script:failed) { ' (WITH ERRORS, see console.log)' } else { '' })
 $ld = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\logs" -Directory | Sort-Object { (Get-Item (Join-Path $_.FullName "console.log") -ErrorAction SilentlyContinue).LastWriteTime } -Descending | Select-Object -First 1
 $cl = Join-Path $ld.FullName 'console.log'
-$res = @(Get-Content $cl -Tail 3000 -ErrorAction SilentlyContinue | Where-Object { $_ -match 'Satellite map import (finished|failed)|TERRAIN +\(E\).*atellite' }) | Select-Object -Last 1
+$res = @(Get-Content $cl -Tail 3000 -ErrorAction SilentlyContinue | Where-Object { $_ -match 'Satellite map import (finished|failed)|TERRAIN +\(E\).*atellite' } |
+  Where-Object { $_ -match '^(\d\d:\d\d:\d\d)' -and [datetime]::ParseExact($Matches[1], 'HH:mm:ss', $null) -ge $t0.AddSeconds(-2) }) | Select-Object -Last 1
 if ($res) { "console: $($res.Trim())" } else { 'console: no satellite import line found (check console.log)' }
 if ($NoSave) { exit 0 }
 $qEnd = (Get-Date).AddSeconds($QuietMaxSec); $age = 0
