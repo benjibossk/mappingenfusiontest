@@ -13,7 +13,8 @@ param(
   [int]$QuietSec = 60,
   [int]$QuietMaxSec = 900,
   [int]$SaveDelaySec = 60,
-  [switch]$Probe
+  [switch]$Probe,
+  [switch]$Retry
 )
 $ErrorActionPreference = 'Stop'
 if (-not $env:MAPGEN_WB_PORT) { $env:MAPGEN_WB_PORT = '5777' }
@@ -48,6 +49,8 @@ function SetCheck($dlg, $name, [bool]$on) {
 }
 
 $we = WE; if (-not $we) { throw 'World Editor window not found' }
+# a normal / vegetation map generation still running (right after wb-import-masks) swallowed the OK (round r19): wait for it
+for ($i = 0; $i -lt 300 -and @(Visible | Where-Object { $_.Current.ClassName -match 'Progress' }).Count; $i++) { Start-Sleep -Seconds 2 }
 $btn = Find $we 'Import satellite map...' 'Button'
 if (-not $btn) {
   $mt = Find $we 'Manage' 'TabItem'
@@ -101,7 +104,18 @@ $ld = Get-ChildItem "$env:USERPROFILE\Documents\My Games\ArmaReforgerWorkbench\l
 $cl = Join-Path $ld.FullName 'console.log'
 $res = @(Get-Content $cl -Tail 3000 -ErrorAction SilentlyContinue | Where-Object { $_ -match 'Satellite map import (finished|failed)|TERRAIN +\(E\).*atellite' } |
   Where-Object { $_ -match '^(\d\d:\d\d:\d\d)' -and [datetime]::ParseExact($Matches[1], 'HH:mm:ss', $null) -ge $t0.AddSeconds(-2) }) | Select-Object -Last 1
-if ($res) { "console: $($res.Trim())" } else { 'console: no satellite import line found (check console.log)' }
+# the bake prints its result a few seconds after the dialog closes: wait up to 90 s for it
+for ($i = 0; $i -lt 30 -and -not $res; $i++) {
+  Start-Sleep -Seconds 3
+  $res = @(Get-Content $cl -Tail 3000 -ErrorAction SilentlyContinue | Where-Object { $_ -match 'Running a satellite map import|Satellite map import (finished|failed)|TERRAIN +\(E\).*atellite' } |
+    Where-Object { $_ -match '^(\d\d:\d\d:\d\d)' -and [datetime]::ParseExact($Matches[1], 'HH:mm:ss', $null) -ge $t0.AddSeconds(-2) }) | Select-Object -Last 1
+}
+if ($res) { "console: $($res.Trim())" }
+elseif (-not $Retry) {
+  'console: no satellite import started, retrying once'
+  $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath, '-File', $File, '-Retry'); if ($NoSave) { $a += '-NoSave' }; if ($RenderRoads) { $a += '-RenderRoads' }
+  & powershell @a; exit $LASTEXITCODE
+} else { 'SATELLITE IMPORT NOT CONFIRMED in console.log'; exit 5 }
 if ($NoSave) { exit 0 }
 $qEnd = (Get-Date).AddSeconds($QuietMaxSec); $age = 0
 while ((Get-Date) -lt $qEnd) { $age = ((Get-Date) - (Get-Item $cl).LastWriteTime).TotalSeconds; if ($age -ge $QuietSec) { break }; Start-Sleep -Seconds 5 }

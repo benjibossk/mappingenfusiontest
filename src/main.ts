@@ -35,7 +35,7 @@ import { CROP_COLOURS, colourCrops, type Crop } from './modules/fieldlayout'
 import { cutForests, isAutumnBiome, riparianBands, riparianShapes, type RiparianPatch } from './modules/riparian'
 import { outsideHtml, outsideFor, wireOutside } from './outsideUi'
 import { forestEdges, forestEdgeShapes, forestFloorAreas } from './modules/forestEdge'
-import { clipRingToRect, contentRect, keepOffEdgeBand } from './modules/edgeBand'
+import { clipRingToRect, coastRect, coastNoise, cutLineAtSea, islandMargin, keepOnIsland, SEA_CUT } from './modules/edgeBand'
 import { mergeForestPatches } from './modules/forestMerge'
 import { scatterBuildings } from './modules/scattered'
 import { generateTown } from './modules/town'
@@ -2660,6 +2660,8 @@ function applyImageMap(r: ImageMapResult, img: HTMLImageElement, file: File) {
   $<HTMLInputElement>('tSize').value = String(S)
   useWorld(w)
   imported = null // a new relief, not the world open in the Workbench
+  // a picture map ends as an island with the random generator's coast (edgeBand.ts), not a block with a sheer wall
+  sculpt!.islandCoast = true
   island!.masks = undefined
   island!.surfaceMasks = undefined
   // roads: vanilla class from the drawn thickness, relative to the typical road of the picture
@@ -2784,9 +2786,15 @@ function satSourceBody(): Record<string, unknown> {
 }
 // road mask ends at a lake pulled back by the band reach (asphalt half 4 + shoulder 5 m), see roadsOutOfWater
 const LAKE_MASK_TRIM = 9
+/** picture maps: road ground cut where the island coast put the sea, like the road shapes sent (keepOnIsland): a trail
+ *  dropped from the send left its pale Dirt_01 strip alone on the crest (picture 120 round 19) */
+function seaCutBands<T extends { points: number[] }>(bands: T[]): T[] {
+  const sea = coastSea()
+  return sea ? bands.flatMap((b) => cutLineAtSea(b.points, sea, 4, 0).map((points) => ({ ...b, points }))) : bands
+}
 /** the mask body of every export (and of the preview's final masks, preview/finalMasks.ts) */
 function maskBody(surfaces: NonNullable<typeof island>['surfaces']) {
-  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled, 1, 'Grass_01', 'Dirt_01', roadClear()), ...desireMasks(), ...roadMasks(roadsOutOfWater(roads, roadShapes(roads), waters, LAKE_MASK_TRIM)), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
+  return { terrainSize: num('tSize'), surfaces, colours: { ...island!.colours, ...ROAD_COLOURS }, roads: [...yardMasks(settled, 1, 'Grass_01', 'Dirt_01', roadClear()), ...desireMasks(), ...seaCutBands(roadMasks(roadsOutOfWater(roads, roadShapes(roads), waters, LAKE_MASK_TRIM))), ...waterMasks(waters), ...roadMasks([...setLanes, ...setPaths]), ...buildingMasks(settled), ...powerCorridorMasks(mergePowerLines(powerLines), forestAreaTest()), ...poleDirtMasks(mergePowerLines(powerLines), num('tSeed')), ...parcelGround(), ...zones.filter((z) => z.kind === 'airfield').flatMap((z) => airfieldGroundMasks(z.shapes))] }
 }
 /** every mask export: generator surface names -> the project's biome surfaces (biomes/surfaces.ts) */
 const writeMasks = (body: Parameters<typeof applyBiome>[0] & Record<string, unknown>) => {
@@ -4561,14 +4569,24 @@ function forestAreaTest(): (x: number, z: number) => boolean {
 function sentForests(all: MapArea[]): MapArea[] {
   const R = edgeRect()
   const f = clipForestsToWater(all, waters.map((w) => ({ pts: w.pts, width: WATER_TYPES[w.type].closed ? w.width : 2 * riverWetHalf(w), closed: WATER_TYPES[w.type].closed })), { margin: 4 })
-  // nothing in the island edge band (edgeBand.ts): forests clipped to the content rectangle
+  // picture maps: forests kept inside the island coast (edgeBand.ts coastRect)
   return R ? f.map((a) => ({ ...a, pts: clipRingToRect(a.pts, R) })).filter((a) => a.pts.length >= 6) : f
 }
-/** the content rectangle (map minus the island edge band), null without a map */
+/** picture maps (island coast, edgeBand.ts): the rectangle areas stay in, null otherwise */
 function edgeRect() {
-  if (!island) return null
+  if (!island || !sculpt?.islandCoast) return null
   const g = island.grid
-  return contentRect(g.minX, g.minZ, (Math.min(g.cols, g.rows) - 1) * g.step)
+  return coastRect(g.minX, g.minZ, (Math.min(g.cols, g.rows) - 1) * g.step)
+}
+/** picture maps: true where the island coast put the ground under the sea (inside the coast margin only, so river
+ *  beds inland never count) */
+function coastSea(): ((x: number, z: number) => boolean) | null {
+  if (!island || !sculpt?.islandCoast) return null
+  const g = island.grid, H = island.heights, n = coastNoise(sculpt.seed)
+  return (x, z) => {
+    const c = Math.min(g.cols - 1, Math.max(0, Math.round((x - g.minX) / g.step))), r = Math.min(g.rows - 1, Math.max(0, Math.round((z - g.minZ) / g.step)))
+    return H[r * g.cols + c] < SEA_CUT && islandMargin(c, r, g.cols, g.rows, n((c * g.step) / 600, (r * g.step) / 600)) > 0
+  }
 }
 function forestShapesOut(all: MapArea[]): ProjectShape[] {
   const f = sentForests(all)
@@ -4606,8 +4624,8 @@ $<HTMLButtonElement>('sendAll').addEventListener('click', () =>
     const setShapes = settled.length ? [...settlementShapes({ lanes: setLanes, paths: setPaths }), ...parcelShapes()] : []
     const setEnts = settled.length ? settlementEntities(settled, settled.some((q) => q.tpl) ? parcelItems(await loadParcels(), groundAt) : undefined).concat(parcelEntities()) : []
     const shapes0 = [...wr.shapes, ...(result?.shapes ?? []), ...powerShapes(), ...forests, ...setShapes, ...zones.flatMap((z) => z.shapes)], entities0 = [...(wr.entities ?? []), ...setEnts, ...zones.flatMap((z) => z.entities), ...prodLogEntities(), ...stationEntities(powerStations)]
-    // the island edge band (edgeBand.ts) holds shore and sea only: roads stop before it, objects and areas kept out
-    const R = edgeRect(), kept = R ? keepOffEdgeBand({ version: 0, shapes: shapes0, entities: entities0 }, R) : { version: 0 as const, shapes: shapes0, entities: entities0 }
+    // picture maps (island coast, edgeBand.ts): roads stop on the shore, objects in the sea dropped, areas kept in
+    const R = edgeRect(), sea = coastSea(), kept = R && sea ? keepOnIsland({ version: 0, shapes: shapes0, entities: entities0 }, sea, R) : { version: 0 as const, shapes: shapes0, entities: entities0 }
     const shapes = kept.shapes, entities = kept.entities ?? []
     if (!shapes.length && !entities.length) throw new Error(t('err.nothingToSend'))
     const what = t('log.sending', { roads: roads.length, waters: waters.length, forests: forests.length, buildings: settled.length, shapes: shapes.length, objects: entities.length })

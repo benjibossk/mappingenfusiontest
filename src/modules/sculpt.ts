@@ -3,7 +3,7 @@
 // after each stroke step (cheap), rivers can follow live.
 
 import { noise2 } from './island'
-import { applyEdgeBand } from './edgeBand'
+import { applyIslandCoast } from './edgeBand'
 
 export class Sculpt {
   readonly mc: number // macro nodes per side
@@ -16,9 +16,9 @@ export class Sculpt {
   private maxHeight: number
   seaDepth = 30
   seed = 1
-  /** island edge band (edgeBand.ts); worldgen.ts turns it off: its island.ts relief already ends in a 12 % sea margin
-   *  and its content is placed on that relief (pads, roads), the old 6 % ramp kept there */
-  edgeBand = true
+  /** map made from a picture: the land shrunk into an island with the random generator's coast (edgeBand.ts);
+   *  other maps (generated islands, imported worlds, worldgen.ts) keep the former 6 % edge ramp */
+  islandCoast = false
   private keepFine = false
 
   constructor(
@@ -90,14 +90,13 @@ export class Sculpt {
         this.heights[r * cols + c] = h
       }
     }
-    // the map edge stays sea whatever is painted, falling smoothly over a 150-300 m band with a wobbling shore
-    // (edgeBand.ts; the old ramp on the last 6 % made a raised block ending in a sheer wall, picture 120 round 17)
-    if (this.edgeBand) applyEdgeBand(this.heights, cols, cols, step, this.seed)
+    // the map edge stays sea whatever is painted
+    if (this.islandCoast) applyIslandCoast(this.heights, cols, cols, step, this.seed, this.seaDepth)
     else this.legacyRamp()
     return this.heights
   }
 
-  //! the former edge: last 6 % of the map forced down to the sea floor (worldgen.ts only)
+  //! the edge of every map but the picture ones: last 6 % of the map forced down to the sea floor
   private legacyRamp() {
     const { cols } = this
     for (let r = 0; r < cols; r++) for (let c = 0; c < cols; c++) {
