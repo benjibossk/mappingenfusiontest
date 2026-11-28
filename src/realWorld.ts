@@ -9,7 +9,7 @@ import {
   isGeographic, localToLonLat, sourceToLonLat, lonLatToLocal, readDem, readTiff, toSource,
 } from './modules/dem'
 import { canopyClasses } from './modules/canopy'
-import { CREDITS, coverage, fetchIgn, fetchImagery, fetchTerrarium, fetchWorldCover } from './modules/sources'
+import { CREDITS, coverage, fetchIgn, inFrance, fetchImagery, fetchTerrarium, fetchWorldCover } from './modules/sources'
 import { WORLDCOVER } from './modules/cover'
 import * as turf from '@turf/turf'
 import { ADAPT_DEFAULTS, adaptForGame } from './modules/adapt'
@@ -51,7 +51,7 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
             <span id="rwFavs"></span>
           </div>
           <div class="pc-row rw-cop">
-            <select id="rwSrc" title="${L('hint.src')}"><option value="copernicus">${L('rw.src.copernicus')}</option><option value="terrarium">${L('rw.src.terrarium')}</option><option value="ign">${L('rw.src.ign')}</option><option value="ignLidar">${L('rw.src.ignLidar')}</option></select>
+            <select id="rwSrc" title="${L('hint.src')}"><option value="auto">${L('rw.src.auto')}</option><option value="copernicus">${L('rw.src.copernicus')}</option><option value="terrarium">${L('rw.src.terrarium')}</option><option value="ign">${L('rw.src.ign')}</option><option value="ignLidar">${L('rw.src.ignLidar')}</option></select>
             <label>${L('rw.lat')} <input id="rwLat" type="number" step="0.0001" placeholder="45.1885"></label>
             <label>${L('rw.lon')} <input id="rwLon" type="number" step="0.0001" placeholder="5.7245"></label>
             <button id="rwCopGo" type="button">${L('rw.download')}</button>
@@ -167,7 +167,26 @@ export function openRealWorld(onApply: (r: RealPlace) => void) {
   async function copDownload() {
     const lat = num('rwLat'), lon = num('rwLon')
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180 || ($<HTMLInputElement>('rwLat').value === '')) return void (msg.textContent = t('rw.badLatLon'))
-    const src = $<HTMLSelectElement>('rwSrc').value
+    let src = $<HTMLSelectElement>('rwSrc').value
+    if (src === 'auto') {
+      // best source for the place (MapToPlay-style provider ranking): IGN LiDAR HD 1 m, then RGE ALTI 1 m in
+      // France; elsewhere Copernicus 30 m through the relay, else Terrain Tiles (no relay needed)
+      const size = Math.max(1024, Math.min(32768, num('rwSize') || 8192))
+      if (inFrance(lat, lon)) {
+        for (const kind of ['lidarMnt', 'rgealti'] as const) {
+          msg.textContent = t('rw.downloading', { id: kind === 'lidarMnt' ? 'IGN LiDAR HD' : 'IGN RGE ALTI' })
+          const d = await fetchIgn(lat, lon, size, kind).catch(() => null)
+          if (d && coverage(d) >= 0.5) {
+            if (kind === 'lidarMnt') chm = await fetchIgn(lat, lon, size, 'lidarMnh').catch(() => null)
+            fromCop = false; srcCredit = CREDITS.ign
+            await useDem(d, [lat, lon], size)
+            msg.textContent = t('rw.autoPicked', { id: kind === 'lidarMnt' ? 'IGN LiDAR HD' : 'IGN RGE ALTI' })
+            return
+          }
+        }
+      }
+      src = (await getStatus()).bridge ? 'copernicus' : 'terrarium'
+    }
     if (src !== 'copernicus') {
       // sized sources: fetched for the area size asked (change it, then download again)
       const size = Math.max(1024, Math.min(32768, num('rwSize') || 8192))

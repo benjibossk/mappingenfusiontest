@@ -170,3 +170,14 @@ export async function fetchImagery(s: number, w: number, n: number, e: number, p
   }
   return out
 }
+
+/** mainland France and Corsica, where IGN RGE ALTI / LiDAR HD have relief (coarse polygon; a miss is
+ *  caught by the coverage check after download) */
+const FRANCE: [number, number][] = [[-4.9, 48.6], [-1.9, 49.8], [1.6, 51.1], [2.6, 51.1], [4.2, 50.0], [6.4, 49.5], [8.2, 49.0], [7.6, 47.6], [6.0, 46.1], [7.0, 45.9], [6.6, 45.1], [7.7, 44.1], [7.5, 43.7], [6.1, 42.9], [3.2, 42.4], [-1.8, 43.3], [-1.5, 46.2], [-2.6, 47.2], [-4.9, 48.6]]
+const CORSICA: [number, number][] = [[8.5, 41.3], [9.6, 41.3], [9.6, 43.1], [8.5, 43.1], [8.5, 41.3]]
+const inside = (p: [number, number][], x: number, y: number) => {
+  let c = false
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) if ((p[i][1] > y) !== (p[j][1] > y) && x < ((p[j][0] - p[i][0]) * (y - p[i][1])) / (p[j][1] - p[i][1]) + p[i][0]) c = !c
+  return c
+}
+export const inFrance = (lat: number, lon: number) => inside(FRANCE, lon, lat) || inside(CORSICA, lon, lat)
