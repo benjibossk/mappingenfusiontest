@@ -3372,6 +3372,8 @@ function fitCanvas() {
 new ResizeObserver(fitCanvas).observe(map.parentElement!)
 // tracing image (declared before the first draw, which reads it)
 let traceImg: HTMLImageElement | HTMLCanvasElement | null = null
+// desire-path cache (desireMasks), read by the first draw too
+let desireMemo: { key: string; bands: MaskBand[] } | null = null
 fitCanvas()
 
 // --- island project: autosave in the browser + save/open a file ---
@@ -3603,7 +3605,10 @@ const FRESH_KEY = 'reforger-mapper.fresh'
 async function createProject(tour = false): Promise<void> {
   clearTimeout(saveTimer)
   const prev = islandProject()
-  if (prev && activeProject) await projects.save(activeProject, prev) // keep the previous project as it is now
+  // keep the previous project as it is now; a failed save (e.g. storage quota) must not block creating a new one
+  if (prev && activeProject) {
+    try { await projects.save(activeProject, prev) } catch (e) { console.error('[createProject] saving previous project failed', e) }
+  }
   await newActiveProject(t('proj.newName.new', { date: new Date().toLocaleString() }))
   try { localStorage.removeItem(PROJECT_KEY); localStorage.setItem('reforger-mapper.nav', 'terrain'); sessionStorage.setItem(FRESH_KEY, tour ? 'tour' : '1') } catch { /* */ }
   location.reload()
@@ -5315,8 +5320,8 @@ function existingRoads(): Road[] {
     .map((s, i) => ({ id: `EXIST_${i}`, type: 'asphalt' as RoadType, pts: s.points.flat() }))
 }
 /** fence and wall pieces (generator 'Fence', reference maps): drawn above the forest and the buildings */
-/** desire paths (desirePaths.ts): worn-ground mask bands from the doors to the nearest road, memoised per world */
-let desireMemo: { key: string; bands: MaskBand[] } | null = null
+/** desire paths (desirePaths.ts): worn-ground mask bands from the doors to the nearest road, memoised per world
+ *  (desireMemo is declared before the first fitCanvas() draw, which reads it) */
 /** (x, z, r) => a disc of radius r touches a road (its painted band: half + shoulder) */
 function roadClear(): (x: number, z: number, r: number) => boolean {
   const segs: number[][] = []

@@ -8,6 +8,7 @@ import type { Feature, LineString, MultiLineString, MultiPolygon, Polygon } from
 import type { RoadType } from './roads'
 import type { SiteKind } from './network'
 import { isBridge, isTunnel, osmRoadType, osmWidth } from './osmWidth'
+import { classify, overpassStatements } from '../data/osmRules'
 
 export const OVERPASS = 'https://overpass-api.de/api/interpreter'
 // public mirrors, tried in turn when one is busy (502 / 504 / 429 / network error)
@@ -42,18 +43,7 @@ interface El { type: 'node' | 'way' | 'relation'; id: number; lat?: number; lon?
 
 export function overpassQuery([s, w, n, e]: [number, number, number, number], o: OsmOptions) {
   const bb = `(${s},${w},${n},${e})`
-  const hw: string[] = []
-  if (o.mainRoads) hw.push('motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link')
-  if (o.minorRoads) hw.push('unclassified', 'residential', 'living_street', 'service', 'tertiary_link')
-  if (o.tracks) hw.push('track')
-  if (o.paths) hw.push('path', 'footway', 'bridleway', 'cycleway')
-  const q: string[] = []
-  if (hw.length) q.push(`way["highway"~"^(${hw.join('|')})$"]${bb};`)
-  if (o.water) q.push(`way["waterway"~"^(river|stream|canal)$"]${bb};`, `way["natural"="water"]${bb};`, `relation["natural"="water"]${bb};`)
-  if (o.forests) q.push(`way["landuse"="forest"]${bb};`, `way["natural"="wood"]${bb};`, `relation["landuse"="forest"]${bb};`, `relation["natural"="wood"]${bb};`)
-  if (o.fields) q.push(`way["landuse"~"^(farmland|meadow|orchard|vineyard|grass)$"]${bb};`)
-  if (o.buildings) q.push(`way["building"]${bb};`)
-  if (o.places) q.push(`node["place"~"^(city|town|village|hamlet)$"]${bb};`)
+  const q = overpassStatements(bb, (g) => o[g])
   return `[out:json][timeout:90];(${q.join('')});out geom;`
 }
 
@@ -71,15 +61,6 @@ export async function fetchOverpass(query: string, onTry?: (host: string, k: num
   }
   throw new Error(`Overpass ${last}`)
 }
-
-const ROAD: Record<string, RoadType> = {
-  motorway: 'asphaltLine', trunk: 'asphaltLine', primary: 'asphaltLine', motorway_link: 'asphalt', trunk_link: 'asphalt', primary_link: 'asphalt',
-  secondary: 'asphalt', secondary_link: 'asphalt', tertiary: 'asphalt', tertiary_link: 'asphaltNarrow',
-  unclassified: 'asphaltNarrow', residential: 'asphaltNarrow', living_street: 'asphaltNarrow', service: 'asphaltNarrow',
-  track: 'dirt', path: 'trailDirt', footway: 'trailDirt', bridleway: 'trailDirt', cycleway: 'trailGravel',
-}
-const RIVER_WIDTH: Record<string, number> = { river: 14, canal: 8, stream: 3 }
-const PLACE: Record<string, SiteKind> = { city: 'town', town: 'town', village: 'village', hamlet: 'hamlet' }
 
 /** ways of a multipolygon relation joined into closed rings */
 function rings(parts: Pt[][]): Pt[][] {
@@ -207,9 +188,15 @@ export function osmToMap(data: unknown, toLocal: (lon: number, lat: number) => P
   const group = (m: Map<string, Pt[][]>, k: string, l: Pt[]) => { if (l.length < 2) return; const g = m.get(k); if (g) g.push(l); else m.set(k, [l]) }
   for (const el of els) {
     const t = el.tags ?? {}
-    if (el.type === 'node' && t.place && PLACE[t.place] && el.lat !== undefined && el.lon !== undefined) {
+    // classify every element the data holds, like before the rule table (a saved Overpass file may hold
+    // more than the ticked boxes); the boxes only shape the query
+    const rule = classify(el.type, t, () => true)
+    if (!rule) continue
+    const p = rule.params ?? {}
+    if (rule.layer === 'site') {
+      if (el.lat === undefined || el.lon === undefined) continue
       const [x, z] = toLocal(el.lon, el.lat)
-      if (Math.abs(x) < h && Math.abs(z) < h) out.sites.push({ x: Math.round(x + h), z: Math.round(z + h), kind: PLACE[t.place], name: t.name ?? '' })
+      if (Math.abs(x) < h && Math.abs(z) < h) out.sites.push({ x: Math.round(x + h), z: Math.round(z + h), kind: p.site!, name: t.name ?? '' })
       continue
     }
     const wayRings = (): Pt[][] => {
@@ -217,22 +204,24 @@ export function osmToMap(data: unknown, toLocal: (lon: number, lat: number) => P
       if (el.type === 'relation' && el.members) return rings(el.members.filter((m) => m.role !== 'inner' && m.geometry).map((m) => loc(m.geometry!)))
       return []
     }
-    if (t.highway && ROAD[t.highway] && el.geometry) {
-      if (isTunnel(t)) continue // #16: no tunnel in a heightmap terrain
+    if (rule.layer === 'road') {
+      if (!el.geometry || isTunnel(t)) continue // #16: no tunnel in a heightmap terrain
       const w = Math.round(osmWidth(t) * 10) / 10 // width tag, lanes, or class table (ARTE, MIT)
-      group(roadParts, `${osmRoadType(t, ROAD[t.highway])}|${w >= 2 && w < 30 ? w : ''}|${isBridge(t) ? 1 : ''}`, loc(el.geometry))
-    } else if (t.waterway && RIVER_WIDTH[t.waterway] && el.geometry) {
+      group(roadParts, `${osmRoadType(t, p.roadType!)}|${w >= 2 && w < 30 ? w : ''}|${isBridge(t) ? 1 : ''}`, loc(el.geometry))
+    } else if (rule.layer === 'river') {
+      if (!el.geometry) continue
       const w = Number.parseFloat(t.width ?? '')
-      group(riverParts, String(w > 1 && w < 200 ? w : RIVER_WIDTH[t.waterway]), loc(el.geometry))
-    } else if (t.natural === 'water' && t.water !== 'river') {
-      for (const r of polys(wayRings())) if (area(r) > 400) out.lakes.push(ringPts(r, 3))
-    } else if (t.landuse === 'forest' || t.natural === 'wood') {
-      for (const r of polys(wayRings())) if (area(r) >= o.minForest) out.forests.push({ pts: ringPts(r, 6), leaf: t.leaf_type === 'broadleaved' ? 'broad' : t.leaf_type === 'needleleaved' ? 'needle' : 'mixed' })
-    } else if (t.building && el.type === 'way' && el.geometry) {
+      group(riverParts, String(w > 1 && w < 200 ? w : p.width!), loc(el.geometry))
+    } else if (rule.layer === 'lake') {
+      for (const r of polys(wayRings())) if (area(r) > p.minArea!) out.lakes.push(ringPts(r, p.tolerance!))
+    } else if (rule.layer === 'forest') {
+      for (const r of polys(wayRings())) if (area(r) >= o.minForest) out.forests.push({ pts: ringPts(r, p.tolerance!), leaf: t.leaf_type === 'broadleaved' ? 'broad' : t.leaf_type === 'needleleaved' ? 'needle' : 'mixed' })
+    } else if (rule.layer === 'building') {
+      if (el.type !== 'way' || !el.geometry) continue
       const r = loc(el.geometry)
       if (r.length >= 4 && r.every(([x, z]) => x >= 0 && z >= 0 && x <= size && z <= size)) out.buildings.push(flat(r.slice(0, -1)))
-    } else if (t.landuse && /^(farmland|meadow|orchard|vineyard|grass)$/.test(t.landuse)) {
-      for (const r of polys(wayRings())) if (area(r) > 5000) out.fields.push(ringPts(r, 5))
+    } else if (rule.layer === 'field') {
+      for (const r of polys(wayRings())) if (area(r) > p.minArea!) out.fields.push(ringPts(r, p.tolerance!))
     }
   }
   for (const [k, ls] of roadParts) {

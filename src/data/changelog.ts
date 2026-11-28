@@ -14,6 +14,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       { en: "One Workbench per project, each on its own NET API port", fr: "Un Workbench par projet, chacun sur son propre port NET API" },
       { en: "Checked in the Workbench: island coast, Atelier zones and satmap import work", fr: "Vérifié dans le Workbench : côte en île, zones de l'Atelier et import de la satmap fonctionnent" },
       { en: "A new project starts empty; Atelier zones keep their own project file", fr: "Un nouveau projet démarre vide ; les zones de l'Atelier ont leur propre fichier projet" },
+      { en: "Real place: 'Automatic' relief source picks IGN LiDAR HD / RGE ALTI in France, Copernicus or Terrain Tiles elsewhere", fr: "Lieu réel : la source de relief « Automatique » prend IGN LiDAR HD / RGE ALTI en France, Copernicus ou Terrain Tiles ailleurs" },
+      { en: "Fixed: the app crashed on load and 'Create a project' did nothing", fr: "Corrigé : l'appli plantait au chargement et « Créer un projet » ne faisait rien" },
     ],
   },
   {
